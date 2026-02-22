@@ -1,0 +1,197 @@
+{
+  "newReleases": [
+    {
+      "title": "Grand Theft Auto VI",
+      "normalizedTitle": "grand theft auto vi",
+      "genres": [
+        "Shooter",
+        "Racing",
+        "Adventure"
+      ],
+      "platforms": [
+        "Xbox Series X|S",
+        "PlayStation 5"
+      ],
+      "releaseDate": "2026-11-19",
+      "developer": "Rockstar Games",
+      "publisher": "Rockstar Games",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9rwo.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwpqj.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp7.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp6.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp8.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp9.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlj.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlk.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vll.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlm.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vln.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlo.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlp.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlq.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlr.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vls.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlt.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlu.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlv.jpg"
+      ],
+      "summary": "Grand Theft Auto VI heads to the state of Leonida, home to the neon-soaked streets of Vice City and beyond in the biggest, most immersive evolution of the Grand Theft Auto series yet.",
+      "source": [
+        "igdb",
+        "metacritic"
+      ],
+      "metascore": 95,
+      "userScore": 10
+    },
+    {
+      "title": "Mewgenics",
+      "normalizedTitle": "mewgenics",
+      "steamAppId": 686060,
+      "genres": [
+        "Role-playing (RPG)",
+        "Simulator",
+        "Turn-based strategy (TBS)",
+        "Adventure",
+        "Indie"
+      ],
+      "platforms": [
+        "PC (Microsoft Windows)"
+      ],
+      "source": [
+        "steam",
+        "metacritic",
+        "igdb"
+      ],
+      "metascore": 89,
+      "userScore": null,
+      "releaseDate": "2026-02-10",
+      "developer": "Edmund McMillen",
+      "publisher": "Edmund McMillen",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9n5k.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqb.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgq9.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgq8.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqd.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqe.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqc.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqa.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqh.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqg.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqf.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozv.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozw.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozx.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozy.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozz.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p00.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p01.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p02.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p03.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p04.jpg"
+      ],
+      "summary": "From the creator of The Binding of Isaac, Super Meat Boy and The End is Nigh comes... Mewgenics! A game where you hoard, breed, train and set cats out on epic adventures through a sprawling world of complete chaos.\nLevel up your team as you venture further and further from your home, collect unique items, defeat epic bosses, gain mutations and return home so you you can breed and further your bloodline, in this turn based legacy roguelike draft sim about cats!"
+    }
+  ],
+  "indies": [
+    {
+      "title": "english",
+      "normalizedTitle": "english",
+      "genres": [
+        "Point-and-click",
+        "Adventure",
+        "Indie"
+      ],
+      "platforms": [
+        "Android",
+        "iOS"
+      ],
+      "youtubePopularity": 3325070,
+      "source": [
+        "youtube",
+        "igdb"
+      ],
+      "releaseDate": "2014-03-21",
+      "developer": "the Good Evil",
+      "publisher": "the Good Evil",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9dvx.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbi.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbd.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbe.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbf.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbg.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbh.jpg"
+      ],
+      "summary": "Squirrel & Bär is an adventure game for 3-9-year-old kids to learn English as a foreign language on mobile phones and tablets.\n\nJoin Squirrel & Bär on a journey to save the bees, seeking for a magic flower. Starting in the forest, the players have 22 levels to beat. Passing through five different worlds various animals are there to help the players out. At the end the lynx awaits the players, but she only speaks English! Good, that Squirrel & Bär did accquire the neccessary words and sentences to ask the lynx for help!"
+    },
+    {
+      "title": "#葉 #vcrマイクラ",
+      "normalizedTitle": "#葉 #vcrマイクラ",
+      "genres": [
+        "Adventure",
+        "Indie"
+      ],
+      "platforms": [
+        "PC (Steam)"
+      ],
+      "youtubePopularity": 1587993,
+      "source": [
+        "youtube"
+      ],
+      "summary": "「キ。」は記憶の改ざんをテーマにしたアドベンチャーゲーム。プレイヤーは主人公の記憶を探索しながら、真実を解き明かしていく独特な体験が楽しめる。",
+      "isAiInferred": true,
+      "aiInferredFields": [
+        "genres",
+        "platforms",
+        "summary"
+      ]
+    }
+  ],
+  "featured": {
+    "title": "Grand Theft Auto VI",
+    "normalizedTitle": "grand theft auto vi",
+    "genres": [
+      "Shooter",
+      "Racing",
+      "Adventure"
+    ],
+    "platforms": [
+      "Xbox Series X|S",
+      "PlayStation 5"
+    ],
+    "releaseDate": "2026-11-19",
+    "developer": "Rockstar Games",
+    "publisher": "Rockstar Games",
+    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9rwo.jpg",
+    "screenshots": [
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwpqj.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp7.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp6.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp8.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp9.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlj.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlk.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vll.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlm.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vln.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlo.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlp.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlq.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlr.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vls.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlt.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlu.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlv.jpg"
+    ],
+    "summary": "Grand Theft Auto VI heads to the state of Leonida, home to the neon-soaked streets of Vice City and beyond in the biggest, most immersive evolution of the Grand Theft Auto series yet.",
+    "source": [
+      "igdb",
+      "metacritic"
+    ],
+    "metascore": 95,
+    "userScore": 10
+  },
+  "classic": null
+}

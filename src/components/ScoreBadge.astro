@@ -1,0 +1,87 @@
+---
+interface Props {
+  score: number;
+  label?: string;
+  size?: 'sm' | 'md' | 'lg';
+  type?: 'metascore' | 'user';
+}
+
+const { score, label, size = 'md', type = 'metascore' } = Astro.props;
+
+function getScoreColor(score: number): string {
+  const normalizedScore = type === 'user' ? score * 10 : score;
+  if (normalizedScore >= 75) return 'var(--color-score-high)';
+  if (normalizedScore >= 50) return 'var(--color-score-mid)';
+  return 'var(--color-score-low)';
+}
+
+const displayValue = type === 'user' ? score.toFixed(1) : score;
+const defaultLabel = type === 'user' ? 'User Score' : 'Metascore';
+---
+
+<div class={`score-badge score-badge--${size}`}>
+  <span class="score-value" style={`--score-color: ${getScoreColor(score)}`}>
+    {displayValue}
+  </span>
+  {(label || defaultLabel) && <span class="score-label">{label || defaultLabel}</span>}
+</div>
+
+<style>
+  .score-badge {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .score-value {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--score-color);
+    color: var(--color-background);
+    font-family: var(--font-heading);
+    font-weight: 700;
+    border-radius: var(--radius-sm);
+  }
+
+  .score-label {
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+  }
+
+  /* Size variants */
+  .score-badge--sm .score-value {
+    width: 32px;
+    height: 32px;
+    font-size: 0.875rem;
+  }
+
+  .score-badge--sm .score-label {
+    font-size: 0.625rem;
+    margin-top: var(--spacing-xs);
+  }
+
+  .score-badge--md .score-value {
+    width: 48px;
+    height: 48px;
+    font-size: 1.25rem;
+  }
+
+  .score-badge--md .score-label {
+    font-size: 0.75rem;
+    margin-top: var(--spacing-xs);
+  }
+
+  .score-badge--lg .score-value {
+    font-size: 2rem;
+    padding: var(--spacing-sm) var(--spacing-md);
+    min-width: 64px;
+    line-height: 1;
+  }
+
+  .score-badge--lg .score-label {
+    font-size: 0.75rem;
+    margin-top: var(--spacing-sm);
+  }
+</style>

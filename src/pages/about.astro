@@ -1,0 +1,271 @@
+---
+import MagazineLayout from '../layouts/MagazineLayout.astro';
+---
+
+<MagazineLayout
+  title="このサイトについて"
+  description="Game Wireについてご紹介します"
+>
+  <div class="container">
+    <article class="about-content">
+      <header class="about-header">
+        <h1 class="about-title">このサイトについて</h1>
+        <p class="about-lead">
+          Game Wireは、AIが自動生成する週刊ゲーム情報マガジンです。
+        </p>
+      </header>
+
+      <section class="about-section">
+        <h2>Game Wireとは</h2>
+        <p>
+          Game Wireは、最新のゲーム情報をAIが自動収集・編集して毎週日曜日に発行するWebマガジンです。
+          Steam Charts、YouTube、IGDB、Metacriticなど複数の情報源からデータを収集し、
+          Amazon Bedrock上のClaudeが記事を生成しています。
+        </p>
+      </section>
+
+      <section class="about-section">
+        <h2>コンテンツ構成</h2>
+        <p>各号には以下のコンテンツが含まれます：</p>
+        <ul class="content-list">
+          <li>
+            <strong>大手企業の新作紹介</strong>
+            <span>もうすぐ発売、または発売されたばかりの注目タイトルを紹介</span>
+          </li>
+          <li>
+            <strong>話題のインディーゲーム</strong>
+            <span>SteamやYouTubeで話題のインディータイトルをピックアップ</span>
+          </li>
+          <li>
+            <strong>特集記事</strong>
+            <span>周年イベントや季節イベントなど、タイムリーな話題を特集</span>
+          </li>
+          <li>
+            <strong>名作深掘り</strong>
+            <span>高評価を獲得した名作ゲームを詳細に解説</span>
+          </li>
+        </ul>
+      </section>
+
+      <section class="about-section">
+        <h2>情報源</h2>
+        <div class="sources-grid">
+          <div class="source-card">
+            <h3>Steam Charts</h3>
+            <p>売上ランキング・同時接続数など、定量的な人気指標を取得</p>
+          </div>
+          <div class="source-card">
+            <h3>YouTube Data API</h3>
+            <p>ゲーム系トレンド動画から話題性・拡散状況を分析</p>
+          </div>
+          <div class="source-card">
+            <h3>IGDB</h3>
+            <p>ゲームタイトルの正規化、ジャンル、カバー画像などのメタ情報を補完</p>
+          </div>
+          <div class="source-card">
+            <h3>Metacritic</h3>
+            <p>メタスコアによる評価情報を取得</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="about-section">
+        <h2>対応プラットフォーム</h2>
+        <div class="platforms-list">
+          <span class="platform-badge">Nintendo Switch</span>
+          <span class="platform-badge">PlayStation 4/5</span>
+          <span class="platform-badge">Xbox Series X|S / One</span>
+          <span class="platform-badge">PC (Steam)</span>
+          <span class="platform-badge">iOS / Android</span>
+        </div>
+      </section>
+
+      <section class="about-section">
+        <h2>技術スタック</h2>
+        <p>本サイトは以下の技術で構築されています：</p>
+        <ul class="tech-list">
+          <li><strong>Astro</strong> - 静的サイト生成フレームワーク</li>
+          <li><strong>TypeScript</strong> - 型安全な開発</li>
+          <li><strong>Amazon Bedrock (Claude)</strong> - AI記事生成</li>
+          <li><strong>Cloudflare Pages</strong> - ホスティング</li>
+          <li><strong>GitHub Actions</strong> - CI/CD自動化</li>
+        </ul>
+      </section>
+
+      <section class="about-section disclaimer">
+        <h2>免責事項</h2>
+        <p>
+          本サイトの記事はAIによって自動生成されています。
+          情報の正確性には細心の注意を払っておりますが、
+          内容の正確性・完全性を保証するものではありません。
+          ゲームの購入等の判断は、公式情報を確認の上、ご自身の責任で行ってください。
+        </p>
+        <p>
+          ゲーム画像はIGDBから取得しており、各ゲームの著作権は各権利者に帰属します。
+        </p>
+      </section>
+    </article>
+  </div>
+</MagazineLayout>
+
+<style>
+  .about-content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .about-header {
+    text-align: center;
+    margin-bottom: var(--spacing-2xl);
+    padding: var(--spacing-xl) 0;
+  }
+
+  .about-title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-md);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-text));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .about-lead {
+    font-size: 1.25rem;
+    color: var(--color-text-muted);
+  }
+
+  .about-section {
+    margin-bottom: var(--spacing-2xl);
+  }
+
+  .about-section h2 {
+    font-size: 1.5rem;
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .about-section p {
+    line-height: 1.8;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .content-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .content-list li {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-md);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .content-list li strong {
+    color: var(--color-primary);
+    font-size: 1rem;
+  }
+
+  .content-list li span {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .sources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-md);
+  }
+
+  .source-card {
+    background: var(--color-surface);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+  }
+
+  .source-card h3 {
+    font-size: 1rem;
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .source-card p {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  .platforms-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .platform-badge {
+    background: var(--color-surface);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .tech-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  .tech-list li {
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.875rem;
+  }
+
+  .tech-list li:last-child {
+    border-bottom: none;
+  }
+
+  .tech-list strong {
+    color: var(--color-primary);
+  }
+
+  .disclaimer {
+    background: var(--color-surface);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--color-primary);
+  }
+
+  .disclaimer h2 {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .disclaimer p {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .disclaimer p:last-child {
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 768px) {
+    .about-title {
+      font-size: 1.75rem;
+    }
+
+    .about-lead {
+      font-size: 1rem;
+    }
+
+    .sources-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

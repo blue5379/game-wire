@@ -1,0 +1,210 @@
+---
+import { getCollection } from 'astro:content';
+import MagazineLayout from '../layouts/MagazineLayout.astro';
+import ArticleCard from '../components/ArticleCard.astro';
+
+// 最新号を取得（issueNumberで降順ソート）
+const allIssues = await getCollection('issues');
+const latestIssue = allIssues.sort(
+  (a, b) => b.data.issueNumber - a.data.issueNumber
+)[0];
+---
+
+<MagazineLayout
+  title={latestIssue ? `Vol.${latestIssue.data.issueNumber}` : '準備中'}
+  description={latestIssue?.data.description}
+  issueNumber={latestIssue?.data.issueNumber}
+  publishDate={latestIssue?.data.publishDate}
+>
+  <div class="container">
+    {
+      latestIssue ? (
+        <>
+          <section class="issue-hero">
+            <h1 class="issue-title">{latestIssue.data.title}</h1>
+            <p class="issue-description">{latestIssue.data.description}</p>
+          </section>
+
+          <section class="articles-grid">
+            {latestIssue.data.articles.map((article, index) => (
+              <div class="article-wrapper" style={`--animation-delay: ${index * 0.1}s`}>
+                <ArticleCard
+                  href={`/issue/${latestIssue.data.issueNumber}/article/${index}`}
+                  title={article.title}
+                  category={article.category}
+                  summary={article.summary}
+                  coverImage={article.coverImage}
+                  featureImage={article.featureImage}
+                  game={article.game}
+                />
+              </div>
+            ))}
+          </section>
+        </>
+      ) : (
+        <section class="no-issue">
+          <h1>Game Wire</h1>
+          <p>週刊ゲーム情報マガジン</p>
+          <p class="coming-soon">最初の号を準備中です...</p>
+        </section>
+      )
+    }
+  </div>
+</MagazineLayout>
+
+<style>
+  /* カードのアニメーション */
+  .article-wrapper {
+    opacity: 0;
+    animation: fadeInUp 0.5s ease-out forwards;
+    animation-delay: var(--animation-delay, 0s);
+  }
+
+  /* フィーチャード以外のカードは自然な高さを維持 */
+  .article-wrapper:not(:first-child) :global(a) {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .article-wrapper:first-child :global(a) {
+    height: 100%;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .issue-hero {
+    text-align: center;
+    margin-bottom: var(--spacing-2xl);
+    padding: var(--spacing-xl) 0;
+    animation: fadeIn 0.6s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .issue-title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-md);
+    background: linear-gradient(
+      135deg,
+      var(--color-primary),
+      var(--color-text)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .issue-description {
+    font-size: 1.125rem;
+    color: var(--color-text-muted);
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--spacing-lg);
+  }
+
+  /* フィーチャード記事（最初の記事）を大きく表示 */
+  .articles-grid > .article-wrapper:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .articles-grid > .article-wrapper:first-child :global(a) {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 0;
+  }
+
+  .articles-grid > .article-wrapper:first-child :global(.cover-image) {
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    height: 100%;
+    aspect-ratio: auto;
+  }
+
+  .articles-grid > .article-wrapper:first-child :global(.card-content) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--spacing-xl);
+  }
+
+  .articles-grid > .article-wrapper:first-child :global(h2) {
+    font-size: 1.75rem;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .articles-grid > .article-wrapper:first-child :global(.card-summary) {
+    -webkit-line-clamp: 5;
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+
+  .no-issue {
+    text-align: center;
+    padding: var(--spacing-2xl) 0;
+  }
+
+  .no-issue h1 {
+    font-size: 3rem;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .coming-soon {
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  /* タブレット */
+  @media (max-width: 1024px) {
+    .articles-grid > .article-wrapper:first-child :global(a) {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .articles-grid > .article-wrapper:first-child :global(h2) {
+      font-size: 1.5rem;
+    }
+  }
+
+  /* モバイル */
+  @media (max-width: 768px) {
+    .issue-title {
+      font-size: 1.75rem;
+    }
+
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .articles-grid > .article-wrapper:first-child :global(a) {
+      grid-template-columns: 1fr;
+    }
+
+    .articles-grid > .article-wrapper:first-child :global(.cover-image) {
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+      aspect-ratio: 16 / 9;
+    }
+
+    .articles-grid > .article-wrapper:first-child :global(h2) {
+      font-size: 1.25rem;
+    }
+
+    .articles-grid > .article-wrapper:first-child :global(.card-summary) {
+      -webkit-line-clamp: 3;
+    }
+  }
+</style>

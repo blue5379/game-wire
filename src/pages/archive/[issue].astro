@@ -1,0 +1,156 @@
+---
+import { getCollection } from 'astro:content';
+import MagazineLayout from '../../layouts/MagazineLayout.astro';
+import ArticleCard from '../../components/ArticleCard.astro';
+
+export async function getStaticPaths() {
+  const allIssues = await getCollection('issues');
+  return allIssues.map((issue) => ({
+    params: { issue: issue.data.issueNumber.toString() },
+    props: { issue },
+  }));
+}
+
+const { issue } = Astro.props;
+
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
+---
+
+<MagazineLayout
+  title={`Vol.${issue.data.issueNumber} - ${issue.data.title}`}
+  description={issue.data.description}
+  issueNumber={issue.data.issueNumber}
+  publishDate={issue.data.publishDate}
+>
+  <div class="container">
+    <nav class="breadcrumb">
+      <a href="/archive">バックナンバー</a>
+      <span class="separator">/</span>
+      <span>Vol.{issue.data.issueNumber}</span>
+    </nav>
+
+    <section class="issue-hero">
+      <h1 class="issue-title">{issue.data.title}</h1>
+      <p class="issue-description">{issue.data.description}</p>
+      <time class="issue-date" datetime={issue.data.publishDate.toISOString()}>
+        {formatDate(issue.data.publishDate)}
+      </time>
+    </section>
+
+    <section class="articles-grid">
+      {
+        issue.data.articles.map((article, index) => (
+          <ArticleCard
+            href={`/issue/${issue.data.issueNumber}/article/${index}`}
+            title={article.title}
+            category={article.category}
+            summary={article.summary}
+            coverImage={article.coverImage}
+            game={article.game}
+          />
+        ))
+      }
+    </section>
+
+    <nav class="issue-pagination">
+      <a href="/archive" class="back-link">&larr; バックナンバー一覧に戻る</a>
+    </nav>
+  </div>
+</MagazineLayout>
+
+<style>
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-xl);
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .breadcrumb a {
+    color: var(--color-text-muted);
+  }
+
+  .breadcrumb a:hover {
+    color: var(--color-primary);
+  }
+
+  .separator {
+    opacity: 0.5;
+  }
+
+  .issue-hero {
+    text-align: center;
+    margin-bottom: var(--spacing-2xl);
+    padding: var(--spacing-xl) 0;
+  }
+
+  .issue-title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-md);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-text));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .issue-description {
+    font-size: 1.125rem;
+    color: var(--color-text-muted);
+    max-width: 600px;
+    margin: 0 auto var(--spacing-md);
+  }
+
+  .issue-date {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  .articles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: var(--spacing-lg);
+  }
+
+  .issue-pagination {
+    margin-top: var(--spacing-2xl);
+    padding-top: var(--spacing-xl);
+    border-top: 1px solid var(--color-border);
+    text-align: center;
+  }
+
+  .back-link {
+    display: inline-block;
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    color: var(--color-text);
+    font-weight: 500;
+    transition:
+      background-color 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .back-link:hover {
+    background: var(--color-accent);
+    transform: translateY(-2px);
+  }
+
+  @media (max-width: 768px) {
+    .issue-title {
+      font-size: 1.75rem;
+    }
+
+    .articles-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

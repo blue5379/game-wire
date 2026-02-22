@@ -1,0 +1,33 @@
+---
+import BaseLayout from './BaseLayout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import DevTools from '../components/DevTools.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  issueNumber?: number;
+  publishDate?: Date;
+}
+
+const { title, description, issueNumber, publishDate } = Astro.props;
+---
+
+<BaseLayout title={title} description={description}>
+  <Header issueNumber={issueNumber} publishDate={publishDate} />
+
+  <main class="magazine-main">
+    <slot />
+  </main>
+
+  <Footer />
+  <DevTools />
+</BaseLayout>
+
+<style>
+  .magazine-main {
+    min-height: calc(100vh - 200px);
+    padding: var(--spacing-xl) 0;
+  }
+</style>

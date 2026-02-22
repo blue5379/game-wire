@@ -1,0 +1,193 @@
+/**
+ * Game Wire - Responsive Styles
+ * レスポンシブ対応のメディアクエリ
+ */
+
+/* ===== Breakpoints =====
+ * Mobile: < 480px
+ * Tablet: 481px - 768px
+ * Desktop: 769px - 1024px
+ * Wide: > 1024px
+ */
+
+/* ===== Mobile First Base ===== */
+/* Default styles are mobile-first */
+
+/* ===== Tablet (481px - 768px) ===== */
+@media (min-width: 481px) {
+  .cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+}
+
+/* ===== Desktop (769px+) ===== */
+@media (min-width: 769px) {
+  .cards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  }
+
+  .game-info-card {
+    grid-template-columns: 200px 1fr;
+  }
+}
+
+/* ===== Mobile Only (< 768px) ===== */
+@media (max-width: 768px) {
+  /* Typography */
+  h1 {
+    font-size: var(--font-size-3xl);
+  }
+
+  h2 {
+    font-size: var(--font-size-xl);
+  }
+
+  .hero-title {
+    font-size: var(--font-size-3xl);
+  }
+
+  .hero-description {
+    font-size: var(--font-size-base);
+  }
+
+  /* Cards Grid */
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cards-grid--compact {
+    grid-template-columns: 1fr;
+  }
+
+  /* Game Info Card */
+  .game-info-card {
+    grid-template-columns: 1fr;
+  }
+
+  .game-info-cover {
+    max-width: 150px;
+    margin: 0 auto;
+  }
+
+  /* Issue Banner */
+  .issue-banner-content {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* Navigation */
+  .nav-horizontal {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  /* Footer */
+  .footer-links {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  /* Container */
+  .container {
+    padding: 0 var(--spacing-sm);
+  }
+
+  /* Spacing adjustments */
+  .section-spacing {
+    padding: var(--spacing-lg) 0;
+  }
+}
+
+/* ===== Small Mobile (< 480px) ===== */
+@media (max-width: 480px) {
+  html {
+    font-size: 14px;
+  }
+
+  .hero-title {
+    font-size: var(--font-size-2xl);
+  }
+
+  .card-content {
+    padding: var(--spacing-md);
+  }
+
+  .card-title {
+    font-size: var(--font-size-lg);
+  }
+}
+
+/* ===== Wide Desktop (> 1200px) ===== */
+@media (min-width: 1201px) {
+  .cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .cards-grid--wide {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .header,
+  .footer,
+  .nav {
+    display: none;
+  }
+
+  .card {
+    box-shadow: none;
+    border: 1px solid #ccc;
+  }
+
+  a {
+    color: black;
+    text-decoration: underline;
+  }
+
+  .hero-title {
+    background: none;
+    -webkit-text-fill-color: black;
+    color: black;
+  }
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===== Dark Mode (System Preference) ===== */
+/* Already dark by default, but can be extended for light mode support */
+@media (prefers-color-scheme: light) {
+  /* Light mode styles would go here if needed */
+}
+
+/* ===== High Contrast Mode ===== */
+@media (prefers-contrast: high) {
+  :root {
+    --color-border: #ffffff;
+    --color-text-muted: #d0d0d0;
+  }
+
+  .card {
+    border: 2px solid var(--color-border);
+  }
+
+  .category-badge {
+    border: 1px solid currentColor;
+  }
+}

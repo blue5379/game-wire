@@ -1,0 +1,251 @@
+---
+import CoverImage from './CoverImage.astro';
+import ScoreBadge from './ScoreBadge.astro';
+
+interface Props {
+  title: string;
+  genre?: string[];
+  platforms?: string[];
+  releaseDate?: string;
+  developer?: string;
+  publisher?: string;
+  developerCountry?: string;
+  coverImage?: string;
+  metascore?: number | null;
+  userScore?: number | null;
+  isAiInferred?: boolean;
+  aiInferredFields?: string[];
+}
+
+const {
+  title,
+  genre,
+  platforms,
+  releaseDate,
+  developer,
+  publisher,
+  developerCountry,
+  coverImage,
+  metascore,
+  userScore,
+  isAiInferred,
+  aiInferredFields,
+} = Astro.props;
+
+// フィールドがAI推測かどうかを判定するヘルパー
+const isFieldInferred = (fieldName: string) => {
+  return isAiInferred && aiInferredFields?.includes(fieldName);
+};
+---
+
+<div class="game-card">
+  <div class="game-cover">
+    <CoverImage src={coverImage} alt={title} aspectRatio="3/4" />
+  </div>
+  <div class="game-details">
+    <h2 class="game-title">{title}</h2>
+
+    <dl class="game-meta">
+      {
+        genre && genre.length > 0 && (
+          <>
+            <dt>ジャンル{isFieldInferred('genres') && <span class="ai-badge" title="YouTubeの動画情報からAIが推測した情報です">AI推測</span>}</dt>
+            <dd>{genre.join(', ')}</dd>
+          </>
+        )
+      }
+      {
+        platforms && platforms.length > 0 && (
+          <>
+            <dt>対応機種{isFieldInferred('platforms') && <span class="ai-badge" title="YouTubeの動画情報からAIが推測した情報です">AI推測</span>}</dt>
+            <dd>{platforms.join(', ')}</dd>
+          </>
+        )
+      }
+      {
+        releaseDate && (
+          <>
+            <dt>発売日</dt>
+            <dd>{releaseDate}</dd>
+          </>
+        )
+      }
+      {
+        developer && (
+          <>
+            <dt>開発{isFieldInferred('developer') && <span class="ai-badge" title="YouTubeの動画情報からAIが推測した情報です">AI推測</span>}</dt>
+            <dd>{developer}{developerCountry && <span class="country">（{developerCountry}）</span>}</dd>
+          </>
+        )
+      }
+      {
+        publisher && (
+          <>
+            <dt>発売元</dt>
+            <dd>{publisher}</dd>
+          </>
+        )
+      }
+    </dl>
+
+    {
+      isAiInferred && (
+        <div class="ai-notice">
+          <span class="ai-notice-icon">🤖</span>
+          <span class="ai-notice-text">
+            一部の情報はYouTube動画の情報からAIが推測しました。実際の情報と異なる場合があります。
+          </span>
+        </div>
+      )
+    }
+
+    {
+      (metascore || userScore) && (
+        <div class="scores">
+          {metascore && <ScoreBadge score={metascore} size="lg" type="metascore" />}
+          {userScore && <ScoreBadge score={userScore} size="lg" type="user" />}
+        </div>
+      )
+    }
+  </div>
+</div>
+
+<style>
+  .game-card {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: var(--spacing-lg);
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--color-border);
+  }
+
+  .game-cover {
+    position: relative;
+  }
+
+  .game-cover :global(.cover-image) {
+    box-shadow: var(--shadow-md);
+    border-radius: var(--radius-sm);
+    transition: transform var(--transition-normal);
+  }
+
+  .game-cover:hover :global(.cover-image) {
+    transform: scale(1.02);
+  }
+
+  .game-details {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .game-title {
+    font-size: 1.5rem;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-primary);
+    font-weight: 700;
+  }
+
+  .game-meta {
+    display: grid;
+    grid-template-columns: 70px 1fr 70px 1fr;
+    gap: var(--spacing-xs) var(--spacing-md);
+    margin: 0 0 var(--spacing-md);
+    padding: var(--spacing-sm);
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+  }
+
+  .game-meta dt {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .game-meta dd {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+
+  .game-meta dd .country {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    font-weight: 400;
+  }
+
+  .ai-badge {
+    display: inline-block;
+    font-size: 0.55rem;
+    padding: 0.1em 0.35em;
+    margin-left: 0.25em;
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    color: white;
+    border-radius: 3px;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    vertical-align: middle;
+    cursor: help;
+  }
+
+  .ai-notice {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .ai-notice-icon {
+    flex-shrink: 0;
+    font-size: 0.9rem;
+  }
+
+  .ai-notice-text {
+    line-height: 1.3;
+  }
+
+  .scores {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-top: auto;
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-border);
+  }
+
+  @media (max-width: 1024px) {
+    .game-meta {
+      grid-template-columns: 70px 1fr;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .game-card {
+      grid-template-columns: 1fr;
+      padding: var(--spacing-md);
+    }
+
+    .game-cover {
+      max-width: 160px;
+      margin: 0 auto;
+    }
+
+    .game-meta {
+      grid-template-columns: 60px 1fr;
+    }
+
+    .scores {
+      justify-content: center;
+    }
+  }
+</style>

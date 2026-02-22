@@ -1,0 +1,187 @@
+---
+import { getCollection } from 'astro:content';
+import MagazineLayout from '../../layouts/MagazineLayout.astro';
+import CoverImage from '../../components/CoverImage.astro';
+
+const allIssues = await getCollection('issues');
+const sortedIssues = allIssues.sort(
+  (a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime()
+);
+
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+}
+---
+
+<MagazineLayout title="バックナンバー" description="Game Wire 過去号一覧">
+  <div class="container">
+    <section class="archive-hero">
+      <h1 class="archive-title">バックナンバー</h1>
+      <p class="archive-description">
+        過去に発行されたGame Wireのバックナンバーをご覧いただけます。
+      </p>
+    </section>
+
+    {
+      sortedIssues.length > 0 ? (
+        <section class="issues-grid">
+          {sortedIssues.map((issue) => (
+            <a href={`/archive/${issue.data.issueNumber}`} class="issue-card">
+              <div class="issue-cover">
+                <CoverImage
+                  src={issue.data.coverImage}
+                  alt={`Vol.${issue.data.issueNumber}`}
+                  aspectRatio="4/3"
+                />
+                <span class="issue-number">Vol.{issue.data.issueNumber}</span>
+              </div>
+              <div class="issue-content">
+                <h2 class="issue-title">{issue.data.title}</h2>
+                <time class="issue-date" datetime={issue.data.publishDate.toISOString()}>
+                  {formatDate(issue.data.publishDate)}
+                </time>
+                <p class="issue-description">{issue.data.description}</p>
+                <div class="issue-meta">
+                  <span class="article-count">{issue.data.articles.length} 記事</span>
+                </div>
+              </div>
+            </a>
+          ))}
+        </section>
+      ) : (
+        <section class="no-issues">
+          <p>まだバックナンバーはありません。</p>
+        </section>
+      )
+    }
+  </div>
+</MagazineLayout>
+
+<style>
+  .archive-hero {
+    text-align: center;
+    margin-bottom: var(--spacing-2xl);
+    padding: var(--spacing-xl) 0;
+  }
+
+  .archive-title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-md);
+    background: linear-gradient(135deg, var(--color-primary), var(--color-text));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .archive-description {
+    font-size: 1.125rem;
+    color: var(--color-text-muted);
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .issues-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: var(--spacing-xl);
+  }
+
+  .issue-card {
+    display: block;
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .issue-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .issue-cover {
+    position: relative;
+  }
+
+  .issue-cover :global(.cover-image) {
+    border-radius: 0;
+  }
+
+  .issue-number {
+    position: absolute;
+    top: var(--spacing-md);
+    left: var(--spacing-md);
+    background: var(--color-primary);
+    color: var(--color-text);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-heading);
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .issue-content {
+    padding: var(--spacing-lg);
+  }
+
+  .issue-title {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-xs);
+    line-height: 1.3;
+  }
+
+  .issue-date {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .issue-description {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin-bottom: var(--spacing-md);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .issue-meta {
+    padding-top: var(--spacing-sm);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .article-count {
+    font-size: 0.75rem;
+    color: var(--color-primary);
+    font-weight: 500;
+  }
+
+  .no-issues {
+    text-align: center;
+    padding: var(--spacing-2xl) 0;
+    color: var(--color-text-muted);
+  }
+
+  @media (max-width: 768px) {
+    .archive-title {
+      font-size: 1.75rem;
+    }
+
+    .issues-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

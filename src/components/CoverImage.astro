@@ -1,0 +1,190 @@
+---
+interface Props {
+  src?: string;
+  alt: string;
+  aspectRatio?: '16/9' | '4/3' | '1/1' | '3/4';
+  class?: string;
+  category?: 'newRelease' | 'indie' | 'feature' | 'classic';
+}
+
+const { src, alt, aspectRatio = '16/9', class: className, category = 'newRelease' } = Astro.props;
+
+const hasImage = src && src.trim() !== '';
+
+// カテゴリ別のプレースホルダー設定
+const placeholderConfig = {
+  newRelease: {
+    gradient: 'linear-gradient(135deg, #1a237e 0%, #4fc3f7 100%)',
+    label: '新作',
+    icon: 'gamepad'
+  },
+  indie: {
+    gradient: 'linear-gradient(135deg, #1b5e20 0%, #81c784 100%)',
+    label: 'インディー',
+    icon: 'star'
+  },
+  feature: {
+    gradient: 'linear-gradient(135deg, #e65100 0%, #ffb74d 100%)',
+    label: '特集',
+    icon: 'magazine'
+  },
+  classic: {
+    gradient: 'linear-gradient(135deg, #4a148c 0%, #ba68c8 100%)',
+    label: '名作',
+    icon: 'trophy'
+  }
+};
+
+const config = placeholderConfig[category];
+---
+
+<div
+  class:list={['cover-image', className, { 'cover-image--placeholder': !hasImage }]}
+  style={`--aspect-ratio: ${aspectRatio}; --placeholder-gradient: ${config.gradient}`}
+>
+  {
+    hasImage ? (
+      <img src={src} alt={alt} loading="lazy" />
+    ) : (
+      <div class="placeholder">
+        <div class="placeholder-pattern"></div>
+        <div class="placeholder-content">
+          {config.icon === 'gamepad' && (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2" />
+              <path d="M6 12h4m-2-2v4" />
+              <circle cx="17" cy="10" r="1" />
+              <circle cx="15" cy="14" r="1" />
+            </svg>
+          )}
+          {config.icon === 'star' && (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          )}
+          {config.icon === 'magazine' && (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              <line x1="8" y1="6" x2="16" y2="6" />
+              <line x1="8" y1="10" x2="16" y2="10" />
+              <line x1="8" y1="14" x2="12" y2="14" />
+            </svg>
+          )}
+          {config.icon === 'trophy' && (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+              <path d="M4 22h16" />
+              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+            </svg>
+          )}
+          <span class="placeholder-label">{config.label}</span>
+        </div>
+      </div>
+    )
+  }
+</div>
+
+<style>
+  .cover-image {
+    aspect-ratio: var(--aspect-ratio);
+    overflow: hidden;
+    background: var(--color-accent);
+    border-radius: var(--radius-md);
+    position: relative;
+  }
+
+  .cover-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+  }
+
+  .cover-image:hover img {
+    transform: scale(1.05);
+  }
+
+  .cover-image--placeholder {
+    background: var(--placeholder-gradient);
+  }
+
+  .placeholder {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .placeholder-pattern {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(255,255,255,0.03) 10px,
+        rgba(255,255,255,0.03) 20px
+      );
+    pointer-events: none;
+  }
+
+  .placeholder-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    color: rgba(255, 255, 255, 0.9);
+    text-align: center;
+    padding: var(--spacing-lg);
+  }
+
+  .placeholder-content svg {
+    width: 64px;
+    height: 64px;
+    opacity: 0.8;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+  }
+
+  .placeholder-label {
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: rgba(0, 0, 0, 0.3);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--radius-full);
+    backdrop-filter: blur(4px);
+  }
+
+  /* ホバー時のエフェクト */
+  .cover-image--placeholder:hover .placeholder-content svg {
+    transform: scale(1.1);
+    transition: transform 0.3s ease;
+  }
+
+  .cover-image--placeholder:hover .placeholder-pattern {
+    background-image:
+      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.15) 0%, transparent 50%),
+      repeating-linear-gradient(
+        45deg,
+        transparent,
+        transparent 10px,
+        rgba(255,255,255,0.05) 10px,
+        rgba(255,255,255,0.05) 20px
+      );
+    transition: background-image 0.3s ease;
+  }
+</style>

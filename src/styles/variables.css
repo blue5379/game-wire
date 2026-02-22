@@ -1,0 +1,83 @@
+/**
+ * Game Wire - CSS Variables / Design Tokens
+ * カラーパレット、フォント、スペーシングなどの定義
+ */
+
+:root {
+  /* カラーパレット - 案1: ウォームアイボリー */
+  --color-primary: #d64550;
+  --color-secondary: #8b7355;
+  --color-accent: #c9b896;
+  --color-background: #faf8f5;
+  --color-surface: #ffffff;
+  --color-text: #3d3d3d;
+  --color-text-muted: #6b6b6b;
+  --color-border: #e8e4df;
+
+  /* スコアカラー */
+  --color-score-high: #66bb6a;
+  --color-score-mid: #ffca28;
+  --color-score-low: #ef5350;
+
+  /* カテゴリカラー */
+  --color-category-new-release: #4fc3f7;
+  --color-category-indie: #81c784;
+  --color-category-feature: #ffb74d;
+  --color-category-classic: #ba68c8;
+
+  /* フォント */
+  --font-heading: 'Oswald', 'Noto Sans JP', sans-serif;
+  --font-body: 'Noto Sans JP', sans-serif;
+
+  /* フォントサイズ */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.75rem;
+  --font-size-4xl: 2.5rem;
+
+  /* フォントウェイト */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+
+  /* スペーシング */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  /* ボーダー半径 */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+
+  /* シャドウ - ライトテーマ用 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+
+  /* トランジション */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
+  --transition-slow: 0.3s ease;
+
+  /* コンテナ幅 */
+  --container-max: 1200px;
+  --content-max: 800px;
+
+  /* z-index */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 300;
+  --z-tooltip: 400;
+}

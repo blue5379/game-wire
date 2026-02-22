@@ -1,0 +1,149 @@
+---
+interface Props {
+  issueNumber?: number;
+  publishDate?: Date;
+}
+
+const { issueNumber, publishDate } = Astro.props;
+
+const formattedDate = publishDate
+  ? new Intl.DateTimeFormat('ja-JP', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }).format(publishDate)
+  : null;
+---
+
+<header class="magazine-header">
+  <div class="container">
+    <div class="header-content">
+      <a href="/" class="logo">
+        <span class="logo-text">GAME</span>
+        <span class="logo-accent">WIRE</span>
+      </a>
+      <nav class="nav">
+        <a href="/">最新号</a>
+        <a href="/archive">バックナンバー</a>
+        <a href="/about">このサイトについて</a>
+      </nav>
+    </div>
+  </div>
+</header>
+
+{
+  issueNumber && (
+    <div class="issue-banner">
+      <div class="container">
+        <div class="issue-info">
+          <span class="issue-number">Vol.{issueNumber}</span>
+          {formattedDate && <span class="issue-date">{formattedDate}</span>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+<style>
+  .magazine-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--spacing-md) 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+  }
+
+  .logo {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-xs);
+    font-family: var(--font-heading);
+    font-size: 1.75rem;
+    font-weight: 700;
+    text-decoration: none;
+  }
+
+  .logo-text {
+    color: var(--color-text);
+  }
+
+  .logo-accent {
+    color: var(--color-primary);
+  }
+
+  .logo:hover .logo-text,
+  .logo:hover .logo-accent {
+    opacity: 0.9;
+  }
+
+  .nav {
+    display: flex;
+    gap: var(--spacing-lg);
+  }
+
+  .nav a {
+    color: var(--color-text);
+    font-weight: 500;
+    padding: var(--spacing-xs) 0;
+    border-bottom: 2px solid transparent;
+    transition: border-color 0.2s ease;
+  }
+
+  .nav a:hover {
+    color: var(--color-text);
+    border-bottom-color: var(--color-primary);
+  }
+
+  .issue-banner {
+    background: var(--color-primary);
+    padding: var(--spacing-sm) 0;
+  }
+
+  .issue-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    font-family: var(--font-heading);
+  }
+
+  .issue-number {
+    font-size: 1.25rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #ffffff;
+  }
+
+  .issue-date {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    color: #ffffff;
+  }
+
+  @media (max-width: 768px) {
+    .header-content {
+      justify-content: center;
+    }
+
+    .nav {
+      width: 100%;
+      justify-content: center;
+      gap: var(--spacing-md);
+    }
+
+    .issue-info {
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+  }
+</style>

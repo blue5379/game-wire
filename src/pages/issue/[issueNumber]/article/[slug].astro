@@ -1,0 +1,327 @@
+---
+import { getCollection } from 'astro:content';
+import { marked } from 'marked';
+import ArticleLayout from '../../../../layouts/ArticleLayout.astro';
+import IssueNav from '../../../../components/IssueNav.astro';
+import ScreenshotGallery from '../../../../components/ScreenshotGallery.astro';
+import RelatedArticles from '../../../../components/RelatedArticles.astro';
+
+export async function getStaticPaths() {
+  const issues = await getCollection('issues');
+
+  const paths = issues.flatMap((issue) =>
+    issue.data.articles.map((article, index) => ({
+      params: {
+        issueNumber: String(issue.data.issueNumber),
+        slug: String(index),
+      },
+      props: {
+        issue,
+        article,
+        articleIndex: index,
+      },
+    }))
+  );
+
+  return paths;
+}
+
+interface Props {
+  issue: Awaited<ReturnType<typeof getCollection<'issues'>>>[number];
+  article: Awaited<ReturnType<typeof getCollection<'issues'>>>[number]['data']['articles'][number];
+  articleIndex: number;
+}
+
+const { issue, article, articleIndex } = Astro.props;
+const { issueNumber } = Astro.params;
+
+// 前後の記事を取得
+const articles = issue.data.articles;
+const prevArticle = articleIndex > 0 ? articles[articleIndex - 1] : null;
+const nextArticle = articleIndex < articles.length - 1 ? articles[articleIndex + 1] : null;
+
+// ナビゲーション用データ
+const navPrev = prevArticle ? {
+  href: `/issue/${issueNumber}/article/${articleIndex - 1}`,
+  title: prevArticle.title,
+} : undefined;
+
+const navNext = nextArticle ? {
+  href: `/issue/${issueNumber}/article/${articleIndex + 1}`,
+  title: nextArticle.title,
+} : undefined;
+
+const navHome = {
+  href: '/',
+  title: `Vol.${issueNumber} トップへ`,
+};
+
+// AI生成コンテンツをHTMLに変換
+let articleContent: string | null = null;
+if (article.articleBody) {
+  const result = marked.parse(article.articleBody);
+  articleContent = typeof result === 'string' ? result : await result;
+}
+
+---
+
+<ArticleLayout
+  title={article.title}
+  category={article.category}
+  summary={article.summary}
+  game={article.game}
+  featureImage={article.featureImage}
+  issueNumber={issue.data.issueNumber}
+>
+  <div class="article-main">
+    <div class="article-body">
+      {articleContent ? (
+        <!-- AI生成コンテンツがある場合はそれを表示 -->
+        <div class="generated-content" set:html={articleContent} />
+      ) : (
+      <!-- フォールバック: 従来のテンプレート表示 -->
+      <>
+        {article.game ? (
+          <section class="game-description">
+            <h2>概要</h2>
+            <p>{article.summary}</p>
+
+            {article.category === 'newRelease' && (
+              <>
+                <h2>🎯 注目ポイント</h2>
+                <ul>
+                  <li>{article.game.developer}が手掛ける期待の新作</li>
+                  <li>{article.game.genre?.join('と')}の要素を組み合わせた意欲作</li>
+                  <li>{article.game.platforms?.join('、')}で発売予定</li>
+                </ul>
+
+                <h2>✨ ゲームの特徴</h2>
+                <p>
+                  {article.game.developer}が送り出す本作は、
+                  {article.game.genre?.join('と')}のジャンルを融合させた新しい体験を提供します。
+                  最新ハードの性能を活かしたグラフィックと、
+                  練り込まれたゲームプレイが特徴です。
+                </p>
+
+                <h2>👥 こんな人におすすめ</h2>
+                <ul>
+                  <li>{article.game.genre?.[0]}ジャンルが好きな方</li>
+                  <li>新しいゲーム体験を求めている方</li>
+                  <li>{article.game.developer}の過去作品のファン</li>
+                </ul>
+              </>
+            )}
+
+            {article.category === 'indie' && (
+              <>
+                <h2>🎨 開発ストーリー</h2>
+                <p>
+                  小規模開発ならではの独創的なアイデアと、
+                  プレイヤーの声に耳を傾けた丁寧な作り込みが光る一本です。
+                </p>
+
+                <h2>✨ ゲームの魅力</h2>
+                <ul>
+                  <li>独自の世界観とアートスタイル</li>
+                  <li>心に残るストーリーテリング</li>
+                  <li>やり込み要素も充実</li>
+                </ul>
+
+                <h2>💬 プレイヤーの声</h2>
+                <p>
+                  SNSやSteamレビューでは「期待以上の体験だった」
+                  「インディーゲームの可能性を感じた」といった好評価が多数。
+                </p>
+              </>
+            )}
+
+            {article.category === 'classic' && (
+              <>
+                <h2>📜 ゲームの歴史</h2>
+                <p>
+                  発売から時間が経った今でも多くのプレイヤーに愛され続ける本作。
+                  その影響力は後続の作品にも大きな影響を与えています。
+                </p>
+
+                <h2>🏆 名作たる理由</h2>
+                <ul>
+                  <li>緻密に設計されたゲームデザイン</li>
+                  <li>プレイヤーの挑戦心を刺激する絶妙な難易度</li>
+                  <li>何度でも遊びたくなるリプレイ性</li>
+                </ul>
+                {article.game.metascore && (
+                  <p>
+                    Metacriticでは{article.game.metascore}点という高評価を獲得しており、
+                    批評家からも高い支持を得ています。
+                  </p>
+                )}
+
+                <h2>🎮 今プレイする価値</h2>
+                <p>
+                  現代のゲームにはない味わいがあり、
+                  ゲームの本質的な楽しさを再発見できます。
+                </p>
+
+                <h2>👥 コミュニティ情報</h2>
+                <p>
+                  今でも活発なファンコミュニティが存在し、
+                  MODや攻略情報が豊富に共有されています。
+                </p>
+              </>
+            )}
+          </section>
+        ) : (
+          <section class="feature-content">
+            <h2>📰 特集</h2>
+            <p>{article.summary}</p>
+
+            <h2>🎮 おすすめゲーム</h2>
+            <p>
+              この特集では、テーマに沿ったおすすめタイトルや、
+              楽しみ方のヒントをお届けします。
+            </p>
+
+            <h2>💡 選び方のポイント</h2>
+            <p>
+              自分のプレイスタイルや好みに合わせて、
+              ぴったりのゲームを見つけてください。
+            </p>
+          </section>
+        )}
+      </>
+    )}
+    </div>
+  </div>
+
+  {article.game?.screenshots && article.game.screenshots.length > 0 && (
+    <ScreenshotGallery
+      screenshots={article.game.screenshots}
+      gameTitle={article.game.title}
+    />
+  )}
+
+  <RelatedArticles
+    articles={articles}
+    currentIndex={articleIndex}
+    issueNumber={issue.data.issueNumber}
+    category={article.category}
+  />
+
+  <IssueNav prev={navPrev} next={navNext} home={navHome} />
+</ArticleLayout>
+
+<style>
+  .article-main {
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    box-shadow: var(--shadow-md);
+    margin-bottom: var(--spacing-md);
+  }
+
+  .article-body {
+    margin-bottom: 0;
+    columns: 2;
+    column-gap: var(--spacing-xl);
+  }
+
+  /* 2カラムレイアウト時にh2で改行されないようにする */
+  .article-body :global(h2) {
+    break-after: avoid;
+  }
+
+  /* AI生成コンテンツのスタイリング */
+  .generated-content :global(h2) {
+    font-size: 1.3rem;
+    color: var(--color-primary);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-sm);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .generated-content :global(h2:first-child) {
+    margin-top: 0;
+  }
+
+  .generated-content :global(h3) {
+    font-size: 1.1rem;
+    color: var(--color-text);
+    margin-top: var(--spacing-md);
+    margin-bottom: var(--spacing-xs);
+  }
+
+  .generated-content :global(p) {
+    line-height: 1.75;
+    margin-bottom: var(--spacing-md);
+    font-size: 0.95rem;
+  }
+
+  .generated-content :global(ul),
+  .generated-content :global(ol) {
+    margin-bottom: var(--spacing-md);
+    padding-left: var(--spacing-lg);
+  }
+
+  .generated-content :global(li) {
+    line-height: 1.7;
+    margin-bottom: var(--spacing-xs);
+    position: relative;
+    font-size: 0.95rem;
+  }
+
+  .generated-content :global(ul li::marker) {
+    color: var(--color-primary);
+  }
+
+  .generated-content :global(strong) {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .generated-content :global(blockquote) {
+    border-left: 3px solid var(--color-primary);
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin: var(--spacing-md) 0;
+    background: rgba(233, 69, 96, 0.1);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  }
+
+  /* フォールバックテンプレートのスタイル */
+  .game-description h2,
+  .feature-content h2 {
+    font-size: 1.3rem;
+    color: var(--color-primary);
+    margin-top: var(--spacing-lg);
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .game-description h2:first-child,
+  .feature-content h2:first-child {
+    margin-top: 0;
+  }
+
+  .game-description p,
+  .feature-content p {
+    line-height: 1.75;
+    margin-bottom: var(--spacing-sm);
+    font-size: 0.95rem;
+  }
+
+  .game-description ul {
+    margin-bottom: var(--spacing-md);
+    padding-left: var(--spacing-lg);
+  }
+
+  .game-description li {
+    line-height: 1.7;
+    margin-bottom: var(--spacing-xs);
+    font-size: 0.95rem;
+  }
+
+  @media (max-width: 1024px) {
+    .article-body {
+      columns: 1;
+    }
+  }
+</style>
