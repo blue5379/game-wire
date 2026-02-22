@@ -118,23 +118,23 @@
 ## Phase 5: CI/CD・デプロイ設定
 
 ### 5.1 GitHub Actions ワークフロー
-- [ ] `.github/workflows/weekly-build.yml` 作成
-- [ ] cron スケジュール設定（毎週日曜 AM 9:00 JST）
-- [ ] データ取得ステップ
-- [ ] 記事生成ステップ
-- [ ] Astro ビルドステップ
-- [ ] Cloudflare Pages デプロイステップ
-- [ ] Secrets 設定手順ドキュメント
+- [x] `.github/workflows/weekly-build.yml` 作成
+- [x] cron スケジュール設定（毎週日曜 AM 9:00 JST）
+- [x] データ取得ステップ
+- [x] 記事生成ステップ
+- [x] Astro ビルドステップ
+- [x] Cloudflare Pages デプロイステップ
+- [x] Secrets 設定手順ドキュメント
 
 ### 5.2 Cloudflare Pages 設定
-- [ ] `wrangler.toml` 作成（必要に応じて）
-- [ ] ビルド設定
-- [ ] 環境変数設定
+- [x] `wrangler.toml` 作成（必要に応じて）※GitHub Actionsで直接指定のため不要
+- [x] ビルド設定（README.mdに手順記載）
+- [x] 環境変数設定（README.mdに手順記載）
 - [ ] カスタムドメイン設定（任意）
 
 ### 5.3 手動実行ワークフロー
-- [ ] `workflow_dispatch` 対応
-- [ ] 任意の日付での生成対応
+- [x] `workflow_dispatch` 対応
+- [x] 任意の日付での生成対応
 
 ---
 
@@ -156,9 +156,9 @@
 ## Phase 7: ドキュメント・運用準備
 
 ### 7.1 ドキュメント整備
-- [ ] README.md 作成
-- [ ] 環境構築手順
-- [ ] 運用手順書
+- [x] README.md 作成
+- [x] 環境構築手順
+- [x] 運用手順書
 
 ### 7.2 初回発行準備
 - [ ] 全 API キーの取得・設定
