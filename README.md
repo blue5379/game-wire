@@ -32,21 +32,49 @@ AWS_REGION=us-east-1
 
 ## 開発
 
+### コマンド一覧
+
 ```bash
 # 開発サーバー起動
 npm run dev
 
-# データ取得
+# データ取得（Steam, YouTube, IGDB, Metacritic）
 npm run fetch-data
 
-# 記事生成
+# 記事生成（Bedrock Claude）
 npm run generate
 
-# 号の生成（一括実行）
+# 号の生成（一括実行: fetch → generate → build-issue）
 npm run build-issue
 
 # ビルド
 npm run build
+```
+
+### 開発時の操作手順
+
+ターミナルを2つ開いて作業します。
+
+**ターミナル1: 開発サーバー**
+```bash
+npm run dev
+# → http://localhost:4321 でサイトが表示される
+```
+
+**ターミナル2: データ取得・記事生成**
+```bash
+# 1. データ取得
+npm run fetch-data
+
+# 2. 記事生成
+npm run generate
+
+# 3. ブラウザをリロードして結果を確認
+```
+
+または一括実行:
+```bash
+npm run build-issue
 ```
 
 ## デプロイ設定
