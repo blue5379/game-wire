@@ -68,7 +68,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=game-wire
+          command: |
+            pages project create game-wire --production-branch main || true
+            pages deploy dist --project-name=game-wire --commit-dirty=true
 
       # 9. 完了通知（サマリー）
       - name: Build summary
