@@ -1,0 +1,80 @@
+# Game Wire 週刊ビルド・デプロイワークフロー
+# 毎週日曜日 AM 9:00 (JST) に自動実行
+
+name: Weekly Build and Deploy
+
+on:
+  # 定期実行: 毎週日曜日 AM 9:00 JST (= UTC 0:00)
+  schedule:
+    - cron: '0 0 * * 0'
+
+  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      publish_date:
+        description: '発行日 (YYYY-MM-DD形式、空欄で当日)'
+        required: false
+        type: string
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # 1. リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Node.js をセットアップ
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. 依存関係をインストール
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. データ取得（Steam, YouTube, IGDB, Metacritic）
+      - name: Fetch game data
+        run: npm run fetch-data
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          IGDB_CLIENT_ID: ${{ secrets.IGDB_CLIENT_ID }}
+          IGDB_CLIENT_SECRET: ${{ secrets.IGDB_CLIENT_SECRET }}
+
+      # 5. 記事生成（Bedrock Claude + 画像生成）
+      - name: Generate articles
+        run: npm run generate
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          PUBLISH_DATE: ${{ inputs.publish_date }}
+
+      # 6. 号を組み立て
+      - name: Build issue
+        run: npx tsx scripts/build-issue.ts
+
+      # 7. Astro ビルド
+      - name: Build Astro site
+        run: npm run build
+
+      # 8. Cloudflare Pages にデプロイ
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=game-wire
+
+      # 9. 完了通知（サマリー）
+      - name: Build summary
+        run: |
+          echo "## 🎮 Game Wire Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Date**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Publish Date**: ${{ inputs.publish_date || 'Today' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Deployed to Cloudflare Pages" >> $GITHUB_STEP_SUMMARY
