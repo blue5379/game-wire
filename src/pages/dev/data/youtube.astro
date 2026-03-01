@@ -1,0 +1,281 @@
+---
+/**
+ * 開発用データビューアー - YouTube データ
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+const dataDir = path.join(process.cwd(), 'data');
+let youtubeData: any = null;
+let error: string | null = null;
+
+try {
+  const aggregatedPath = path.join(dataDir, 'aggregated.json');
+  if (fs.existsSync(aggregatedPath)) {
+    const data = JSON.parse(fs.readFileSync(aggregatedPath, 'utf-8'));
+    youtubeData = data.youtubeData;
+  }
+} catch (e) {
+  error = e instanceof Error ? e.message : 'データ読み込みエラー';
+}
+
+// 抽出されたゲームタイトルの集計
+const extractedGames = new Map<string, { count: number; totalViews: number }>();
+if (youtubeData?.trendingVideos) {
+  for (const video of youtubeData.trendingVideos) {
+    if (video.extractedGameTitle) {
+      const title = video.extractedGameTitle;
+      const existing = extractedGames.get(title) || { count: 0, totalViews: 0 };
+      existing.count++;
+      existing.totalViews += video.viewCount || 0;
+      extractedGames.set(title, existing);
+    }
+  }
+}
+
+const sortedExtractedGames = Array.from(extractedGames.entries())
+  .sort((a, b) => b[1].totalViews - a[1].totalViews);
+---
+
+<BaseLayout title="YouTube Data - Data Viewer">
+  <div class="dev-container">
+    <header class="dev-header">
+      <span class="dev-badge">DEV</span>
+      <h1>YouTube データ</h1>
+      <a href="/dev/data" class="back-link">← ダッシュボード</a>
+    </header>
+
+    {error && (
+      <div class="error-box">
+        <strong>エラー:</strong> {error}
+      </div>
+    )}
+
+    {youtubeData && (
+      <>
+        <p class="fetched-at">取得日時: {new Date(youtubeData.fetchedAt).toLocaleString('ja-JP')}</p>
+
+        <div class="data-sections">
+          <section class="data-section">
+            <h2>抽出されたゲームタイトル ({sortedExtractedGames.length}件)</h2>
+            <p class="section-desc">YouTube動画から抽出されたゲームタイトルを視聴回数順で表示</p>
+            <div class="extracted-games">
+              {sortedExtractedGames.map(([title, stats]) => (
+                <div class="game-tag">
+                  <span class="game-name">{title}</span>
+                  <span class="game-stats">
+                    {stats.count}動画 / {(stats.totalViews / 1000000).toFixed(1)}M views
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section class="data-section">
+            <h2>トレンド動画 ({youtubeData.trendingVideos?.length || 0}件)</h2>
+            <div class="videos-grid">
+              {youtubeData.trendingVideos?.map((video: any) => (
+                <div class="video-card">
+                  <a href={`https://www.youtube.com/watch?v=${video.videoId}`} target="_blank" rel="noopener">
+                    <img src={video.thumbnailUrl} alt={video.title} class="thumbnail" />
+                  </a>
+                  <div class="video-info">
+                    <a href={`https://www.youtube.com/watch?v=${video.videoId}`} target="_blank" rel="noopener" class="video-title">
+                      {video.title}
+                    </a>
+                    <div class="video-meta">
+                      <span class="channel">{video.channelTitle}</span>
+                      <span class="views">{(video.viewCount / 10000).toFixed(1)}万回視聴</span>
+                    </div>
+                    {video.extractedGameTitle && (
+                      <div class="extracted-title">
+                        抽出: <strong>{video.extractedGameTitle}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </>
+    )}
+
+    {!youtubeData && !error && (
+      <div class="no-data">
+        <p>YouTubeデータがありません。</p>
+        <code>npm run fetch-data</code> を実行してください。
+      </div>
+    )}
+  </div>
+</BaseLayout>
+
+<style>
+  .dev-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+  }
+
+  .dev-header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .dev-badge {
+    background: #f59e0b;
+    color: #000;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: bold;
+  }
+
+  .dev-header h1 {
+    margin: 0;
+    flex: 1;
+  }
+
+  .back-link {
+    font-size: 0.875rem;
+  }
+
+  .error-box {
+    background: #7f1d1d;
+    border: 1px solid #dc2626;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+  }
+
+  .fetched-at {
+    color: #888;
+    font-size: 0.875rem;
+    margin-bottom: 2rem;
+  }
+
+  .data-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 3rem;
+  }
+
+  .data-section h2 {
+    margin-bottom: 0.5rem;
+    color: #d64550;
+  }
+
+  .section-desc {
+    color: #888;
+    font-size: 0.875rem;
+    margin-bottom: 1rem;
+  }
+
+  .extracted-games {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .game-tag {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .game-name {
+    font-weight: bold;
+  }
+
+  .game-stats {
+    font-size: 0.75rem;
+    color: #888;
+  }
+
+  .videos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .video-card {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .thumbnail {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+  }
+
+  .video-info {
+    padding: 1rem;
+  }
+
+  .video-title {
+    display: block;
+    font-weight: bold;
+    color: inherit;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .video-title:hover {
+    color: #d64550;
+  }
+
+  .video-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 0.5rem;
+  }
+
+  .views {
+    color: #22c55e;
+  }
+
+  .extracted-title {
+    font-size: 0.75rem;
+    background: #333;
+    padding: 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+  }
+
+  .extracted-title strong {
+    color: #d64550;
+  }
+
+  .no-data {
+    text-align: center;
+    padding: 4rem;
+    color: #888;
+  }
+
+  .no-data code {
+    display: block;
+    margin-top: 1rem;
+    background: #1a1a1a;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+  }
+</style>

@@ -48,8 +48,8 @@ function normalizeTitle(title: string): string {
 function isInvalidGameTitle(title: string): boolean {
   const normalized = normalizeTitle(title);
 
-  // ハッシュタグで始まる
-  if (title.startsWith('#') || title.startsWith('@')) {
+  // ハッシュタグで始まる、または含む
+  if (title.startsWith('#') || title.startsWith('@') || /#\S+/.test(title)) {
     return true;
   }
 
@@ -63,6 +63,10 @@ function isInvalidGameTitle(title: string): boolean {
     /^(game|gaming|ゲーム|実況|プレイ|配信|live|shorts?|vtuber)$/i,
     /^(新作|おすすめ|最新|人気|話題)$/i,
     /^(pc|ps[45]?|xbox|switch|steam)$/i,
+    // 言語タグ
+    /^(english|japanese|日本語|korean|chinese|spanish|french|german)$/i,
+    // イベント・配信名
+    /^(state of play|nintendo direct|xbox showcase|\d+人実況|複数視点|面白まとめ|大事件|覇権確定|switch最新作)$/i,
   ];
 
   for (const pattern of genericPatterns) {
@@ -465,6 +469,16 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
     'konami',
     'take-two',
     'bethesda',
+    'game freak',
+    'ゲームフリーク',
+    'rockstar',
+    'valve',
+    'riot',
+    'epic games',
+    'mihoyo',
+    'hoyoverse',
+    'netease',
+    'tencent',
   ];
 
   const isIndie = (game: GameData): boolean => {
@@ -477,7 +491,9 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
 
   const indieGames = games
     .filter(isIndie)
+    .filter((g) => !isInvalidGameTitle(g.title)) // 無効なタイトルを除外
     .filter((g) => g.steamRank || g.youtubePopularity)
+    .filter((g) => g.coverImage || g.summary) // 最低限の情報があるもの
     .sort(
       (a, b) =>
         (b.youtubePopularity || 0) +
@@ -498,10 +514,12 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
         ) && g.metascore && g.metascore > 75
     ) || games.find((g) => g.steamPlayers && g.steamPlayers > 50000) || null;
 
-  // 名作深掘り（高スコア + 高人気）
+  // 名作深掘り（高スコア + 人気）
   const classicCandidates = games
-    .filter((g) => g.metascore && g.metascore > 85)
-    .filter((g) => g.steamPlayers || (g.youtubePopularity && g.youtubePopularity > 500000))
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => g.metascore && g.metascore > 80)
+    .filter((g) => g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000))
+    .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
     .filter(
       (g) =>
         !newReleases.some((nr) => nr.title === g.title) &&

@@ -57,10 +57,15 @@ async function fetchWithRetry(
 // 無効なゲームタイトルのパターン（ハッシュタグ、一般的すぎるワードなど）
 const INVALID_TITLE_PATTERNS = [
   /^#/, // ハッシュタグで始まる
+  /#\S+/, // ハッシュタグを含む（途中でも）
   /^@/, // メンションで始まる
   /^(part|パート|\d+|実況|プレイ|レビュー|攻略|配信|live|ライブ|生放送|切り抜き|まとめ|ゲーム|game|gaming|vtuber|shorts|short)$/i,
   /^(新作|おすすめ|最新|人気|話題|神ゲー|クソゲー|無料|有料)$/i,
   /^(pc|ps4|ps5|xbox|switch|steam|プレステ|任天堂|ニンテンドー)$/i,
+  // 言語タグ
+  /^(english|japanese|日本語|korean|한국어|chinese|中文|spanish|french|german|italian|portuguese|russian|arabic|hindi)$/i,
+  // イベント・配信名
+  /^(state of play|nintendo direct|xbox showcase|playstation showcase|tokyo game show|e3|gamescom|\d+人実況|複数視点|面白まとめ|大事件|覇権確定|switch最新作)$/i,
 ];
 
 // 有効なゲームタイトルかどうかを検証
