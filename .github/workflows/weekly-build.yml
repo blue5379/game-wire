@@ -4,10 +4,10 @@
 name: Weekly Build and Deploy
 
 on:
-  # 定期実行: 毎週日曜日 AM 11:00 JST (= UTC 2:00)
-  # TODO: テスト後、本番時間に戻す
+  # 定期実行: 毎週日曜日 PM 12:30 JST (= UTC 3:30)
+  # TODO: テスト後、本番時間 (JST 9:20 = cron '20 0 * * 0') に戻す
   schedule:
-    - cron: '0 2 * * 0'
+    - cron: '30 3 * * 0'
 
   # 手動実行も可能
   workflow_dispatch:
