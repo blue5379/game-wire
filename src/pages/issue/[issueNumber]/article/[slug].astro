@@ -5,6 +5,7 @@ import ArticleLayout from '../../../../layouts/ArticleLayout.astro';
 import IssueNav from '../../../../components/IssueNav.astro';
 import ScreenshotGallery from '../../../../components/ScreenshotGallery.astro';
 import RelatedArticles from '../../../../components/RelatedArticles.astro';
+import SourceLinks from '../../../../components/SourceLinks.astro';
 
 export async function getStaticPaths() {
   const issues = await getCollection('issues');
@@ -199,6 +200,8 @@ if (article.articleBody) {
       gameTitle={article.game.title}
     />
   )}
+
+  <SourceLinks sourceUrls={article.sourceUrls} />
 
   <RelatedArticles
     articles={articles}

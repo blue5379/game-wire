@@ -12,7 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
-import { fetchIGDBData, enrichGameWithIGDB, getCountryNameFromCode } from './fetch-igdb.js';
+import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { inferGameInfoFromYouTube } from './bedrock-client.js';
 import type {
@@ -43,17 +43,56 @@ function normalizeTitle(title: string): string {
 }
 
 /**
+ * 無効なゲームタイトルかどうかをチェック
+ */
+function isInvalidGameTitle(title: string): boolean {
+  const normalized = normalizeTitle(title);
+
+  // ハッシュタグで始まる
+  if (title.startsWith('#') || title.startsWith('@')) {
+    return true;
+  }
+
+  // 短すぎるタイトル
+  if (normalized.length < 3) {
+    return true;
+  }
+
+  // 一般的すぎるワード
+  const genericPatterns = [
+    /^(game|gaming|ゲーム|実況|プレイ|配信|live|shorts?|vtuber)$/i,
+    /^(新作|おすすめ|最新|人気|話題)$/i,
+    /^(pc|ps[45]?|xbox|switch|steam)$/i,
+  ];
+
+  for (const pattern of genericPatterns) {
+    if (pattern.test(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * 2つのタイトルが同じゲームを指すか判定
  */
 function isSameGame(title1: string, title2: string): boolean {
   const norm1 = normalizeTitle(title1);
   const norm2 = normalizeTitle(title2);
 
+  // いずれかが無効なタイトルの場合はマッチしない
+  if (isInvalidGameTitle(title1) || isInvalidGameTitle(title2)) {
+    return false;
+  }
+
   // 完全一致
   if (norm1 === norm2) return true;
 
-  // 部分一致（一方が他方を含む）
-  if (norm1.includes(norm2) || norm2.includes(norm1)) return true;
+  // 部分一致（一方が他方を含む）- ただし含まれる側が十分な長さを持つ場合のみ
+  const minLengthForPartialMatch = 5;
+  if (norm1.includes(norm2) && norm2.length >= minLengthForPartialMatch) return true;
+  if (norm2.includes(norm1) && norm1.length >= minLengthForPartialMatch) return true;
 
   // 先頭の主要部分が一致
   const words1 = norm1.split(' ').slice(0, 3).join(' ');
@@ -78,6 +117,7 @@ async function aggregateGames(
   for (let i = 0; i < steamData.topSellers.length; i++) {
     const steam = steamData.topSellers[i];
     const normalized = normalizeTitle(steam.name);
+    const steamUrl = `https://store.steampowered.com/app/${steam.appId}`;
 
     if (!gameMap.has(normalized)) {
       gameMap.set(normalized, {
@@ -88,6 +128,7 @@ async function aggregateGames(
         platforms: ['PC'],
         steamRank: i + 1,
         source: ['steam'],
+        sourceUrls: { steam: steamUrl },
       });
     } else {
       const existing = gameMap.get(normalized)!;
@@ -96,12 +137,15 @@ async function aggregateGames(
       if (!existing.source.includes('steam')) {
         existing.source.push('steam');
       }
+      existing.sourceUrls = existing.sourceUrls || {};
+      existing.sourceUrls.steam = steamUrl;
     }
   }
 
   // Steam Top Played を追加
   for (const steam of steamData.topPlayed) {
     const normalized = normalizeTitle(steam.name);
+    const steamUrl = `https://store.steampowered.com/app/${steam.appId}`;
 
     if (!gameMap.has(normalized)) {
       gameMap.set(normalized, {
@@ -112,10 +156,15 @@ async function aggregateGames(
         platforms: ['PC'],
         steamPlayers: steam.currentPlayers,
         source: ['steam'],
+        sourceUrls: { steam: steamUrl },
       });
     } else {
       const existing = gameMap.get(normalized)!;
       existing.steamPlayers = steam.currentPlayers;
+      existing.sourceUrls = existing.sourceUrls || {};
+      if (!existing.sourceUrls.steam) {
+        existing.sourceUrls.steam = steamUrl;
+      }
     }
   }
 
@@ -138,6 +187,16 @@ async function aggregateGames(
   }
 
   for (const [normalized, viewCount] of youtubeTitleCounts.entries()) {
+    // 無効なタイトルはスキップ
+    if (isInvalidGameTitle(normalized)) {
+      console.log(`  Skipping invalid YouTube title: "${normalized}"`);
+      continue;
+    }
+
+    // YouTube動画URLを収集
+    const videos = youtubeVideosByGame.get(normalized) || [];
+    const youtubeUrls = videos.slice(0, 3).map((v) => `https://www.youtube.com/watch?v=${v.videoId}`);
+
     // 既存のゲームとマッチするか確認
     let matched = false;
     for (const [key, game] of gameMap.entries()) {
@@ -146,6 +205,9 @@ async function aggregateGames(
         if (!game.source.includes('youtube')) {
           game.source.push('youtube');
         }
+        // YouTube URLsを追加
+        game.sourceUrls = game.sourceUrls || {};
+        game.sourceUrls.youtube = youtubeUrls;
         matched = true;
         break;
       }
@@ -160,6 +222,7 @@ async function aggregateGames(
         platforms: [],
         youtubePopularity: viewCount,
         source: ['youtube'],
+        sourceUrls: { youtube: youtubeUrls },
       });
     }
   }
@@ -167,6 +230,7 @@ async function aggregateGames(
   // IGDB データでエンリッチ
   for (const igdb of igdbData.games) {
     const normalized = normalizeTitle(igdb.name);
+    const igdbUrl = igdb.slug ? `https://www.igdb.com/games/${igdb.slug}` : undefined;
 
     // 既存のゲームとマッチするか確認
     let matched = false;
@@ -174,17 +238,23 @@ async function aggregateGames(
       if (isSameGame(key, normalized)) {
         // IGDB データで補完
         game.title = igdb.name; // 正式名称に更新
+        game.igdbSlug = igdb.slug || game.igdbSlug;
         game.genres = igdb.genres || game.genres;
         game.platforms = igdb.platforms || game.platforms;
         game.releaseDate = igdb.releaseDate || game.releaseDate;
         game.developer = igdb.developer || game.developer;
         game.publisher = igdb.publisher || game.publisher;
-        game.developerCountry = getCountryNameFromCode(igdb.developerCountry) || game.developerCountry;
+        game.developerCountry = igdb.developerCountry || game.developerCountry;
         game.coverImage = igdb.coverUrl || game.coverImage;
         game.screenshots = igdb.screenshotUrls || game.screenshots;
         game.summary = igdb.summary || game.summary;
         if (!game.source.includes('igdb')) {
           game.source.push('igdb');
+        }
+        // IGDB URLを追加
+        if (igdbUrl) {
+          game.sourceUrls = game.sourceUrls || {};
+          game.sourceUrls.igdb = igdbUrl;
         }
         matched = true;
         break;
@@ -195,16 +265,18 @@ async function aggregateGames(
       gameMap.set(normalized, {
         title: igdb.name,
         normalizedTitle: normalized,
+        igdbSlug: igdb.slug,
         genres: igdb.genres || [],
         platforms: igdb.platforms || [],
         releaseDate: igdb.releaseDate,
         developer: igdb.developer,
         publisher: igdb.publisher,
-        developerCountry: getCountryNameFromCode(igdb.developerCountry),
+        developerCountry: igdb.developerCountry,
         coverImage: igdb.coverUrl,
         screenshots: igdb.screenshotUrls,
         summary: igdb.summary,
         source: ['igdb'],
+        sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
       });
     }
   }
@@ -220,6 +292,11 @@ async function aggregateGames(
         if (!game.source.includes('metacritic')) {
           game.source.push('metacritic');
         }
+        // Metacritic URLを追加
+        if (score.url) {
+          game.sourceUrls = game.sourceUrls || {};
+          game.sourceUrls.metacritic = score.url;
+        }
         break;
       }
     }
@@ -229,20 +306,32 @@ async function aggregateGames(
   console.log('Enriching games with IGDB data...');
   let enrichedCount = 0;
   for (const game of gameMap.values()) {
+    // 無効なタイトルはIGDB検索をスキップ
+    if (isInvalidGameTitle(game.title)) {
+      console.log(`  Skipping IGDB enrichment for invalid title: "${game.title}"`);
+      continue;
+    }
+
     if (!game.coverImage || game.genres.length === 0) {
       const igdbGame = await enrichGameWithIGDB(game.title);
       if (igdbGame) {
+        game.igdbSlug = igdbGame.slug || game.igdbSlug;
         game.genres = igdbGame.genres || game.genres;
         game.platforms = igdbGame.platforms || game.platforms;
         game.releaseDate = igdbGame.releaseDate || game.releaseDate;
         game.developer = igdbGame.developer || game.developer;
         game.publisher = igdbGame.publisher || game.publisher;
-        game.developerCountry = getCountryNameFromCode(igdbGame.developerCountry) || game.developerCountry;
+        game.developerCountry = igdbGame.developerCountry || game.developerCountry;
         game.coverImage = igdbGame.coverUrl || game.coverImage;
         game.screenshots = igdbGame.screenshotUrls || game.screenshots;
         game.summary = igdbGame.summary || game.summary;
         if (!game.source.includes('igdb')) {
           game.source.push('igdb');
+        }
+        // IGDB URLを追加
+        if (igdbGame.slug) {
+          game.sourceUrls = game.sourceUrls || {};
+          game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
         }
         enrichedCount++;
         // レート制限対策
@@ -277,6 +366,11 @@ async function aggregateGames(
   console.log('Inferring game info from YouTube data using AI...');
   let inferredCount = 0;
   for (const game of gameMap.values()) {
+    // 無効なタイトルはAI推測をスキップ
+    if (isInvalidGameTitle(game.title)) {
+      continue;
+    }
+
     // YouTubeがソースで、ジャンルが空のゲームが対象
     if (
       game.source.includes('youtube') &&

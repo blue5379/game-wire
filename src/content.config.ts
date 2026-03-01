@@ -16,6 +16,13 @@ const gameSchema = z.object({
   aiInferredFields: z.array(z.string()).optional(),
 });
 
+const sourceUrlsSchema = z.object({
+  steam: z.string().optional(),
+  igdb: z.string().optional(),
+  metacritic: z.string().optional(),
+  youtube: z.array(z.string()).optional(),
+});
+
 const articleSchema = z.object({
   title: z.string(),
   category: z.enum(['newRelease', 'indie', 'feature', 'classic']),
@@ -23,6 +30,7 @@ const articleSchema = z.object({
   articleBody: z.string().optional(),
   featureImage: z.string().optional(), // 特集記事用のAI生成画像
   game: gameSchema.optional(),
+  sourceUrls: sourceUrlsSchema.optional(), // 参照元URL
 });
 
 const issuesCollection = defineCollection({

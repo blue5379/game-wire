@@ -38,3 +38,10 @@ screenshots/
 
 # Playwright MCP
 .playwright-mcp/
+
+# Development generated content
+src/content/issues-dev/
+public/images/features-dev/
+data/aggregated.json
+data/generated-articles.json
+data/selected-games.json

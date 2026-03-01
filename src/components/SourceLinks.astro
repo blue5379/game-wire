@@ -1,0 +1,189 @@
+---
+/**
+ * 参考リンク表示コンポーネント
+ * 記事の情報ソースへのリンクを表示
+ */
+
+interface Props {
+  sourceUrls?: {
+    steam?: string;
+    igdb?: string;
+    metacritic?: string;
+    youtube?: string[];
+  };
+}
+
+const { sourceUrls } = Astro.props;
+
+// リンクがない場合は何も表示しない
+const hasLinks = sourceUrls && (
+  sourceUrls.steam ||
+  sourceUrls.igdb ||
+  sourceUrls.metacritic ||
+  (sourceUrls.youtube && sourceUrls.youtube.length > 0)
+);
+---
+
+{hasLinks && (
+  <section class="source-links">
+    <h3>🔗 参考リンク</h3>
+    <ul class="links-list">
+      {sourceUrls.steam && (
+        <li>
+          <a href={sourceUrls.steam} target="_blank" rel="noopener noreferrer" class="link-item steam">
+            <span class="icon">🎮</span>
+            <span class="text">Steamストアページ</span>
+            <span class="external-icon">↗</span>
+          </a>
+        </li>
+      )}
+      {sourceUrls.igdb && (
+        <li>
+          <a href={sourceUrls.igdb} target="_blank" rel="noopener noreferrer" class="link-item igdb">
+            <span class="icon">📚</span>
+            <span class="text">IGDB（ゲームデータベース）</span>
+            <span class="external-icon">↗</span>
+          </a>
+        </li>
+      )}
+      {sourceUrls.metacritic && (
+        <li>
+          <a href={sourceUrls.metacritic} target="_blank" rel="noopener noreferrer" class="link-item metacritic">
+            <span class="icon">⭐</span>
+            <span class="text">OpenCritic（レビュー）</span>
+            <span class="external-icon">↗</span>
+          </a>
+        </li>
+      )}
+      {sourceUrls.youtube && sourceUrls.youtube.length > 0 && (
+        <li class="youtube-section">
+          <span class="youtube-label">
+            <span class="icon">📺</span>
+            <span class="text">関連YouTube動画</span>
+          </span>
+          <ul class="youtube-list">
+            {sourceUrls.youtube.map((url, index) => (
+              <li>
+                <a href={url} target="_blank" rel="noopener noreferrer" class="link-item youtube">
+                  <span class="text">動画 {index + 1}</span>
+                  <span class="external-icon">↗</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </li>
+      )}
+    </ul>
+  </section>
+)}
+
+<style>
+  .source-links {
+    background: var(--color-surface);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    border: 1px solid var(--color-border);
+  }
+
+  .source-links h3 {
+    font-size: 1rem;
+    color: var(--color-text);
+    margin: 0 0 var(--spacing-sm) 0;
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .links-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+  }
+
+  .link-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    font-size: 0.9rem;
+  }
+
+  .link-item:hover {
+    background: var(--color-background);
+    transform: translateX(4px);
+  }
+
+  .link-item .icon {
+    flex-shrink: 0;
+  }
+
+  .link-item .text {
+    flex-grow: 1;
+  }
+
+  .link-item .external-icon {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
+
+  .link-item.steam:hover {
+    color: #1b2838;
+  }
+
+  .link-item.igdb:hover {
+    color: #9147ff;
+  }
+
+  .link-item.metacritic:hover {
+    color: #ffcc33;
+  }
+
+  .link-item.youtube:hover {
+    color: #ff0000;
+  }
+
+  .youtube-section {
+    margin-top: var(--spacing-xs);
+  }
+
+  .youtube-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  .youtube-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    padding-left: var(--spacing-lg);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+  }
+
+  .youtube-list .link-item {
+    background: var(--color-background);
+    padding: var(--spacing-xs) var(--spacing-sm);
+  }
+
+  @media (max-width: 768px) {
+    .source-links {
+      padding: var(--spacing-sm);
+    }
+
+    .link-item {
+      font-size: 0.85rem;
+    }
+  }
+</style>

@@ -15,9 +15,14 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 
+// 開発モード判定
+const DEV_MODE = process.env.DEV_MODE === 'true';
+
 // ディレクトリパス
 const DATA_DIR = path.join(process.cwd(), 'data');
-const ISSUES_DIR = path.join(process.cwd(), 'src', 'content', 'issues');
+const ISSUES_DIR = DEV_MODE
+  ? path.join(process.cwd(), 'src', 'content', 'issues-dev')
+  : path.join(process.cwd(), 'src', 'content', 'issues');
 
 /**
  * 次の号番号を取得
@@ -192,6 +197,26 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
     }
   }
 
+  // 参照元URLを出力（gameの有無に関わらず）
+  if (article.sourceUrls) {
+    lines.push(`    sourceUrls:`);
+    if (article.sourceUrls.steam) {
+      lines.push(`      steam: "${article.sourceUrls.steam}"`);
+    }
+    if (article.sourceUrls.igdb) {
+      lines.push(`      igdb: "${article.sourceUrls.igdb}"`);
+    }
+    if (article.sourceUrls.metacritic) {
+      lines.push(`      metacritic: "${article.sourceUrls.metacritic}"`);
+    }
+    if (article.sourceUrls.youtube && article.sourceUrls.youtube.length > 0) {
+      lines.push(`      youtube:`);
+      for (const url of article.sourceUrls.youtube) {
+        lines.push(`        - "${url}"`);
+      }
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -317,6 +342,8 @@ function generateArticleContent(article: GeneratedArticle): string {
 async function main(): Promise<void> {
   console.log('=== Game Wire Issue Builder ===');
   console.log(`Started at: ${new Date().toISOString()}`);
+  console.log(`Mode: ${DEV_MODE ? 'DEVELOPMENT' : 'PRODUCTION'}`);
+  console.log(`Output directory: ${ISSUES_DIR}`);
   console.log('');
 
   // 生成された記事を読み込み

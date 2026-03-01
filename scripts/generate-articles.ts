@@ -23,9 +23,14 @@ import {
 } from './bedrock-client.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 
+// 開発モード判定
+const DEV_MODE = process.env.DEV_MODE === 'true';
+
 // データディレクトリ
 const DATA_DIR = path.join(process.cwd(), 'data');
-const ISSUES_DIR = path.join(process.cwd(), 'src', 'content', 'issues');
+const ISSUES_DIR = DEV_MODE
+  ? path.join(process.cwd(), 'src', 'content', 'issues-dev')
+  : path.join(process.cwd(), 'src', 'content', 'issues');
 
 /**
  * 次の号番号を取得
@@ -51,6 +56,9 @@ function getNextIssueNumber(): number {
   return Math.max(...issueNumbers) + 1;
 }
 
+// SourceUrls型をインポート
+import type { SourceUrls } from './types.js';
+
 // 生成された記事の型定義
 export interface GeneratedArticle {
   title: string;
@@ -58,6 +66,7 @@ export interface GeneratedArticle {
   summary: string;
   content: string;
   featureImage?: string; // 特集記事用のAI生成画像パス
+  sourceUrls?: SourceUrls; // 参照元URL
   game?: {
     title: string;
     genre: string[];
@@ -194,6 +203,7 @@ async function generateNewReleaseArticle(
     category: 'newRelease',
     summary,
     content,
+    sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
       genre: game.genres,
@@ -255,6 +265,7 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
     category: 'indie',
     summary,
     content,
+    sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
       genre: game.genres,
@@ -371,6 +382,7 @@ async function generateClassicArticle(
     category: 'classic',
     summary,
     content,
+    sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
       genre: game.genres,

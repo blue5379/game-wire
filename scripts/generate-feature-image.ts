@@ -30,8 +30,12 @@ const IMAGE_CONFIG = {
   numberOfImages: 1,
 };
 
-// 出力ディレクトリ
-const OUTPUT_DIR = path.join(process.cwd(), 'public', 'images', 'features');
+// 開発モード判定
+const DEV_MODE = process.env.DEV_MODE === 'true';
+
+// 出力ディレクトリ（開発時は features-dev に保存）
+const FEATURES_SUBDIR = DEV_MODE ? 'features-dev' : 'features';
+const OUTPUT_DIR = path.join(process.cwd(), 'public', 'images', FEATURES_SUBDIR);
 
 // Bedrock クライアント（シングルトン）
 let imageClient: BedrockRuntimeClient | null = null;
@@ -151,7 +155,7 @@ function saveImage(buffer: Buffer, filename: string): string {
   fs.writeFileSync(outputPath, buffer);
 
   // 相対パスを返す（Webサイトで使用）
-  return `/images/features/${filename}`;
+  return `/images/${FEATURES_SUBDIR}/${filename}`;
 }
 
 /**

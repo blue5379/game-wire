@@ -11,6 +11,7 @@
     "fetch-data": "npx tsx scripts/fetch-data.ts",
     "generate": "npx tsx scripts/generate-articles.ts",
     "build-issue": "npm run fetch-data && npm run generate && npx tsx scripts/build-issue.ts",
+    "build-issue:dev": "DEV_MODE=true npm run fetch-data && DEV_MODE=true npm run generate && DEV_MODE=true npx tsx scripts/build-issue.ts",
     "generate-image": "npx tsx scripts/generate-feature-image.ts"
   },
   "dependencies": {

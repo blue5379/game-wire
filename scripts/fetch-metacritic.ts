@@ -69,6 +69,10 @@ async function searchGameOnOpenCritic(
     );
     const gameDetail = await detailResponse.json();
 
+    // slugがない場合はURLを生成しない（404になるため）
+    const slug = gameDetail.slug;
+    const url = slug ? `https://opencritic.com/game/${gameId}/${slug}` : undefined;
+
     return {
       title: exactName,
       platform: 'Multi',
@@ -78,7 +82,7 @@ async function searchGameOnOpenCritic(
       userScore: gameDetail.percentRecommended
         ? Math.round(gameDetail.percentRecommended / 10) // 100点満点を10点満点に変換
         : null,
-      url: `https://opencritic.com/game/${gameId}/${gameDetail.slug || ''}`,
+      url,
     };
   } catch (error) {
     console.error(`Failed to search "${gameName}" on OpenCritic:`, error);
@@ -101,6 +105,8 @@ async function fetchRecentReviews(): Promise<MetacriticScore[]> {
 
     if (Array.isArray(hofGames)) {
       for (const game of hofGames.slice(0, 15)) {
+        // slugがない場合はURLを生成しない
+        const url = game.slug ? `https://opencritic.com/game/${game.id}/${game.slug}` : undefined;
         scores.push({
           title: game.name,
           platform: 'Multi',
@@ -110,7 +116,7 @@ async function fetchRecentReviews(): Promise<MetacriticScore[]> {
           userScore: game.percentRecommended
             ? Math.round(game.percentRecommended / 10)
             : null,
-          url: `https://opencritic.com/game/${game.id}/${game.slug || ''}`,
+          url,
         });
       }
     }
@@ -130,6 +136,8 @@ async function fetchRecentReviews(): Promise<MetacriticScore[]> {
         for (const game of recentGames.slice(0, 15)) {
           // 重複チェック
           if (!scores.some((s) => s.title === game.name)) {
+            // slugがない場合はURLを生成しない
+            const url = game.slug ? `https://opencritic.com/game/${game.id}/${game.slug}` : undefined;
             scores.push({
               title: game.name,
               platform: 'Multi',
@@ -139,7 +147,7 @@ async function fetchRecentReviews(): Promise<MetacriticScore[]> {
               userScore: game.percentRecommended
                 ? Math.round(game.percentRecommended / 10)
                 : null,
-              url: `https://opencritic.com/game/${game.id}/${game.slug || ''}`,
+              url,
             });
           }
         }

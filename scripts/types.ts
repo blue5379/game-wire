@@ -79,6 +79,7 @@ export interface GameData {
   title: string;
   normalizedTitle: string;
   steamAppId?: number;
+  igdbSlug?: string; // IGDB用スラッグ
   genres: string[];
   platforms: string[];
   releaseDate?: string;
@@ -94,6 +95,7 @@ export interface GameData {
   steamPlayers?: number;
   youtubePopularity?: number;
   source: ('steam' | 'youtube' | 'igdb' | 'metacritic')[];
+  sourceUrls?: SourceUrls; // 参照元URL
   // AI推測情報
   isAiInferred?: boolean; // AIによる推測情報かどうか
   aiInferredFields?: string[]; // AIが推測したフィールド名のリスト
@@ -118,6 +120,14 @@ export interface FetchResult<T> {
 
 // ゲームカテゴリ（記事生成用）
 export type GameCategory = 'newRelease' | 'indie' | 'feature' | 'classic';
+
+// 参照元URL
+export interface SourceUrls {
+  steam?: string;
+  igdb?: string;
+  metacritic?: string;
+  youtube?: string[];
+}
 
 // 記事生成用のゲーム選定結果
 export interface SelectedGames {

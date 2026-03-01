@@ -132,6 +132,69 @@ function translateToEnglish(title: string): string {
 }
 
 /**
+ * 無効な検索クエリかどうかをチェック
+ */
+function isInvalidSearchQuery(query: string): boolean {
+  // ハッシュタグやメンションで始まる
+  if (query.startsWith('#') || query.startsWith('@')) {
+    return true;
+  }
+
+  // 短すぎる
+  if (query.length < 3) {
+    return true;
+  }
+
+  // 一般的すぎるワード
+  const genericPatterns = [
+    /^(game|gaming|ゲーム|実況|プレイ|配信|live|shorts?|vtuber)$/i,
+    /^(新作|おすすめ|最新|人気|話題)$/i,
+    /^(pc|ps[45]?|xbox|switch|steam)$/i,
+  ];
+
+  for (const pattern of genericPatterns) {
+    if (pattern.test(query)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 検索結果が検索クエリに対して妥当かどうかをチェック
+ */
+function isRelevantSearchResult(query: string, resultName: string): boolean {
+  const normalizedQuery = query.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const normalizedResult = resultName.toLowerCase().replace(/[^\w\s]/g, '').trim();
+
+  // 完全一致
+  if (normalizedQuery === normalizedResult) {
+    return true;
+  }
+
+  // 部分一致（検索クエリが結果に含まれる、または逆）
+  if (normalizedQuery.length >= 3 && normalizedResult.includes(normalizedQuery)) {
+    return true;
+  }
+  if (normalizedResult.length >= 3 && normalizedQuery.includes(normalizedResult)) {
+    return true;
+  }
+
+  // 単語の重複をチェック
+  const queryWords = new Set(normalizedQuery.split(/\s+/));
+  const resultWords = new Set(normalizedResult.split(/\s+/));
+  const commonWords = [...queryWords].filter(w => w.length > 2 && resultWords.has(w));
+
+  // 少なくとも1つの意味のある単語が一致
+  if (commonWords.length > 0) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Twitch OAuth2 アクセストークンを取得
  */
 async function getAccessToken(
@@ -203,6 +266,12 @@ export async function searchGameByName(
   accessToken: string
 ): Promise<IGDBGame | null> {
   try {
+    // 無効な検索クエリはスキップ
+    if (isInvalidSearchQuery(name)) {
+      console.log(`  IGDB search skipped (invalid query): "${name}"`);
+      return null;
+    }
+
     // 日本語タイトルを英語に変換
     const searchName = translateToEnglish(name);
     console.log(`  IGDB search: "${name}" -> "${searchName}"`);
@@ -247,6 +316,12 @@ export async function searchGameByName(
     if (games.length === 0) return null;
 
     const game = games[0];
+
+    // 検索結果が検索クエリに対して妥当かチェック
+    if (!isRelevantSearchResult(searchName, game.name)) {
+      console.log(`  IGDB search result not relevant: "${name}" -> "${game.name}" (skipped)`);
+      return null;
+    }
 
     // 開発会社と販売会社、国情報を抽出
     let developer: string | undefined;

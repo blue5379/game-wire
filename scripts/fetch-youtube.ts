@@ -54,6 +54,42 @@ async function fetchWithRetry(
   throw new Error('Max retries exceeded');
 }
 
+// 無効なゲームタイトルのパターン（ハッシュタグ、一般的すぎるワードなど）
+const INVALID_TITLE_PATTERNS = [
+  /^#/, // ハッシュタグで始まる
+  /^@/, // メンションで始まる
+  /^(part|パート|\d+|実況|プレイ|レビュー|攻略|配信|live|ライブ|生放送|切り抜き|まとめ|ゲーム|game|gaming|vtuber|shorts|short)$/i,
+  /^(新作|おすすめ|最新|人気|話題|神ゲー|クソゲー|無料|有料)$/i,
+  /^(pc|ps4|ps5|xbox|switch|steam|プレステ|任天堂|ニンテンドー)$/i,
+];
+
+// 有効なゲームタイトルかどうかを検証
+function isValidGameTitle(title: string): boolean {
+  // 文字数チェック（短すぎる、長すぎるタイトルを除外）
+  if (title.length < 3 || title.length > 100) {
+    return false;
+  }
+
+  // 無効なパターンに一致する場合は除外
+  for (const pattern of INVALID_TITLE_PATTERNS) {
+    if (pattern.test(title)) {
+      return false;
+    }
+  }
+
+  // 数字のみのタイトルを除外
+  if (/^\d+$/.test(title)) {
+    return false;
+  }
+
+  // 記号のみのタイトルを除外
+  if (/^[#@!?。、・…]+$/.test(title)) {
+    return false;
+  }
+
+  return true;
+}
+
 /**
  * 動画タイトルからゲームタイトルを抽出
  */
@@ -62,11 +98,8 @@ function extractGameTitle(videoTitle: string): string | undefined {
     const match = videoTitle.match(pattern);
     if (match && match[1]) {
       const title = match[1].trim();
-      // 除外ワードをフィルタリング
-      if (
-        title.length > 2 &&
-        !title.match(/^(part|パート|#|\d+|実況|プレイ|レビュー)$/i)
-      ) {
+      // バリデーションを通過したタイトルのみ返す
+      if (isValidGameTitle(title)) {
         return title;
       }
     }
