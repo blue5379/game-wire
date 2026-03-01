@@ -62,11 +62,22 @@ jobs:
       - name: Build issue
         run: npx tsx scripts/build-issue.ts
 
-      # 7. Astro ビルド
+      # 7. 生成した記事をコミット＆プッシュ
+      - name: Commit and push generated content
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/content/issues/
+          git diff --staged --quiet || git commit -m "Add issue for $(date '+%Y-%m-%d')"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 8. Astro ビルド
       - name: Build Astro site
         run: npm run build
 
-      # 8. Cloudflare Pages プロジェクト作成（存在しない場合）
+      # 9. Cloudflare Pages プロジェクト作成（存在しない場合）
       - name: Create Cloudflare Pages project
         uses: cloudflare/wrangler-action@v3
         continue-on-error: true
@@ -75,7 +86,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages project create game-wire --production-branch main
 
-      # 9. Cloudflare Pages にデプロイ
+      # 10. Cloudflare Pages にデプロイ
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
@@ -83,7 +94,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=game-wire --commit-dirty=true
 
-      # 10. 完了通知（サマリー）
+      # 11. 完了通知（サマリー）
       - name: Build summary
         run: |
           echo "## 🎮 Game Wire Build Complete" >> $GITHUB_STEP_SUMMARY
