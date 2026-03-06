@@ -1,12 +1,12 @@
 # Game Wire 週刊ビルド・デプロイワークフロー
-# 毎週日曜日 AM 9:00 (JST) に自動実行
+# 毎週土曜日 AM 6:00 (JST) に自動実行
 
 name: Weekly Build and Deploy
 
 on:
-  # 定期実行: 毎週日曜日 AM 6:00 JST (= 土曜日 UTC 21:00)
+  # 定期実行: 毎週土曜日 AM 6:00 JST (= 金曜日 UTC 21:00)
   schedule:
-    - cron: '0 21 * * 6'
+    - cron: '0 21 * * 5'
 
   # 手動実行も可能
   workflow_dispatch:
