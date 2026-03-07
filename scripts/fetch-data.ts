@@ -514,11 +514,16 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
         ) && g.metascore && g.metascore > 75
     ) || games.find((g) => g.steamPlayers && g.steamPlayers > 50000) || null;
 
-  // 名作深掘り（高スコア + 人気）
+  // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い）
   const classicCandidates = games
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => g.metascore && g.metascore > 80)
-    .filter((g) => g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000))
+    .filter((g) => {
+      // メタスコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
+      if (g.metascore && g.metascore >= 85) return true;
+      // それ以外は Steam/YouTube での人気が必要
+      return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
+    })
     .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
     .filter(
       (g) =>

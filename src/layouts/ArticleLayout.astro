@@ -24,9 +24,10 @@ interface Props {
   game?: GameInfoType;
   featureImage?: string; // 特集記事用のAI生成画像
   issueNumber?: number;
+  basePath?: string; // 開発用パス（/dev など）
 }
 
-const { title, category, summary, game, featureImage, issueNumber } = Astro.props;
+const { title, category, summary, game, featureImage, issueNumber, basePath = '' } = Astro.props;
 
 const categoryLabels: Record<string, string> = {
   newRelease: '新作紹介',
@@ -49,7 +50,7 @@ const categoryColors: Record<string, string> = {
       <div class="container">
         {
           issueNumber && (
-            <a href="/" class="back-link">
+            <a href={basePath || '/'} class="back-link">
               &larr; Vol.{issueNumber} に戻る
             </a>
           )

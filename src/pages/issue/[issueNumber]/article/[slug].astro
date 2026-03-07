@@ -7,8 +7,14 @@ import ScreenshotGallery from '../../../../components/ScreenshotGallery.astro';
 import RelatedArticles from '../../../../components/RelatedArticles.astro';
 import SourceLinks from '../../../../components/SourceLinks.astro';
 
+// 開発サーバーかどうかを判定
+const isDev = import.meta.env.DEV;
+
 export async function getStaticPaths() {
-  const issues = await getCollection('issues');
+  // 環境に応じてコレクションを切り替え
+  const isDev = import.meta.env.DEV;
+  const collectionName = isDev ? 'issues-dev' : 'issues';
+  const issues = await getCollection(collectionName);
 
   const paths = issues.flatMap((issue) =>
     issue.data.articles.map((article, index) => ({
@@ -28,8 +34,8 @@ export async function getStaticPaths() {
 }
 
 interface Props {
-  issue: Awaited<ReturnType<typeof getCollection<'issues'>>>[number];
-  article: Awaited<ReturnType<typeof getCollection<'issues'>>>[number]['data']['articles'][number];
+  issue: any;
+  article: any;
   articleIndex: number;
 }
 

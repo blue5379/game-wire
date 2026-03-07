@@ -4,7 +4,10 @@ import MagazineLayout from '../../layouts/MagazineLayout.astro';
 import ArticleCard from '../../components/ArticleCard.astro';
 
 export async function getStaticPaths() {
-  const allIssues = await getCollection('issues');
+  // 環境に応じてコレクションを切り替え
+  const isDev = import.meta.env.DEV;
+  const collectionName = isDev ? 'issues-dev' : 'issues';
+  const allIssues = await getCollection(collectionName);
   return allIssues.map((issue) => ({
     params: { issue: issue.data.issueNumber.toString() },
     props: { issue },

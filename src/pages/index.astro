@@ -3,8 +3,12 @@ import { getCollection } from 'astro:content';
 import MagazineLayout from '../layouts/MagazineLayout.astro';
 import ArticleCard from '../components/ArticleCard.astro';
 
-// 最新号を取得（issueNumberで降順ソート）
-const allIssues = await getCollection('issues');
+// 開発サーバーかどうかを判定
+const isDev = import.meta.env.DEV;
+
+// 環境に応じてコレクションを切り替え
+const collectionName = isDev ? 'issues-dev' : 'issues';
+const allIssues = await getCollection(collectionName);
 const latestIssue = allIssues.sort(
   (a, b) => b.data.issueNumber - a.data.issueNumber
 )[0];

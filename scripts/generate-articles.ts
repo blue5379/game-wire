@@ -22,6 +22,11 @@ import {
   parseTitleResponse,
 } from './bedrock-client.js';
 import { generateFeatureImage } from './generate-feature-image.js';
+import {
+  searchGameInfo,
+  formatSearchResultsForPrompt,
+  isTavilyAvailable,
+} from './fetch-web-search.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -176,22 +181,38 @@ async function generateNewReleaseArticle(
 ): Promise<GeneratedArticle> {
   console.log(`  Generating new release article: ${game.title}`);
 
-  const userMessage = buildUserMessage('newRelease', {
-    title: game.title,
-    genres: game.genres,
-    platforms: game.platforms,
-    releaseDate: game.releaseDate,
-    developer: game.developer,
-    publisher: game.publisher,
-    summary: game.summary,
-    metascore: game.metascore,
-    userScore: game.userScore,
-  });
+  // Web検索で追加情報を取得
+  let webSearchContext = '';
+  if (isTavilyAvailable()) {
+    try {
+      console.log(`    Searching web for additional info...`);
+      const searchResults = await searchGameInfo(game.title, 'newRelease', game.developer);
+      webSearchContext = formatSearchResultsForPrompt(searchResults);
+    } catch (error) {
+      console.warn(`    Web search failed, continuing without: ${error}`);
+    }
+  }
+
+  const userMessage = buildUserMessage(
+    'newRelease',
+    {
+      title: game.title,
+      genres: game.genres,
+      platforms: game.platforms,
+      releaseDate: game.releaseDate,
+      developer: game.developer,
+      publisher: game.publisher,
+      summary: game.summary,
+      metascore: game.metascore,
+      userScore: game.userScore,
+    },
+    webSearchContext || undefined
+  );
 
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.newReleaseSystem, userMessage, {
       maxTokens: 3000,
-      temperature: 0.7,
+      temperature: 0.5,
     })
   );
 
@@ -226,9 +247,27 @@ async function generateNewReleaseArticle(
 async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
   console.log(`  Generating indie article: ${game.title}`);
 
-  const additionalContext = game.youtubePopularity
-    ? `YouTubeでの累計視聴回数: ${game.youtubePopularity.toLocaleString()}回`
-    : undefined;
+  // 基本の追加コンテキスト
+  const contextParts: string[] = [];
+  if (game.youtubePopularity) {
+    contextParts.push(`YouTubeでの累計視聴回数: ${game.youtubePopularity.toLocaleString()}回`);
+  }
+
+  // Web検索で追加情報を取得
+  if (isTavilyAvailable()) {
+    try {
+      console.log(`    Searching web for additional info...`);
+      const searchResults = await searchGameInfo(game.title, 'indie', game.developer);
+      const webSearchContext = formatSearchResultsForPrompt(searchResults);
+      if (webSearchContext) {
+        contextParts.push(webSearchContext);
+      }
+    } catch (error) {
+      console.warn(`    Web search failed, continuing without: ${error}`);
+    }
+  }
+
+  const additionalContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
   const userMessage = buildUserMessage(
     'indie',
@@ -249,7 +288,7 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.indieSystem, userMessage, {
       maxTokens: 3000,
-      temperature: 0.7,
+      temperature: 0.5,
     })
   );
 
@@ -305,7 +344,7 @@ async function generateFeatureArticle(
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.featureSystem, userMessage, {
       maxTokens: 4000,
-      temperature: 0.7,
+      temperature: 0.5,
     })
   );
 
@@ -340,16 +379,30 @@ async function generateClassicArticle(
 ): Promise<GeneratedArticle> {
   console.log(`  Generating classic article: ${game.title}`);
 
-  const additionalContext = [
-    game.steamPlayers
-      ? `現在のSteam同時接続数: ${game.steamPlayers.toLocaleString()}人`
-      : null,
-    game.youtubePopularity
-      ? `YouTubeでの人気度: ${game.youtubePopularity.toLocaleString()}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  // 基本の追加コンテキスト
+  const contextParts: string[] = [];
+  if (game.steamPlayers) {
+    contextParts.push(`現在のSteam同時接続数: ${game.steamPlayers.toLocaleString()}人`);
+  }
+  if (game.youtubePopularity) {
+    contextParts.push(`YouTubeでの人気度: ${game.youtubePopularity.toLocaleString()}`);
+  }
+
+  // Web検索で追加情報を取得
+  if (isTavilyAvailable()) {
+    try {
+      console.log(`    Searching web for additional info...`);
+      const searchResults = await searchGameInfo(game.title, 'classic', game.developer);
+      const webSearchContext = formatSearchResultsForPrompt(searchResults);
+      if (webSearchContext) {
+        contextParts.push(webSearchContext);
+      }
+    } catch (error) {
+      console.warn(`    Web search failed, continuing without: ${error}`);
+    }
+  }
+
+  const additionalContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
   const userMessage = buildUserMessage(
     'classic',
@@ -364,13 +417,13 @@ async function generateClassicArticle(
       metascore: game.metascore,
       userScore: game.userScore,
     },
-    additionalContext || undefined
+    additionalContext
   );
 
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.classicSystem, userMessage, {
       maxTokens: 3500,
-      temperature: 0.7,
+      temperature: 0.5,
     })
   );
 

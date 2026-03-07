@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.800.0",
+    "@tavily/core": "^0.7.2",
     "astro": "^5.17.1",
     "date-fns": "^4.1.0",
     "marked": "^17.0.2"

@@ -15,9 +15,10 @@ interface Props {
   currentIndex: number;
   issueNumber: number;
   category: 'newRelease' | 'indie' | 'feature' | 'classic';
+  basePath?: string;
 }
 
-const { articles, currentIndex, issueNumber, category } = Astro.props;
+const { articles, currentIndex, issueNumber, category, basePath = '' } = Astro.props;
 
 // 同じカテゴリの記事をフィルタリング（現在の記事を除く）
 const relatedArticles = articles
@@ -45,7 +46,7 @@ const categoryLabels: Record<string, string> = {
     <div class="related-grid">
       {relatedArticles.map((article) => (
         <a
-          href={`/issue/${issueNumber}/article/${article.index}`}
+          href={`${basePath}/issue/${issueNumber}/article/${article.index}`}
           class="related-card"
         >
           <div class="related-image">

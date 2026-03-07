@@ -3,7 +3,11 @@ import { getCollection } from 'astro:content';
 import MagazineLayout from '../../layouts/MagazineLayout.astro';
 import CoverImage from '../../components/CoverImage.astro';
 
-const allIssues = await getCollection('issues');
+// 開発サーバーかどうかを判定
+const isDev = import.meta.env.DEV;
+const collectionName = isDev ? 'issues-dev' : 'issues';
+
+const allIssues = await getCollection(collectionName);
 const sortedIssues = allIssues.sort(
   (a, b) => b.data.publishDate.getTime() - a.data.publishDate.getTime()
 );
