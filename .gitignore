@@ -39,6 +39,9 @@ screenshots/
 # Playwright MCP
 .playwright-mcp/
 
+# Claude Code
+.claude/
+
 # Development generated content
 src/content/issues-dev/
 public/images/features-dev/

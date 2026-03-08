@@ -17,10 +17,11 @@ import {
   PromptTemplates,
   buildUserMessage,
   buildFeatureUserMessage,
-  determineFeatureTheme,
+  selectFeatureThemeWithAI,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
+import { getEventsInRange } from './fetch-japanese-events.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 import {
   searchGameInfo,
@@ -331,7 +332,14 @@ async function generateFeatureArticle(
   issueNumber: number,
   relatedGames?: GameData[]
 ): Promise<GeneratedArticle> {
-  const theme = determineFeatureTheme(publishDate);
+  // 直近1週間のイベントを取得
+  const events = getEventsInRange(publishDate, 7);
+  console.log(`  Found ${events.length} events in the next 7 days`);
+
+  // AIでテーマを選定
+  const theme = await selectFeatureThemeWithAI(
+    events.map((e) => ({ name: e.name, gameThemeHint: e.gameThemeHint }))
+  );
   console.log(`  Generating feature article: ${theme}`);
 
   const relatedGamesList = relatedGames?.slice(0, 5).map((g) => ({

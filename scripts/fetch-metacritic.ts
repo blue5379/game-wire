@@ -9,6 +9,12 @@
 import type { MetacriticScore, MetacriticData, FetchResult } from './types.js';
 
 const OPENCRITIC_API_URL = 'https://api.opencritic.com/api';
+const OPENCRITIC_API_KEY = process.env.OPENCRITIC_API_KEY || '';
+
+// APIキーが設定されているか確認
+function isOpenCriticAvailable(): boolean {
+  return OPENCRITIC_API_KEY.length > 0;
+}
 
 // リトライ付きfetch
 async function fetchWithRetry(
@@ -19,11 +25,18 @@ async function fetchWithRetry(
 ): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
+      const headers: Record<string, string> = {
+        'User-Agent': 'GameWire/1.0',
+        Accept: 'application/json',
+      };
+      // APIキーがある場合はヘッダーに追加
+      if (OPENCRITIC_API_KEY) {
+        headers['X-RapidAPI-Key'] = OPENCRITIC_API_KEY;
+      }
       const response = await fetch(url, {
         ...options,
         headers: {
-          'User-Agent': 'GameWire/1.0',
-          Accept: 'application/json',
+          ...headers,
           ...options.headers,
         },
       });
@@ -31,6 +44,13 @@ async function fetchWithRetry(
       if (response.status === 429) {
         await new Promise((r) => setTimeout(r, delay * (i + 2)));
         continue;
+      }
+      // APIキーエラーの場合は即座に終了
+      if (response.status === 400) {
+        const body = await response.text();
+        if (body.includes('API key is required')) {
+          throw new Error('OpenCritic API key is required. Set OPENCRITIC_API_KEY environment variable.');
+        }
       }
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     } catch (error) {
@@ -47,6 +67,11 @@ async function fetchWithRetry(
 async function searchGameOnOpenCritic(
   gameName: string
 ): Promise<MetacriticScore | null> {
+  // APIキーがない場合はスキップ
+  if (!isOpenCriticAvailable()) {
+    return null;
+  }
+
   try {
     // ゲーム検索
     const searchUrl = new URL(`${OPENCRITIC_API_URL}/game/search`);
@@ -95,6 +120,12 @@ async function searchGameOnOpenCritic(
  */
 async function fetchRecentReviews(): Promise<MetacriticScore[]> {
   const scores: MetacriticScore[] = [];
+
+  // APIキーがない場合はスキップ
+  if (!isOpenCriticAvailable()) {
+    console.log('OpenCritic API key not set, skipping score fetch');
+    return scores;
+  }
 
   try {
     // Hall of Fame（高評価ゲーム）を取得

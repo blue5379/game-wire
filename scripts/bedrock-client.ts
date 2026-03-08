@@ -208,12 +208,12 @@ Steamレビューでの評判を紹介（100〜150文字）
 テーマの魅力と特集の趣旨を伝える導入文
 
 ### 2. おすすめゲーム紹介（見出し: ## 🎮 おすすめゲーム紹介）
-テーマに沿ったゲームを3〜5本紹介
+**テーマに本当にマッチするゲーム**を3〜5本紹介
 各ゲームについて：
 - ゲームタイトル（小見出し ### で）
+- **テーマとの関連性**（なぜこのゲームがこのテーマに合うのか、1〜2文で説明）
 - 概要（50〜100文字）
 - おすすめポイント（箇条書き2〜3つ）
-※提供された関連ゲーム情報を参考にしてください
 
 ### 3. 遊び方のポイント（見出し: ## 💡 遊び方のポイント）
 テーマに沿ったゲームの楽しみ方を100〜150文字で
@@ -221,10 +221,18 @@ Steamレビューでの評判を紹介（100〜150文字）
 ### 4. まとめ（見出し: ## 📝 まとめ）
 特集のまとめと読者へのメッセージ（100文字程度）
 
-## 重要なルール（必ず守ってください）
-- 提供された関連ゲーム情報を優先的に使用
-- 紹介するゲームは実在するタイトルのみ
-- 情報が不足している場合は一般的な内容に留める
+## ゲーム選定の重要なルール（必ず守ってください）
+1. **テーマとの関連性を最優先**: テーマに本当に合ったゲームのみを紹介する
+2. **関連性を必ず説明**: 各ゲームがなぜこのテーマに合うのか、読者にわかるよう明示的に説明する
+3. **関連ゲーム情報はヒントとして使用**: 提供された関連ゲーム情報の中にテーマに合うものがあれば使用
+4. **テーマに合わないゲームは使わない**: 関連ゲーム情報にテーマと無関係なゲームがあっても、無理に使用しない
+5. **あなたの知識を活用**: 関連ゲーム情報にテーマに合うものがなければ、あなたの知識から実在する有名ゲームを紹介
+6. **実在するタイトルのみ**: 架空のゲームは絶対に紹介しない
+
+## テーマとゲームのマッチング例
+- 「恋愛ゲーム特集」→ ときめきメモリアル、ペルソナシリーズ、ファイアーエムブレム（恋愛要素あり）
+- 「ホラーゲーム特集」→ バイオハザード、サイレントヒル、Dead by Daylight
+- 「協力プレイ特集」→ モンスターハンター、オーバークック、It Takes Two
 
 ## 記事のスタイル
 - 読者の興味を引く導入
@@ -378,20 +386,103 @@ export function buildFeatureUserMessage(
 
   if (relatedGames && relatedGames.length > 0) {
     lines.push('');
-    lines.push(`【関連ゲーム】`);
+    lines.push(`【参考: 最近話題のゲーム一覧】`);
+    lines.push(`※以下はあくまで参考情報です。テーマに合うものだけを使用し、合わないものは無視してください。`);
+    lines.push(`※テーマに合うゲームがなければ、あなたの知識から実在する有名ゲームを紹介してください。`);
     for (const game of relatedGames) {
       lines.push(`- ${game.title}${game.summary ? `: ${game.summary}` : ''}`);
     }
   }
 
   lines.push('');
-  lines.push('上記のテーマに沿った特集記事を書いてください。');
+  lines.push(`上記のテーマ「${theme}」に沿った特集記事を書いてください。`);
+  lines.push('テーマに本当にマッチするゲームのみを紹介してください。');
 
   return lines.join('\n');
 }
 
 /**
- * 日付ベースでイベントテーマを判定
+ * 特集テーマ選定用のシステムプロンプト
+ */
+export const featureThemeSelectionPrompt = `あなたはゲーム情報Webマガジン「Game Wire」の編集者です。
+以下のイベント・記念日リストから、ゲーム特集記事のテーマとして最適なものを選び、
+魅力的な特集テーマを生成してください。
+
+## 選定基準
+1. **知名度**: 一般的に広く知られているイベントを優先
+2. **ゲーム関連性**: ゲームと関連付けやすいテーマを優先
+
+## 出力形式
+以下のJSON形式で出力してください（JSON以外は出力しない）:
+{
+  "selectedEvent": "選んだイベント名",
+  "theme": "生成した特集テーマ（30〜50文字程度）"
+}
+
+## テーマ生成のスタイル
+- 「◯◯特集：△△なゲーム」の形式
+- 具体的で魅力的な表現
+- 読者の興味を引く内容
+
+## 例
+- 入力: バレンタインデー (恋愛・協力プレイ)
+- 出力: { "selectedEvent": "バレンタインデー", "theme": "バレンタイン特集：大切な人と一緒に遊べる協力ゲーム" }`;
+
+/**
+ * AIを使って最適な特集テーマを選定
+ */
+export async function selectFeatureThemeWithAI(
+  events: Array<{ name: string; gameThemeHint: string }>
+): Promise<string> {
+  if (events.length === 0) {
+    return '今週の注目ゲーム特集';
+  }
+
+  const eventList = events
+    .map((e) => `- ${e.name} (${e.gameThemeHint})`)
+    .join('\n');
+
+  const userMessage = `以下のイベント・記念日から最適なものを選び、ゲーム特集テーマを生成してください。
+
+【直近1週間のイベント】
+${eventList}
+
+JSON形式で出力してください。`;
+
+  try {
+    const response = await invokeClaudeModel(
+      featureThemeSelectionPrompt,
+      userMessage,
+      { maxTokens: 300, temperature: 0.7 }
+    );
+
+    // JSONをパース
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('Failed to extract JSON from theme selection response');
+      return `${events[0].name}特集`;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      selectedEvent: string;
+      theme: string;
+    };
+
+    if (parsed.theme && typeof parsed.theme === 'string') {
+      return parsed.theme;
+    }
+
+    return `${events[0].name}特集`;
+  } catch (error) {
+    console.error('Failed to select feature theme with AI:', error);
+    // フォールバック: 最初のイベントを使用
+    return `${events[0].name}特集`;
+  }
+}
+
+/**
+ * 日付ベースでイベントテーマを判定（レガシー - 後方互換性のため残す）
+ * @deprecated Use selectFeatureThemeWithAI with getEventsInRange instead
  */
 export function determineFeatureTheme(date: Date): string {
   const month = date.getMonth() + 1;
