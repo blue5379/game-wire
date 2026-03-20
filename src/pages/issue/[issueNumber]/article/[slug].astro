@@ -68,6 +68,28 @@ let articleContent: string | null = null;
 if (article.articleBody) {
   const result = marked.parse(article.articleBody);
   articleContent = typeof result === 'string' ? result : await result;
+
+  // 特集記事: おすすめゲームの画像・リンクをh3見出しの後に挿入
+  if (article.category === 'feature' && article.recommendedGames?.length > 0) {
+    const games = article.recommendedGames as Array<{ title: string; coverImage?: string; officialUrl?: string }>;
+    for (const game of games) {
+      if (!game.coverImage && !game.officialUrl) continue;
+      // h3タグのテキストにゲーム名が含まれる箇所を探して、直後にカードを挿入
+      const h3Regex = new RegExp(`(<h3[^>]*>([^<]*${game.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*)</h3>)`);
+      const match = articleContent.match(h3Regex);
+      if (match) {
+        let card = '<div class="inline-game-card">';
+        if (game.coverImage) {
+          card += `<img src="${game.coverImage}" alt="${game.title}" class="inline-game-image" loading="lazy" />`;
+        }
+        if (game.officialUrl) {
+          card += `<a href="${game.officialUrl}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト →</a>`;
+        }
+        card += '</div>';
+        articleContent = articleContent.replace(match[0], match[0] + card);
+      }
+    }
+  }
 }
 
 ---
@@ -200,33 +222,6 @@ if (article.articleBody) {
     </div>
   </div>
 
-  {article.category === 'feature' && article.recommendedGames && article.recommendedGames.length > 0 && (
-    <section class="recommended-games">
-      <h2 class="recommended-games-title">おすすめゲーム</h2>
-      <div class="recommended-games-grid">
-        {article.recommendedGames.map((game: any) => (
-          <div class="recommended-game-card">
-            {game.coverImage ? (
-              <img src={game.coverImage} alt={game.title} class="recommended-game-image" loading="lazy" />
-            ) : (
-              <div class="recommended-game-placeholder">
-                <span>🎮</span>
-              </div>
-            )}
-            <div class="recommended-game-info">
-              <h3 class="recommended-game-title">{game.title}</h3>
-              {game.officialUrl && (
-                <a href={game.officialUrl} target="_blank" rel="noopener noreferrer" class="recommended-game-link">
-                  公式サイト →
-                </a>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )}
-
   {article.game?.screenshots && article.game.screenshots.length > 0 && (
     <ScreenshotGallery
       screenshots={article.game.screenshots}
@@ -355,74 +350,34 @@ if (article.articleBody) {
     font-size: 0.95rem;
   }
 
-  /* おすすめゲームセクション */
-  .recommended-games {
-    margin-bottom: var(--spacing-md);
-  }
-
-  .recommended-games-title {
-    font-size: 1.3rem;
-    font-family: var(--font-heading);
-    color: var(--color-primary);
-    margin-bottom: var(--spacing-md);
-    padding-bottom: var(--spacing-xs);
-    border-bottom: 2px solid var(--color-border);
-  }
-
-  .recommended-games-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: var(--spacing-md);
-  }
-
-  .recommended-game-card {
-    background: var(--color-surface);
+  /* おすすめゲーム インライン表示 */
+  .generated-content :global(.inline-game-card) {
+    float: right;
+    width: 140px;
+    margin: 0 0 var(--spacing-sm) var(--spacing-md);
     border: 1px solid var(--color-border);
+    background: var(--color-surface);
     overflow: hidden;
-    transition: border-color 0.2s;
   }
 
-  .recommended-game-card:hover {
-    border-color: var(--color-primary);
-  }
-
-  .recommended-game-image {
+  .generated-content :global(.inline-game-image) {
     width: 100%;
     aspect-ratio: 3 / 4;
     object-fit: cover;
     display: block;
   }
 
-  .recommended-game-placeholder {
-    width: 100%;
-    aspect-ratio: 3 / 4;
-    background: var(--color-accent);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2.5rem;
-  }
-
-  .recommended-game-info {
-    padding: var(--spacing-sm);
-  }
-
-  .recommended-game-title {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: var(--spacing-xs);
-    line-height: 1.4;
-  }
-
-  .recommended-game-link {
-    font-size: 0.8rem;
+  .generated-content :global(.inline-game-link) {
+    display: block;
+    padding: var(--spacing-xs);
+    font-size: 0.75rem;
     color: var(--color-primary);
     text-decoration: none;
+    text-align: center;
     font-weight: 500;
   }
 
-  .recommended-game-link:hover {
+  .generated-content :global(.inline-game-link:hover) {
     text-decoration: underline;
   }
 
@@ -433,8 +388,10 @@ if (article.articleBody) {
   }
 
   @media (max-width: 640px) {
-    .recommended-games-grid {
-      grid-template-columns: repeat(2, 1fr);
+    .generated-content :global(.inline-game-card) {
+      float: none;
+      width: 120px;
+      margin: 0 auto var(--spacing-sm);
     }
   }
 </style>
