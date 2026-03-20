@@ -4,15 +4,15 @@
  */
 
 :root {
-  /* カラーパレット - 案1: ウォームアイボリー */
-  --color-primary: #d64550;
-  --color-secondary: #8b7355;
-  --color-accent: #c9b896;
-  --color-background: #faf8f5;
+  /* カラーパレット - Swiss Elegant Editorial */
+  --color-primary: #C41E3A;
+  --color-secondary: #666666;
+  --color-accent: #F2F1ED;
+  --color-background: #FAFAF7;
   --color-surface: #ffffff;
-  --color-text: #3d3d3d;
-  --color-text-muted: #6b6b6b;
-  --color-border: #e8e4df;
+  --color-text: #0F0F0F;
+  --color-text-muted: #666666;
+  --color-border: #E0E0E0;
 
   /* スコアカラー */
   --color-score-high: #66bb6a;
@@ -26,8 +26,8 @@
   --color-category-classic: #ba68c8;
 
   /* フォント */
-  --font-heading: 'Oswald', 'Noto Sans JP', sans-serif;
-  --font-body: 'Noto Sans JP', sans-serif;
+  --font-heading: 'Noto Serif JP', serif;
+  --font-body: 'Inter', 'Noto Sans JP', sans-serif;
 
   /* フォントサイズ */
   --font-size-xs: 0.75rem;
@@ -55,16 +55,16 @@
   --spacing-3xl: 4rem;
 
   /* ボーダー半径 */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
   --radius-full: 9999px;
 
-  /* シャドウ - ライトテーマ用 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.12);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+  /* シャドウ - ライトテーマ用（ヘアラインボーダー中心に変更） */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 8px 24px rgba(0, 0, 0, 0.1);
 
   /* トランジション */
   --transition-fast: 0.15s ease;

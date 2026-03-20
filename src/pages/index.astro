@@ -27,10 +27,19 @@ const latestIssue = allIssues.sort(
           <section class="issue-hero">
             <h1 class="issue-title">{latestIssue.data.title}</h1>
             <p class="issue-description">{latestIssue.data.description}</p>
+            <div class="hero-divider" aria-hidden="true"></div>
           </section>
 
           <section class="articles-grid">
             {latestIssue.data.articles.map((article, index) => (
+              <>
+                {index === 1 && (
+                  <div class="section-label" aria-hidden="true">
+                    <span class="section-label-line"></span>
+                    <span class="section-label-text">TODAY'S PICKS</span>
+                    <span class="section-label-line"></span>
+                  </div>
+                )}
               <div class="article-wrapper" style={`--animation-delay: ${index * 0.1}s`}>
                 <ArticleCard
                   href={`/issue/${latestIssue.data.issueNumber}/article/${index}`}
@@ -42,6 +51,7 @@ const latestIssue = allIssues.sort(
                   game={article.game}
                 />
               </div>
+              </>
             ))}
           </section>
         </>
@@ -98,23 +108,48 @@ const latestIssue = allIssues.sort(
   }
 
   .issue-title {
-    font-size: 2.5rem;
-    margin-bottom: var(--spacing-md);
-    background: linear-gradient(
-      135deg,
-      var(--color-primary),
-      var(--color-text)
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 3.5rem;
+    font-weight: 500;
+    letter-spacing: -2px;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-text);
   }
 
   .issue-description {
-    font-size: 1.125rem;
+    font-size: 0.9375rem;
     color: var(--color-text-muted);
-    max-width: 600px;
+    max-width: 560px;
     margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  .hero-divider {
+    width: 60px;
+    height: 2px;
+    background: var(--color-primary);
+    margin: var(--spacing-md) auto 0;
+  }
+
+  .section-label {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+  }
+
+  .section-label-line {
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  .section-label-text {
+    font-family: var(--font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
   }
 
   .articles-grid {
@@ -149,12 +184,14 @@ const latestIssue = allIssues.sort(
 
   .articles-grid > .article-wrapper:first-child :global(h2) {
     font-size: 1.75rem;
+    font-weight: 500;
+    letter-spacing: -0.5px;
     margin-bottom: var(--spacing-md);
   }
 
   .articles-grid > .article-wrapper:first-child :global(.card-summary) {
     -webkit-line-clamp: 5;
-    font-size: 1rem;
+    font-size: 0.875rem;
     line-height: 1.7;
   }
 
@@ -187,7 +224,8 @@ const latestIssue = allIssues.sort(
   /* モバイル */
   @media (max-width: 768px) {
     .issue-title {
-      font-size: 1.75rem;
+      font-size: 2rem;
+      letter-spacing: -1px;
     }
 
     .articles-grid {

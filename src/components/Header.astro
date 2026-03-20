@@ -52,7 +52,6 @@ const formattedDate = publishDate
     position: sticky;
     top: 0;
     z-index: 100;
-    box-shadow: var(--shadow-sm);
   }
 
   .header-content {
@@ -66,10 +65,11 @@ const formattedDate = publishDate
   .logo {
     display: flex;
     align-items: baseline;
-    gap: var(--spacing-xs);
-    font-family: var(--font-heading);
+    gap: 6px;
+    font-family: 'Cormorant Garamond', serif;
     font-size: 1.75rem;
     font-weight: 700;
+    letter-spacing: -0.5px;
     text-decoration: none;
   }
 
@@ -92,11 +92,12 @@ const formattedDate = publishDate
   }
 
   .nav a {
-    color: var(--color-text);
+    color: var(--color-text-muted);
+    font-size: 0.8125rem;
     font-weight: 500;
     padding: var(--spacing-xs) 0;
     border-bottom: 2px solid transparent;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease;
   }
 
   .nav a:hover {
@@ -117,16 +118,17 @@ const formattedDate = publishDate
   }
 
   .issue-number {
-    font-size: 1.25rem;
-    font-weight: 700;
+    font-size: 1.125rem;
+    font-family: var(--font-heading);
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #ffffff;
   }
 
   .issue-date {
-    font-size: 0.9rem;
-    opacity: 0.9;
+    font-size: 0.75rem;
+    opacity: 0.85;
     color: #ffffff;
   }
 
