@@ -388,10 +388,28 @@ if (article.articleBody) {
   }
 
   @media (max-width: 640px) {
+    .article-main {
+      padding: var(--spacing-sm);
+    }
+
     .generated-content :global(.inline-game-card) {
       float: none;
       width: 120px;
       margin: 0 auto var(--spacing-sm);
+    }
+
+    .generated-content :global(h2) {
+      font-size: 1.1rem;
+      margin-top: var(--spacing-md);
+    }
+
+    .generated-content :global(h3) {
+      font-size: 1rem;
+    }
+
+    .generated-content :global(p),
+    .generated-content :global(li) {
+      font-size: 0.875rem;
     }
   }
 </style>
