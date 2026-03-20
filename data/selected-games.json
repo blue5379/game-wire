@@ -1,146 +1,166 @@
 {
   "newReleases": [
     {
-      "title": "Grand Theft Auto VI",
-      "normalizedTitle": "grand theft auto vi",
+      "title": "Slay the Spire 2",
+      "normalizedTitle": "slay the spire 2",
+      "steamAppId": 2868840,
       "genres": [
-        "Shooter",
-        "Racing",
-        "Adventure"
+        "Strategy",
+        "Indie",
+        "Card & Board Game"
       ],
       "platforms": [
-        "Xbox Series X|S",
-        "PlayStation 5"
+        "Linux",
+        "PC (Microsoft Windows)",
+        "Mac"
       ],
-      "releaseDate": "2026-11-19",
-      "developer": "Rockstar Games",
-      "publisher": "Rockstar Games",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9rwo.jpg",
-      "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwpqj.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp7.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp6.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp8.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp9.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlj.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlk.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vll.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlm.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vln.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlo.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlp.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlq.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlr.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vls.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlt.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlu.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlv.jpg"
-      ],
-      "summary": "Grand Theft Auto VI heads to the state of Leonida, home to the neon-soaked streets of Vice City and beyond in the biggest, most immersive evolution of the Grand Theft Auto series yet.",
+      "steamRank": 2,
       "source": [
-        "igdb",
-        "metacritic"
+        "steam",
+        "igdb"
       ],
-      "metascore": 95,
-      "userScore": 10
+      "sourceUrls": {
+        "steam": "https://store.steampowered.com/app/2868840",
+        "igdb": "https://www.igdb.com/games/slay-the-spire-ii"
+      },
+      "igdbSlug": "slay-the-spire-ii",
+      "releaseDate": "2026-03-05",
+      "developer": "Mega Crit Games",
+      "publisher": "Mega Crit Games",
+      "developerCountry": "アメリカ",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co82c5.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupb.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupd.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupf.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup6.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup8.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup9.jpg"
+      ],
+      "summary": "The iconic roguelike deckbuilder returns!\n\nCraft a unique deck, encounter bizarre creatures, and discover relics of immense power in Slay the Spire 2 - featuring new characters, cards, events, alternate acts, and more!"
     },
     {
-      "title": "Mewgenics",
-      "normalizedTitle": "mewgenics",
-      "steamAppId": 686060,
+      "title": "Everwind",
+      "normalizedTitle": "everwind",
+      "steamAppId": 2253100,
       "genres": [
         "Role-playing (RPG)",
         "Simulator",
-        "Turn-based strategy (TBS)",
         "Adventure",
         "Indie"
       ],
       "platforms": [
         "PC (Microsoft Windows)"
       ],
+      "steamRank": 4,
       "source": [
         "steam",
-        "metacritic",
         "igdb"
       ],
-      "metascore": 89,
-      "userScore": null,
-      "releaseDate": "2026-02-10",
-      "developer": "Edmund McMillen",
-      "publisher": "Edmund McMillen",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9n5k.jpg",
+      "sourceUrls": {
+        "steam": "https://store.steampowered.com/app/2253100",
+        "igdb": "https://www.igdb.com/games/everwind"
+      },
+      "igdbSlug": "everwind",
+      "releaseDate": "2026-03-17",
+      "developer": "Enjoy Studio",
+      "publisher": "Bohemia Interactive",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/coal66.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqb.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgq9.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgq8.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqd.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqe.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqc.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqa.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqh.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqg.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scjgqf.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozv.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozw.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozx.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozy.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozz.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p00.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p01.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p02.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p03.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p04.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnv.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnx.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnr.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrns.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrny.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro0.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnz.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnu.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro1.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnt.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro2.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnw.jpg"
       ],
-      "summary": "From the creator of The Binding of Isaac, Super Meat Boy and The End is Nigh comes... Mewgenics! A game where you hoard, breed, train and set cats out on epic adventures through a sprawling world of complete chaos.\nLevel up your team as you venture further and further from your home, collect unique items, defeat epic bosses, gain mutations and return home so you you can breed and further your bloodline, in this turn based legacy roguelike draft sim about cats!"
+      "summary": "Everwind is a novel take on RPG and Sandbox Survival genre in First-Person-Perspective. Embark on the adventure with your friends - Build a base on a flying island-ship, gather resources, craft, loot, and fight while you rise above the clouds to uncover the mysteries of this world!"
     }
   ],
   "indies": [
     {
-      "title": "english",
-      "normalizedTitle": "english",
+      "title": "マイクラ",
+      "normalizedTitle": "マイクラ",
       "genres": [
-        "Point-and-click",
+        "Simulator",
         "Adventure",
-        "Indie"
+        "Arcade"
       ],
       "platforms": [
+        "Amazon Fire TV",
+        "Xbox Series X|S",
+        "PlayStation 4",
+        "Linux",
+        "Gear VR",
+        "Windows Phone",
         "Android",
-        "iOS"
+        "PC (Microsoft Windows)",
+        "iOS",
+        "PlayStation 5",
+        "Mac",
+        "Xbox One",
+        "Nintendo Switch"
       ],
-      "youtubePopularity": 3325070,
+      "youtubePopularity": 3425007,
       "source": [
         "youtube",
         "igdb"
       ],
-      "releaseDate": "2014-03-21",
-      "developer": "the Good Evil",
-      "publisher": "the Good Evil",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9dvx.jpg",
+      "sourceUrls": {
+        "youtube": [
+          "https://www.youtube.com/watch?v=kxLj2vSfmn0",
+          "https://www.youtube.com/watch?v=Sr3FwJNJX8g"
+        ],
+        "igdb": "https://www.igdb.com/games/minecraft--1"
+      },
+      "igdbSlug": "minecraft--1",
+      "releaseDate": "2016-12-19",
+      "developer": "Mojang Studios",
+      "publisher": "Mojang Studios",
+      "developerCountry": "スウェーデン",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8fu7.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbi.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbd.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbe.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbf.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbg.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvbbh.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2m.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2k.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2n.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2p.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2o.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2s.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2q.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10jch.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10jcg.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1fr.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1fs.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1ft.jpg"
       ],
-      "summary": "Squirrel & Bär is an adventure game for 3-9-year-old kids to learn English as a foreign language on mobile phones and tablets.\n\nJoin Squirrel & Bär on a journey to save the bees, seeking for a magic flower. Starting in the forest, the players have 22 levels to beat. Passing through five different worlds various animals are there to help the players out. At the end the lynx awaits the players, but she only speaks English! Good, that Squirrel & Bär did accquire the neccessary words and sentences to ask the lynx for help!"
+      "summary": "Minecraft focuses on allowing the player to explore, interact with, and modify a dynamically-generated map made of one-cubic-meter-sized blocks. In addition to blocks, the environment features plants, mobs, and items. Some activities in the game include mining for ore, fighting hostile mobs, and crafting new blocks and tools by gathering various resources found in the game. The game's open-ended model allows players to create structures, creations, and artwork on various multiplayer servers or their single-player maps. Other features include redstone circuits for logic computations and remote actions, minecarts and tracks, and a mysterious underworld called the Nether. A designated but completely optional goal of the game is to travel to a dimension called the End, and defeat the ender dragon."
     },
     {
-      "title": "#葉 #vcrマイクラ",
-      "normalizedTitle": "#葉 #vcrマイクラ",
+      "title": "najia knows the way out!",
+      "normalizedTitle": "najia knows the way out!",
       "genres": [
-        "Adventure",
-        "Indie"
+        "Puzzle",
+        "Adventure"
       ],
       "platforms": [
         "PC (Steam)"
       ],
-      "youtubePopularity": 1587993,
+      "youtubePopularity": 2764239,
       "source": [
         "youtube"
       ],
-      "summary": "「キ。」は記憶の改ざんをテーマにしたアドベンチャーゲーム。プレイヤーは主人公の記憶を探索しながら、真実を解き明かしていく独特な体験が楽しめる。",
+      "sourceUrls": {
+        "youtube": [
+          "https://www.youtube.com/watch?v=U0q2JTWmqro"
+        ]
+      },
+      "summary": "時間を操作するパズルとメイズを特徴とするゲーム。プレイヤーはNajiaという助手の助けを借りて、Finxの作り出す複雑な謎を解き明かしていく。",
       "isAiInferred": true,
       "aiInferredFields": [
         "genres",
@@ -149,49 +169,6 @@
       ]
     }
   ],
-  "featured": {
-    "title": "Grand Theft Auto VI",
-    "normalizedTitle": "grand theft auto vi",
-    "genres": [
-      "Shooter",
-      "Racing",
-      "Adventure"
-    ],
-    "platforms": [
-      "Xbox Series X|S",
-      "PlayStation 5"
-    ],
-    "releaseDate": "2026-11-19",
-    "developer": "Rockstar Games",
-    "publisher": "Rockstar Games",
-    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9rwo.jpg",
-    "screenshots": [
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwpqj.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp7.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp6.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp8.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scpsp9.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlj.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlk.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vll.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlm.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vln.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlo.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlp.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlq.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlr.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vls.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlt.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlu.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10vlv.jpg"
-    ],
-    "summary": "Grand Theft Auto VI heads to the state of Leonida, home to the neon-soaked streets of Vice City and beyond in the biggest, most immersive evolution of the Grand Theft Auto series yet.",
-    "source": [
-      "igdb",
-      "metacritic"
-    ],
-    "metascore": 95,
-    "userScore": 10
-  },
+  "featured": null,
   "classic": null
 }

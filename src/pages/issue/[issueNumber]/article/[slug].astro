@@ -200,6 +200,33 @@ if (article.articleBody) {
     </div>
   </div>
 
+  {article.category === 'feature' && article.recommendedGames && article.recommendedGames.length > 0 && (
+    <section class="recommended-games">
+      <h2 class="recommended-games-title">おすすめゲーム</h2>
+      <div class="recommended-games-grid">
+        {article.recommendedGames.map((game: any) => (
+          <div class="recommended-game-card">
+            {game.coverImage ? (
+              <img src={game.coverImage} alt={game.title} class="recommended-game-image" loading="lazy" />
+            ) : (
+              <div class="recommended-game-placeholder">
+                <span>🎮</span>
+              </div>
+            )}
+            <div class="recommended-game-info">
+              <h3 class="recommended-game-title">{game.title}</h3>
+              {game.officialUrl && (
+                <a href={game.officialUrl} target="_blank" rel="noopener noreferrer" class="recommended-game-link">
+                  公式サイト →
+                </a>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
   {article.game?.screenshots && article.game.screenshots.length > 0 && (
     <ScreenshotGallery
       screenshots={article.game.screenshots}
@@ -328,9 +355,86 @@ if (article.articleBody) {
     font-size: 0.95rem;
   }
 
+  /* おすすめゲームセクション */
+  .recommended-games {
+    margin-bottom: var(--spacing-md);
+  }
+
+  .recommended-games-title {
+    font-size: 1.3rem;
+    font-family: var(--font-heading);
+    color: var(--color-primary);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: 2px solid var(--color-border);
+  }
+
+  .recommended-games-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--spacing-md);
+  }
+
+  .recommended-game-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .recommended-game-card:hover {
+    border-color: var(--color-primary);
+  }
+
+  .recommended-game-image {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    display: block;
+  }
+
+  .recommended-game-placeholder {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: var(--color-accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+  }
+
+  .recommended-game-info {
+    padding: var(--spacing-sm);
+  }
+
+  .recommended-game-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--spacing-xs);
+    line-height: 1.4;
+  }
+
+  .recommended-game-link {
+    font-size: 0.8rem;
+    color: var(--color-primary);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .recommended-game-link:hover {
+    text-decoration: underline;
+  }
+
   @media (max-width: 1024px) {
     .article-body {
       columns: 1;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .recommended-games-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
   }
 </style>

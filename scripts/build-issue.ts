@@ -131,6 +131,20 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
     lines.push(`    featureImage: "${article.featureImage}"`);
   }
 
+  // 特集記事のおすすめゲーム
+  if (article.recommendedGames && article.recommendedGames.length > 0) {
+    lines.push(`    recommendedGames:`);
+    for (const game of article.recommendedGames) {
+      lines.push(`      - title: "${escapeYamlString(game.title)}"`);
+      if (game.coverImage) {
+        lines.push(`        coverImage: "${game.coverImage}"`);
+      }
+      if (game.officialUrl) {
+        lines.push(`        officialUrl: "${game.officialUrl}"`);
+      }
+    }
+  }
+
   if (article.game) {
     lines.push(`    game:`);
     lines.push(`      title: "${escapeYamlString(article.game.title)}"`);

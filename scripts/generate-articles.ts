@@ -11,7 +11,7 @@ config({ path: '.env' });
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { SelectedGames, GameData } from './types.js';
+import type { SelectedGames, GameData, RecommendedGame } from './types.js';
 import {
   invokeClaudeModel,
   PromptTemplates,
@@ -28,6 +28,7 @@ import {
   formatSearchResultsForPrompt,
   isTavilyAvailable,
 } from './fetch-web-search.js';
+import { fetchGameImageAndUrl } from './fetch-igdb.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -72,6 +73,7 @@ export interface GeneratedArticle {
   summary: string;
   content: string;
   featureImage?: string; // 特集記事用のAI生成画像パス
+  recommendedGames?: RecommendedGame[]; // 特集記事のおすすめゲーム
   sourceUrls?: SourceUrls; // 参照元URL
   game?: {
     title: string;
@@ -325,6 +327,49 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
 }
 
 /**
+ * 特集記事の本文からおすすめゲーム名JSONを抽出し、本文から除去する
+ */
+function extractRecommendedGameNames(content: string): { cleanContent: string; gameNames: string[] } {
+  // 閉じの```がある場合とない場合（parseArticleResponseで除去される）の両方に対応
+  const jsonBlockRegex = /```json:recommended_games\s*\n([\s\S]*?)(?:```|$)/;
+  const match = content.match(jsonBlockRegex);
+
+  if (!match) {
+    return { cleanContent: content, gameNames: [] };
+  }
+
+  try {
+    const gameNames = JSON.parse(match[1].trim()) as string[];
+    const cleanContent = content.replace(jsonBlockRegex, '').trim();
+    return { cleanContent, gameNames: Array.isArray(gameNames) ? gameNames : [] };
+  } catch {
+    console.warn('  Failed to parse recommended games JSON');
+    return { cleanContent: content, gameNames: [] };
+  }
+}
+
+/**
+ * ゲーム名リストからIGDBで画像・公式URLを取得してRecommendedGame[]を構築
+ */
+async function enrichRecommendedGames(gameNames: string[]): Promise<RecommendedGame[]> {
+  const results: RecommendedGame[] = [];
+
+  for (const name of gameNames) {
+    console.log(`    Enriching recommended game: ${name}`);
+    const igdbResult = await fetchGameImageAndUrl(name);
+    results.push({
+      title: name,
+      coverImage: igdbResult?.coverImage,
+      officialUrl: igdbResult?.officialUrl,
+    });
+    // レート制限対策
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  return results;
+}
+
+/**
  * 特集記事を生成
  */
 async function generateFeatureArticle(
@@ -349,12 +394,28 @@ async function generateFeatureArticle(
 
   const userMessage = buildFeatureUserMessage(theme, publishDate, relatedGamesList);
 
-  const content = parseArticleResponse(
+  const rawContent = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.featureSystem, userMessage, {
       maxTokens: 4000,
       temperature: 0.5,
     })
   );
+
+  // おすすめゲーム名を抽出し、本文からJSONブロックを除去
+  const { cleanContent: content, gameNames } = extractRecommendedGameNames(rawContent);
+  console.log(`  Extracted ${gameNames.length} recommended game names`);
+
+  // IGDBでおすすめゲームの画像・公式URLを取得
+  let recommendedGames: RecommendedGame[] | undefined;
+  if (gameNames.length > 0) {
+    try {
+      console.log('  Enriching recommended games with IGDB data...');
+      recommendedGames = await enrichRecommendedGames(gameNames);
+      console.log(`  Enriched ${recommendedGames.length} recommended games`);
+    } catch (error) {
+      console.warn('  Failed to enrich recommended games:', error);
+    }
+  }
 
   const title = await generateTitle('特集', theme);
   const summary = await generateSummary(content);
@@ -376,6 +437,7 @@ async function generateFeatureArticle(
     summary,
     content,
     featureImage: featureImagePath,
+    recommendedGames,
   };
 }
 

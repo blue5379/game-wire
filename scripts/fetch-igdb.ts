@@ -667,6 +667,73 @@ export async function enrichGameWithIGDB(
   }
 }
 
+/**
+ * ゲーム名からカバー画像と公式サイトURLを取得（特集記事用）
+ */
+export async function fetchGameImageAndUrl(
+  gameName: string
+): Promise<{ coverImage?: string; officialUrl?: string } | null> {
+  const clientId = process.env.IGDB_CLIENT_ID;
+  const clientSecret = process.env.IGDB_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    return null;
+  }
+
+  try {
+    const accessToken = await getAccessToken(clientId, clientSecret);
+    const searchName = translateToEnglish(gameName);
+
+    if (isInvalidSearchQuery(searchName)) {
+      return null;
+    }
+
+    console.log(`    IGDB lookup: "${gameName}" -> "${searchName}"`);
+
+    interface IGDBGameWithWebsites {
+      id: number;
+      name: string;
+      cover?: { url: string };
+      websites?: { url: string; category: number }[];
+    }
+
+    const query = `
+      search "${searchName.replace(/"/g, '\\"')}";
+      fields name, cover.url, websites.url, websites.category;
+      limit 1;
+    `;
+
+    const games = await igdbRequest<IGDBGameWithWebsites>(
+      'games',
+      query,
+      clientId,
+      accessToken
+    );
+
+    if (games.length === 0) return null;
+
+    const game = games[0];
+
+    if (!isRelevantSearchResult(searchName, game.name)) {
+      console.log(`    IGDB result not relevant: "${gameName}" -> "${game.name}" (skipped)`);
+      return null;
+    }
+
+    const coverImage = game.cover?.url
+      ? game.cover.url.replace('t_thumb', 't_cover_big').replace('//', 'https://')
+      : undefined;
+
+    // category 1 = Official website
+    const officialSite = game.websites?.find((w) => w.category === 1);
+    const officialUrl = officialSite?.url;
+
+    return { coverImage, officialUrl };
+  } catch (error) {
+    console.error(`Failed to fetch image/url for "${gameName}":`, error);
+    return null;
+  }
+}
+
 // スクリプト直接実行時
 if (import.meta.url === `file://${process.argv[1]}`) {
   fetchIGDBData().then((result) => {

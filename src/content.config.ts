@@ -16,6 +16,12 @@ const gameSchema = z.object({
   aiInferredFields: z.array(z.string()).optional(),
 });
 
+const recommendedGameSchema = z.object({
+  title: z.string(),
+  coverImage: z.string().optional(),
+  officialUrl: z.string().optional(),
+});
+
 const sourceUrlsSchema = z.object({
   steam: z.string().optional(),
   igdb: z.string().optional(),
@@ -29,6 +35,7 @@ const articleSchema = z.object({
   summary: z.string(),
   articleBody: z.string().optional(),
   featureImage: z.string().optional(), // 特集記事用のAI生成画像
+  recommendedGames: z.array(recommendedGameSchema).optional(), // 特集記事のおすすめゲーム
   game: gameSchema.optional(),
   sourceUrls: sourceUrlsSchema.optional(), // 参照元URL
 });

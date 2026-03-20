@@ -337,6 +337,17 @@
 
 ---
 
+## Phase 11: 特集記事おすすめゲームの充実
+
+### 11.1 おすすめゲームに画像・公式リンクを追加
+- [x] AIプロンプトにおすすめゲーム名のJSON出力を追加（bedrock-client.ts）
+- [x] 生成後にIGDBでカバー画像・公式サイトURLを取得（generate-articles.ts）
+- [x] `recommendedGames` データ型の追加（types, content.config.ts）
+- [x] build-issue.ts で `recommendedGames` をfrontmatterに出力
+- [x] 記事詳細ページで画像・リンク付きカードとして表示
+
+---
+
 ## 残タスク一覧（優先度順）
 
 ### 高優先度（本番運用に必要）

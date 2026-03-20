@@ -118,6 +118,13 @@ export interface FetchResult<T> {
   error?: string;
 }
 
+// 特集記事のおすすめゲーム
+export interface RecommendedGame {
+  title: string;
+  coverImage?: string;
+  officialUrl?: string;
+}
+
 // ゲームカテゴリ（記事生成用）
 export type GameCategory = 'newRelease' | 'indie' | 'feature' | 'classic';
 
