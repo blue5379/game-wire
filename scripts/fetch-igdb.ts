@@ -723,9 +723,26 @@ export async function fetchGameImageAndUrl(
       ? game.cover.url.replace('t_thumb', 't_cover_big').replace('//', 'https://')
       : undefined;
 
-    // category 1 = Official website
+    // category 1 = Official website (IGDB APIでcategoryが返らない場合のフォールバックあり)
     const officialSite = game.websites?.find((w) => w.category === 1);
-    const officialUrl = officialSite?.url;
+    let officialUrl = officialSite?.url;
+
+    // categoryが取得できない場合、URLパターンから公式サイトを推定
+    if (!officialUrl && game.websites?.length) {
+      const nonOfficialPatterns = [
+        'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
+        'youtube.com', 'twitch.tv', 'reddit.com', 'discord.gg', 'discord.com',
+        'store.steampowered.com', 'steampowered.com',
+        'store.playstation.com', 'playstation.com',
+        'nintendo.com', 'xbox.com', 'microsoft.com',
+        'gog.com', 'epicgames.com', 'play.google.com', 'apps.apple.com', 'itunes.apple.com',
+        'wikipedia.org', 'fandom.com', 'wiki',
+      ];
+      const candidate = game.websites.find((w) =>
+        !nonOfficialPatterns.some((p) => w.url.toLowerCase().includes(p))
+      );
+      officialUrl = candidate?.url;
+    }
 
     return { coverImage, officialUrl };
   } catch (error) {
