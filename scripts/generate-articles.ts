@@ -327,38 +327,60 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
 }
 
 /**
+ * おすすめゲームの抽出結果（英語名でIGDB検索、日本語名でh3マッチング）
+ */
+interface ExtractedGame {
+  en: string;
+  ja: string;
+}
+
+/**
  * 特集記事の本文からおすすめゲーム名JSONを抽出し、本文から除去する
  */
-function extractRecommendedGameNames(content: string): { cleanContent: string; gameNames: string[] } {
+function extractRecommendedGameNames(content: string): { cleanContent: string; games: ExtractedGame[] } {
   // 閉じの```がある場合とない場合（parseArticleResponseで除去される）の両方に対応
   const jsonBlockRegex = /```json:recommended_games\s*\n([\s\S]*?)(?:```|$)/;
   const match = content.match(jsonBlockRegex);
 
   if (!match) {
-    return { cleanContent: content, gameNames: [] };
+    return { cleanContent: content, games: [] };
   }
 
   try {
-    const gameNames = JSON.parse(match[1].trim()) as string[];
+    const parsed = JSON.parse(match[1].trim());
     const cleanContent = content.replace(jsonBlockRegex, '').trim();
-    return { cleanContent, gameNames: Array.isArray(gameNames) ? gameNames : [] };
+
+    if (!Array.isArray(parsed)) {
+      return { cleanContent, games: [] };
+    }
+
+    // 新形式: [{en: "...", ja: "..."}] と旧形式: ["..."] の両方に対応
+    const games: ExtractedGame[] = parsed.map((item: string | { en?: string; ja?: string }) => {
+      if (typeof item === 'string') {
+        return { en: item, ja: item };
+      }
+      return { en: item.en || item.ja || '', ja: item.ja || item.en || '' };
+    }).filter((g: ExtractedGame) => g.en || g.ja);
+
+    return { cleanContent, games };
   } catch {
     console.warn('  Failed to parse recommended games JSON');
-    return { cleanContent: content, gameNames: [] };
+    return { cleanContent: content, games: [] };
   }
 }
 
 /**
  * ゲーム名リストからIGDBで画像・公式URLを取得してRecommendedGame[]を構築
+ * 英語名でIGDB検索し、日本語名をタイトルとして使用
  */
-async function enrichRecommendedGames(gameNames: string[]): Promise<RecommendedGame[]> {
+async function enrichRecommendedGames(games: ExtractedGame[]): Promise<RecommendedGame[]> {
   const results: RecommendedGame[] = [];
 
-  for (const name of gameNames) {
-    console.log(`    Enriching recommended game: ${name}`);
-    const igdbResult = await fetchGameImageAndUrl(name);
+  for (const game of games) {
+    console.log(`    Enriching recommended game: ${game.ja} (IGDB: ${game.en})`);
+    const igdbResult = await fetchGameImageAndUrl(game.en);
     results.push({
-      title: name,
+      title: game.ja,
       coverImage: igdbResult?.coverImage,
       officialUrl: igdbResult?.officialUrl,
     });
@@ -402,15 +424,15 @@ async function generateFeatureArticle(
   );
 
   // おすすめゲーム名を抽出し、本文からJSONブロックを除去
-  const { cleanContent: content, gameNames } = extractRecommendedGameNames(rawContent);
-  console.log(`  Extracted ${gameNames.length} recommended game names`);
+  const { cleanContent: content, games: extractedGames } = extractRecommendedGameNames(rawContent);
+  console.log(`  Extracted ${extractedGames.length} recommended game names`);
 
-  // IGDBでおすすめゲームの画像・公式URLを取得
+  // IGDBでおすすめゲームの画像・公式URLを取得（英語名で検索）
   let recommendedGames: RecommendedGame[] | undefined;
-  if (gameNames.length > 0) {
+  if (extractedGames.length > 0) {
     try {
       console.log('  Enriching recommended games with IGDB data...');
-      recommendedGames = await enrichRecommendedGames(gameNames);
+      recommendedGames = await enrichRecommendedGames(extractedGames);
       console.log(`  Enriched ${recommendedGames.length} recommended games`);
     } catch (error) {
       console.warn('  Failed to enrich recommended games:', error);
