@@ -72,6 +72,7 @@ const latestIssue = allIssues.sort(
     opacity: 0;
     animation: fadeInUp 0.5s ease-out forwards;
     animation-delay: var(--animation-delay, 0s);
+    min-width: 0;
   }
 
   /* フィーチャード以外のカードは自然な高さを維持 */
@@ -156,6 +157,7 @@ const latestIssue = allIssues.sort(
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--spacing-lg);
+    overflow: hidden;
   }
 
   /* フィーチャード記事（最初の記事）を大きく表示 */
@@ -167,6 +169,7 @@ const latestIssue = allIssues.sort(
     display: grid;
     grid-template-columns: 1.2fr 1fr;
     gap: 0;
+    min-width: 0;
   }
 
   .articles-grid > .article-wrapper:first-child :global(.cover-image) {
