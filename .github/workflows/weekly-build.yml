@@ -81,16 +81,7 @@ jobs:
       - name: Build Astro site
         run: npm run build
 
-      # 9. Cloudflare Pages プロジェクト作成（存在しない場合）
-      - name: Create Cloudflare Pages project
-        uses: cloudflare/wrangler-action@v3
-        continue-on-error: true
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages project create game-wire --production-branch main
-
-      # 10. Cloudflare Pages にデプロイ
+      # 9. Cloudflare Pages にデプロイ
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
