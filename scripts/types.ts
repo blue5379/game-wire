@@ -89,6 +89,8 @@ export interface GameData {
   coverImage?: string;
   screenshots?: string[];
   summary?: string;
+  igdbRating?: number;
+  igdbRatingCount?: number;
   metascore?: number | null;
   userScore?: number | null;
   steamRank?: number;

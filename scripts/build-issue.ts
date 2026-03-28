@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
+import { saveHistory, createHistoryEntry } from './game-history.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -416,6 +417,29 @@ async function main(): Promise<void> {
   }
   console.log('');
   console.log(`Output: ${issuePath}`);
+
+  // 紹介履歴を更新
+  console.log('');
+  console.log('Updating game history...');
+  const publishDateStr = format(publishDate, 'yyyy-MM-dd');
+  const historyEntries = generatedIssue.articles
+    .filter((a) => a.category !== 'feature' && a.game?.title)
+    .map((a) =>
+      createHistoryEntry(
+        a.game!.title,
+        a.category as 'newRelease' | 'indie' | 'classic',
+        issueNumber,
+        publishDateStr
+      )
+    );
+
+  if (historyEntries.length > 0) {
+    saveHistory(historyEntries);
+    console.log(`Added ${historyEntries.length} entries to history`);
+  } else {
+    console.log('No entries to add to history');
+  }
+
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
 

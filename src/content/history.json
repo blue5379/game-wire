@@ -1,0 +1,726 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "normalizedTitle": "エルダーリング 影の王国",
+      "title": "エルダーリング：影の王国",
+      "category": "newRelease",
+      "issueNumber": 1,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "スーパーマリオ アドベンチャー",
+      "title": "スーパーマリオ アドベンチャー",
+      "category": "newRelease",
+      "issueNumber": 1,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "chrono drift",
+      "title": "Chrono Drift",
+      "category": "indie",
+      "issueNumber": 1,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "moonlit village",
+      "title": "Moonlit Village",
+      "category": "indie",
+      "issueNumber": 1,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "hollow knight",
+      "title": "Hollow Knight",
+      "category": "classic",
+      "issueNumber": 1,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 3,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 3,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 3,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 3,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 4,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 4,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 4,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 4,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 5,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 5,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 5,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 5,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 6,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 6,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 6,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 6,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 7,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "newRelease",
+      "issueNumber": 7,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 7,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "newtown",
+      "title": "newtown",
+      "category": "indie",
+      "issueNumber": 7,
+      "publishDate": "2026-02-14"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 8,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "newRelease",
+      "issueNumber": 8,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 8,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "newtown",
+      "title": "newtown",
+      "category": "indie",
+      "issueNumber": 8,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 9,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 9,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "ウミガリ",
+      "title": "ウミガリ",
+      "category": "indie",
+      "issueNumber": 9,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "newtown",
+      "title": "newtown",
+      "category": "indie",
+      "issueNumber": 9,
+      "publishDate": "2026-02-15"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 10,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 10,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "ポケットモンスター ウインド・ウェーブ",
+      "title": "ポケットモンスター ウインド・ウェーブ",
+      "category": "indie",
+      "issueNumber": 10,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 10,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 11,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 11,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 11,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "#ゲーム",
+      "title": "#ゲーム",
+      "category": "indie",
+      "issueNumber": 11,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 12,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 12,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "ポケットモンスター ウインド・ウェーブ",
+      "title": "ポケットモンスター ウインド・ウェーブ",
+      "category": "indie",
+      "issueNumber": 12,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 12,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 13,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 13,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 13,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "#ゲーム",
+      "title": "#ゲーム",
+      "category": "indie",
+      "issueNumber": 13,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 14,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 14,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 14,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "gta5",
+      "title": "gta5",
+      "category": "indie",
+      "issueNumber": 14,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 15,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 15,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "poppy playtime chapter 5",
+      "title": "poppy playtime chapter 5",
+      "category": "indie",
+      "issueNumber": 15,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "valorant",
+      "title": "valorant",
+      "category": "indie",
+      "issueNumber": 15,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "baldur's gate 3",
+      "title": "Baldur's Gate 3",
+      "category": "classic",
+      "issueNumber": 15,
+      "publishDate": "2026-03-01"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 16,
+      "publishDate": "2026-03-06"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 16,
+      "publishDate": "2026-03-06"
+    },
+    {
+      "normalizedTitle": "ノロイジマ",
+      "title": "ノロイジマ",
+      "category": "indie",
+      "issueNumber": 16,
+      "publishDate": "2026-03-06"
+    },
+    {
+      "normalizedTitle": "新作のver.違い",
+      "title": "新作のver.違い",
+      "category": "indie",
+      "issueNumber": 16,
+      "publishDate": "2026-03-06"
+    },
+    {
+      "normalizedTitle": "grand theft auto vi",
+      "title": "Grand Theft Auto VI",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-03-07"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-03-07"
+    },
+    {
+      "normalizedTitle": "ノロイジマ",
+      "title": "ノロイジマ",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-03-07"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-03-07"
+    },
+    {
+      "normalizedTitle": "red dead redemption 2",
+      "title": "Red Dead Redemption 2",
+      "category": "classic",
+      "issueNumber": 17,
+      "publishDate": "2026-03-07"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 18,
+      "publishDate": "2026-03-08"
+    },
+    {
+      "normalizedTitle": "marathon",
+      "title": "Marathon",
+      "category": "newRelease",
+      "issueNumber": 18,
+      "publishDate": "2026-03-08"
+    },
+    {
+      "normalizedTitle": "ノロイジマ",
+      "title": "ノロイジマ",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-03-08"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-03-08"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 19,
+      "publishDate": "2026-03-13"
+    },
+    {
+      "normalizedTitle": "marathon",
+      "title": "Marathon",
+      "category": "newRelease",
+      "issueNumber": 19,
+      "publishDate": "2026-03-13"
+    },
+    {
+      "normalizedTitle": "マイクラ",
+      "title": "マイクラ",
+      "category": "indie",
+      "issueNumber": 19,
+      "publishDate": "2026-03-13"
+    },
+    {
+      "normalizedTitle": "全部俺じゃねえか",
+      "title": "全部俺じゃねえか",
+      "category": "indie",
+      "issueNumber": 19,
+      "publishDate": "2026-03-13"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 20,
+      "publishDate": "2026-03-20"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 20,
+      "publishDate": "2026-03-20"
+    },
+    {
+      "normalizedTitle": "najia knows the way out!",
+      "title": "najia knows the way out!",
+      "category": "indie",
+      "issueNumber": 20,
+      "publishDate": "2026-03-20"
+    },
+    {
+      "normalizedTitle": "マイクラ",
+      "title": "マイクラ",
+      "category": "indie",
+      "issueNumber": 20,
+      "publishDate": "2026-03-20"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 21,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 21,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "najia knows the way out!",
+      "title": "najia knows the way out!",
+      "category": "indie",
+      "issueNumber": 21,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "left 4 dead creator’s new game",
+      "title": "left 4 dead creator’s new game",
+      "category": "indie",
+      "issueNumber": 21,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 22,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 22,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "najia knows the way out!",
+      "title": "najia knows the way out!",
+      "category": "indie",
+      "issueNumber": 22,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "マイクラ",
+      "title": "マイクラ",
+      "category": "indie",
+      "issueNumber": 22,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 23,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 23,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "left 4 dead creator’s new game",
+      "title": "left 4 dead creator’s new game",
+      "category": "indie",
+      "issueNumber": 23,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "マイクラ",
+      "title": "マイクラ",
+      "category": "indie",
+      "issueNumber": 23,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 24,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 24,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "マイクラ",
+      "title": "マイクラ",
+      "category": "indie",
+      "issueNumber": 24,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "left 4 dead creator’s new game",
+      "title": "left 4 dead creator’s new game",
+      "category": "indie",
+      "issueNumber": 24,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 25,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "everwind",
+      "title": "Everwind",
+      "category": "newRelease",
+      "issueNumber": 25,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "left 4 dead creator’s new game",
+      "title": "left 4 dead creator’s new game",
+      "category": "indie",
+      "issueNumber": 25,
+      "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "マインクラフト",
+      "title": "マインクラフト",
+      "category": "indie",
+      "issueNumber": 25,
+      "publishDate": "2026-03-21"
+    }
+  ]
+}

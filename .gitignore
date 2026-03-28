@@ -45,6 +45,7 @@ screenshots/
 # Development generated content
 src/content/issues-dev/
 public/images/features-dev/
+src/content/history-dev.json
 data/aggregated.json
 data/generated-articles.json
 data/selected-games.json

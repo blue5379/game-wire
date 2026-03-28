@@ -15,6 +15,7 @@ import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { inferGameInfoFromYouTube } from './bedrock-client.js';
+import { getCooldownTitles } from './game-history.js';
 import type {
   SteamData,
   YouTubeData,
@@ -252,6 +253,8 @@ async function aggregateGames(
         game.coverImage = igdb.coverUrl || game.coverImage;
         game.screenshots = igdb.screenshotUrls || game.screenshots;
         game.summary = igdb.summary || game.summary;
+        game.igdbRating = igdb.rating ?? game.igdbRating;
+        game.igdbRatingCount = igdb.ratingCount ?? game.igdbRatingCount;
         if (!game.source.includes('igdb')) {
           game.source.push('igdb');
         }
@@ -279,6 +282,8 @@ async function aggregateGames(
         coverImage: igdb.coverUrl,
         screenshots: igdb.screenshotUrls,
         summary: igdb.summary,
+        igdbRating: igdb.rating,
+        igdbRatingCount: igdb.ratingCount,
         source: ['igdb'],
         sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
       });
@@ -329,6 +334,8 @@ async function aggregateGames(
         game.coverImage = igdbGame.coverUrl || game.coverImage;
         game.screenshots = igdbGame.screenshotUrls || game.screenshots;
         game.summary = igdbGame.summary || game.summary;
+        game.igdbRating = igdbGame.rating ?? game.igdbRating;
+        game.igdbRatingCount = igdbGame.ratingCount ?? game.igdbRatingCount;
         if (!game.source.includes('igdb')) {
           game.source.push('igdb');
         }
@@ -439,6 +446,23 @@ async function aggregateGames(
  * 記事生成用にゲームを選定
  */
 function selectGamesForArticles(games: GameData[]): SelectedGames {
+  const now = new Date();
+
+  // カテゴリ別クールダウン中タイトルを取得
+  const newReleaseCooldown = getCooldownTitles('newRelease', now);
+  const indieCooldown = getCooldownTitles('indie', now);
+  const classicCooldown = getCooldownTitles('classic', now);
+
+  if (newReleaseCooldown.size > 0) {
+    console.log(`  newRelease cooldown: ${[...newReleaseCooldown].join(', ')}`);
+  }
+  if (indieCooldown.size > 0) {
+    console.log(`  indie cooldown: ${[...indieCooldown].join(', ')}`);
+  }
+  if (classicCooldown.size > 0) {
+    console.log(`  classic cooldown: ${[...classicCooldown].join(', ')}`);
+  }
+
   // 大手企業の新作（最近リリースされた、開発会社がある、スコアが高い）
   const recentGames = games
     .filter((g) => {
@@ -449,7 +473,8 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
       return releaseDate > threeMonthsAgo;
     })
     .filter((g) => g.publisher || g.developer)
-    .sort((a, b) => (b.metascore || 0) - (a.metascore || 0));
+    .filter((g) => !newReleaseCooldown.has(g.normalizedTitle))
+    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
 
   const newReleases = recentGames.slice(0, 2);
 
@@ -479,6 +504,7 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
     'hoyoverse',
     'netease',
     'tencent',
+    'mojang',
   ];
 
   const isIndie = (game: GameData): boolean => {
@@ -494,6 +520,7 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
     .filter((g) => !isInvalidGameTitle(g.title)) // 無効なタイトルを除外
     .filter((g) => g.steamRank || g.youtubePopularity)
     .filter((g) => g.coverImage || g.summary) // 最低限の情報があるもの
+    .filter((g) => !indieCooldown.has(g.normalizedTitle))
     .sort(
       (a, b) =>
         (b.youtubePopularity || 0) +
@@ -511,16 +538,17 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
       (g) =>
         g.genres?.some((genre) =>
           ['sports', 'racing', 'simulation'].includes(genre.toLowerCase())
-        ) && g.metascore && g.metascore > 75
+        ) && ((g.metascore && g.metascore > 75) || (g.igdbRating && g.igdbRating >= 75))
     ) || games.find((g) => g.steamPlayers && g.steamPlayers > 50000) || null;
 
   // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い）
   const classicCandidates = games
     .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => g.metascore && g.metascore > 80)
+    .filter((g) => !classicCooldown.has(g.normalizedTitle))
+    .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
     .filter((g) => {
-      // メタスコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
-      if (g.metascore && g.metascore >= 85) return true;
+      // スコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
+      if ((g.metascore && g.metascore >= 85) || (g.igdbRating && g.igdbRating >= 85)) return true;
       // それ以外は Steam/YouTube での人気が必要
       return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
     })
@@ -531,7 +559,7 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
         !indies.some((i) => i.title === g.title) &&
         g.title !== featured?.title
     )
-    .sort((a, b) => (b.metascore || 0) - (a.metascore || 0));
+    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
 
   const classic = classicCandidates[0] || null;
 

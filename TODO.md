@@ -179,6 +179,7 @@
 - [x] デザインカラーの調整（ウォームアイボリーテーマ採用）
 - [ ] ダークモード/ライトモード切り替え（任意）
 - [ ] OGP画像・SNSシェア対応
+- [x] モバイルレスポンシブ修正（横スクロール防止）
 
 ### 8.2 記事内容の改善
 - [x] 記事詳細ページの本文をより充実させる（AI生成コンテンツ表示）
@@ -344,19 +345,25 @@
 - [x] 生成後にIGDBでカバー画像・公式サイトURLを取得（generate-articles.ts）
 - [x] `recommendedGames` データ型の追加（types, content.config.ts）
 - [x] build-issue.ts で `recommendedGames` をfrontmatterに出力
-- [x] 記事詳細ページで画像・リンク付きカードとして表示
+- [x] 記事詳細ページで画像・リンク付きカードとして表示（インライン表示）
+- [x] AIプロンプトで英語/日本語の両方のタイトルをJSON出力するよう変更
+- [x] IGDB検索を英語タイトルで実行するよう修正（generate-articles.ts）
+- [x] ワークフローのGenerate articlesステップにIGDB認証情報を追加
+- [x] IGDB APIのwebsites.categoryが返らない問題にURLパターンベースのフォールバックを追加
+
+---
+
+## Phase 12: レスポンシブ対応修正
+
+- [x] トップページの横スクロール修正（CSSグリッドのmin-width: 0追加）
+- [x] body要素にoverflow-x: hidden追加
+- [x] ArticleCardのmin-width: 0追加
 
 ---
 
 ## 残タスク一覧（優先度順）
 
-### 高優先度（本番運用に必要）
-- [x] ~~GitHub Secrets に `TAVILY_API_KEY` を追加（9.5）~~ ※ワークフロー設定済み、Secrets登録は手動
-- [x] ~~README.md に Tavily API の設定手順を追記（9.5）~~
-
 ### 中優先度（品質向上）
-- [x] OpenCritic API の HTTP 400 エラー対応（2.4）※APIキー必須化に対応、キーなし時はスキップ
-- [x] 特集記事で紹介するゲームの選定ロジック改善（10.3）※プロンプト改善
 - [ ] API 障害時のフォールバック（6.2）
 - [ ] 生成失敗時の通知（GitHub Actions）（6.2）
 - [ ] ログ出力の整備（6.2）
@@ -373,7 +380,7 @@
 
 ---
 
-*最終更新: 2026-03-08 (OpenCritic APIキー対応、特集記事ゲーム選定プロンプト改善)*
+*最終更新: 2026-03-28 (Phase 13完了)*
 
 ---
 
@@ -403,3 +410,99 @@
 - [x] `determineFeatureTheme` 関数を新ロジックに置き換え
 - [x] `generateFeatureArticle` から新関数を呼び出し
 - [x] 動作確認・テスト
+
+---
+
+## Phase 13: ゲーム紹介の重複回避（履歴管理）
+
+毎週同じゲームが紹介されることを防ぐため、紹介済みゲームの履歴を管理し、カテゴリ別のクールダウン期間で選定から除外する。
+
+### 13.0 設計仕様
+
+#### DEV_MODE パターン（既存の慣例に統一）
+
+履歴ファイルも既存リソースと同じ `-dev` サフィックスパターンで開発/本番を分離する。
+
+| リソース | 本番 | 開発 (`DEV_MODE=true`) | git管理 |
+|---------|------|----------------------|---------|
+| 号ファイル | `src/content/issues/` | `src/content/issues-dev/` | 本番のみ |
+| 特集画像 | `public/images/features/` | `public/images/features-dev/` | 本番のみ |
+| **紹介履歴** | **`src/content/history.json`** | **`src/content/history-dev.json`** | **本番のみ** |
+
+- 開発で何度テストしても本番の履歴・選定に影響しない
+- CI (GitHub Actions) は `DEV_MODE` 未設定のため、本番ファイルのみ操作
+
+#### 履歴ファイルスキーマ (`history.json` / `history-dev.json`)
+
+```json
+{
+  "version": 1,
+  "entries": [
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "newRelease",
+      "issueNumber": 24,
+      "publishDate": "2026-03-14"
+    }
+  ]
+}
+```
+
+#### カテゴリ別クールダウン期間
+
+| カテゴリ | クールダウン | 理由 |
+|---------|------------|------|
+| newRelease | 4週 | 新作は入れ替わりが速い |
+| indie | 8週 | 中程度 |
+| classic | 12週 | 名作プールが限られるため長め |
+| feature | 0（なし） | テーマベースで重複しにくい |
+
+#### 処理フロー
+
+```
+[fetch-data.ts] selectGamesForArticles()
+  → history.json (or history-dev.json) を読み込み
+  → カテゴリ別クールダウン期間内のゲームを候補から除外
+  → 通常のスコア順でソート・選定
+  → selected-games.json
+
+[build-issue.ts] main()
+  → issue-XXX.md を生成
+  → history.json (or history-dev.json) に紹介済みゲームを追記
+```
+
+### 13.1 履歴管理モジュールの作成
+
+- [x] `scripts/game-history.ts` の新規作成
+  - [x] `DEV_MODE` によるファイルパス切り替え
+  - [x] `loadHistory()`: 履歴ファイルの読み込み（存在しない場合は空配列）
+  - [x] `saveHistory(newEntries)`: 既存履歴に追記して保存
+  - [x] `getCooldownTitles(category, currentDate)`: カテゴリ別クールダウン中タイトル取得
+  - [x] `HistoryEntry` 型定義
+
+### 13.2 ゲーム選定への組み込み
+
+- [x] `scripts/fetch-data.ts` の `selectGamesForArticles()` を修正
+  - [x] `getCooldownTitles()` でクールダウン中タイトルを取得
+  - [x] newRelease 候補からクールダウン中のゲームを除外
+  - [x] indie 候補からクールダウン中のゲームを除外
+  - [x] classic 候補からクールダウン中のゲームを除外
+
+### 13.3 号生成時の履歴更新
+
+- [x] `scripts/build-issue.ts` の `main()` 末尾に履歴追記処理を追加
+  - [x] 生成した記事からゲームタイトル・カテゴリを抽出
+  - [x] `saveHistory()` で履歴ファイルに追記
+
+### 13.4 既存号からの初期履歴生成（マイグレーション）
+
+- [x] `scripts/migrate-history.ts` の新規作成
+  - [x] `src/content/issues/issue-*.md` のフロントマターからゲーム情報を抽出
+  - [x] `src/content/history.json` を生成
+  - [x] 1回限りの実行で完了
+
+### 13.5 設定ファイルの更新
+
+- [x] `.gitignore` に `src/content/history-dev.json` を追加
+- [x] `.github/workflows/weekly-build.yml` の git add 対象に `src/content/history.json` を追加
