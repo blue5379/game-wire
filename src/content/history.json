@@ -721,6 +721,41 @@
       "category": "indie",
       "issueNumber": 25,
       "publishDate": "2026-03-21"
+    },
+    {
+      "normalizedTitle": "hytale",
+      "title": "Hytale",
+      "category": "newRelease",
+      "issueNumber": 27,
+      "publishDate": "2026-03-28"
+    },
+    {
+      "normalizedTitle": "crimson desert",
+      "title": "Crimson Desert",
+      "category": "newRelease",
+      "issueNumber": 27,
+      "publishDate": "2026-03-28"
+    },
+    {
+      "normalizedTitle": "sharks and minnows",
+      "title": "sharks and minnows",
+      "category": "indie",
+      "issueNumber": 27,
+      "publishDate": "2026-03-28"
+    },
+    {
+      "normalizedTitle": "her trees puzzle dream",
+      "title": "her trees puzzle dream",
+      "category": "indie",
+      "issueNumber": 27,
+      "publishDate": "2026-03-28"
+    },
+    {
+      "normalizedTitle": "death stranding 2 on the beach",
+      "title": "DEATH STRANDING 2: ON THE BEACH",
+      "category": "classic",
+      "issueNumber": 27,
+      "publishDate": "2026-03-28"
     }
   ]
 }
