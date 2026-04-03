@@ -13,7 +13,7 @@ import {
 // Bedrock クライアントの設定
 const BEDROCK_CONFIG = {
   region: process.env.AWS_REGION || 'us-east-1',
-  modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20240620-v1:0',
+  modelId: process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-5-sonnet-20241022-v2:0',
 };
 
 // クライアントインスタンス（シングルトン）

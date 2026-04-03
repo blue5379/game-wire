@@ -264,11 +264,15 @@ function generateMarkdownContent(
     `publishDate: ${dateStr}`,
     `title: "${escapeYamlString(title)}"`,
     `description: "${escapeYamlString(description)}"`,
-    'articles:',
   ];
 
-  for (const article of articles) {
-    frontmatter.push(formatArticleForFrontmatter(article));
+  if (articles.length === 0) {
+    frontmatter.push('articles: []');
+  } else {
+    frontmatter.push('articles:');
+    for (const article of articles) {
+      frontmatter.push(formatArticleForFrontmatter(article));
+    }
   }
 
   frontmatter.push('---');
