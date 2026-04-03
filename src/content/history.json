@@ -756,6 +756,41 @@
       "category": "classic",
       "issueNumber": 27,
       "publishDate": "2026-03-28"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 29,
+      "publishDate": "2026-04-03"
+    },
+    {
+      "normalizedTitle": "raccoin coin pusher roguelike",
+      "title": "RACCOIN: Coin Pusher Roguelike",
+      "category": "newRelease",
+      "issueNumber": 29,
+      "publishDate": "2026-04-03"
+    },
+    {
+      "normalizedTitle": "underward",
+      "title": "underward",
+      "category": "indie",
+      "issueNumber": 29,
+      "publishDate": "2026-04-03"
+    },
+    {
+      "normalizedTitle": "きかんしゃトーマス ソドー島の不思議",
+      "title": "きかんしゃトーマス ソドー島の不思議",
+      "category": "indie",
+      "issueNumber": 29,
+      "publishDate": "2026-04-03"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "classic",
+      "issueNumber": 29,
+      "publishDate": "2026-04-03"
     }
   ]
 }
