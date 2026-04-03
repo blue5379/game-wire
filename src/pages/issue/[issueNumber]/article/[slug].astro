@@ -1,11 +1,53 @@
 ---
 import { getCollection } from 'astro:content';
 import { marked } from 'marked';
+import sanitizeHtml from 'sanitize-html';
 import ArticleLayout from '../../../../layouts/ArticleLayout.astro';
 import IssueNav from '../../../../components/IssueNav.astro';
 import ScreenshotGallery from '../../../../components/ScreenshotGallery.astro';
 import RelatedArticles from '../../../../components/RelatedArticles.astro';
 import SourceLinks from '../../../../components/SourceLinks.astro';
+
+// -----------------------------------------------------------------------
+// セキュリティユーティリティ
+// -----------------------------------------------------------------------
+
+/** HTML属性値をエスケープ（テンプレートリテラルへの直接埋め込み用） */
+function escapeAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** https: / http: のみ許可する URL バリデーション */
+function isSafeUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
+/** AI生成Markdown→HTML のサニタイズ設定（許可タグ・属性の許可リスト） */
+const sanitizeOptions: sanitizeHtml.IOptions = {
+  allowedTags: [
+    'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'li',
+    'strong', 'em', 'blockquote', 'br', 'a', 'code', 'pre',
+    'div', 'img',
+  ],
+  allowedAttributes: {
+    'a': ['href', 'target', 'rel', 'class'],
+    'img': ['src', 'alt', 'class', 'loading'],
+    'div': ['class'],
+  },
+  allowedSchemes: ['https', 'http'],
+  allowProtocolRelative: false,
+};
+
+// -----------------------------------------------------------------------
 
 // 開発サーバーかどうかを判定
 const isDev = import.meta.env.DEV;
@@ -67,29 +109,33 @@ const navHome = {
 let articleContent: string | null = null;
 if (article.articleBody) {
   const result = marked.parse(article.articleBody);
-  articleContent = typeof result === 'string' ? result : await result;
+  let rawHtml = typeof result === 'string' ? result : await result;
 
   // 特集記事: おすすめゲームの画像・リンクをh3見出しの後に挿入
+  // #1対応: URL は isSafeUrl() で検証、属性値は escapeAttr() でエスケープ
   if (article.category === 'feature' && article.recommendedGames?.length > 0) {
     const games = article.recommendedGames as Array<{ title: string; coverImage?: string; officialUrl?: string }>;
     for (const game of games) {
       if (!game.coverImage && !game.officialUrl) continue;
       // h3タグのテキストにゲーム名が含まれる箇所を探して、直後にカードを挿入
       const h3Regex = new RegExp(`(<h3[^>]*>([^<]*${game.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*)</h3>)`);
-      const match = articleContent.match(h3Regex);
+      const match = rawHtml.match(h3Regex);
       if (match) {
         let card = '<div class="inline-game-card">';
-        if (game.coverImage) {
-          card += `<img src="${game.coverImage}" alt="${game.title}" class="inline-game-image" loading="lazy" />`;
+        if (game.coverImage && isSafeUrl(game.coverImage)) {
+          card += `<img src="${escapeAttr(game.coverImage)}" alt="${escapeAttr(game.title)}" class="inline-game-image" loading="lazy" />`;
         }
-        if (game.officialUrl) {
-          card += `<a href="${game.officialUrl}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト →</a>`;
+        if (game.officialUrl && isSafeUrl(game.officialUrl)) {
+          card += `<a href="${escapeAttr(game.officialUrl)}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト →</a>`;
         }
         card += '</div>';
-        articleContent = articleContent.replace(match[0], match[0] + card);
+        rawHtml = rawHtml.replace(match[0], match[0] + card);
       }
     }
   }
+
+  // #2対応: sanitize-html で許可リスト外のタグ・属性・スキームを除去
+  articleContent = sanitizeHtml(rawHtml, sanitizeOptions);
 }
 
 ---

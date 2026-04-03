@@ -162,6 +162,18 @@ function isInvalidSearchQuery(query: string): boolean {
 }
 
 /**
+ * IGDBクエリ文字列に埋め込む検索ワードをサニタイズ
+ * セミコロン（クエリ区切り文字）・バックスラッシュ・制御文字を除去し、100文字に制限する
+ */
+function sanitizeIgdbSearchTerm(term: string): string {
+  return term
+    .replace(/[\x00-\x1F\x7F]/g, '') // 制御文字除去
+    .replace(/[;\\]/g, '')            // セミコロン・バックスラッシュ除去
+    .slice(0, 100)                    // 最大100文字
+    .trim();
+}
+
+/**
  * 検索結果が検索クエリに対して妥当かどうかをチェック
  */
 function isRelevantSearchResult(query: string, resultName: string): boolean {
@@ -272,9 +284,14 @@ export async function searchGameByName(
       return null;
     }
 
-    // 日本語タイトルを英語に変換
-    const searchName = translateToEnglish(name);
+    // 日本語タイトルを英語に変換し、クエリインジェクション対策でサニタイズ
+    const searchName = sanitizeIgdbSearchTerm(translateToEnglish(name));
     console.log(`  IGDB search: "${name}" -> "${searchName}"`);
+
+    if (!searchName || searchName.length < 2) {
+      console.log(`  IGDB search skipped (empty after sanitize): "${name}"`);
+      return null;
+    }
 
     // ゲーム検索
     const query = `
@@ -682,9 +699,9 @@ export async function fetchGameImageAndUrl(
 
   try {
     const accessToken = await getAccessToken(clientId, clientSecret);
-    const searchName = translateToEnglish(gameName);
+    const searchName = sanitizeIgdbSearchTerm(translateToEnglish(gameName));
 
-    if (isInvalidSearchQuery(searchName)) {
+    if (!searchName || searchName.length < 2 || isInvalidSearchQuery(searchName)) {
       return null;
     }
 
