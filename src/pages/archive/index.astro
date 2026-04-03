@@ -1,7 +1,6 @@
 ---
 import { getCollection } from 'astro:content';
 import MagazineLayout from '../../layouts/MagazineLayout.astro';
-import CoverImage from '../../components/CoverImage.astro';
 
 // 開発サーバーかどうかを判定
 const isDev = import.meta.env.DEV;
@@ -33,14 +32,26 @@ function formatDate(date: Date): string {
     {
       sortedIssues.length > 0 ? (
         <section class="issues-grid">
-          {sortedIssues.map((issue) => (
+          {sortedIssues.map((issue) => {
+            const firstImage = issue.data.articles
+              .map((a: any) => a.game?.coverImage || a.coverImage || a.featureImage)
+              .find((img: any) => img);
+            const hue = (issue.data.issueNumber * 47) % 360;
+            return (
             <a href={`/archive/${issue.data.issueNumber}`} class="issue-card">
               <div class="issue-cover">
-                <CoverImage
-                  src={issue.data.coverImage}
-                  alt={`Vol.${issue.data.issueNumber}`}
-                  aspectRatio="4/3"
-                />
+                {firstImage ? (
+                  <div class="issue-cover-img">
+                    <img src={firstImage} alt={`Vol.${issue.data.issueNumber}`} loading="lazy" />
+                  </div>
+                ) : (
+                  <div
+                    class="issue-cover-fallback"
+                    style={`--issue-hue: ${hue}`}
+                  >
+                    <span class="vol-number">Vol.{issue.data.issueNumber}</span>
+                  </div>
+                )}
                 <span class="issue-number">Vol.{issue.data.issueNumber}</span>
               </div>
               <div class="issue-content">
@@ -54,7 +65,8 @@ function formatDate(date: Date): string {
                 </div>
               </div>
             </a>
-          ))}
+            );
+          })}
         </section>
       ) : (
         <section class="no-issues">
@@ -116,8 +128,42 @@ function formatDate(date: Date): string {
     position: relative;
   }
 
-  .issue-cover :global(.cover-image) {
-    border-radius: 0;
+  .issue-cover-img {
+    aspect-ratio: 4/3;
+    overflow: hidden;
+    background: var(--color-accent);
+  }
+
+  .issue-cover-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+    display: block;
+  }
+
+  .issue-card:hover .issue-cover-img img {
+    transform: scale(1.05);
+  }
+
+  .issue-cover-fallback {
+    aspect-ratio: 4/3;
+    background: linear-gradient(
+      135deg,
+      hsl(calc(var(--issue-hue) * 1deg) 55% 18%),
+      hsl(calc(var(--issue-hue) * 1deg) 65% 32%)
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .vol-number {
+    font-family: var(--font-heading);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.2);
+    letter-spacing: -1px;
   }
 
   .issue-number {

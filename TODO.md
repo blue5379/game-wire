@@ -363,24 +363,73 @@
 
 ## 残タスク一覧（優先度順）
 
+### 高優先度（デザイン改善・未着手）
+- [x] **14.5** プレースホルダー画像の品質改善（案A）— `CoverImage.astro` のSVGアイコン・グラデーションを抑制
+- [x] **14.8** 記事本文の絵文字見出しCSS対処 — `generated-content h2` のcolorをprimary→text、font-weight 700追加
+
 ### 中優先度（品質向上）
-- [ ] API 障害時のフォールバック（6.2）
-- [ ] 生成失敗時の通知（GitHub Actions）（6.2）
-- [ ] ログ出力の整備（6.2）
-- [ ] OGP画像・SNSシェア対応（8.1）
+- [x] **14.6** "TODAY'S PICKS" セクション区切り強化 — `index.astro` font-size・letter-spacing・color調整
+- [x] **14.7** フッターのサブタイトルを日本語化 — `Footer.astro` "AI-Powered…" → "AIが届ける、週刊ゲーム情報誌"
+- [ ] **OGP** OGP画像・SNSシェア対応（8.1）
+- [ ] **6.2** API 障害時のフォールバック
+- [ ] **6.2** 生成失敗時の通知（GitHub Actions）
+- [ ] **6.2** ログ出力の整備
 
 ### 低優先度（任意・改善）
-- [ ] OpenCritic APIキーの取得・設定（2.4）※スコア取得に必要、申請先: developers@opencritic.com
-- [ ] 検索結果のキャッシュ機構（9.2）
-- [ ] ダークモード/ライトモード切り替え（8.1）
-- [ ] ローディング状態の表示（8.3）
-- [ ] キーボードナビゲーション対応（8.3）
-- [ ] アクセシビリティ改善（ARIA属性など）（8.3）
-- [ ] カスタムドメイン設定（5.2）
+- [ ] **14.9** ダークモード対応 — `variables.css` に `@media (prefers-color-scheme: dark)` 追加
+- [ ] **14.8** 長期: `generate-articles.ts` のプロンプトから絵文字見出し指定を削除（記事品質向上）
+- [ ] **9.2** 検索結果のキャッシュ機構（Tavily重複検索防止）
+- [ ] **2.4** OpenCritic APIキー取得・設定（申請先: developers@opencritic.com）
+- [ ] **8.3** ローディング状態の表示
+- [ ] **8.3** キーボードナビゲーション対応
+- [ ] **8.3** アクセシビリティ改善（ARIA属性）
+- [ ] **5.2** カスタムドメイン設定
 
 ---
 
-*最終更新: 2026-03-28 (Phase 13完了)*
+*最終更新: 2026-04-03 (Phase 14: 14.1〜14.5・14.8 完了)*
+
+---
+
+## Phase 14: デザイン品質改善
+
+プロレビューに基づくデザイン改善。優先度順に実装。
+
+### 14.1 アーカイブカードの視覚的差別化【HIGH】
+- [x] `archive/index.astro`: issue frontmatterから最初のゲーム画像を取得して表示
+- [x] 画像がない号はVOL.番号を大きく表示したグラフィカルなフォールバック
+- [x] 号ごとにhslカラーが変わる（`issueNumber * 47 % 360`）
+
+### 14.2 記事ページのフルブリードヒーロー【HIGH】
+- [x] `ArticleLayout.astro`: `game.coverImage` がある場合、article-headerを全幅画像背景に
+- [x] ダークグラデーションオーバーレイでテキスト可読性を確保
+- [x] 画像なしの場合は既存グラデーション背景を維持
+
+### 14.3 カテゴリカラーの刷新【MEDIUM】
+- [x] `variables.css`: newRelease `#4fc3f7`→`#0288D1`、indie `#81c784`→`#2E7D32`、feature `#ffb74d`→`#E65100`、classic `#ba68c8`→`#6A1B9A`
+- [x] `CoverImage.astro`: プレースホルダーグラデーションも同色に更新
+
+### 14.4 ヒーロータイポグラフィ強化【MEDIUM】
+- [x] `index.astro`: 号番号をeyebrowとして分離（VOL.N → 小さいキャプション）
+- [x] タイトルを `clamp(2rem, 5vw, 4.5rem)` の流体タイポグラフィに
+- [x] font-weightを500→700に変更
+
+### 14.5 プレースホルダー画像の品質改善（案A）【MEDIUM】
+- [x] `CoverImage.astro`: プレースホルダーを単色アクセント背景+カテゴリカラーの細いボーダーラインに
+- [x] SVGアイコン・グラデーション・ラベルの存在感を抑える（opacity 0.25）
+
+### 14.6 "TODAY'S PICKS" セクション区切り強化【LOW】
+- [x] `index.astro`: font-size 0.625rem→0.75rem、letter-spacing 1px→3px、色をmuted→text
+
+### 14.7 フッターのサブタイトルを日本語化【LOW】
+- [x] `Footer.astro`: "AI-Powered Weekly Gaming Magazine" → "AIが届ける、週刊ゲーム情報誌"
+
+### 14.8 記事本文の絵文字見出しCSS対処【MEDIUM】
+- [x] `[slug].astro`: `.generated-content h2` の color を primary→text、font-weight 700追加
+- [ ] 長期的には `generate-articles.ts` のプロンプトから絵文字指定を削除
+
+### 14.9 ダークモード対応【LOW】
+- [ ] `variables.css`: `@media (prefers-color-scheme: dark)` でカラー変数を上書き
 
 ---
 

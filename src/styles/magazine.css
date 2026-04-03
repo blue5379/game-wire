@@ -162,16 +162,22 @@
 }
 
 .article-content h2 {
-  font-size: var(--font-size-3xl);
+  font-size: var(--font-size-2xl);
   margin-top: var(--spacing-2xl);
   margin-bottom: var(--spacing-md);
-  color: var(--color-primary);
+  padding-bottom: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-border);
+  color: var(--color-text);
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .article-content h3 {
   font-size: var(--font-size-xl);
   margin-top: var(--spacing-xl);
   margin-bottom: var(--spacing-sm);
+  color: var(--color-text);
+  font-weight: 600;
 }
 
 .article-content p {

@@ -29,6 +29,9 @@ interface Props {
 
 const { title, category, summary, game, featureImage, issueNumber, basePath = '' } = Astro.props;
 
+const heroImage = game?.coverImage || featureImage;
+const hasHeroImage = !!heroImage;
+
 const categoryLabels: Record<string, string> = {
   newRelease: '新作紹介',
   indie: 'インディーゲーム',
@@ -37,16 +40,19 @@ const categoryLabels: Record<string, string> = {
 };
 
 const categoryColors: Record<string, string> = {
-  newRelease: '#4fc3f7',
-  indie: '#81c784',
-  feature: '#ffb74d',
-  classic: '#ba68c8',
+  newRelease: '#0288D1',
+  indie: '#2E7D32',
+  feature: '#E65100',
+  classic: '#6A1B9A',
 };
 ---
 
 <BaseLayout title={title}>
   <article class="article">
-    <header class="article-header">
+    <header
+      class:list={['article-header', { 'article-header--hero': hasHeroImage }]}
+      style={hasHeroImage ? `--hero-image: url('${heroImage}')` : ''}
+    >
       <div class="container">
         {
           issueNumber && (
@@ -126,6 +132,7 @@ const categoryColors: Record<string, string> = {
     padding: 0 var(--spacing-md);
   }
 
+  /* デフォルトヘッダー（画像なし） */
   .article-header {
     background: linear-gradient(
       135deg,
@@ -138,7 +145,6 @@ const categoryColors: Record<string, string> = {
     overflow: hidden;
   }
 
-  /* 装飾的な背景パターン */
   .article-header::before {
     content: '';
     position: absolute;
@@ -155,6 +161,51 @@ const categoryColors: Record<string, string> = {
   .article-header .container {
     position: relative;
     z-index: 1;
+  }
+
+  /* フルブリードヒーロー（カバー画像あり） */
+  .article-header--hero {
+    background-image:
+      linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.15) 0%,
+        rgba(0, 0, 0, 0.55) 45%,
+        rgba(0, 0, 0, 0.88) 100%
+      ),
+      var(--hero-image);
+    background-size: cover;
+    background-position: center 20%;
+    padding: var(--spacing-3xl) 0 var(--spacing-xl);
+    min-height: 480px;
+    display: flex;
+    align-items: flex-end;
+  }
+
+  .article-header--hero::before {
+    display: none;
+  }
+
+  .article-header--hero .container {
+    width: 100%;
+  }
+
+  .article-header--hero .back-link {
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .article-header--hero .back-link:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .article-header--hero .article-title {
+    color: #fff;
+    font-size: 2.75rem;
+    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.6);
+  }
+
+  .article-header--hero .article-summary {
+    color: rgba(255, 255, 255, 0.88);
   }
 
   .back-link {
@@ -177,7 +228,7 @@ const categoryColors: Record<string, string> = {
   .category-badge {
     display: inline-block;
     background: var(--category-color);
-    color: var(--color-background);
+    color: #fff;
     padding: var(--spacing-xs) var(--spacing-md);
     border-radius: var(--radius-full);
     font-size: 0.7rem;
@@ -252,6 +303,15 @@ const categoryColors: Record<string, string> = {
 
     .article-header {
       padding: var(--spacing-md) 0 var(--spacing-sm);
+    }
+
+    .article-header--hero {
+      min-height: 320px;
+      padding: var(--spacing-2xl) 0 var(--spacing-lg);
+    }
+
+    .article-header--hero .article-title {
+      font-size: 1.75rem;
     }
 
     .article-title {

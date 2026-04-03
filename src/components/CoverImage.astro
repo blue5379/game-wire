@@ -14,22 +14,22 @@ const hasImage = src && src.trim() !== '';
 // カテゴリ別のプレースホルダー設定
 const placeholderConfig = {
   newRelease: {
-    gradient: 'linear-gradient(135deg, #1a237e 0%, #4fc3f7 100%)',
+    gradient: 'linear-gradient(135deg, #01579B 0%, #0288D1 100%)',
     label: '新作',
     icon: 'gamepad'
   },
   indie: {
-    gradient: 'linear-gradient(135deg, #1b5e20 0%, #81c784 100%)',
+    gradient: 'linear-gradient(135deg, #1B5E20 0%, #2E7D32 100%)',
     label: 'インディー',
     icon: 'star'
   },
   feature: {
-    gradient: 'linear-gradient(135deg, #e65100 0%, #ffb74d 100%)',
+    gradient: 'linear-gradient(135deg, #BF360C 0%, #E65100 100%)',
     label: '特集',
     icon: 'magazine'
   },
   classic: {
-    gradient: 'linear-gradient(135deg, #4a148c 0%, #ba68c8 100%)',
+    gradient: 'linear-gradient(135deg, #4A148C 0%, #6A1B9A 100%)',
     label: '名作',
     icon: 'trophy'
   }
@@ -109,7 +109,20 @@ const config = placeholderConfig[category];
   }
 
   .cover-image--placeholder {
+    background: var(--color-accent);
+    position: relative;
+  }
+
+  /* カテゴリカラーの細いアクセントライン */
+  .cover-image--placeholder::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
     background: var(--placeholder-gradient);
+    pointer-events: none;
   }
 
   .placeholder {
@@ -122,69 +135,30 @@ const config = placeholderConfig[category];
   }
 
   .placeholder-pattern {
-    position: absolute;
-    inset: 0;
-    background-image:
-      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
-      repeating-linear-gradient(
-        45deg,
-        transparent,
-        transparent 10px,
-        rgba(255,255,255,0.03) 10px,
-        rgba(255,255,255,0.03) 20px
-      );
-    pointer-events: none;
+    display: none;
   }
 
   .placeholder-content {
-    position: relative;
-    z-index: 1;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: var(--spacing-md);
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-muted);
     text-align: center;
     padding: var(--spacing-lg);
+    opacity: 0.25;
   }
 
   .placeholder-content svg {
-    width: 64px;
-    height: 64px;
-    opacity: 0.8;
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    width: 48px;
+    height: 48px;
   }
 
   .placeholder-label {
-    font-size: 0.875rem;
-    font-weight: 700;
+    font-size: 0.75rem;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    background: rgba(0, 0, 0, 0.3);
-    padding: var(--spacing-xs) var(--spacing-md);
-    border-radius: var(--radius-full);
-    backdrop-filter: blur(4px);
-  }
-
-  /* ホバー時のエフェクト */
-  .cover-image--placeholder:hover .placeholder-content svg {
-    transform: scale(1.1);
-    transition: transform 0.3s ease;
-  }
-
-  .cover-image--placeholder:hover .placeholder-pattern {
-    background-image:
-      radial-gradient(circle at 20% 80%, rgba(255,255,255,0.15) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.15) 0%, transparent 50%),
-      repeating-linear-gradient(
-        45deg,
-        transparent,
-        transparent 10px,
-        rgba(255,255,255,0.05) 10px,
-        rgba(255,255,255,0.05) 20px
-      );
-    transition: background-image 0.3s ease;
   }
 </style>

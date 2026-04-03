@@ -20,10 +20,10 @@
   --color-score-low: #ef5350;
 
   /* カテゴリカラー */
-  --color-category-new-release: #4fc3f7;
-  --color-category-indie: #81c784;
-  --color-category-feature: #ffb74d;
-  --color-category-classic: #ba68c8;
+  --color-category-new-release: #0288D1;
+  --color-category-indie: #2E7D32;
+  --color-category-feature: #E65100;
+  --color-category-classic: #6A1B9A;
 
   /* フォント */
   --font-heading: 'Noto Serif JP', serif;
