@@ -22,9 +22,9 @@ const IMAGE_CONFIG = {
   region: process.env.AWS_REGION || 'ap-northeast-1',
   // Amazon Nova Canvas を使用
   modelId: 'amazon.nova-canvas-v1:0',
-  // 16:9 アスペクト比
-  width: 1280,
-  height: 720,
+  // ヒーロー画像に合わせた横長比率（約 3.5:1）
+  width: 1792,
+  height: 512,
   cfgScale: 8.0,
   quality: 'standard' as const,
   numberOfImages: 1,
