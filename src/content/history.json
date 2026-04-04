@@ -861,6 +861,41 @@
       "category": "classic",
       "issueNumber": 31,
       "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "zero g mmo",
+      "title": "Zero-G MMO",
+      "category": "newRelease",
+      "issueNumber": 32,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "cairn",
+      "title": "Cairn",
+      "category": "newRelease",
+      "issueNumber": 32,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "slay the spire ii",
+      "title": "Slay the Spire II",
+      "category": "indie",
+      "issueNumber": 32,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "indie",
+      "issueNumber": 32,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "dig island",
+      "title": "Dig Island",
+      "category": "classic",
+      "issueNumber": 32,
+      "publishDate": "2026-04-04"
     }
   ]
 }
