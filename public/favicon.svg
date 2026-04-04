@@ -12,17 +12,17 @@
   </defs>
   <!-- Background -->
   <rect width="100" height="100" rx="16" fill="url(#nv)"/>
-  <!-- Red band -->
-  <rect x="0" y="28" width="100" height="44" fill="url(#rd)"/>
+  <!-- Red band (taller for larger central logo) -->
+  <rect x="0" y="18" width="100" height="64" fill="url(#rd)"/>
   <!-- Gold separator lines -->
-  <rect x="0" y="27" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
-  <rect x="0" y="71.5" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
+  <rect x="0" y="17" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
+  <rect x="0" y="82" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
   <!-- 新時代の (gold, top) -->
-  <text x="50" y="21" font-size="8" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#c8a84b" letter-spacing="2">新時代の</text>
+  <text x="50" y="12" font-size="8" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#c8a84b" letter-spacing="2">新時代の</text>
   <!-- 週刊 -->
-  <text x="50" y="52" font-size="13" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="4">週刊</text>
+  <text x="50" y="52" font-size="19" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="5">週刊</text>
   <!-- GAME WIRE -->
-  <text x="50" y="65" font-size="10" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#ffffffcc" letter-spacing="2">GAME WIRE</text>
+  <text x="50" y="70" font-size="13" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#ffffffcc" letter-spacing="1">GAME WIRE</text>
   <!-- ゲーム情報誌 (white, bottom) -->
-  <text x="50" y="89" font-size="7.5" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="500" text-anchor="middle" fill="#ffffff" letter-spacing="2" opacity="0.9">ゲーム情報誌</text>
+  <text x="50" y="94" font-size="7.5" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="500" text-anchor="middle" fill="#ffffff" letter-spacing="2" opacity="0.9">ゲーム情報誌</text>
 </svg>
