@@ -18,9 +18,9 @@ import MagazineLayout from '../layouts/MagazineLayout.astro';
       <section class="about-section">
         <h2>Game Wireとは</h2>
         <p>
-          Game Wireは、最新のゲーム情報をAIが自動収集・編集して毎週日曜日に発行するWebマガジンです。
-          Steam Charts、YouTube、IGDB、Metacriticなど複数の情報源からデータを収集し、
-          Amazon Bedrock上のClaudeが記事を生成しています。
+          Game Wireは、最新のゲーム情報をAIが自動収集・編集して毎週土曜日に発行するWebマガジンです。
+          Steam Charts、YouTube、IGDBなど複数の情報源からデータを収集し、
+          AIが記事を生成しています。
         </p>
       </section>
 
@@ -29,7 +29,7 @@ import MagazineLayout from '../layouts/MagazineLayout.astro';
         <p>各号には以下のコンテンツが含まれます：</p>
         <ul class="content-list">
           <li>
-            <strong>大手企業の新作紹介</strong>
+            <strong>新作紹介</strong>
             <span>もうすぐ発売、または発売されたばかりの注目タイトルを紹介</span>
           </li>
           <li>
@@ -48,28 +48,6 @@ import MagazineLayout from '../layouts/MagazineLayout.astro';
       </section>
 
       <section class="about-section">
-        <h2>情報源</h2>
-        <div class="sources-grid">
-          <div class="source-card">
-            <h3>Steam Charts</h3>
-            <p>売上ランキング・同時接続数など、定量的な人気指標を取得</p>
-          </div>
-          <div class="source-card">
-            <h3>YouTube Data API</h3>
-            <p>ゲーム系トレンド動画から話題性・拡散状況を分析</p>
-          </div>
-          <div class="source-card">
-            <h3>IGDB</h3>
-            <p>ゲームタイトルの正規化、ジャンル、カバー画像などのメタ情報を補完</p>
-          </div>
-          <div class="source-card">
-            <h3>Metacritic</h3>
-            <p>メタスコアによる評価情報を取得</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="about-section">
         <h2>対応プラットフォーム</h2>
         <div class="platforms-list">
           <span class="platform-badge">Nintendo Switch</span>
@@ -78,18 +56,6 @@ import MagazineLayout from '../layouts/MagazineLayout.astro';
           <span class="platform-badge">PC (Steam)</span>
           <span class="platform-badge">iOS / Android</span>
         </div>
-      </section>
-
-      <section class="about-section">
-        <h2>技術スタック</h2>
-        <p>本サイトは以下の技術で構築されています：</p>
-        <ul class="tech-list">
-          <li><strong>Astro</strong> - 静的サイト生成フレームワーク</li>
-          <li><strong>TypeScript</strong> - 型安全な開発</li>
-          <li><strong>Amazon Bedrock (Claude)</strong> - AI記事生成</li>
-          <li><strong>Cloudflare Pages</strong> - ホスティング</li>
-          <li><strong>GitHub Actions</strong> - CI/CD自動化</li>
-        </ul>
       </section>
 
       <section class="about-section disclaimer">

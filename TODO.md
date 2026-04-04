@@ -423,9 +423,9 @@
 
 ### 18.4 コミット & デプロイ
 
-- [ ] 変更をコミット・プッシュ（`Reset all past issues and history for official launch`）
-- [ ] Cloudflare Pages デプロイ完了を確認
-- [ ] 本番サイトが「準備中」状態になっていることを確認
+- [x] 変更をコミット・プッシュ（`Reset all past issues and history for official launch`）
+- [x] Cloudflare Pages デプロイ完了を確認
+- [x] 本番サイトが「準備中」状態になっていることを確認
 
 ---
 
