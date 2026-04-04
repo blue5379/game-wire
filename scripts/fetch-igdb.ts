@@ -607,6 +607,98 @@ async function fetchClassicGames(
 }
 
 /**
+ * インディーゲームを取得（過去3ヶ月以内・全プラットフォーム対象）
+ */
+async function fetchIndieGames(
+  clientId: string,
+  accessToken: string
+): Promise<IGDBGame[]> {
+  try {
+    const threeMonthsAgo = Math.floor(
+      (Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000
+    );
+
+    const query = `
+      fields name, slug, summary, genres.name, platforms.name,
+             first_release_date, involved_companies.company.name,
+             involved_companies.developer, involved_companies.publisher,
+             cover.url, screenshots.url, rating, rating_count, hypes;
+      where first_release_date > ${threeMonthsAgo} & rating_count > 5;
+      sort hypes desc;
+      limit 50;
+    `;
+
+    interface IGDBRawGame {
+      id: number;
+      name: string;
+      slug: string;
+      summary?: string;
+      genres?: { name: string }[];
+      platforms?: { name: string }[];
+      first_release_date?: number;
+      involved_companies?: {
+        company: { name: string };
+        developer: boolean;
+        publisher: boolean;
+      }[];
+      cover?: { url: string };
+      screenshots?: { url: string }[];
+      rating?: number;
+      rating_count?: number;
+    }
+
+    const games = await igdbRequest<IGDBRawGame>(
+      'games',
+      query,
+      clientId,
+      accessToken
+    );
+
+    return games.map((game) => {
+      let developer: string | undefined;
+      let publisher: string | undefined;
+
+      if (game.involved_companies) {
+        for (const ic of game.involved_companies) {
+          if (ic.developer && !developer) developer = ic.company.name;
+          if (ic.publisher && !publisher) publisher = ic.company.name;
+        }
+      }
+
+      const formatImageUrl = (url?: string): string | undefined => {
+        if (!url) return undefined;
+        return url.replace('t_thumb', 't_cover_big').replace('//', 'https://');
+      };
+
+      return {
+        id: game.id,
+        name: game.name,
+        slug: game.slug,
+        summary: game.summary,
+        genres: game.genres?.map((g) => g.name),
+        platforms: game.platforms?.map((p) => p.name),
+        releaseDate: game.first_release_date
+          ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
+          : undefined,
+        developer,
+        publisher,
+        coverUrl: formatImageUrl(game.cover?.url),
+        screenshotUrls: game.screenshots
+          ?.map((s) =>
+            s.url?.replace('t_thumb', 't_screenshot_big').replace('//', 'https://')
+          )
+          .filter((url): url is string => url !== undefined),
+        rating: game.rating,
+        ratingCount: game.rating_count,
+      };
+    });
+  } catch (error) {
+    console.error('Failed to fetch indie games:', error);
+    return [];
+  }
+}
+
+/**
  * IGDB データ取得のメインエントリーポイント
  */
 export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
@@ -632,17 +724,18 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
     // アクセストークン取得
     const accessToken = await getAccessToken(clientId, clientSecret);
 
-    // 最近の人気ゲームと名作を並列取得
-    const [recentGames, classicGames] = await Promise.all([
+    // 最近の人気ゲーム・名作・インディーゲームを並列取得
+    const [recentGames, classicGames, indieGames] = await Promise.all([
       fetchRecentPopularGames(clientId, accessToken),
       fetchClassicGames(clientId, accessToken),
+      fetchIndieGames(clientId, accessToken),
     ]);
 
     // 重複除去してマージ
     const seenIds = new Set<number>();
     const allGames: IGDBGame[] = [];
 
-    for (const game of [...recentGames, ...classicGames]) {
+    for (const game of [...recentGames, ...classicGames, ...indieGames]) {
       if (!seenIds.has(game.id)) {
         allGames.push(game);
         seenIds.add(game.id);

@@ -363,8 +363,15 @@
 
 ## 残タスク一覧（優先度順）
 
-### セキュリティ（中〜低）
-- [x] **#5** IGDBクエリのセミコロン等サニタイズ（`fetch-igdb.ts:281, 701`）
+### 最優先：品質・信頼性（Phase 16）
+- [x] **16.1** IGDBインディー専用クエリ追加（`fetch-igdb.ts`）
+- [x] **16.2** YouTubeによる新規タイトル発見を廃止（`fetch-data.ts:221-232`）
+- [x] **16.3** AI推測ステップの削除（`fetch-data.ts`, `bedrock-client.ts`）
+- [x] **16.4** `isIndie()` 判定強化（IndieタグOR大手除外）（`fetch-data.ts`）
+- [x] **16.5** インディー選定フィルタ・スコアリング更新（`fetch-data.ts`）
+- [ ] **16.6** 動作確認・コミット・本番デプロイ
+
+### セキュリティ（低）
 - [ ] **#6** 画像URLのHTTPS強制変換（`fetch-igdb.ts:345-355`）
 - [ ] **#7** AWS認証情報の未設定チェック強化（`bedrock-client.ts:33-34`）
 - [ ] **#8** GitHub Actions SHAピン留め（`weekly-build.yml`）
@@ -376,8 +383,8 @@
 - [ ] **6.2** ログ出力の整備
 
 ### 低優先度（任意）
-- [ ] **14.9** ダークモード対応
-- [ ] **14.8** プロンプトから絵文字見出し指定を削除（長期）
+- [ ] **14.9** ダークモード対応（`variables.css`）
+- [ ] **14.8** プロンプトから絵文字見出し指定を削除（`generate-articles.ts`）
 - [ ] **9.2** Tavily検索結果のキャッシュ機構
 - [ ] **2.4** OpenCritic APIキー取得・設定
 - [ ] **8.3** ローディング状態の表示
@@ -387,7 +394,7 @@
 
 ---
 
-*最終更新: 2026-04-03 (Phase 15 #1〜#4 完了)*
+*最終更新: 2026-04-04 (Phase 16 追加)*
 
 ---
 
@@ -661,3 +668,80 @@
 
 - [x] `.gitignore` に `src/content/history-dev.json` を追加
 - [x] `.github/workflows/weekly-build.yml` の git add 対象に `src/content/history.json` を追加
+
+---
+
+## Phase 16: インディーゲーム記事化プロセスの再設計
+
+本番30号で「にじさんじ/叶」（VTuber）がインディーゲームとして誤認識・記事化された問題への対応。
+YouTubeを新規タイトル発見源として使う設計を廃止し、実在確認済みゲームのみを候補とする。
+
+### 16.0 確定仕様
+
+| 論点 | 決定内容 |
+|------|---------|
+| 実在確認 | Steam または IGDB 登録済みのゲームのみを候補とする |
+| YouTube役割 | 実在確認済みゲームへの人気スコア加算のみ（新規タイトル発見は廃止） |
+| インディー判定 | IGDBの`Indie`タグあり OR 大手パブリッシャー以外（どちらか一方を満たせばOK） |
+| プラットフォーム | 全プラットフォーム対象（Switch/PS/Xbox/PC/モバイル）。プラットフォーム指定なし・コード側フィルタ |
+| スコアリング | YouTube人気を主軸、IGDBレーティングをサブシグナルとして追加 |
+
+### 16.1 IGDBインディー専用クエリの追加 (`scripts/fetch-igdb.ts`)
+
+- [ ] `fetchIndieGames()` 関数を新規追加
+  - クエリ条件: `first_release_date > 3ヶ月前 & rating_count > 5`
+  - ソート: `hypes desc`
+  - 取得件数: 50件
+  - プラットフォーム指定なし（全対象）
+- [ ] `fetchIGDBData()` から `fetchIndieGames()` を呼び出し、結果をマージして返す
+
+### 16.2 YouTubeによる新規タイトル発見の廃止 (`scripts/fetch-data.ts`)
+
+- [ ] `aggregateGames()` 内のYouTubeパターンB（行221-232）を削除
+  ```typescript
+  // 削除対象
+  if (!matched && viewCount > 100000) {
+    gameMap.set(normalized, { source: ['youtube'], ... });
+  }
+  ```
+- [ ] YouTubeはパターンA（既存ゲームへの `youtubePopularity` 加算）のみ残す
+
+### 16.3 AI推測ステップの削除 (`scripts/fetch-data.ts`)
+
+- [ ] YouTube単独ゲームがなくなるため `inferGameInfoFromYouTube()` の呼び出しブロックを削除
+- [ ] `bedrock-client.ts` の `inferGameInfoFromYouTube()` 関数・`gameInfoInferencePrompt` も削除
+
+### 16.4 インディー判定の強化 (`scripts/fetch-data.ts`)
+
+- [ ] `isIndie()` 関数を更新（IGDBのIndieタグ OR 大手パブリッシャー以外）
+  ```typescript
+  // 変更後
+  const hasIndieTag = game.genres?.some(g => g.toLowerCase() === 'indie') ?? false;
+  const isNotLargePublisher = !largePublishers.some(p => publisher.includes(p) || developer.includes(p));
+  return hasIndieTag || isNotLargePublisher;
+  ```
+
+### 16.5 インディー候補選定フィルタとスコアリングの更新 (`scripts/fetch-data.ts`)
+
+- [ ] 選定フィルタを更新（Steam または IGDB 登録済みを必須条件に）
+  ```typescript
+  // 変更前: .filter((g) => g.steamRank || g.youtubePopularity)
+  // 変更後:
+  .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
+  ```
+- [ ] スコアリングにIGDBレーティングを追加（YouTube主軸は維持）
+  ```typescript
+  // YouTube(0〜1,000,000) > steamRank換算(0〜999) > igdbRating×10(0〜1,000)
+  const score = (g) =>
+    (g.youtubePopularity || 0)
+    + (g.steamRank ? 1000 - g.steamRank : 0)
+    + (g.igdbRating || 0) * 10;
+  ```
+
+### 16.6 動作確認
+
+- [x] `npm run build-issue:dev` を実行
+- [x] VTuber名などの非ゲームコンテンツが候補に出ないことをログで確認
+- [x] Switch/PS専用インディーゲームが候補に入ることを確認（IGDB 44→79件）
+- [x] 記事6本が正常生成されることを確認
+- [ ] コミット＆プッシュ → 本番デプロイ

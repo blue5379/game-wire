@@ -14,7 +14,6 @@ import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
-import { inferGameInfoFromYouTube } from './bedrock-client.js';
 import { getCooldownTitles } from './game-history.js';
 import type {
   SteamData,
@@ -175,7 +174,7 @@ async function aggregateGames(
 
   // YouTube から抽出されたゲームタイトルを追加
   const youtubeTitleCounts = new Map<string, number>();
-  // YouTube動画情報をゲームタイトルごとに保持（AI推測用）
+  // YouTube動画情報をゲームタイトルごとに保持（URL収集用）
   const youtubeVideosByGame = new Map<string, YouTubeVideo[]>();
 
   for (const video of youtubeData.trendingVideos) {
@@ -218,18 +217,7 @@ async function aggregateGames(
       }
     }
 
-    if (!matched && viewCount > 100000) {
-      // 視聴回数が多いものだけ追加
-      gameMap.set(normalized, {
-        title: normalized, // 後で正式名称に置き換え
-        normalizedTitle: normalized,
-        genres: [],
-        platforms: [],
-        youtubePopularity: viewCount,
-        source: ['youtube'],
-        sourceUrls: { youtube: youtubeUrls },
-      });
-    }
+    // パターンBを廃止: 未確認タイトルは追加しない
   }
 
   // IGDB データでエンリッチ
@@ -373,71 +361,6 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
-  // YouTubeからのゲームでIGDBで情報が取得できなかったものに対してAI推測を適用
-  console.log('Inferring game info from YouTube data using AI...');
-  let inferredCount = 0;
-  for (const game of gameMap.values()) {
-    // 無効なタイトルはAI推測をスキップ
-    if (isInvalidGameTitle(game.title)) {
-      continue;
-    }
-
-    // YouTubeがソースで、ジャンルが空のゲームが対象
-    if (
-      game.source.includes('youtube') &&
-      !game.source.includes('igdb') &&
-      game.genres.length === 0
-    ) {
-      // このゲームに関連するYouTube動画を取得
-      const videos = youtubeVideosByGame.get(game.normalizedTitle);
-      if (videos && videos.length > 0) {
-        console.log(`  Inferring info for: ${game.title}`);
-        const videoTitles = videos.map((v) => v.title);
-        const videoDescriptions = videos.map((v) => v.description);
-
-        try {
-          const inferred = await inferGameInfoFromYouTube(
-            videoTitles,
-            videoDescriptions
-          );
-
-          if (inferred) {
-            const inferredFields: string[] = [];
-
-            if (inferred.genres && inferred.genres.length > 0) {
-              game.genres = inferred.genres;
-              inferredFields.push('genres');
-            }
-            if (inferred.platforms && inferred.platforms.length > 0) {
-              game.platforms = inferred.platforms;
-              inferredFields.push('platforms');
-            }
-            if (inferred.developer) {
-              game.developer = inferred.developer;
-              inferredFields.push('developer');
-            }
-            if (inferred.summary && !game.summary) {
-              game.summary = inferred.summary;
-              inferredFields.push('summary');
-            }
-
-            if (inferredFields.length > 0) {
-              game.isAiInferred = true;
-              game.aiInferredFields = inferredFields;
-              inferredCount++;
-              console.log(`    Inferred: ${inferredFields.join(', ')}`);
-            }
-          }
-        } catch (error) {
-          console.warn(`    Failed to infer info for ${game.title}:`, error);
-        }
-
-        // レート制限対策
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-    }
-  }
-  console.log(`Inferred ${inferredCount} games with AI from YouTube data`);
 
   return Array.from(gameMap.values());
 }
@@ -508,25 +431,27 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
   ];
 
   const isIndie = (game: GameData): boolean => {
+    const hasIndieTag = game.genres?.some((g) => g.toLowerCase() === 'indie') ?? false;
     const publisher = (game.publisher || '').toLowerCase();
     const developer = (game.developer || '').toLowerCase();
-    return !largePublishers.some(
+    const isNotLargePublisher = !largePublishers.some(
       (p) => publisher.includes(p) || developer.includes(p)
     );
+    return hasIndieTag || isNotLargePublisher;
   };
+
+  const indieScore = (g: GameData): number =>
+    (g.youtubePopularity || 0) +
+    (g.steamRank ? 1000 - g.steamRank : 0) +
+    (g.igdbRating || 0) * 10;
 
   const indieGames = games
     .filter(isIndie)
-    .filter((g) => !isInvalidGameTitle(g.title)) // 無効なタイトルを除外
-    .filter((g) => g.steamRank || g.youtubePopularity)
-    .filter((g) => g.coverImage || g.summary) // 最低限の情報があるもの
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => g.source.includes('steam') || g.source.includes('igdb')) // 実在確認済みのみ
+    .filter((g) => g.coverImage || g.summary)
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
-    .sort(
-      (a, b) =>
-        (b.youtubePopularity || 0) +
-        (b.steamRank ? 1000 - b.steamRank : 0) -
-        ((a.youtubePopularity || 0) + (a.steamRank ? 1000 - a.steamRank : 0))
-    );
+    .sort((a, b) => indieScore(b) - indieScore(a));
 
   const indies = indieGames
     .filter((g) => !newReleases.some((nr) => nr.title === g.title))
