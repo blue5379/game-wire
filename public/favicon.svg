@@ -20,9 +20,11 @@
   <!-- 新時代の (gold, top) -->
   <text x="50" y="12" font-size="8" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#c8a84b" letter-spacing="2">新時代の</text>
   <!-- 週刊 -->
-  <text x="50" y="52" font-size="19" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="5">週刊</text>
-  <!-- GAME WIRE -->
-  <text x="50" y="70" font-size="13" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#ffffffcc" letter-spacing="1">GAME WIRE</text>
+  <text x="50" y="44" font-size="19" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="5">週刊</text>
+  <!-- GAME WIRE (縦1.7倍スケール) -->
+  <g transform="translate(0,68) scale(1,1.7) translate(0,-68)">
+    <text x="50" y="68" font-size="13" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#ffffffcc" letter-spacing="1">GAME WIRE</text>
+  </g>
   <!-- ゲーム情報誌 (white, bottom) -->
   <text x="50" y="94" font-size="7.5" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="500" text-anchor="middle" fill="#ffffff" letter-spacing="2" opacity="0.9">ゲーム情報誌</text>
 </svg>
