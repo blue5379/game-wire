@@ -1,4 +1,40 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "newRelease",
+      "issueNumber": 1,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "slay the spire ii",
+      "title": "Slay the Spire II",
+      "category": "newRelease",
+      "issueNumber": 1,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "raccoin coin pusher roguelike",
+      "title": "RACCOIN: Coin Pusher Roguelike",
+      "category": "indie",
+      "issueNumber": 1,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "my ghost roommate",
+      "title": "My Ghost Roommate",
+      "category": "indie",
+      "issueNumber": 1,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "dig island",
+      "title": "Dig Island",
+      "category": "classic",
+      "issueNumber": 1,
+      "publishDate": "2026-04-04"
+    }
+  ]
 }
