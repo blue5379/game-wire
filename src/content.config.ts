@@ -54,4 +54,5 @@ const issuesCollection = defineCollection({
 
 export const collections = {
   issues: issuesCollection,
+  'issues-dev': issuesCollection,
 };

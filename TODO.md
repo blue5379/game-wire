@@ -366,7 +366,7 @@
 ### セキュリティ（低）
 - [ ] **#6** 画像URLのHTTPS強制変換（`fetch-igdb.ts:345-355`）
 - [ ] **#7** AWS認証情報の未設定チェック強化（`bedrock-client.ts:33-34`）
-- [ ] **#8** GitHub Actions SHAピン留め（`weekly-build.yml`）
+- [ ] **#8** GitHub Actions SHAピン留め＋Node.js 24移行（`weekly-build.yml`）
 
 ### 品質向上
 - [ ] **OGP** OGP画像・SNSシェア対応
@@ -396,6 +396,36 @@
 ---
 
 *最終更新: 2026-04-04 (Phase 17 完了)*
+
+---
+
+## Phase 18: 正式サービス公開準備（創刊リセット）
+
+仕様が充足したため正式公開。過去の開発時生成記事・履歴を全削除し、次回自動生成（毎週土曜 AM 6:00 JST）を創刊号（第1号）とする。
+
+### 18.1 既存問題の修正
+- [x] `src/content.config.ts` に `issues-dev` コレクション定義を追加（開発ビルドエラー対策）
+
+### 18.2 過去記事・履歴の削除
+
+- [x] `src/content/issues/`（本番記事 32ファイル）を `git rm -r` で削除
+- [x] `src/content/issues-dev/`（開発用記事 13ファイル）を削除（gitignore対象のため rm -rf）
+- [x] `public/images/features/`（本番特集画像）を `git rm -r` で削除
+- [x] `public/images/features-dev/`（開発用特集画像）を削除（gitignore対象のため rm -rf）
+- [x] `src/content/history-dev.json` を削除（gitignore対象のため rm）
+- [x] `src/content/history.json` の内容を `{ "version": 1, "entries": [] }` にリセット
+
+### 18.3 動作確認
+
+- [x] `npm run build` でビルドエラーなしを確認
+- [x] トップページが「準備中」UIで表示されることを確認（issue 0件でフォールバック動作）
+- [x] アーカイブページが「バックナンバーはありません」表示であることを確認（issue 0件で空表示）
+
+### 18.4 コミット & デプロイ
+
+- [ ] 変更をコミット・プッシュ（`Reset all past issues and history for official launch`）
+- [ ] Cloudflare Pages デプロイ完了を確認
+- [ ] 本番サイトが「準備中」状態になっていることを確認
 
 ---
 
@@ -499,9 +529,13 @@
 
 **問題**: `actions/checkout@v4` 等のタグは書き換え可能で、サプライチェーン攻撃で悪意あるコードが混入するリスク。
 
+**追記**: 2026-04-04 の本番ビルドで以下の警告が発生。SHAピン留め対応時にあわせて対処すること。
+> Node.js 20 actions are deprecated. `actions/checkout@v4`, `actions/setup-node@v4`, `cloudflare/wrangler-action@v3` が Node.js 20 で動作している。2026年6月2日から Node.js 24 がデフォルトになり、2026年9月16日に Node.js 20 はランナーから削除される。
+
 **対応**:
 - [ ] 各 `uses:` をコミットSHAでピン留め（例: `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2`）
 - [ ] `cloudflare/wrangler-action@v3` も同様にSHAで固定
+- [ ] 各 Action の Node.js 24 対応バージョンを確認・アップグレード（期限: 2026年6月2日）
 
 ---
 
