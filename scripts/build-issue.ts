@@ -149,6 +149,9 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
   if (article.game) {
     lines.push(`    game:`);
     lines.push(`      title: "${escapeYamlString(article.game.title)}"`);
+    if (article.game.titleJa) {
+      lines.push(`      titleJa: "${escapeYamlString(article.game.titleJa)}"`);
+    }
 
     if (article.game.genre && article.game.genre.length > 0) {
       lines.push(`      genre:`);

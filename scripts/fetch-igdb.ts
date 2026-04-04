@@ -98,6 +98,15 @@ const COUNTRY_CODES: Record<number, string> = {
 };
 
 /**
+ * game_localizations から日本語タイトルを抽出（region=3: Japan）
+ */
+function extractJapaneseLocalization(
+  localizations?: { name: string; region?: number }[]
+): string | undefined {
+  return localizations?.find((loc) => loc.region === 3)?.name;
+}
+
+/**
  * 国コードを国名に変換
  */
 function getCountryName(countryCode: number | undefined): string | undefined {
@@ -300,7 +309,8 @@ export async function searchGameByName(
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count,
-             involved_companies.company.country;
+             involved_companies.company.country,
+             game_localizations.name, game_localizations.region;
       limit 1;
     `;
 
@@ -321,6 +331,7 @@ export async function searchGameByName(
       screenshots?: { url: string }[];
       rating?: number;
       rating_count?: number;
+      game_localizations?: { name: string; region?: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -379,6 +390,7 @@ export async function searchGameByName(
     return {
       id: game.id,
       name: game.name,
+      titleJa: extractJapaneseLocalization(game.game_localizations),
       slug: game.slug,
       summary: game.summary,
       genres: game.genres?.map((g) => g.name),
@@ -441,7 +453,8 @@ async function fetchRecentPopularGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
-             cover.url, screenshots.url, rating, rating_count, hypes;
+             cover.url, screenshots.url, rating, rating_count, hypes,
+             game_localizations.name, game_localizations.region;
       where first_release_date > ${threeMonthsAgo} & hypes > 5;
       sort hypes desc;
       limit 20;
@@ -464,6 +477,7 @@ async function fetchRecentPopularGames(
       screenshots?: { url: string }[];
       rating?: number;
       rating_count?: number;
+      game_localizations?: { name: string; region?: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -492,6 +506,7 @@ async function fetchRecentPopularGames(
       return {
         id: game.id,
         name: game.name,
+        titleJa: extractJapaneseLocalization(game.game_localizations),
         slug: game.slug,
         summary: game.summary,
         genres: game.genres?.map((g) => g.name),
@@ -530,7 +545,8 @@ async function fetchClassicGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
-             cover.url, screenshots.url, rating, rating_count, hypes;
+             cover.url, screenshots.url, rating, rating_count, hypes,
+             game_localizations.name, game_localizations.region;
       where hypes > 100;
       sort hypes desc;
       limit 30;
@@ -553,6 +569,7 @@ async function fetchClassicGames(
       screenshots?: { url: string }[];
       rating?: number;
       rating_count?: number;
+      game_localizations?: { name: string; region?: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -581,6 +598,7 @@ async function fetchClassicGames(
       return {
         id: game.id,
         name: game.name,
+        titleJa: extractJapaneseLocalization(game.game_localizations),
         slug: game.slug,
         summary: game.summary,
         genres: game.genres?.map((g) => g.name),
@@ -622,7 +640,8 @@ async function fetchIndieGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
-             cover.url, screenshots.url, rating, rating_count, hypes;
+             cover.url, screenshots.url, rating, rating_count, hypes,
+             game_localizations.name, game_localizations.region;
       where first_release_date > ${threeMonthsAgo} & rating_count > 5;
       sort hypes desc;
       limit 50;
@@ -645,6 +664,7 @@ async function fetchIndieGames(
       screenshots?: { url: string }[];
       rating?: number;
       rating_count?: number;
+      game_localizations?: { name: string; region?: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -673,6 +693,7 @@ async function fetchIndieGames(
       return {
         id: game.id,
         name: game.name,
+        titleJa: extractJapaneseLocalization(game.game_localizations),
         slug: game.slug,
         summary: game.summary,
         genres: game.genres?.map((g) => g.name),

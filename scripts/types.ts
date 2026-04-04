@@ -41,6 +41,7 @@ export interface YouTubeData {
 export interface IGDBGame {
   id: number;
   name: string;
+  titleJa?: string; // 日本語タイトル（game_localizations region=5から取得）
   slug: string;
   summary?: string;
   genres?: string[];
@@ -77,6 +78,7 @@ export interface MetacriticData {
 // 統合されたゲームデータ
 export interface GameData {
   title: string;
+  titleJa?: string; // 日本語タイトル（game_localizations region=3から取得）
   normalizedTitle: string;
   steamAppId?: number;
   igdbSlug?: string; // IGDB用スラッグ

@@ -4,6 +4,7 @@ import GameInfo from '../components/GameInfo.astro';
 
 interface GameInfoType {
   title: string;
+  titleJa?: string;
   genre?: string[];
   platforms?: string[];
   releaseDate?: string;
@@ -78,6 +79,7 @@ const categoryColors: Record<string, string> = {
           <div class="container">
             <GameInfo
               title={game.title}
+              titleJa={game.titleJa}
               genre={game.genre}
               platforms={game.platforms}
               releaseDate={game.releaseDate}

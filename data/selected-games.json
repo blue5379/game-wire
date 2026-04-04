@@ -1,7 +1,76 @@
 {
   "newReleases": [
     {
-      "title": "Slay the Spire 2",
+      "title": "Cairn",
+      "normalizedTitle": "cairn",
+      "igdbSlug": "cairn--3",
+      "genres": [
+        "Simulator",
+        "Adventure",
+        "Indie"
+      ],
+      "platforms": [
+        "PC (Microsoft Windows)",
+        "PlayStation 5"
+      ],
+      "releaseDate": "2026-01-29",
+      "developer": "The Game Bakers",
+      "publisher": "The Game Bakers",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cobdqk.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvv.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvw.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvy.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvx.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvz.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw0.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw1.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw2.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw3.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw4.jpg"
+      ],
+      "summary": "Reach a summit never climbed before in this survival-climber from the creators of Furi and Haven. Climb anywhere and plan your route carefully, managing pitons and resources to survive the unforgiving Mount Kami. Discover what Aava is willing to sacrifice to achieve the ascent of a lifetime.",
+      "igdbRating": 83.12118116474805,
+      "igdbRatingCount": 21,
+      "source": [
+        "igdb"
+      ],
+      "sourceUrls": {
+        "igdb": "https://www.igdb.com/games/cairn--3"
+      }
+    },
+    {
+      "title": "Team Fortress 2 Classified",
+      "normalizedTitle": "team fortress 2 classified",
+      "igdbSlug": "team-fortress-2-classified",
+      "genres": [
+        "Shooter"
+      ],
+      "platforms": [
+        "PC (Microsoft Windows)",
+        "Mac"
+      ],
+      "releaseDate": "2026-01-30",
+      "developer": "Eminoma",
+      "publisher": "Eminoma",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cob89p.jpg",
+      "screenshots": [
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scbqx4.jpg"
+      ],
+      "summary": "Team Fortress 2 Classified is a new Team Fortress 2 experience built on its original inspirations and tone. Updated with refreshed visuals, new gamemodes and maps, new weapons, new teams, and a new class.",
+      "igdbRating": 82.85714285714286,
+      "igdbRatingCount": 8,
+      "source": [
+        "igdb"
+      ],
+      "sourceUrls": {
+        "igdb": "https://www.igdb.com/games/team-fortress-2-classified"
+      }
+    }
+  ],
+  "indies": [
+    {
+      "title": "Slay the Spire II",
       "normalizedTitle": "slay the spire 2",
       "steamAppId": 2868840,
       "genres": [
@@ -14,7 +83,7 @@
         "PC (Microsoft Windows)",
         "Mac"
       ],
-      "steamRank": 2,
+      "steamRank": 1,
       "source": [
         "steam",
         "igdb"
@@ -27,7 +96,6 @@
       "releaseDate": "2026-03-05",
       "developer": "Mega Crit Games",
       "publisher": "Mega Crit Games",
-      "developerCountry": "アメリカ",
       "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co82c5.jpg",
       "screenshots": [
         "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupb.jpg",
@@ -37,138 +105,109 @@
         "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup8.jpg",
         "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup9.jpg"
       ],
-      "summary": "The iconic roguelike deckbuilder returns!\n\nCraft a unique deck, encounter bizarre creatures, and discover relics of immense power in Slay the Spire 2 - featuring new characters, cards, events, alternate acts, and more!"
+      "summary": "The iconic roguelike deckbuilder returns!\n\nCraft a unique deck, encounter bizarre creatures, and discover relics of immense power in Slay the Spire 2 - featuring new characters, cards, events, alternate acts, and more!",
+      "igdbRating": 97.62319587287823,
+      "igdbRatingCount": 16
     },
     {
-      "title": "Everwind",
-      "normalizedTitle": "everwind",
-      "steamAppId": 2253100,
+      "title": "My Ghost Roommate",
+      "normalizedTitle": "my ghost roommate",
+      "steamAppId": 4035570,
       "genres": [
-        "Role-playing (RPG)",
-        "Simulator",
-        "Adventure",
-        "Indie"
+        "Indie",
+        "Visual Novel"
       ],
       "platforms": [
         "PC (Microsoft Windows)"
       ],
-      "steamRank": 4,
+      "steamRank": 13,
       "source": [
         "steam",
         "igdb"
       ],
       "sourceUrls": {
-        "steam": "https://store.steampowered.com/app/2253100",
-        "igdb": "https://www.igdb.com/games/everwind"
+        "steam": "https://store.steampowered.com/app/4035570",
+        "igdb": "https://www.igdb.com/games/help-my-new-roommate-is-a-hung-goth-futanari-ghost"
       },
-      "igdbSlug": "everwind",
-      "releaseDate": "2026-03-17",
-      "developer": "Enjoy Studio",
-      "publisher": "Bohemia Interactive",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/coal66.jpg",
+      "igdbSlug": "help-my-new-roommate-is-a-hung-goth-futanari-ghost",
+      "releaseDate": "2025-06-19",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/coaiuq.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnv.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnx.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnr.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrns.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrny.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro0.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnz.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnu.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro1.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnt.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczro2.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sczrnw.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz9ya.jpg"
       ],
-      "summary": "Everwind is a novel take on RPG and Sandbox Survival genre in First-Person-Perspective. Embark on the adventure with your friends - Build a base on a flying island-ship, gather resources, craft, loot, and fight while you rise above the clouds to uncover the mysteries of this world!"
+      "summary": "Dive into a hilarious and heartwarming paranormal romance in \"HELP! My New Roommate is a Hung Goth Futanari Ghost!\" This engaging visual novel combines romantic comedy with a dash of horror and a whole lot of supernatural spice. Prepare for a sexy and spooky adventure unlike any other!"
     }
   ],
-  "indies": [
-    {
-      "title": "マイクラ",
-      "normalizedTitle": "マイクラ",
-      "genres": [
-        "Simulator",
-        "Adventure",
-        "Arcade"
-      ],
-      "platforms": [
-        "Amazon Fire TV",
-        "Xbox Series X|S",
-        "PlayStation 4",
-        "Linux",
-        "Gear VR",
-        "Windows Phone",
-        "Android",
-        "PC (Microsoft Windows)",
-        "iOS",
-        "PlayStation 5",
-        "Mac",
-        "Xbox One",
-        "Nintendo Switch"
-      ],
-      "youtubePopularity": 3425007,
-      "source": [
-        "youtube",
-        "igdb"
-      ],
-      "sourceUrls": {
-        "youtube": [
-          "https://www.youtube.com/watch?v=kxLj2vSfmn0",
-          "https://www.youtube.com/watch?v=Sr3FwJNJX8g"
-        ],
-        "igdb": "https://www.igdb.com/games/minecraft--1"
-      },
-      "igdbSlug": "minecraft--1",
-      "releaseDate": "2016-12-19",
-      "developer": "Mojang Studios",
-      "publisher": "Mojang Studios",
-      "developerCountry": "スウェーデン",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8fu7.jpg",
-      "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2m.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2k.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2n.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2p.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2o.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2s.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc8d2q.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10jch.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc10jcg.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1fr.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1fs.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz1ft.jpg"
-      ],
-      "summary": "Minecraft focuses on allowing the player to explore, interact with, and modify a dynamically-generated map made of one-cubic-meter-sized blocks. In addition to blocks, the environment features plants, mobs, and items. Some activities in the game include mining for ore, fighting hostile mobs, and crafting new blocks and tools by gathering various resources found in the game. The game's open-ended model allows players to create structures, creations, and artwork on various multiplayer servers or their single-player maps. Other features include redstone circuits for logic computations and remote actions, minecarts and tracks, and a mysterious underworld called the Nether. A designated but completely optional goal of the game is to travel to a dimension called the End, and defeat the ender dragon."
+  "featured": {
+    "title": "FiveM",
+    "normalizedTitle": "fivem",
+    "steamAppId": 2676230,
+    "genres": [
+      "Shooter",
+      "Racing",
+      "Role-playing (RPG)"
+    ],
+    "platforms": [
+      "Linux",
+      "PC (Microsoft Windows)",
+      "Mac"
+    ],
+    "source": [
+      "steam",
+      "igdb"
+    ],
+    "sourceUrls": {
+      "steam": "https://store.steampowered.com/app/2676230",
+      "igdb": "https://www.igdb.com/games/fivem"
     },
-    {
-      "title": "najia knows the way out!",
-      "normalizedTitle": "najia knows the way out!",
-      "genres": [
-        "Puzzle",
-        "Adventure"
-      ],
-      "platforms": [
-        "PC (Steam)"
-      ],
-      "youtubePopularity": 2764239,
-      "source": [
-        "youtube"
-      ],
-      "sourceUrls": {
-        "youtube": [
-          "https://www.youtube.com/watch?v=U0q2JTWmqro"
-        ]
-      },
-      "summary": "時間を操作するパズルとメイズを特徴とするゲーム。プレイヤーはNajiaという助手の助けを借りて、Finxの作り出す複雑な謎を解き明かしていく。",
-      "isAiInferred": true,
-      "aiInferredFields": [
-        "genres",
-        "platforms",
-        "summary"
-      ]
+    "igdbSlug": "fivem",
+    "releaseDate": "2015-05-05",
+    "developer": "Cfx.re",
+    "publisher": "Cfx.re",
+    "developerCountry": "アメリカ",
+    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8xf0.jpg",
+    "summary": "FiveM is a modification for Grand Theft Auto V enabling you to play multiplayer on customized dedicated servers, powered by Cfx.re.",
+    "igdbRating": 96.15384615384615,
+    "igdbRatingCount": 13
+  },
+  "classic": {
+    "title": "Mewgenics",
+    "normalizedTitle": "mewgenics",
+    "igdbSlug": "mewgenics",
+    "genres": [
+      "Role-playing (RPG)",
+      "Simulator",
+      "Turn-based strategy (TBS)",
+      "Adventure",
+      "Indie"
+    ],
+    "platforms": [
+      "PC (Microsoft Windows)"
+    ],
+    "releaseDate": "2026-02-10",
+    "developer": "Edmund McMillen",
+    "publisher": "Edmund McMillen",
+    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9n5k.jpg",
+    "screenshots": [
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozv.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozw.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozx.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozy.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozz.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p00.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p01.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p02.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p03.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p04.jpg"
+    ],
+    "summary": "From the creator of The Binding of Isaac, Super Meat Boy and The End is Nigh comes... Mewgenics! A game where you hoard, breed, train and set cats out on epic adventures through a sprawling world of complete chaos.\nLevel up your team as you venture further and further from your home, collect unique items, defeat epic bosses, gain mutations and return home so you you can breed and further your bloodline, in this turn based legacy roguelike draft sim about cats!",
+    "igdbRating": 99.03304500035193,
+    "igdbRatingCount": 24,
+    "source": [
+      "igdb"
+    ],
+    "sourceUrls": {
+      "igdb": "https://www.igdb.com/games/mewgenics"
     }
-  ],
-  "featured": null,
-  "classic": null
+  }
 }

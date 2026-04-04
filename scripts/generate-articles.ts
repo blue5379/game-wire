@@ -77,6 +77,7 @@ export interface GeneratedArticle {
   sourceUrls?: SourceUrls; // 参照元URL
   game?: {
     title: string;
+    titleJa?: string;
     genre: string[];
     platforms: string[];
     releaseDate?: string;
@@ -200,6 +201,7 @@ async function generateNewReleaseArticle(
     'newRelease',
     {
       title: game.title,
+      titleJa: game.titleJa,
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
@@ -230,6 +232,7 @@ async function generateNewReleaseArticle(
     sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
+      titleJa: game.titleJa,
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
@@ -276,6 +279,7 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
     'indie',
     {
       title: game.title,
+      titleJa: game.titleJa,
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
@@ -310,6 +314,7 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
     sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
+      titleJa: game.titleJa,
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
@@ -500,6 +505,7 @@ async function generateClassicArticle(
     'classic',
     {
       title: game.title,
+      titleJa: game.titleJa,
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
@@ -530,6 +536,7 @@ async function generateClassicArticle(
     sourceUrls: game.sourceUrls,
     game: {
       title: game.title,
+      titleJa: game.titleJa,
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,

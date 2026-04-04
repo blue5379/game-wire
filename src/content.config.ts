@@ -2,6 +2,7 @@ import { defineCollection, z } from 'astro:content';
 
 const gameSchema = z.object({
   title: z.string(),
+  titleJa: z.string().optional(),
   genre: z.array(z.string()).optional(),
   platforms: z.array(z.string()).optional(),
   releaseDate: z.string().optional(),

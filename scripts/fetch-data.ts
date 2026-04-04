@@ -231,6 +231,7 @@ async function aggregateGames(
       if (isSameGame(key, normalized)) {
         // IGDB データで補完
         game.title = igdb.name; // 正式名称に更新
+        game.titleJa = igdb.titleJa || game.titleJa;
         game.igdbSlug = igdb.slug || game.igdbSlug;
         game.genres = igdb.genres || game.genres;
         game.platforms = igdb.platforms || game.platforms;
@@ -259,6 +260,7 @@ async function aggregateGames(
     if (!matched) {
       gameMap.set(normalized, {
         title: igdb.name,
+        titleJa: igdb.titleJa,
         normalizedTitle: normalized,
         igdbSlug: igdb.slug,
         genres: igdb.genres || [],
@@ -312,6 +314,7 @@ async function aggregateGames(
     if (!game.coverImage || game.genres.length === 0) {
       const igdbGame = await enrichGameWithIGDB(game.title);
       if (igdbGame) {
+        game.titleJa = igdbGame.titleJa || game.titleJa;
         game.igdbSlug = igdbGame.slug || game.igdbSlug;
         game.genres = igdbGame.genres || game.genres;
         game.platforms = igdbGame.platforms || game.platforms;

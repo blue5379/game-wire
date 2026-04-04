@@ -334,6 +334,7 @@ export function buildUserMessage(
   category: 'newRelease' | 'indie' | 'feature' | 'classic',
   gameInfo: {
     title: string;
+    titleJa?: string;
     genres?: string[];
     platforms?: string[];
     releaseDate?: string;
@@ -349,6 +350,9 @@ export function buildUserMessage(
 
   lines.push(`【ゲーム情報】`);
   lines.push(`タイトル: ${gameInfo.title}`);
+  if (gameInfo.titleJa) {
+    lines.push(`日本語タイトル: ${gameInfo.titleJa}`);
+  }
 
   if (gameInfo.genres && gameInfo.genres.length > 0) {
     lines.push(`ジャンル: ${gameInfo.genres.join(', ')}`);
