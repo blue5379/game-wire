@@ -1,4 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" rx="10" fill="#1a1a2e"/>
-  <text x="50" y="65" font-size="50" text-anchor="middle" fill="#e94560">G</text>
+  <defs>
+    <linearGradient id="nv" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0e1628"/>
+      <stop offset="100%" stop-color="#1a2540"/>
+    </linearGradient>
+    <linearGradient id="rd" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#a8001e"/>
+      <stop offset="50%" stop-color="#d4002a"/>
+      <stop offset="100%" stop-color="#a8001e"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="100" height="100" rx="16" fill="url(#nv)"/>
+  <!-- Red band -->
+  <rect x="0" y="28" width="100" height="44" fill="url(#rd)"/>
+  <!-- Gold separator lines -->
+  <rect x="0" y="27" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
+  <rect x="0" y="71.5" width="100" height="1.5" fill="#c8a84b" opacity="0.8"/>
+  <!-- 新時代の (gold, top) -->
+  <text x="50" y="21" font-size="8" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#c8a84b" letter-spacing="2">新時代の</text>
+  <!-- 週刊 -->
+  <text x="50" y="52" font-size="13" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="700" text-anchor="middle" fill="#ffffff" letter-spacing="4">週刊</text>
+  <!-- GAME WIRE -->
+  <text x="50" y="65" font-size="10" font-family="Georgia,serif" font-weight="700" text-anchor="middle" fill="#ffffffcc" letter-spacing="2">GAME WIRE</text>
+  <!-- ゲーム情報誌 (white, bottom) -->
+  <text x="50" y="89" font-size="7.5" font-family="'Hiragino Mincho ProN','Noto Serif JP',serif" font-weight="500" text-anchor="middle" fill="#ffffff" letter-spacing="2" opacity="0.9">ゲーム情報誌</text>
 </svg>
