@@ -16,9 +16,9 @@ const HISTORY_PATH = DEV_MODE
 
 // カテゴリ別クールダウン期間（週）
 const COOLDOWN_WEEKS: Record<string, number> = {
-  newRelease: 4,
-  indie: 8,
-  classic: 12,
+  newRelease: 17, // 約4ヶ月
+  indie: 35,      // 約8ヶ月
+  classic: 52,    // 約12ヶ月
   feature: 0,
 };
 
