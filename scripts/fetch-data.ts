@@ -15,6 +15,7 @@ import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
+import { isBlockedAdultGame } from './adult-blocklist.js';
 import type {
   SteamData,
   YouTubeData,
@@ -120,6 +121,10 @@ async function aggregateGames(
   // Steam Top Sellers を追加
   for (let i = 0; i < steamData.topSellers.length; i++) {
     const steam = steamData.topSellers[i];
+    if (isBlockedAdultGame(steam.name)) {
+      console.log(`  [Blocklist] Skipping adult game: "${steam.name}"`);
+      continue;
+    }
     const normalized = normalizeTitle(steam.name);
     const steamUrl = `https://store.steampowered.com/app/${steam.appId}`;
 
@@ -148,6 +153,10 @@ async function aggregateGames(
 
   // Steam Top Played を追加
   for (const steam of steamData.topPlayed) {
+    if (isBlockedAdultGame(steam.name)) {
+      console.log(`  [Blocklist] Skipping adult game: "${steam.name}"`);
+      continue;
+    }
     const normalized = normalizeTitle(steam.name);
     const steamUrl = `https://store.steampowered.com/app/${steam.appId}`;
 
@@ -222,6 +231,10 @@ async function aggregateGames(
 
   // IGDB データでエンリッチ
   for (const igdb of igdbData.games) {
+    if (isBlockedAdultGame(igdb.name)) {
+      console.log(`  [Blocklist] Skipping adult game: "${igdb.name}"`);
+      continue;
+    }
     const normalized = normalizeTitle(igdb.name);
     const igdbUrl = igdb.slug ? `https://www.igdb.com/games/${igdb.slug}` : undefined;
 

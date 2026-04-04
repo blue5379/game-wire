@@ -33,7 +33,8 @@ function formatDate(date: Date): string {
       sortedIssues.length > 0 ? (
         <section class="issues-grid">
           {sortedIssues.map((issue) => {
-            const firstImage = issue.data.articles
+            const visibleArticles = issue.data.articles.filter((a: any) => !a.hidden);
+            const firstImage = visibleArticles
               .map((a: any) => a.game?.coverImage || a.coverImage || a.featureImage)
               .find((img: any) => img);
             const hue = (issue.data.issueNumber * 47) % 360;
@@ -61,7 +62,7 @@ function formatDate(date: Date): string {
                 </time>
                 <p class="issue-description">{issue.data.description}</p>
                 <div class="issue-meta">
-                  <span class="article-count">{issue.data.articles.length} 記事</span>
+                  <span class="article-count">{visibleArticles.length} 記事</span>
                 </div>
               </div>
             </a>

@@ -34,6 +34,7 @@ const articleSchema = z.object({
   title: z.string(),
   category: z.enum(['newRelease', 'indie', 'feature', 'classic']),
   summary: z.string(),
+  hidden: z.boolean().optional().default(false),
   articleBody: z.string().optional(),
   featureImage: z.string().optional(), // 特集記事用のAI生成画像
   recommendedGames: z.array(recommendedGameSchema).optional(), // 特集記事のおすすめゲーム

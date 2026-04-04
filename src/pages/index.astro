@@ -32,7 +32,7 @@ const latestIssue = allIssues.sort(
           </section>
 
           <section class="articles-grid">
-            {latestIssue.data.articles.map((article, index) => (
+            {latestIssue.data.articles.filter((a: any) => !a.hidden).map((article: any, index: number) => (
               <>
                 {index === 1 && (
                   <div class="section-label" aria-hidden="true">

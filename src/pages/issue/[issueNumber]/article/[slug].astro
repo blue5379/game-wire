@@ -59,17 +59,20 @@ export async function getStaticPaths() {
   const issues = await getCollection(collectionName);
 
   const paths = issues.flatMap((issue) =>
-    issue.data.articles.map((article, index) => ({
-      params: {
-        issueNumber: String(issue.data.issueNumber),
-        slug: String(index),
-      },
-      props: {
-        issue,
-        article,
-        articleIndex: index,
-      },
-    }))
+    issue.data.articles
+      .map((article: any, index: number) => ({ article, index }))
+      .filter(({ article }: { article: any }) => !article.hidden)
+      .map(({ article, index }: { article: any; index: number }) => ({
+        params: {
+          issueNumber: String(issue.data.issueNumber),
+          slug: String(index),
+        },
+        props: {
+          issue,
+          article,
+          articleIndex: index,
+        },
+      }))
   );
 
   return paths;

@@ -48,16 +48,19 @@ function formatDate(date: Date): string {
 
     <section class="articles-grid">
       {
-        issue.data.articles.map((article, index) => (
-          <ArticleCard
-            href={`/issue/${issue.data.issueNumber}/article/${index}`}
-            title={article.title}
-            category={article.category}
-            summary={article.summary}
-            coverImage={article.coverImage}
-            game={article.game}
-          />
-        ))
+        issue.data.articles
+          .map((article: any, index: number) => ({ article, index }))
+          .filter(({ article }: { article: any }) => !article.hidden)
+          .map(({ article, index }: { article: any; index: number }) => (
+            <ArticleCard
+              href={`/issue/${issue.data.issueNumber}/article/${index}`}
+              title={article.title}
+              category={article.category}
+              summary={article.summary}
+              coverImage={article.coverImage}
+              game={article.game}
+            />
+          ))
       }
     </section>
 

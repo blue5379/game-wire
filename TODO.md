@@ -395,7 +395,7 @@
 
 ---
 
-*最終更新: 2026-04-04 (Phase 17 完了)*
+*最終更新: 2026-04-05 (Phase 19 追加)*
 
 ---
 
@@ -703,6 +703,34 @@
 
 - [x] `.gitignore` に `src/content/history-dev.json` を追加
 - [x] `.github/workflows/weekly-build.yml` の git add 対象に `src/content/history.json` を追加
+
+---
+
+## Phase 19: 成人向けゲーム除外フィルタ
+
+本番環境で成人向けゲーム「My Ghost Roommate」がインディーゲームとして紹介された問題への対応。
+3層フィルタ（IGDB テーマフィルタ・Steam content_descriptors・AI スクリーニング）と事後非表示機能を実装する。
+
+### 19.1 スクリプト側フィルタ（自動除外）
+
+- [x] `scripts/adult-blocklist.ts` 新規作成（既知タイトルのブロックリスト）
+- [x] `scripts/fetch-igdb.ts`: 3クエリに `& themes != (37)` を追加（IGDB の Erotic テーマを除外）
+- [x] `scripts/fetch-steam.ts`: `getAppName()` → `getAppDetails()` に拡張、`content_descriptors.ids` に 1/2/3 を含む場合はスキップ
+- [x] `scripts/types.ts`: `SteamGame` に `isAdultContent?: boolean` を追加
+- [x] `scripts/fetch-data.ts`: `aggregateGames()` でブロックリストフィルタを適用
+- [x] `scripts/generate-articles.ts`: 記事生成前に Bedrock で成人向け判定を行う AI スクリーニングを追加
+
+### 19.2 フロントエンド側（事後非表示）
+
+- [x] `src/content.config.ts`: `articleSchema` に `hidden: z.boolean().optional().default(false)` を追加
+- [x] `src/pages/index.astro`: `articles.filter(a => !a.hidden)` を適用
+- [x] `src/pages/archive/index.astro`: 記事数カウント・カバー画像取得どちらも hidden 除外
+- [x] `src/pages/archive/[issue].astro`: `articles.filter(a => !a.hidden)` を適用
+- [x] `src/pages/issue/[issueNumber]/article/[slug].astro`: `getStaticPaths()` で hidden 除外
+
+### 19.3 ドキュメント
+
+- [x] `README.md`: 問題記事の非表示運用フローを追記
 
 ---
 

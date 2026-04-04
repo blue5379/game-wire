@@ -11,6 +11,7 @@ export interface SteamGame {
   peakPlayers?: number;
   priceFormatted?: string;
   discount?: number;
+  isAdultContent?: boolean;
 }
 
 export interface SteamData {

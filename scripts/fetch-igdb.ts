@@ -455,7 +455,7 @@ async function fetchRecentPopularGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region;
-      where first_release_date > ${threeMonthsAgo} & hypes > 5;
+      where first_release_date > ${threeMonthsAgo} & hypes > 5 & themes != (37);
       sort hypes desc;
       limit 20;
     `;
@@ -547,7 +547,7 @@ async function fetchClassicGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region;
-      where hypes > 100;
+      where hypes > 100 & themes != (37);
       sort hypes desc;
       limit 30;
     `;
@@ -642,7 +642,7 @@ async function fetchIndieGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region;
-      where first_release_date > ${threeMonthsAgo} & rating_count > 5;
+      where first_release_date > ${threeMonthsAgo} & rating_count > 5 & themes != (37);
       sort hypes desc;
       limit 50;
     `;

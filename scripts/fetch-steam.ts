@@ -55,6 +55,13 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
     // Featured categories から top_sellers を探す
     if (data.top_sellers?.items) {
       for (const item of data.top_sellers.items.slice(0, 20)) {
+        // appdetails で成人向けコンテンツかチェック
+        const { isAdultContent } = await getAppDetails(item.id);
+        if (isAdultContent) {
+          console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         topSellers.push({
           appId: item.id,
           name: item.name,
@@ -63,6 +70,7 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
             : '無料',
           discount: item.discount_percent || 0,
         });
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
@@ -73,18 +81,32 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
   }
 }
 
+// Steam content_descriptors IDs that indicate adult/sexual content
+// 1: Some Nudity or Sexual Content
+// 2: Frequent Nudity or Sexual Content
+// 3: Adult Only Sexual Content
+const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
+
 /**
- * Steam公式APIからゲーム名を取得
+ * Steam公式APIからゲーム詳細（名前・成人向けフラグ）を取得
  */
-async function getAppName(appId: number): Promise<string | null> {
+async function getAppDetails(appId: number): Promise<{ name: string | null; isAdultContent: boolean }> {
   try {
     const response = await fetch(
       `${STEAM_STORE_API}/appdetails?appids=${appId}&cc=jp&l=japanese`
     );
     const data = await response.json();
-    return data[appId]?.data?.name || null;
+    const appData = data[appId]?.data;
+    if (!appData) return { name: null, isAdultContent: false };
+
+    const descriptorIds: number[] = appData.content_descriptors?.ids ?? [];
+    const isAdultContent = descriptorIds.some((id) =>
+      ADULT_CONTENT_DESCRIPTOR_IDS.includes(id)
+    );
+
+    return { name: appData.name || null, isAdultContent };
   } catch {
-    return null;
+    return { name: null, isAdultContent: false };
   }
 }
 
@@ -101,15 +123,19 @@ async function fetchTopPlayed(): Promise<SteamGame[]> {
 
     // 上位20件を取得
     for (const item of ranks.slice(0, 20)) {
-      // ゲーム名を取得（レート制限対策で少し待機）
-      const name = await getAppName(item.appid);
+      // ゲーム名と成人向けフラグを取得（レート制限対策で少し待機）
+      const { name, isAdultContent } = await getAppDetails(item.appid);
       if (name) {
-        topPlayed.push({
-          appId: item.appid,
-          name,
-          rank: item.rank,
-          peakPlayers: item.peak_in_game,
-        });
+        if (isAdultContent) {
+          console.log(`  [Steam] Skipping adult content game: "${name}" (appId: ${item.appid})`);
+        } else {
+          topPlayed.push({
+            appId: item.appid,
+            name,
+            rank: item.rank,
+            peakPlayers: item.peak_in_game,
+          });
+        }
       }
       // Steam Store API のレート制限対策
       await new Promise((r) => setTimeout(r, 200));
@@ -137,6 +163,12 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
     // new_releases カテゴリから取得
     if (data.new_releases?.items) {
       for (const item of data.new_releases.items.slice(0, 10)) {
+        const { isAdultContent } = await getAppDetails(item.id);
+        if (isAdultContent) {
+          console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         newReleases.push({
           appId: item.id,
           name: item.name,
@@ -145,12 +177,19 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
             : '無料',
           discount: item.discount_percent || 0,
         });
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
     // coming_soon カテゴリも取得
     if (data.coming_soon?.items) {
       for (const item of data.coming_soon.items.slice(0, 5)) {
+        const { isAdultContent } = await getAppDetails(item.id);
+        if (isAdultContent) {
+          console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         newReleases.push({
           appId: item.id,
           name: item.name,
@@ -159,6 +198,7 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
             : '価格未定',
           discount: 0,
         });
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 

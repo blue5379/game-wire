@@ -178,6 +178,49 @@ ${content}`;
 }
 
 /**
+ * AI によるコンテンツスクリーニング
+ * ゲームタイトルと概要を元に成人向けコンテンツか判定する。
+ * 判定が難しい場合は安全側（false）に倒す。
+ */
+async function isAdultContentByAI(game: GameData): Promise<boolean> {
+  const title = game.title;
+  const summary = game.summary || '';
+
+  if (!title) return false;
+
+  const systemPrompt = `あなたはゲーム情報サイトのコンテンツモデレーターです。
+与えられたゲーム情報が成人向け（性的コンテンツ・アダルトゲーム）かどうかを判定してください。
+
+【判定基準】
+- 性的・官能的なコンテンツを主体とするゲームは「YES」
+- 暴力描写のみ（ホラー・アクション等）は「NO」
+- 恋愛・ロマンス要素があっても一般向けなら「NO」
+- 判断が難しい場合は「NO」
+
+【出力形式】
+YES または NO のみを1行で出力してください。理由は不要です。`;
+
+  const userMessage = `ゲームタイトル: ${title}
+概要: ${summary || '（概要なし）'}`;
+
+  try {
+    const response = await invokeClaudeModel(systemPrompt, userMessage, {
+      maxTokens: 10,
+      temperature: 0,
+    });
+    const result = response.trim().toUpperCase();
+    if (result === 'YES') {
+      console.log(`  [AI Screening] Adult content detected: "${title}"`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.warn(`  [AI Screening] Failed for "${title}", defaulting to safe: ${error}`);
+    return false;
+  }
+}
+
+/**
  * 大手企業新作記事を生成
  */
 async function generateNewReleaseArticle(
@@ -628,6 +671,10 @@ async function main(): Promise<void> {
   console.log('Generating new release articles...');
   for (const game of selectedGames.newReleases.slice(0, 2)) {
     try {
+      if (await isAdultContentByAI(game)) {
+        console.warn(`  Skipping adult content game: "${game.title}"`);
+        continue;
+      }
       const article = await generateNewReleaseArticle(game);
       articles.push(article);
       // レート制限対策
@@ -642,6 +689,10 @@ async function main(): Promise<void> {
   console.log('Generating indie articles...');
   for (const game of selectedGames.indies.slice(0, 2)) {
     try {
+      if (await isAdultContentByAI(game)) {
+        console.warn(`  Skipping adult content game: "${game.title}"`);
+        continue;
+      }
       const article = await generateIndieArticle(game);
       articles.push(article);
       await new Promise((r) => setTimeout(r, 1000));
@@ -675,8 +726,12 @@ async function main(): Promise<void> {
   console.log('Generating classic article...');
   if (selectedGames.classic) {
     try {
-      const article = await generateClassicArticle(selectedGames.classic);
-      articles.push(article);
+      if (await isAdultContentByAI(selectedGames.classic)) {
+        console.warn(`  Skipping adult content classic game: "${selectedGames.classic.title}"`);
+      } else {
+        const article = await generateClassicArticle(selectedGames.classic);
+        articles.push(article);
+      }
     } catch (error) {
       console.error(
         `Failed to generate classic article for ${selectedGames.classic.title}:`,
