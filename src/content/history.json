@@ -826,6 +826,41 @@
       "category": "classic",
       "issueNumber": 30,
       "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "dig island",
+      "title": "Dig Island",
+      "category": "newRelease",
+      "issueNumber": 31,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "pokémon pokopia",
+      "title": "Pokémon Pokopia",
+      "category": "newRelease",
+      "issueNumber": 31,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "slay the spire ii",
+      "title": "Slay the Spire II",
+      "category": "indie",
+      "issueNumber": 31,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "raccoin coin pusher roguelike",
+      "title": "RACCOIN: Coin Pusher Roguelike",
+      "category": "indie",
+      "issueNumber": 31,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "classic",
+      "issueNumber": 31,
+      "publishDate": "2026-04-04"
     }
   ]
 }
