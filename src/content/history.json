@@ -791,6 +791,41 @@
       "category": "classic",
       "issueNumber": 29,
       "publishDate": "2026-04-03"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "newRelease",
+      "issueNumber": 30,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "dangerous mountain together",
+      "title": "Dangerous Mountain Together",
+      "category": "newRelease",
+      "issueNumber": 30,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "shadowverse worlds beyond",
+      "title": "shadowverse worlds beyond",
+      "category": "indie",
+      "issueNumber": 30,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "にじさんじ/叶",
+      "title": "にじさんじ/叶",
+      "category": "indie",
+      "issueNumber": 30,
+      "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "hollow knight silksong",
+      "title": "Hollow Knight: Silksong",
+      "category": "classic",
+      "issueNumber": 30,
+      "publishDate": "2026-04-04"
     }
   ]
 }
