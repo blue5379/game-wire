@@ -32,18 +32,18 @@ const latestIssue = allIssues.sort(
           </section>
 
           <section class="articles-grid">
-            {latestIssue.data.articles.filter((a: any) => !a.hidden).map((article: any, index: number) => (
+            {latestIssue.data.articles.map((article: any, originalIndex: number) => ({ article, originalIndex })).filter(({ article }: { article: any }) => !article.hidden).map(({ article, originalIndex }: { article: any, originalIndex: number }, filteredIndex: number) => (
               <>
-                {index === 1 && (
+                {filteredIndex === 1 && (
                   <div class="section-label" aria-hidden="true">
                     <span class="section-label-line"></span>
                     <span class="section-label-text">TODAY'S PICKS</span>
                     <span class="section-label-line"></span>
                   </div>
                 )}
-              <div class="article-wrapper" style={`--animation-delay: ${index * 0.1}s`}>
+              <div class="article-wrapper" style={`--animation-delay: ${filteredIndex * 0.1}s`}>
                 <ArticleCard
-                  href={`/issue/${latestIssue.data.issueNumber}/article/${index}`}
+                  href={`/issue/${latestIssue.data.issueNumber}/article/${originalIndex}`}
                   title={article.title}
                   category={article.category}
                   summary={article.summary}
