@@ -4,7 +4,7 @@ AIを活用した週刊ゲーム情報雑誌の自動生成システム
 
 ## プロジェクト概要
 
-毎週日曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
+毎週土曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
 
 ## 技術スタック
 
@@ -12,7 +12,7 @@ AIを活用した週刊ゲーム情報雑誌の自動生成システム
 - **言語**: TypeScript
 - **パッケージマネージャー**: npm
 - **ホスティング**: Cloudflare Pages
-- **CI/CD**: GitHub Actions（毎週日曜日定期実行）
+- **CI/CD**: GitHub Actions（毎週土曜日定期実行）
 - **記事生成AI**: Amazon Bedrock（Claude）
 
 ## 情報源・API
@@ -58,7 +58,7 @@ game-wire/
 │   └── build-issue.ts         # 号を組み立て
 ├── .github/
 │   └── workflows/
-│       └── weekly-build.yml   # 毎週日曜日の定期実行
+│       └── weekly-build.yml   # 毎週土曜日の定期実行
 ├── screenshots/           # 開発・テスト用スクリーンショット（gitignore対象）
 ├── astro.config.mjs
 ├── package.json
@@ -107,7 +107,7 @@ AWS_REGION=              # AWS リージョン（例: us-east-1）
 
 ## GitHub Actions ワークフロー
 
-毎週日曜日 AM 9:00 (JST) に自動実行:
+毎週土曜日 AM 6:00 (JST) に自動実行:
 
 1. データ取得（Steam, YouTube, IGDB, Metacritic）
 2. Claude で記事生成

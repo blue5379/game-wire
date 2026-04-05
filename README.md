@@ -2,7 +2,7 @@
 
 AIを活用した週刊ゲーム情報雑誌の自動生成システム
 
-毎週日曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成します。
+毎週土曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成します。
 
 ## セットアップ
 
@@ -164,7 +164,7 @@ Cloudflare Dashboard で以下を設定:
 
 ## 自動デプロイ
 
-GitHub Actions により毎週日曜日 AM 9:00 (JST) に自動実行されます。
+GitHub Actions により毎週土曜日 AM 6:00 (JST) に自動実行されます。
 
 手動実行する場合:
 1. GitHub リポジトリの「Actions」タブを開く

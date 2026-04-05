@@ -297,7 +297,7 @@ function generateMarkdownContent(
   }
 
   body.push('');
-  body.push('毎週日曜日に新しい号が発行されますので、お楽しみに！');
+  body.push('毎週土曜日に新しい号が発行されますので、お楽しみに！');
 
   return [...frontmatter, '', ...body, ''].join('\n');
 }

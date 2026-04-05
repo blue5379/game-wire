@@ -39,6 +39,7 @@
     { "month": 4, "day": 2, "name": "国際子どもの本の日", "gameThemeHint": "物語・アドベンチャーゲーム" },
     { "month": 4, "day": 4, "name": "あんぱんの日", "gameThemeHint": "料理・パン屋経営ゲーム" },
     { "month": 4, "day": 7, "name": "世界保健デー", "gameThemeHint": "医療・病院経営ゲーム" },
+    { "month": 4, "day": 8, "name": "入学式", "gameThemeHint": "学園・青春・新生活ゲーム" },
     { "month": 4, "day": 10, "name": "駅弁の日", "gameThemeHint": "鉄道・旅ゲーム" },
     { "month": 4, "day": 18, "name": "発明の日", "gameThemeHint": "クラフト・発明ゲーム" },
     { "month": 4, "day": 22, "name": "アースデイ", "gameThemeHint": "環境・自然保護ゲーム" },
