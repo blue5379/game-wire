@@ -553,128 +553,45 @@
       letter-spacing: 0.15em;
       color: var(--text-dim);
     }
-    .preview-article {
-      background: #FAFAF7;
-      display: grid;
-      grid-template-columns: 1fr 1.4fr;
-      min-height: 380px;
-    }
-    .preview-img {
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 70%, #533483 100%);
+    .preview-screenshot-link {
+      display: block;
       position: relative;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      padding: 2rem;
+      overflow: hidden;
+      text-decoration: none;
     }
-    .preview-img-overlay {
+    .preview-screenshot-img {
+      display: block;
+      width: 100%;
+      height: auto;
+      transition: transform 0.5s ease, filter 0.5s ease;
+    }
+    .preview-screenshot-overlay {
       position: absolute;
       inset: 0;
-      background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+      background: rgba(8, 8, 8, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.35s ease;
     }
-    .preview-img-badge {
-      position: relative;
-      z-index: 1;
-      display: inline-block;
-      background: #0288D1;
-      color: white;
-      font-family: var(--font-mono);
-      font-size: 0.6rem;
+    .preview-screenshot-cta {
+      font-family: var(--font-sans);
+      font-size: 1.1rem;
+      font-weight: 500;
       letter-spacing: 0.12em;
-      padding: 0.3rem 0.7rem;
-      margin-bottom: 0.75rem;
-      text-transform: uppercase;
-    }
-    .preview-img-title {
-      position: relative;
-      z-index: 1;
-      font-family: 'Noto Serif JP', serif;
-      font-size: 1.5rem;
-      font-weight: 700;
       color: white;
-      line-height: 1.4;
+      border: 1px solid rgba(255,255,255,0.7);
+      padding: 0.9rem 2.5rem;
+      background: rgba(196,30,58,0.85);
+      transition: background 0.2s;
     }
-    .preview-img-art {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0.15;
+    .preview-screenshot-link:hover .preview-screenshot-img {
+      transform: scale(1.02);
+      filter: brightness(0.85);
     }
-    .preview-card-art {
-      width: 120px;
-      height: 160px;
-      border: 2px solid rgba(255,255,255,0.6);
-      border-radius: 8px;
-      background: linear-gradient(135deg, rgba(255,200,0,0.3), rgba(100,50,200,0.3));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-family: var(--font-serif);
-      font-size: 3rem;
-      color: rgba(255,255,255,0.8);
-      font-style: italic;
-    }
-    .preview-content {
-      padding: 2.5rem 3rem;
-      background: #FAFAF7;
-      display: flex;
-      flex-direction: column;
-    }
-    .preview-meta {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
-    }
-    .preview-cat {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.15em;
-      color: #0288D1;
-      text-transform: uppercase;
-    }
-    .preview-title {
-      font-family: 'Noto Serif JP', serif;
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #0F0F0F;
-      line-height: 1.4;
-      margin-bottom: 1.25rem;
-    }
-    .preview-body {
-      font-family: 'Noto Sans JP', sans-serif;
-      font-size: 0.875rem;
-      line-height: 1.9;
-      color: #444;
-      flex: 1;
-    }
-    .preview-footer {
-      margin-top: 1.5rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #E0E0E0;
-      display: flex;
-      gap: 0.5rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .preview-platform {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.08em;
-      color: #888;
-      padding: 0.2rem 0.6rem;
-      border: 1px solid #E0E0E0;
-    }
-    .preview-ai-badge {
-      font-family: 'Space Mono', monospace;
-      font-size: 0.6rem;
-      letter-spacing: 0.08em;
-      color: #aaa;
-      padding: 0.2rem 0.6rem;
-      border: 1px solid #ddd;
-      margin-left: auto;
+    .preview-screenshot-link:hover .preview-screenshot-overlay {
+      opacity: 1;
     }
 
     /* ─── HOW IT WORKS ──────────────────────────────────────── */
@@ -1021,8 +938,6 @@
       .flow-connector { padding: 0.75rem 0 0.75rem 2rem; padding-top: 0.75rem; justify-content: flex-start; }
       .flow-arrow-icon { transform: rotate(90deg); }
       .content-grid { grid-template-columns: repeat(2, 1fr); }
-      .preview-article { grid-template-columns: 1fr; }
-      .preview-img { min-height: 220px; }
     }
     @media (max-width: 768px) {
       .nav { padding: 1rem 1.5rem; }
@@ -1180,40 +1095,18 @@
   <section class="section preview-section">
     <div class="section-inner">
       <div class="section-label reveal">PREVIEW</div>
-      <h2 class="section-title reveal-left">実際の記事はこんな感じ</h2>
+      <h2 class="section-title reveal-left">誌面を、ひと足先に</h2>
       <p class="section-subtitle reveal">
         ゲームの魅力を深く伝える、読み応えのある記事が毎号6本。
       </p>
 
       <div class="preview-frame reveal">
-        <div class="preview-article">
-          <div class="preview-img">
-            <div class="preview-img-art" aria-hidden="true">
-              <div class="preview-card-art">♠</div>
-            </div>
-            <div class="preview-img-overlay"></div>
-            <span class="preview-img-badge">New Release</span>
-            <div class="preview-img-title">Slay the Spire II</div>
+        <a href="https://gamewire.stormphilia.com/issue/1/article/1/" target="_blank" rel="noopener" class="preview-screenshot-link">
+          <img src="/article1-preview.png" alt="Game Wire 創刊号 記事サンプル — Slay the Spire II" class="preview-screenshot-img" />
+          <div class="preview-screenshot-overlay">
+            <span class="preview-screenshot-cta">記事を読む →</span>
           </div>
-          <div class="preview-content">
-            <div class="preview-meta">
-              <span class="preview-cat">NEW RELEASE</span>
-            </div>
-            <h3 class="preview-title">Slay the Spire II ——<br />デッキ構築 RPG の次なる進化</h3>
-            <p class="preview-body">
-              2019年に登場し、デッキ構築ローグライクというジャンルを確立した
-              『Slay the Spire』の続編がついに登場。新たなキャラクターと
-              カードシステムに加え、マルチプレイヤー対応も実装。
-              前作を超える戦略的深みで、シリーズファンはもちろん、
-              初めて挑戦するプレイヤーにも強くおすすめできる一作です。
-            </p>
-            <div class="preview-footer">
-              <span class="preview-platform">PC (Steam)</span>
-              <span class="preview-platform">Early Access</span>
-              <span class="preview-ai-badge">✦ AI Generated</span>
-            </div>
-          </div>
-        </div>
+        </a>
       </div>
     </div>
   </section>
