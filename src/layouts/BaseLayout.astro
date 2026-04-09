@@ -30,6 +30,9 @@ const { title, description = 'AIが毎週発行するゲーム情報マガジン
     <slot name="head" />
     <title>{title} | Game Wire</title>
     <ClientRouter />
+    <!-- Cloudflare Web Analytics -->
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "1a428c03822a4f5391265676d0efe82d"}'></script>
+    <!-- End Cloudflare Web Analytics -->
   </head>
   <body>
     <slot />
