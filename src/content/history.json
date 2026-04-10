@@ -35,6 +35,41 @@
       "category": "classic",
       "issueNumber": 1,
       "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "slay the spire ii",
+      "title": "Slay the Spire II",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-04-10"
+    },
+    {
+      "normalizedTitle": "dig island",
+      "title": "Dig Island",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-04-10"
+    },
+    {
+      "normalizedTitle": "soulmask",
+      "title": "Soulmask",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-04-10"
+    },
+    {
+      "normalizedTitle": "guilty gear strive season pass 5",
+      "title": "Guilty Gear -Strive- Season Pass 5",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-04-10"
+    },
+    {
+      "normalizedTitle": "mewgenics",
+      "title": "Mewgenics",
+      "category": "classic",
+      "issueNumber": 2,
+      "publishDate": "2026-04-10"
     }
   ]
 }
