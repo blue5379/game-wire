@@ -366,6 +366,9 @@
 ### 🔴 期限あり
 - [ ] **#8** GitHub Actions SHAピン留め＋Node.js 24移行（`weekly-build.yml`）**期限: 2026年6月2日**
 
+### 🔴 バグ修正
+- [x] **#bug-1** Vol.1記事詳細ページの「← Vol.Nに戻る」「Vol.N トップへ」リンクが最新号（Vol.2等）に遷移する問題を修正（`issue/[issueNumber]/article/[slug].astro` の `navHome.href` を `/` から `/archive/${issueNumber}` に変更）
+
 ### 🟡 セキュリティ（LOW）
 - [ ] **#6** 画像URLのHTTPS強制変換（`fetch-igdb.ts`）
 - [ ] **#7** AWS認証情報の未設定チェック強化（`bedrock-client.ts`）
