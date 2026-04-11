@@ -445,7 +445,8 @@ async function enrichRecommendedGames(games: ExtractedGame[]): Promise<Recommend
 async function generateFeatureArticle(
   publishDate: Date,
   issueNumber: number,
-  relatedGames?: GameData[]
+  relatedGames?: GameData[],
+  excludeTitles?: string[]
 ): Promise<GeneratedArticle> {
   // 直近1週間のイベントを取得
   const events = getEventsInRange(publishDate, 7);
@@ -462,7 +463,7 @@ async function generateFeatureArticle(
     summary: g.summary,
   }));
 
-  const userMessage = buildFeatureUserMessage(theme, publishDate, relatedGamesList);
+  const userMessage = buildFeatureUserMessage(theme, publishDate, relatedGamesList, excludeTitles);
 
   const rawContent = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.featureSystem, userMessage, {
@@ -714,7 +715,25 @@ async function main(): Promise<void> {
       allGames = aggregated.games || [];
     }
 
-    const featureArticle = await generateFeatureArticle(publishDate, nextIssueNumber, allGames);
+    // 同号の他記事で選定済みのタイトルを除外リストとして構築
+    // （selectedGames.featured は特集記事自身の素材のため除外しない）
+    const alreadySelectedTitles = [
+      ...selectedGames.newReleases.map((g) => g.title),
+      ...selectedGames.indies.map((g) => g.title),
+      ...(selectedGames.classic ? [selectedGames.classic.title] : []),
+    ];
+
+    // 除外対象を relatedGames からも取り除き、AIへの矛盾した指示を防ぐ
+    const filteredAllGames = allGames.filter(
+      (g) => !alreadySelectedTitles.includes(g.title)
+    );
+
+    const featureArticle = await generateFeatureArticle(
+      publishDate,
+      nextIssueNumber,
+      filteredAllGames,
+      alreadySelectedTitles
+    );
     articles.push(featureArticle);
     await new Promise((r) => setTimeout(r, 1000));
   } catch (error) {

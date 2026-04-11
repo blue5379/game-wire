@@ -404,7 +404,8 @@ export function buildUserMessage(
 export function buildFeatureUserMessage(
   theme: string,
   date: Date,
-  relatedGames?: Array<{ title: string; summary?: string }>
+  relatedGames?: Array<{ title: string; summary?: string }>,
+  excludeTitles?: string[]
 ): string {
   const lines: string[] = [];
 
@@ -419,6 +420,15 @@ export function buildFeatureUserMessage(
     lines.push(`※テーマに合うゲームがなければ、あなたの知識から実在する有名ゲームを紹介してください。`);
     for (const game of relatedGames) {
       lines.push(`- ${game.title}${game.summary ? `: ${game.summary}` : ''}`);
+    }
+  }
+
+  if (excludeTitles && excludeTitles.length > 0) {
+    lines.push('');
+    lines.push(`【おすすめゲーム選定の制約】`);
+    lines.push(`以下のゲームは今号の別記事で紹介済みのため、おすすめゲームに含めないこと:`);
+    for (const title of excludeTitles) {
+      lines.push(`- ${title}`);
     }
   }
 
