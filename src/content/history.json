@@ -35,6 +35,41 @@
       "category": "classic",
       "issueNumber": 1,
       "publishDate": "2026-04-04"
+    },
+    {
+      "normalizedTitle": "pokémon pokopia",
+      "title": "Pokémon Pokopia",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-04-11"
+    },
+    {
+      "normalizedTitle": "zero g mmo",
+      "title": "Zero-G MMO",
+      "category": "newRelease",
+      "issueNumber": 2,
+      "publishDate": "2026-04-11"
+    },
+    {
+      "normalizedTitle": "soulmask",
+      "title": "Soulmask",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-04-11"
+    },
+    {
+      "normalizedTitle": "guilty gear strive season pass 5",
+      "title": "Guilty Gear -Strive- Season Pass 5",
+      "category": "indie",
+      "issueNumber": 2,
+      "publishDate": "2026-04-11"
+    },
+    {
+      "normalizedTitle": "red dead redemption 2",
+      "title": "Red Dead Redemption 2",
+      "category": "classic",
+      "issueNumber": 2,
+      "publishDate": "2026-04-11"
     }
   ]
 }
