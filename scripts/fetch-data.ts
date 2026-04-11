@@ -244,6 +244,7 @@ async function aggregateGames(
       if (isSameGame(key, normalized)) {
         // IGDB データで補完
         game.title = igdb.name; // 正式名称に更新
+        game.normalizedTitle = normalizeTitle(igdb.name); // normalizedTitle も正式名称から再計算
         game.titleJa = igdb.titleJa || game.titleJa;
         game.igdbSlug = igdb.slug || game.igdbSlug;
         game.genres = igdb.genres || game.genres;

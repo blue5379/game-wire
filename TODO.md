@@ -398,7 +398,22 @@
 
 ---
 
-*最終更新: 2026-04-05 (Phase 16 チェックボックス修正・残タスク整理)*
+## Phase 20: 履歴管理クールダウンのカテゴリ横断バグ修正
+
+Vol.1で `newRelease` として記録されたゲームが、Vol.2で `indie` や `classic` として再選定される問題への対応。
+
+### 原因
+
+`getCooldownTitles(category)` が `entry.category !== category` のエントリをスキップするため、カテゴリが変わると履歴照合が機能しない。
+
+### 修正内容
+
+- [x] `scripts/game-history.ts`: `getCooldownTitles()` からカテゴリ一致チェック（`if (entry.category !== category) continue`）を削除し、カテゴリを問わず対象カテゴリのクールダウン期間内に掲載されたゲームをすべて除外する
+- [x] `scripts/fetch-data.ts`: IGDB マージ時に `game.title = igdb.name` で表示タイトルを更新する際、`game.normalizedTitle` も `normalizeTitle(igdb.name)` で再計算する（Steam 由来の normalizedTitle と history.json の不一致を解消）
+
+---
+
+*最終更新: 2026-04-11 (Phase 20 追加)*
 
 ---
 
