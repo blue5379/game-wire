@@ -282,7 +282,6 @@ articles:
       ## 📝 まとめ
       
       医療をテーマにしたゲームは、エンターテインメントとして楽しみながら、医療従事者の苦労や医療の重要性を理解できる貴重な体験を提供してくれます。世界保健デーを機に、ゲームを通じて医療の世界に触れてみてはいかがでしょうか。
-    featureImage: "/images/features/feature-1-1775286948066.png"
     recommendedGames:
       - title: "Surgeon Simulator（サージョンシミュレーター）"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co2frh.jpg"

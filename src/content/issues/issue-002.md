@@ -282,7 +282,6 @@ articles:
       ## 📝 まとめ
       
       今週は多彩なジャンルから注目タイトルが揃い踏み。続編の安定感と新規IPの挑戦、どちらも見逃せない週となっています。あなたのゲームライフに新しい刺激を加える一本を、ぜひ見つけてください。
-    featureImage: "/images/features/feature-2-1775913542272.png"
     recommendedGames:
       - title: "Slay the Spire II"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co82c5.jpg"
