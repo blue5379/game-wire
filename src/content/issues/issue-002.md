@@ -221,7 +221,7 @@ articles:
     sourceUrls:
       steam: "https://store.steampowered.com/app/4413190"
       igdb: "https://www.igdb.com/games/guilty-gear-strive-season-pass-5"
-  - title: "今週プレイすべき注目タイトル5選：新作から隠れた名作まで徹底紹介"
+  - title: "今週プレイすべき注目タイトル4選：新作から隠れた名作まで徹底紹介"
     category: feature
     summary: "2026年4月のゲーム業界は新作ラッシュで盛況です。"
     articleBody: |

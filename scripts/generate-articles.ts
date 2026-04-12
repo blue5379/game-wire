@@ -488,8 +488,8 @@ async function generateFeatureArticle(
     }
   }
 
-  const title = await generateTitle('特集', theme);
   const summary = await generateSummary(content);
+  const title = await generateTitle('特集', theme, summary);
 
   // 特集記事用の画像を生成
   let featureImagePath: string | undefined;
