@@ -227,7 +227,7 @@ const latestIssue = allIssues.sort(
   /* タブレット */
   @media (max-width: 1024px) {
     .articles-grid > .article-wrapper:first-child :global(a) {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
 
     .articles-grid > .article-wrapper:first-child :global(h2) {
@@ -246,7 +246,7 @@ const latestIssue = allIssues.sort(
     }
 
     .articles-grid > .article-wrapper:first-child :global(a) {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .articles-grid > .article-wrapper:first-child :global(.cover-image) {
