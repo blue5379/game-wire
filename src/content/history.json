@@ -105,6 +105,41 @@
       "category": "classic",
       "issueNumber": 3,
       "publishDate": "2026-04-17"
+    },
+    {
+      "normalizedTitle": "shapez 2 factory",
+      "title": "Shapez 2: Factory",
+      "category": "newRelease",
+      "issueNumber": 4,
+      "publishDate": "2026-04-24"
+    },
+    {
+      "normalizedTitle": "pragmata",
+      "title": "Pragmata",
+      "category": "newRelease",
+      "issueNumber": 4,
+      "publishDate": "2026-04-24"
+    },
+    {
+      "normalizedTitle": "vampire crawlers the turbo wildcard from vampire survivors",
+      "title": "Vampire Crawlers: The Turbo Wildcard from Vampire Survivors",
+      "category": "indie",
+      "issueNumber": 4,
+      "publishDate": "2026-04-24"
+    },
+    {
+      "normalizedTitle": "kilaflow",
+      "title": "KilaFlow",
+      "category": "indie",
+      "issueNumber": 4,
+      "publishDate": "2026-04-24"
+    },
+    {
+      "normalizedTitle": "star citizen",
+      "title": "Star Citizen",
+      "category": "classic",
+      "issueNumber": 4,
+      "publishDate": "2026-04-24"
     }
   ]
 }
