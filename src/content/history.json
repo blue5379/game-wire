@@ -140,6 +140,41 @@
       "category": "classic",
       "issueNumber": 4,
       "publishDate": "2026-04-24"
+    },
+    {
+      "normalizedTitle": "hytale",
+      "title": "Hytale",
+      "category": "newRelease",
+      "issueNumber": 5,
+      "publishDate": "2026-05-01"
+    },
+    {
+      "normalizedTitle": "crimson desert",
+      "title": "Crimson Desert",
+      "category": "newRelease",
+      "issueNumber": 5,
+      "publishDate": "2026-05-01"
+    },
+    {
+      "normalizedTitle": "far far west",
+      "title": "Far Far West",
+      "category": "indie",
+      "issueNumber": 5,
+      "publishDate": "2026-05-01"
+    },
+    {
+      "normalizedTitle": "unknown entity",
+      "title": "Unknown Entity",
+      "category": "indie",
+      "issueNumber": 5,
+      "publishDate": "2026-05-01"
+    },
+    {
+      "normalizedTitle": "the last of us part ii",
+      "title": "The Last of Us Part II",
+      "category": "classic",
+      "issueNumber": 5,
+      "publishDate": "2026-05-01"
     }
   ]
 }
