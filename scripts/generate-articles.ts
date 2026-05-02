@@ -105,9 +105,11 @@ export interface GeneratedIssue {
 async function generateTitle(
   category: string,
   gameTitle: string,
-  summary?: string
+  summary?: string,
+  itemCount?: number
 ): Promise<string> {
-  const userMessage = `カテゴリ: ${category}\nゲームタイトル: ${gameTitle}${summary ? `\n概要: ${summary}` : ''}\n\n上記の情報を元に、記事タイトルを1つ生成してください。`;
+  const countNote = itemCount !== undefined ? `\n紹介するゲームの本数: ${itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
+  const userMessage = `カテゴリ: ${category}\nゲームタイトル: ${gameTitle}${summary ? `\n概要: ${summary}` : ''}${countNote}\n\n上記の情報を元に、記事タイトルを1つ生成してください。`;
 
   try {
     const response = await invokeClaudeModel(
@@ -489,7 +491,7 @@ async function generateFeatureArticle(
   }
 
   const summary = await generateSummary(content);
-  const title = await generateTitle('特集', theme, summary);
+  const title = await generateTitle('特集', theme, summary, extractedGames.length);
 
   // 特集記事用の画像を生成
   let featureImagePath: string | undefined;
