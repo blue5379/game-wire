@@ -175,6 +175,41 @@
       "category": "classic",
       "issueNumber": 5,
       "publishDate": "2026-05-01"
+    },
+    {
+      "normalizedTitle": "neverness to everness",
+      "title": "Neverness to Everness",
+      "category": "newRelease",
+      "issueNumber": 6,
+      "publishDate": "2026-05-08"
+    },
+    {
+      "normalizedTitle": "reanimal",
+      "title": "Reanimal",
+      "category": "newRelease",
+      "issueNumber": 6,
+      "publishDate": "2026-05-08"
+    },
+    {
+      "normalizedTitle": "gamble with your friends",
+      "title": "Gamble With Your Friends",
+      "category": "indie",
+      "issueNumber": 6,
+      "publishDate": "2026-05-08"
+    },
+    {
+      "normalizedTitle": "scorchie adventures",
+      "title": "Scorchie Adventures",
+      "category": "indie",
+      "issueNumber": 6,
+      "publishDate": "2026-05-08"
+    },
+    {
+      "normalizedTitle": "final fantasy vii remake",
+      "title": "Final Fantasy VII Remake",
+      "category": "classic",
+      "issueNumber": 6,
+      "publishDate": "2026-05-08"
     }
   ]
 }
