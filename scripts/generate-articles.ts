@@ -226,7 +226,8 @@ YES または NO のみを1行で出力してください。理由は不要で�
  * 大手企業新作記事を生成
  */
 async function generateNewReleaseArticle(
-  game: GameData
+  game: GameData,
+  publishDate: Date
 ): Promise<GeneratedArticle> {
   console.log(`  Generating new release article: ${game.title}`);
 
@@ -256,7 +257,8 @@ async function generateNewReleaseArticle(
       metascore: game.metascore,
       userScore: game.userScore,
     },
-    webSearchContext || undefined
+    webSearchContext || undefined,
+    publishDate
   );
 
   const content = parseArticleResponse(
@@ -295,7 +297,7 @@ async function generateNewReleaseArticle(
 /**
  * インディーゲーム記事を生成
  */
-async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
+async function generateIndieArticle(game: GameData, publishDate: Date): Promise<GeneratedArticle> {
   console.log(`  Generating indie article: ${game.title}`);
 
   // 基本の追加コンテキスト
@@ -334,7 +336,8 @@ async function generateIndieArticle(game: GameData): Promise<GeneratedArticle> {
       metascore: game.metascore,
       userScore: game.userScore,
     },
-    additionalContext
+    additionalContext,
+    publishDate
   );
 
   const content = parseArticleResponse(
@@ -518,7 +521,8 @@ async function generateFeatureArticle(
  * 名作深掘り記事を生成
  */
 async function generateClassicArticle(
-  game: GameData
+  game: GameData,
+  publishDate: Date
 ): Promise<GeneratedArticle> {
   console.log(`  Generating classic article: ${game.title}`);
 
@@ -561,7 +565,8 @@ async function generateClassicArticle(
       metascore: game.metascore,
       userScore: game.userScore,
     },
-    additionalContext
+    additionalContext,
+    publishDate
   );
 
   const content = parseArticleResponse(
@@ -678,7 +683,7 @@ async function main(): Promise<void> {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
-      const article = await generateNewReleaseArticle(game);
+      const article = await generateNewReleaseArticle(game, publishDate);
       articles.push(article);
       // レート制限対策
       await new Promise((r) => setTimeout(r, 1000));
@@ -696,7 +701,7 @@ async function main(): Promise<void> {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
-      const article = await generateIndieArticle(game);
+      const article = await generateIndieArticle(game, publishDate);
       articles.push(article);
       await new Promise((r) => setTimeout(r, 1000));
     } catch (error) {
@@ -750,7 +755,7 @@ async function main(): Promise<void> {
       if (await isAdultContentByAI(selectedGames.classic)) {
         console.warn(`  Skipping adult content classic game: "${selectedGames.classic.title}"`);
       } else {
-        const article = await generateClassicArticle(selectedGames.classic);
+        const article = await generateClassicArticle(selectedGames.classic, publishDate);
         articles.push(article);
       }
     } catch (error) {

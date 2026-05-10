@@ -12,7 +12,8 @@
     "generate": "npx tsx scripts/generate-articles.ts",
     "build-issue": "npm run fetch-data && npm run generate && npx tsx scripts/build-issue.ts",
     "build-issue:dev": "DEV_MODE=true npm run fetch-data && DEV_MODE=true npm run generate && DEV_MODE=true npx tsx scripts/build-issue.ts",
-    "generate-image": "npx tsx scripts/generate-feature-image.ts"
+    "generate-image": "npx tsx scripts/generate-feature-image.ts",
+    "test": "vitest run scripts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.800.0",
@@ -26,6 +27,7 @@
     "@aws-sdk/client-bedrock": "^3.990.0",
     "@types/node": "^22.14.0",
     "dotenv": "^17.3.1",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "vitest": "^4.1.5"
   }
 }

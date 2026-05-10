@@ -120,6 +120,7 @@ export const PromptTemplates = {
 
 ### 5. 発売情報（見出し: ## 📅 発売情報）
 発売日、対応機種、価格帯（わかる場合）などの実用情報
+※発売日に「発売済み」と明記されている場合は「発売中」と記載し、「発売予定」とは絶対に書かないこと
 
 ### 6. Creator's Eye（見出し: ## 🎯 Creator's Eye）
 ゲームクリエイターを目指す人へ向けたコラム（150〜200文字）
@@ -176,6 +177,7 @@ Steamレビューでの評判を紹介（100〜150文字）
 
 ### 6. 発売情報（見出し: ## 📅 発売情報）
 発売日、対応機種などの実用情報
+※発売日に「発売済み」と明記されている場合は「発売中」と記載し、「発売予定」とは絶対に書かないこと
 
 ### 7. Creator's Eye（見出し: ## 🎯 Creator's Eye）
 ゲームクリエイターを目指す人へ向けたコラム（150〜200文字）
@@ -344,7 +346,8 @@ export function buildUserMessage(
     metascore?: number | null;
     userScore?: number | null;
   },
-  additionalContext?: string
+  additionalContext?: string,
+  publishDate?: Date
 ): string {
   const lines: string[] = [];
 
@@ -363,7 +366,15 @@ export function buildUserMessage(
   }
 
   if (gameInfo.releaseDate) {
-    lines.push(`発売日: ${gameInfo.releaseDate}`);
+    let releaseDateLabel = gameInfo.releaseDate;
+    if (publishDate) {
+      const releaseTime = new Date(gameInfo.releaseDate).getTime();
+      if (!isNaN(releaseTime)) {
+        const status = releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
+        releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
+      }
+    }
+    lines.push(`発売日: ${releaseDateLabel}`);
   }
 
   if (gameInfo.developer) {
