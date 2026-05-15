@@ -210,6 +210,41 @@
       "category": "classic",
       "issueNumber": 6,
       "publishDate": "2026-05-08"
+    },
+    {
+      "normalizedTitle": "darwin's paradox!",
+      "title": "Darwin's Paradox!",
+      "category": "newRelease",
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
+    },
+    {
+      "normalizedTitle": "tomodachi life living the dream",
+      "title": "Tomodachi Life: Living the Dream",
+      "category": "newRelease",
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
+    },
+    {
+      "normalizedTitle": "drive together",
+      "title": "Drive Together",
+      "category": "indie",
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
+    },
+    {
+      "normalizedTitle": "augment anthem",
+      "title": "Augment Anthem",
+      "category": "indie",
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
+    },
+    {
+      "normalizedTitle": "ghost of yotei",
+      "title": "Ghost of Yotei",
+      "category": "classic",
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
     }
   ]
 }
