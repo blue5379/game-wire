@@ -16,6 +16,7 @@ import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
+import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import type {
   SteamData,
   YouTubeData,
@@ -383,6 +384,41 @@ async function aggregateGames(
 }
 
 /**
+ * 選定済みゲームに公式日本語URLを付与
+ * selectGamesForArticles() 後に呼ぶことで、対象6本のみに絞って調査できる
+ */
+async function enrichSelectedGamesWithOfficialUrl(
+  selectedGames: SelectedGames
+): Promise<void> {
+  const allGames: GameData[] = [
+    ...selectedGames.newReleases,
+    ...selectedGames.indies,
+    ...(selectedGames.featured ? [selectedGames.featured] : []),
+    ...(selectedGames.classic ? [selectedGames.classic] : []),
+  ];
+
+  for (const game of allGames) {
+    try {
+      const releaseYear = game.releaseDate
+        ? new Date(game.releaseDate).getFullYear().toString()
+        : undefined;
+
+      const officialUrl = await fetchOfficialJpUrl({
+        titleEn: game.title,
+        titleJa: game.titleJa,
+        releaseYear,
+      });
+
+      if (officialUrl) {
+        game.sourceUrls = { ...game.sourceUrls, official: officialUrl };
+      }
+    } catch (error) {
+      console.error(`  enrichOfficialUrl failed for "${game.title}":`, error);
+    }
+  }
+}
+
+/**
  * 記事生成用にゲームを選定
  */
 function selectGamesForArticles(games: GameData[]): SelectedGames {
@@ -587,6 +623,11 @@ async function main(): Promise<void> {
   console.log(`Indies: ${selectedGames.indies.length}`);
   console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);
   console.log(`Classic: ${selectedGames.classic?.title || 'None'}`);
+
+  // 選定済みゲームに公式日本語URLを付与
+  console.log('');
+  console.log('Fetching official Japanese URLs for selected games...');
+  await enrichSelectedGamesWithOfficialUrl(selectedGames);
 
   // 統合データの構築
   const aggregatedData: AggregatedData = {

@@ -218,6 +218,9 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
   // 参照元URLを出力（gameの有無に関わらず）
   if (article.sourceUrls) {
     lines.push(`    sourceUrls:`);
+    if (article.sourceUrls.official) {
+      lines.push(`      official: "${article.sourceUrls.official}"`);
+    }
     if (article.sourceUrls.steam) {
       lines.push(`      steam: "${article.sourceUrls.steam}"`);
     }
