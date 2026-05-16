@@ -1,77 +1,86 @@
 {
   "newReleases": [
     {
-      "title": "Cairn",
-      "normalizedTitle": "cairn",
-      "igdbSlug": "cairn--3",
+      "title": "Subnautica 2",
+      "titleJa": "サブノーティカ２",
+      "normalizedTitle": "subnautica 2",
+      "igdbSlug": "subnautica-2",
       "genres": [
-        "Simulator",
-        "Adventure",
-        "Indie"
+        "Adventure"
       ],
       "platforms": [
-        "PC (Microsoft Windows)",
-        "PlayStation 5"
+        "Xbox Series X|S",
+        "Xbox",
+        "PC (Microsoft Windows)"
       ],
-      "releaseDate": "2026-01-29",
-      "developer": "The Game Bakers",
-      "publisher": "The Game Bakers",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cobdqk.jpg",
+      "releaseDate": "2026-05-14",
+      "developer": "Unknown Worlds Entertainment",
+      "publisher": "Krafton",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8yd0.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvv.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvw.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvy.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvx.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnvz.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw0.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw1.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw2.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw3.jpg",
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scsnw4.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a0.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a1.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a2.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a3.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85q.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85r.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85s.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85t.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85u.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a4.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85v.jpg"
       ],
-      "summary": "Reach a summit never climbed before in this survival-climber from the creators of Furi and Haven. Climb anywhere and plan your route carefully, managing pitons and resources to survive the unforgiving Mount Kami. Discover what Aava is willing to sacrifice to achieve the ascent of a lifetime.",
-      "igdbRating": 83.12118116474805,
-      "igdbRatingCount": 21,
+      "summary": "Subnautica 2 is an underwater survival adventure set on an all-new alien world, developed by Unknown Worlds. Play alone or with friends in 4-player co-op. Adapt to survive by building custom bases and crafting tools. Explore the unknown to uncover the mysteries hidden within the depths.",
+      "igdbRating": 95.08831696811319,
+      "igdbRatingCount": 6,
       "source": [
         "igdb"
       ],
       "sourceUrls": {
-        "igdb": "https://www.igdb.com/games/cairn--3"
+        "igdb": "https://www.igdb.com/games/subnautica-2",
+        "official": "https://subnautica.com/ja"
       }
     },
     {
-      "title": "Team Fortress 2 Classified",
-      "normalizedTitle": "team fortress 2 classified",
-      "igdbSlug": "team-fortress-2-classified",
+      "title": "Shapez 2: Factory",
+      "normalizedTitle": "shapez 2 factory",
+      "igdbSlug": "shapez-2-factory",
       "genres": [
-        "Shooter"
+        "Puzzle",
+        "Simulator",
+        "Strategy",
+        "Indie"
       ],
       "platforms": [
+        "Linux",
         "PC (Microsoft Windows)",
         "Mac"
       ],
-      "releaseDate": "2026-01-30",
-      "developer": "Eminoma",
-      "publisher": "Eminoma",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cob89p.jpg",
+      "releaseDate": "2026-04-23",
+      "developer": "tobspr Games",
+      "publisher": "Gamirror Games",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cobyep.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scbqx4.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33x.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33y.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33z.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct340.jpg"
       ],
-      "summary": "Team Fortress 2 Classified is a new Team Fortress 2 experience built on its original inspirations and tone. Updated with refreshed visuals, new gamemodes and maps, new weapons, new teams, and a new class.",
-      "igdbRating": 82.85714285714286,
-      "igdbRatingCount": 8,
+      "summary": "Dive into a factory-building game where the focus is on just that — building huge factories! Construct sprawling multi-level factories and min-max your layouts without limits. Shapez 2 is tailor-made for enthusiasts who crave the thrill of optimizing production lines and perfecting automation.",
+      "igdbRating": 91.6652258496824,
+      "igdbRatingCount": 7,
       "source": [
         "igdb"
       ],
       "sourceUrls": {
-        "igdb": "https://www.igdb.com/games/team-fortress-2-classified"
+        "igdb": "https://www.igdb.com/games/shapez-2-factory"
       }
     }
   ],
   "indies": [
     {
       "title": "Slay the Spire II",
-      "normalizedTitle": "slay the spire 2",
+      "normalizedTitle": "slay the spire ii",
       "steamAppId": 2868840,
       "genres": [
         "Strategy",
@@ -83,7 +92,7 @@
         "PC (Microsoft Windows)",
         "Mac"
       ],
-      "steamRank": 1,
+      "steamRank": 4,
       "source": [
         "steam",
         "igdb"
@@ -106,36 +115,50 @@
         "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup9.jpg"
       ],
       "summary": "The iconic roguelike deckbuilder returns!\n\nCraft a unique deck, encounter bizarre creatures, and discover relics of immense power in Slay the Spire 2 - featuring new characters, cards, events, alternate acts, and more!",
-      "igdbRating": 97.62319587287823,
-      "igdbRatingCount": 16
+      "igdbRating": 85.3522846778926,
+      "igdbRatingCount": 24
     },
     {
-      "title": "My Ghost Roommate",
-      "normalizedTitle": "my ghost roommate",
-      "steamAppId": 4035570,
+      "title": "Forza Horizon 6",
+      "normalizedTitle": "forza horizon 6",
+      "steamAppId": 2483190,
       "genres": [
-        "Indie",
-        "Visual Novel"
+        "Racing",
+        "Simulator",
+        "Sport",
+        "Arcade"
       ],
       "platforms": [
-        "PC (Microsoft Windows)"
+        "Xbox Series X|S",
+        "PC (Microsoft Windows)",
+        "PlayStation 5"
       ],
-      "steamRank": 13,
+      "steamRank": 2,
       "source": [
         "steam",
         "igdb"
       ],
       "sourceUrls": {
-        "steam": "https://store.steampowered.com/app/4035570",
-        "igdb": "https://www.igdb.com/games/help-my-new-roommate-is-a-hung-goth-futanari-ghost"
+        "steam": "https://store.steampowered.com/app/2483190",
+        "igdb": "https://www.igdb.com/games/forza-horizon-6"
       },
-      "igdbSlug": "help-my-new-roommate-is-a-hung-goth-futanari-ghost",
-      "releaseDate": "2025-06-19",
-      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/coaiuq.jpg",
+      "igdbSlug": "forza-horizon-6",
+      "releaseDate": "2026-05-19",
+      "developer": "Playground Games",
+      "publisher": "Xbox Game Studios",
+      "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/cobc5n.jpg",
       "screenshots": [
-        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz9ya.jpg"
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdi.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdj.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdk.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdl.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdp.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdn.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdm.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdq.jpg",
+        "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdo.jpg"
       ],
-      "summary": "Dive into a hilarious and heartwarming paranormal romance in \"HELP! My New Roommate is a Hung Goth Futanari Ghost!\" This engaging visual novel combines romantic comedy with a dash of horror and a whole lot of supernatural spice. Prepare for a sexy and spooky adventure unlike any other!"
+      "summary": "Discover the breathtaking landscapes of Japan in over 550 real-world cars and become a racing Legend at the Horizon Festival. Start your journey as a tourist and explore a world full of hit music and Japanese culture. Build a Valley Estate, acquire awe-inspiring homes, and display your prized car collection in fully Customizable Garages. Cruise the roads with your friends and join Car Meets around Japan, unleash your imagination with EventLab and build together in Horizon CoLab."
     }
   ],
   "featured": {
@@ -171,43 +194,50 @@
     "igdbRatingCount": 13
   },
   "classic": {
-    "title": "Mewgenics",
-    "normalizedTitle": "mewgenics",
-    "igdbSlug": "mewgenics",
+    "title": "Red Dead Redemption 2",
+    "titleJa": "レッドデッドリデンプション2",
+    "normalizedTitle": "red dead redemption 2",
+    "igdbSlug": "red-dead-redemption-2",
     "genres": [
+      "Shooter",
       "Role-playing (RPG)",
-      "Simulator",
-      "Turn-based strategy (TBS)",
-      "Adventure",
-      "Indie"
+      "Adventure"
     ],
     "platforms": [
-      "PC (Microsoft Windows)"
+      "Google Stadia",
+      "PlayStation 4",
+      "PC (Microsoft Windows)",
+      "Xbox One"
     ],
-    "releaseDate": "2026-02-10",
-    "developer": "Edmund McMillen",
-    "publisher": "Edmund McMillen",
-    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co9n5k.jpg",
+    "releaseDate": "2018-10-26",
+    "developer": "Rockstar Games",
+    "publisher": "Take-Two Interactive",
+    "coverImage": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1q1f.jpg",
     "screenshots": [
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozv.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozw.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozx.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozy.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11ozz.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p00.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p01.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p02.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p03.jpg",
-      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11p04.jpg"
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/xegpfnsvlyeld0zkjnrc.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/c9xalka7stjkx4mes7kp.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/dhw6ucx9laj5esv6rngn.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/tdxv4zzkqyjnm9pmwxw0.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/qg7gx276z3hsqlr9xpt6.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/h8f9uojkzvaau8pxsyxi.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/x8xczj2a0y6g9rnhboko.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/kcfpf8wa8esalk0qkpo5.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/uyaminfh8sugglvt247u.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/banftd8fgfytbsfx6mjz.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/dorsz0jbcecmkxvzi3t8.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/mptosgjarjlyqxy7lqsm.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctkgp.jpg",
+      "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctkgq.jpg"
     ],
-    "summary": "From the creator of The Binding of Isaac, Super Meat Boy and The End is Nigh comes... Mewgenics! A game where you hoard, breed, train and set cats out on epic adventures through a sprawling world of complete chaos.\nLevel up your team as you venture further and further from your home, collect unique items, defeat epic bosses, gain mutations and return home so you you can breed and further your bloodline, in this turn based legacy roguelike draft sim about cats!",
-    "igdbRating": 99.03304500035193,
-    "igdbRatingCount": 24,
+    "summary": "Red Dead Redemption 2 is the epic tale of outlaw Arthur Morgan and the infamous Van der Linde gang, on the run across America at the dawn of the modern age.",
+    "igdbRating": 93.12724241209028,
+    "igdbRatingCount": 3595,
     "source": [
       "igdb"
     ],
     "sourceUrls": {
-      "igdb": "https://www.igdb.com/games/mewgenics"
+      "igdb": "https://www.igdb.com/games/red-dead-redemption-2",
+      "official": "https://www.rockstargames.com/jp/reddeadredemption2"
     }
   }
 }

@@ -60,8 +60,7 @@ export function loadHistory(): HistoryFile {
     const raw = fs.readFileSync(HISTORY_PATH, 'utf-8');
     return JSON.parse(raw) as HistoryFile;
   } catch (error) {
-    console.warn(`Failed to load history file: ${error}`);
-    return { version: 1, entries: [] };
+    throw new Error(`Failed to load history file (${HISTORY_PATH}): ${error}\nFix the JSON before running again.`);
   }
 }
 
