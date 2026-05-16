@@ -65,11 +65,30 @@ export function loadHistory(): HistoryFile {
 }
 
 /**
- * 履歴に新しいエントリを追記して保存
+ * 履歴に新しいエントリを追記して保存（重複エントリはスキップ）
  */
 export function saveHistory(newEntries: HistoryEntry[]): void {
   const history = loadHistory();
-  history.entries.push(...newEntries);
+
+  const existingKeys = new Set(
+    history.entries.map((e) => `${e.issueNumber}:${e.normalizedTitle}`)
+  );
+
+  const uniqueEntries = newEntries.filter((entry) => {
+    const key = `${entry.issueNumber}:${entry.normalizedTitle}`;
+    if (existingKeys.has(key)) {
+      console.log(`  Skipping duplicate: ${entry.title} (issue #${entry.issueNumber})`);
+      return false;
+    }
+    return true;
+  });
+
+  if (uniqueEntries.length === 0) {
+    console.log('No new entries to add (all duplicates).');
+    return;
+  }
+
+  history.entries.push(...uniqueEntries);
 
   // 出力ディレクトリが存在しない場合は作成
   const dir = path.dirname(HISTORY_PATH);
@@ -78,7 +97,7 @@ export function saveHistory(newEntries: HistoryEntry[]): void {
   }
 
   fs.writeFileSync(HISTORY_PATH, JSON.stringify(history, null, 2));
-  console.log(`History saved to: ${HISTORY_PATH} (${history.entries.length} total entries)`);
+  console.log(`History saved to: ${HISTORY_PATH} (${uniqueEntries.length} new, ${history.entries.length} total entries)`);
 }
 
 /**

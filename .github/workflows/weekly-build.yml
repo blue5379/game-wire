@@ -75,6 +75,7 @@ jobs:
       # 7. 生成した記事をコミット＆プッシュ
       - name: Commit and push generated content
         run: |
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/content/issues/ src/content/history.json
@@ -83,6 +84,7 @@ jobs:
           git stash --include-untracked || true
           git pull --rebase origin main
           git stash pop || true
+          jq empty src/content/history.json
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
