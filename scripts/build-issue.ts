@@ -230,12 +230,6 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
     if (article.sourceUrls.metacritic) {
       lines.push(`      metacritic: "${article.sourceUrls.metacritic}"`);
     }
-    if (article.sourceUrls.youtube && article.sourceUrls.youtube.length > 0) {
-      lines.push(`      youtube:`);
-      for (const url of article.sourceUrls.youtube) {
-        lines.push(`        - "${url}"`);
-      }
-    }
   }
 
   return lines.join('\n');

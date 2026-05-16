@@ -20,7 +20,6 @@ import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import type {
   SteamData,
   YouTubeData,
-  YouTubeVideo,
   IGDBData,
   MetacriticData,
   GameData,
@@ -184,19 +183,12 @@ async function aggregateGames(
 
   // YouTube から抽出されたゲームタイトルを追加
   const youtubeTitleCounts = new Map<string, number>();
-  // YouTube動画情報をゲームタイトルごとに保持（URL収集用）
-  const youtubeVideosByGame = new Map<string, YouTubeVideo[]>();
 
   for (const video of youtubeData.trendingVideos) {
     if (video.extractedGameTitle) {
       const normalized = normalizeTitle(video.extractedGameTitle);
       const count = youtubeTitleCounts.get(normalized) || 0;
       youtubeTitleCounts.set(normalized, count + video.viewCount);
-
-      // 動画情報を保持
-      const videos = youtubeVideosByGame.get(normalized) || [];
-      videos.push(video);
-      youtubeVideosByGame.set(normalized, videos);
     }
   }
 
@@ -207,10 +199,6 @@ async function aggregateGames(
       continue;
     }
 
-    // YouTube動画URLを収集
-    const videos = youtubeVideosByGame.get(normalized) || [];
-    const youtubeUrls = videos.slice(0, 3).map((v) => `https://www.youtube.com/watch?v=${v.videoId}`);
-
     // 既存のゲームとマッチするか確認
     let matched = false;
     for (const [key, game] of gameMap.entries()) {
@@ -219,9 +207,6 @@ async function aggregateGames(
         if (!game.source.includes('youtube')) {
           game.source.push('youtube');
         }
-        // YouTube URLsを追加
-        game.sourceUrls = game.sourceUrls || {};
-        game.sourceUrls.youtube = youtubeUrls;
         matched = true;
         break;
       }

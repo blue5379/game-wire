@@ -9,7 +9,6 @@ interface Props {
     steam?: string;
     igdb?: string;
     metacritic?: string;
-    youtube?: string[];
     official?: string;
   };
 }
@@ -21,8 +20,7 @@ const hasLinks = sourceUrls && (
   sourceUrls.official ||
   sourceUrls.steam ||
   sourceUrls.igdb ||
-  sourceUrls.metacritic ||
-  (sourceUrls.youtube && sourceUrls.youtube.length > 0)
+  sourceUrls.metacritic
 );
 ---
 
@@ -64,24 +62,6 @@ const hasLinks = sourceUrls && (
             <span class="text">OpenCritic（レビュー）</span>
             <span class="external-icon">↗</span>
           </a>
-        </li>
-      )}
-      {sourceUrls.youtube && sourceUrls.youtube.length > 0 && (
-        <li class="youtube-section">
-          <span class="youtube-label">
-            <span class="icon">📺</span>
-            <span class="text">関連YouTube動画</span>
-          </span>
-          <ul class="youtube-list">
-            {sourceUrls.youtube.map((url, index) => (
-              <li>
-                <a href={url} target="_blank" rel="noopener noreferrer" class="link-item youtube">
-                  <span class="text">動画 {index + 1}</span>
-                  <span class="external-icon">↗</span>
-                </a>
-              </li>
-            ))}
-          </ul>
         </li>
       )}
     </ul>
@@ -160,37 +140,6 @@ const hasLinks = sourceUrls && (
     color: #ffcc33;
   }
 
-  .link-item.youtube:hover {
-    color: #ff0000;
-  }
-
-  .youtube-section {
-    margin-top: var(--spacing-xs);
-  }
-
-  .youtube-label {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-    padding: var(--spacing-xs) var(--spacing-sm);
-  }
-
-  .youtube-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    padding-left: var(--spacing-lg);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs);
-  }
-
-  .youtube-list .link-item {
-    background: var(--color-background);
-    padding: var(--spacing-xs) var(--spacing-sm);
-  }
 
   @media (max-width: 768px) {
     .source-links {

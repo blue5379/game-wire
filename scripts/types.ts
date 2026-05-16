@@ -138,7 +138,6 @@ export interface SourceUrls {
   steam?: string;
   igdb?: string;
   metacritic?: string;
-  youtube?: string[];
   official?: string; // 公式日本語ページ
 }
 
