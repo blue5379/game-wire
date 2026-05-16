@@ -174,7 +174,6 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvhqj.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvhqk.jpg"
     sourceUrls:
-      official: "https://reposteam.com/ja.html"
       steam: "https://store.steampowered.com/app/3241660"
       igdb: "https://www.igdb.com/games/repo"
   - title: "孤独と都市伝説が交錯するHD-2D探偵ADV「MONOPHOBIA」心理ホラー要素も"
