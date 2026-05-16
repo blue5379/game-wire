@@ -4,6 +4,7 @@
   "version": "0.0.1",
   "description": "AIを活用した週刊ゲーム情報雑誌の自動生成システム",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
