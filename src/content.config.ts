@@ -28,6 +28,7 @@ const sourceUrlsSchema = z.object({
   igdb: z.string().optional(),
   metacritic: z.string().optional(),
   youtube: z.array(z.string()).optional(),
+  official: z.string().optional(), // 公式日本語ページ
 });
 
 const articleSchema = z.object({

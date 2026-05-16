@@ -10,6 +10,7 @@ interface Props {
     igdb?: string;
     metacritic?: string;
     youtube?: string[];
+    official?: string;
   };
 }
 
@@ -17,6 +18,7 @@ const { sourceUrls } = Astro.props;
 
 // リンクがない場合は何も表示しない
 const hasLinks = sourceUrls && (
+  sourceUrls.official ||
   sourceUrls.steam ||
   sourceUrls.igdb ||
   sourceUrls.metacritic ||
@@ -28,6 +30,15 @@ const hasLinks = sourceUrls && (
   <section class="source-links">
     <h3>🔗 参考リンク</h3>
     <ul class="links-list">
+      {sourceUrls.official && (
+        <li>
+          <a href={sourceUrls.official} target="_blank" rel="noopener noreferrer" class="link-item official">
+            <span class="icon">🌐</span>
+            <span class="text">公式サイト（日本語）</span>
+            <span class="external-icon">↗</span>
+          </a>
+        </li>
+      )}
       {sourceUrls.steam && (
         <li>
           <a href={sourceUrls.steam} target="_blank" rel="noopener noreferrer" class="link-item steam">
@@ -131,6 +142,10 @@ const hasLinks = sourceUrls && (
   .link-item .external-icon {
     color: var(--color-text-muted);
     font-size: 0.8rem;
+  }
+
+  .link-item.official:hover {
+    color: #006aff;
   }
 
   .link-item.steam:hover {

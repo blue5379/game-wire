@@ -139,6 +139,7 @@ export interface SourceUrls {
   igdb?: string;
   metacritic?: string;
   youtube?: string[];
+  official?: string; // 公式日本語ページ
 }
 
 // 記事生成用のゲーム選定結果

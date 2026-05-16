@@ -140,3 +140,34 @@ AWS_REGION=              # AWS リージョン（例: us-east-1）
 - 画像の著作権: IGDB の利用規約に従う
 - Bedrock の利用料金に注意
 - **スクリーンショットの配置**: テストや検討に使用するスクリーンショットは `screenshots/` ディレクトリに配置すること（gitignore対象、リポジトリには含まれない）
+
+## Issue対応ワークフロー
+
+GitHub Issue に対応する際は、以下のフローを**必ず**守ること。main ブランチへの直接コミット・プッシュは禁止。
+
+### 手順
+
+1. **ブランチを作成**してから実装を開始する
+   ```bash
+   git checkout -b feat/issue-{番号}-{概要}   # 新機能
+   git checkout -b fix/issue-{番号}-{概要}    # バグ修正
+   ```
+   例: `feat/issue-7-official-jp-url`
+
+2. ブランチ上で実装・動作確認を行う
+
+3. 変更をコミットする
+
+4. **PR を作成**する
+   ```bash
+   gh pr create --title "タイトル" --body "Closes #{番号}"
+   ```
+   - 本文に `Closes #{番号}` を含めて Issue を自動クローズする
+
+### ブランチ命名規則
+
+| 種別 | 命名 |
+|------|------|
+| 新機能 | `feat/issue-{番号}-{概要}` |
+| バグ修正 | `fix/issue-{番号}-{概要}` |
+| 設定・整備 | `chore/issue-{番号}-{概要}` |
