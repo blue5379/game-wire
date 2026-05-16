@@ -27,7 +27,6 @@ const sourceUrlsSchema = z.object({
   steam: z.string().optional(),
   igdb: z.string().optional(),
   metacritic: z.string().optional(),
-  youtube: z.array(z.string()).optional(),
   official: z.string().optional(), // 公式日本語ページ
 });
 
