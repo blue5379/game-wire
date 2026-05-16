@@ -68,6 +68,10 @@ jobs:
       - name: Build issue
         run: npx tsx scripts/build-issue.ts
 
+      # 6.5. history.json の JSON 整合性チェック
+      - name: Validate history.json
+        run: jq empty src/content/history.json
+
       # 7. 生成した記事をコミット＆プッシュ
       - name: Commit and push generated content
         run: |
@@ -76,6 +80,7 @@ jobs:
           git add src/content/issues/ src/content/history.json
           [ -d "public/images/features" ] && git add public/images/features/ || true
           git diff --staged --quiet || git commit -m "Add issue for $(date '+%Y-%m-%d')"
+          git pull --rebase origin main
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
