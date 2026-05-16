@@ -210,41 +210,6 @@
       "category": "classic",
       "issueNumber": 6,
       "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "subnautica 2",
-      "title": "Subnautica 2",
-      "category": "newRelease",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
-    },
-    {
-      "normalizedTitle": "shapez 2 factory",
-      "title": "Shapez 2: Factory",
-      "category": "newRelease",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
-    },
-    {
-      "normalizedTitle": "slay the spire ii",
-      "title": "Slay the Spire II",
-      "category": "indie",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
-    },
-    {
-      "normalizedTitle": "forza horizon 6",
-      "title": "Forza Horizon 6",
-      "category": "indie",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
-    },
-    {
-      "normalizedTitle": "red dead redemption 2",
-      "title": "Red Dead Redemption 2",
-      "category": "classic",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
     }
   ]
 }
