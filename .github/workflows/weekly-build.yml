@@ -39,7 +39,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 4. データ取得（Steam, YouTube, IGDB, Metacritic）
+      # 4. データ取得（Steam, YouTube, IGDB, Metacritic）+ 公式日本語URL取得
       - name: Fetch game data
         run: npm run fetch-data
         env:
@@ -49,6 +49,8 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
 
       # 5. 記事生成（Bedrock Claude + 画像生成 + Web検索 + IGDB画像取得）
       - name: Generate articles
