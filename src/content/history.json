@@ -2,246 +2,36 @@
   "version": 1,
   "entries": [
     {
-      "normalizedTitle": "mewgenics",
-      "title": "Mewgenics",
+      "normalizedTitle": "subnautica 2",
+      "title": "Subnautica 2",
       "category": "newRelease",
-      "issueNumber": 1,
-      "publishDate": "2026-04-04"
-    },
-    {
-      "normalizedTitle": "slay the spire ii",
-      "title": "Slay the Spire II",
-      "category": "newRelease",
-      "issueNumber": 1,
-      "publishDate": "2026-04-04"
-    },
-    {
-      "normalizedTitle": "raccoin coin pusher roguelike",
-      "title": "RACCOIN: Coin Pusher Roguelike",
-      "category": "indie",
-      "issueNumber": 1,
-      "publishDate": "2026-04-04"
-    },
-    {
-      "normalizedTitle": "my ghost roommate",
-      "title": "My Ghost Roommate",
-      "category": "indie",
-      "issueNumber": 1,
-      "publishDate": "2026-04-04"
-    },
-    {
-      "normalizedTitle": "dig island",
-      "title": "Dig Island",
-      "category": "classic",
-      "issueNumber": 1,
-      "publishDate": "2026-04-04"
-    },
-    {
-      "normalizedTitle": "pokémon pokopia",
-      "title": "Pokémon Pokopia",
-      "category": "newRelease",
-      "issueNumber": 2,
-      "publishDate": "2026-04-11"
-    },
-    {
-      "normalizedTitle": "zero g mmo",
-      "title": "Zero-G MMO",
-      "category": "newRelease",
-      "issueNumber": 2,
-      "publishDate": "2026-04-11"
-    },
-    {
-      "normalizedTitle": "soulmask",
-      "title": "Soulmask",
-      "category": "indie",
-      "issueNumber": 2,
-      "publishDate": "2026-04-11"
-    },
-    {
-      "normalizedTitle": "guilty gear strive season pass 5",
-      "title": "Guilty Gear -Strive- Season Pass 5",
-      "category": "indie",
-      "issueNumber": 2,
-      "publishDate": "2026-04-11"
-    },
-    {
-      "normalizedTitle": "red dead redemption 2",
-      "title": "Red Dead Redemption 2",
-      "category": "classic",
-      "issueNumber": 2,
-      "publishDate": "2026-04-11"
-    },
-    {
-      "normalizedTitle": "resident evil requiem",
-      "title": "Resident Evil Requiem",
-      "category": "newRelease",
-      "issueNumber": 3,
-      "publishDate": "2026-04-17"
-    },
-    {
-      "normalizedTitle": "the quinfall",
-      "title": "The Quinfall",
-      "category": "newRelease",
-      "issueNumber": 3,
-      "publishDate": "2026-04-17"
-    },
-    {
-      "normalizedTitle": "forza horizon 6",
-      "title": "Forza Horizon 6",
-      "category": "indie",
-      "issueNumber": 3,
-      "publishDate": "2026-04-17"
-    },
-    {
-      "normalizedTitle": "portal 2 community edition",
-      "title": "Portal 2: Community Edition",
-      "category": "indie",
-      "issueNumber": 3,
-      "publishDate": "2026-04-17"
-    },
-    {
-      "normalizedTitle": "hollow knight silksong",
-      "title": "Hollow Knight: Silksong",
-      "category": "classic",
-      "issueNumber": 3,
-      "publishDate": "2026-04-17"
+      "issueNumber": 7,
+      "publishDate": "2026-05-15"
     },
     {
       "normalizedTitle": "shapez 2 factory",
       "title": "Shapez 2: Factory",
       "category": "newRelease",
-      "issueNumber": 4,
-      "publishDate": "2026-04-24"
-    },
-    {
-      "normalizedTitle": "pragmata",
-      "title": "Pragmata",
-      "category": "newRelease",
-      "issueNumber": 4,
-      "publishDate": "2026-04-24"
-    },
-    {
-      "normalizedTitle": "vampire crawlers the turbo wildcard from vampire survivors",
-      "title": "Vampire Crawlers: The Turbo Wildcard from Vampire Survivors",
-      "category": "indie",
-      "issueNumber": 4,
-      "publishDate": "2026-04-24"
-    },
-    {
-      "normalizedTitle": "kilaflow",
-      "title": "KilaFlow",
-      "category": "indie",
-      "issueNumber": 4,
-      "publishDate": "2026-04-24"
-    },
-    {
-      "normalizedTitle": "star citizen",
-      "title": "Star Citizen",
-      "category": "classic",
-      "issueNumber": 4,
-      "publishDate": "2026-04-24"
-    },
-    {
-      "normalizedTitle": "hytale",
-      "title": "Hytale",
-      "category": "newRelease",
-      "issueNumber": 5,
-      "publishDate": "2026-05-01"
-    },
-    {
-      "normalizedTitle": "crimson desert",
-      "title": "Crimson Desert",
-      "category": "newRelease",
-      "issueNumber": 5,
-      "publishDate": "2026-05-01"
-    },
-    {
-      "normalizedTitle": "far far west",
-      "title": "Far Far West",
-      "category": "indie",
-      "issueNumber": 5,
-      "publishDate": "2026-05-01"
-    },
-    {
-      "normalizedTitle": "unknown entity",
-      "title": "Unknown Entity",
-      "category": "indie",
-      "issueNumber": 5,
-      "publishDate": "2026-05-01"
-    },
-    {
-      "normalizedTitle": "the last of us part ii",
-      "title": "The Last of Us Part II",
-      "category": "classic",
-      "issueNumber": 5,
-      "publishDate": "2026-05-01"
-    },
-    {
-      "normalizedTitle": "neverness to everness",
-      "title": "Neverness to Everness",
-      "category": "newRelease",
-      "issueNumber": 6,
-      "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "reanimal",
-      "title": "Reanimal",
-      "category": "newRelease",
-      "issueNumber": 6,
-      "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "gamble with your friends",
-      "title": "Gamble With Your Friends",
-      "category": "indie",
-      "issueNumber": 6,
-      "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "scorchie adventures",
-      "title": "Scorchie Adventures",
-      "category": "indie",
-      "issueNumber": 6,
-      "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "final fantasy vii remake",
-      "title": "Final Fantasy VII Remake",
-      "category": "classic",
-      "issueNumber": 6,
-      "publishDate": "2026-05-08"
-    },
-    {
-      "normalizedTitle": "darwin's paradox!",
-      "title": "Darwin's Paradox!",
-      "category": "newRelease",
       "issueNumber": 7,
       "publishDate": "2026-05-15"
     },
     {
-      "normalizedTitle": "tomodachi life living the dream",
-      "title": "Tomodachi Life: Living the Dream",
-      "category": "newRelease",
-      "issueNumber": 7,
-      "publishDate": "2026-05-15"
-    },
-    {
-      "normalizedTitle": "drive together",
-      "title": "Drive Together",
+      "normalizedTitle": "slay the spire ii",
+      "title": "Slay the Spire II",
       "category": "indie",
       "issueNumber": 7,
       "publishDate": "2026-05-15"
     },
     {
-      "normalizedTitle": "augment anthem",
-      "title": "Augment Anthem",
+      "normalizedTitle": "forza horizon 6",
+      "title": "Forza Horizon 6",
       "category": "indie",
       "issueNumber": 7,
       "publishDate": "2026-05-15"
     },
     {
-      "normalizedTitle": "ghost of yotei",
-      "title": "Ghost of Yotei",
+      "normalizedTitle": "red dead redemption 2",
+      "title": "Red Dead Redemption 2",
       "category": "classic",
       "issueNumber": 7,
       "publishDate": "2026-05-15"

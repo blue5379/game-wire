@@ -4,368 +4,387 @@ publishDate: 2026-05-15
 title: "第7号 - 2026年春のゲーム情報"
 description: "今週も2本の新作情報、2本のインディーゲーム情報をお届け。AIがキュレーションした最新ゲーム情報をチェック！"
 articles:
-  - title: "天才タコのダーウィンが巨大産業施設からの脱出に挑む新作アドベンチャー『Darwin's Paradox!"
+  - title: "Subnautica 2』4人Co-op対応で新たな惑星の深海へ、基地建設と謎解きのサバイバル体験"
     category: newRelease
-    summary: "タコの主人公ダーウィンが産業施設からの脱出を目指すプラットフォームアドベンチャー『Darwin's Paradox!』がKONAMIから発売中。カモフラージュ能力を駆使したステルス要素が特徴で、体験版も配信されている。"
+    summary: "人気水中サバイバルゲーム『サブノーティカ』シリーズの正統続編が早期アクセスで登場。新たな海洋惑星を舞台に、最大4人協力プレイに対応し、スキルシステムや拡張可能な拠点建築など新要素を導入。美しくも恐ろしい海の探索体験が楽しめる作品です。"
     articleBody: |
-      海の底から巨大な産業施設へと連れ去られたタコのダーウィン。彼が持つ独特な能力を駆使して、謎に満ちた施設からの脱出を目指す——。KONAMIから発売中の『Darwin's Paradox!』は、愛らしくも賢いタコの主人公が織りなす、創造性豊かなプラットフォームアドベンチャーです。
+      水中サバイバルの金字塔『サブノーティカ』シリーズの正統続編が、ついに早期アクセスで登場しました。新たな海洋惑星を舞台に、ソロでも最大4人での協力プレイでも楽しめる本作。開発元Unknown Worlds Entertainmentが「スタジオ史上最も規模が大きく、完成度も高い」と自信を持って送り出す本作の魅力に迫ります。
       
       ## ✨ ゲームの特徴
       
-      本作の最大の魅力は、タコならではの能力を活かしたゲームプレイです。ダーウィンは周囲の環境に合わせてカモフラージュする能力を持ち、これを駆使して敵の目を欺きながら進んでいきます。レビューでは「genuinely inspired ideas（本当にインスピレーションに満ちたアイデア）」と評価され、特に移動の表現力が高く評価されています。メタルギアシリーズやリトルナイトメアを彷彿とさせるゲームデザインで、探索とギミック攻略の面白さが際立つ作品となっています。広大で謎めいた産業施設を舞台に、様々な危険や罠を乗り越えていく冒険は、プレイヤーを夢中にさせる魅力があります。
+      本作は全く新しいエイリアン惑星の海を舞台にした水中サバイバルアドベンチャーです。前作の路線を継承しながら、新たにスキルシステムやバイオベッドによる成長要素を導入。探索のしがいが大幅に向上しています。
+      
+      拠点建築の自由度はシリーズ過去最高で、後から拡張できる仕様により、より遊びやすく進化しました。カスタマイズ可能な基地を建設し、様々なツールをクラフトしながら、未知の海洋環境に適応していきます。
+      
+      美しくも底知れない怖さを秘めた海の表現は健在。深海の神秘的な世界観と、そこに潜む危険が絶妙なバランスで共存しており、探索の緊張感とワクワク感が同居する体験を提供します。
       
       ## 🎨 開発ストーリー
       
-      本作を手がけたのは、フランスのZDT Studioです。ゲームプレイディレクターのGilles AujardさんとアートディレクターのMika Tanguyさんを中心としたチームが開発を担当しました。開発チームへのインタビューでは、なぜタコを主人公に選んだのか、そしてカモフラージュを軸としたゲーム性を採用した理由について語られています。Sony PlayStationのState of Playで発売日と体験版の配信が発表され、チームにとって特別な節目となりました。
+      開発を手がけるUnknown Worlds Entertainmentは、本作について「スタジオ史上最も規模が大きく、完成度も高い」と自信を語っています。リリース前からSteamウィッシュリスト数は500万件を超え、ランキングトップに位置するなど、ゲーマーの期待と注目を一手に集めました。
+      
+      リードデザイナーのアンソニー・ガレゴス氏らは、前作『Below Zero』のようなスピンオフではなく、初代『サブノーティカ』の路線を受け継いだ真の続編として開発を進めてきました。
       
       ## 👥 こんな人におすすめ
       
-      - パズル要素のあるプラットフォームゲームが好きな方
-      - メタルギアシリーズのようなステルス要素を楽しみたい方
-      - 独創的な世界観とキャラクターに魅力を感じる方
+      - 探索と発見のワクワク感を味わいたいサバイバルゲームファン
+      - 友達と協力して未知の世界を冒険したい方（最大4人Co-op対応）
+      - 美しくも恐ろしい海の世界観に浸りたい方
       
       ## 📅 発売情報
       
-      **発売日**: 2026年4月2日（発売中）  
-      **対応機種**: PlayStation 5、Xbox Series X|S、Nintendo Switch 2、PC（Microsoft Windows）  
-      **発売元**: KONAMI  
-      **開発**: ZDT Studio
+      **発売中**（早期アクセス版）  
+      **対応機種**: Xbox Series X|S、Xbox、PC (Microsoft Windows)  
+      **開発**: Unknown Worlds Entertainment  
+      **発売元**: Krafton
       
-      体験版も配信されているので、購入前にゲームの雰囲気を確かめることができます。
+      早期アクセス段階ながら、サバイバルゲームが好きな方におすすめできる完成度に仕上がっています。
       
       ## 🎯 Creator's Eye
       
-      『Darwin's Paradox!』が評価されているポイントは、主人公の特性を活かした独創的なゲームデザインにあります。タコという生物の持つカモフラージュ能力を、単なる視覚効果ではなくゲームプレイの核心的なメカニクスとして昇華させた点は、面白いゲームを作るための重要なヒントです。キャラクターの個性とゲームシステムを有機的に結びつけることで、プレイヤーは「タコになった」という没入感を得られます。また、メタルギアシリーズとのコラボ要素を取り入れるなど、既存の人気作品の要素を自然に融合させる手法も、ゲームデザインの参考になるでしょう。
+      本作が高く評価されているポイントは、「探索の快適さ」と「恐怖体験」という相反する要素の絶妙なバランスです。スキルシステムや拡張可能な拠点建築により、プレイヤーは着実に成長を実感できる一方、海そのものが持つ底知れない怖さは健在。この「安心感」と「緊張感」のコントラストが、プレイヤーを飽きさせない探索体験を生み出しています。
+      
+      面白いゲームを作るためには、プレイヤーに「挑戦したい」と思わせる動機付けが重要です。本作は美しい海洋世界という「報酬」と、未知の危険という「リスク」を巧みに配置することで、プレイヤーの探索意欲を常に刺激し続けています。この設計思想は、あらゆるゲームジャンルに応用できる普遍的な学びといえるでしょう。
     game:
-      title: "Darwin's Paradox!"
+      title: "Subnautica 2"
+      titleJa: "サブノーティカ２"
       genre:
-        - Platform
-        - Puzzle
         - Adventure
-        - Indie
       platforms:
         - Xbox Series X|S
-        - Nintendo Switch 2
+        - Xbox
         - PC (Microsoft Windows)
-        - PlayStation 5
-      releaseDate: "2026-04-02"
-      developer: "ZDT Studio"
-      publisher: "Konami"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co9e1h.jpg"
+      releaseDate: "2026-05-14"
+      developer: "Unknown Worlds Entertainment"
+      publisher: "Krafton"
+      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co8yd0.jpg"
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcf8.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcfd.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcf9.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcfb.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcfc.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcfa.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvcfe.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a0.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a1.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a2.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a3.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85q.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85r.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85s.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85t.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85u.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu8a4.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scu85v.jpg"
     sourceUrls:
-      igdb: "https://www.igdb.com/games/darwins-paradox"
-  - title: "任天堂『Tomodachi Life: Living the Dream』Miiたちが織りなす予測不能な日常生活シミュレーター"
+      official: "https://subnautica.com/ja"
+      igdb: "https://www.igdb.com/games/subnautica-2"
+  - title: "工場建設特化の続編「Shapez 2」多層階レイアウトで生産ライン最適化を極める"
     category: newRelease
-    summary: "Nintendo SwitchでMiiキャラクターを作成し島での生活を見守る人気シリーズ最新作が約13年ぶりに登場。豊富なカスタマイズと予測不能な人間ドラマが特徴で、Miiが意思を持った存在として動く設計が高く評価されています。"
+    summary: "工場自動化ゲーム『Shapez 2: Factory』が2024年8月にSteam早期アクセス配信を開始し、1か月で25万本を売り上げる大ヒットを記録。図形の切断や着色を自動化する自由な工場設計が魅力で、98%の好評率を獲得している。"
     articleBody: |
-      家族や友達、憧れの人、あるいは完全オリジナルのキャラクターをMiiで作り、島での生活を見守る人気シリーズの最新作が、Nintendo Switchに登場しました。前作から約13年ぶりとなる本作は、シリーズの魅力はそのままに、より深いカスタマイズと新しい遊びを追加。Miiたちが繰り広げる予測不能な人間ドラマが、あなたを待っています。
+      図形を切って、塗って、重ねて——。シンプルな操作で無限の可能性が広がる工場自動化ゲーム『Shapez 2: Factory』が、2024年8月にSteamで早期アクセス配信を開始し、わずか1か月で25万本を売り上げる大ヒットを記録しました。前作から大きく進化を遂げた本作は、工場建設の醍醐味を極限まで追求した、自動化ゲームファン必見の一作です。
       
       ## ✨ ゲームの特徴
       
-      本作は、自分だけのMiiキャラクターを作成し、島での生活を見守るライフシミュレーションゲームです。性格、癖、身体的特徴など、豊富なカスタマイズオプションから選択でき、今作では顔のカスタマイズにこれまでにない新しい選択肢も追加されています。簡単な質問に答えるだけで手軽にMiiを作ることもでき、初心者でも安心です。
-      
-      レビューでは「クレイジーで居心地の良いライフシムと、シュールなソープオペラの融合」と評され、ライフシムゲームの中でも最も深いクリエイティブ機能を持つと高く評価されています。Miiたちは自分の好き嫌いを探求し、人間関係を築き、プレイヤーの予想を超えた行動で驚きと笑いを提供してくれます。
+      本作最大の魅力は、制限のない自由な工場設計にあります。多層構造の巨大な工場を建設し、図形の切断、着色、重ね合わせといった工程を自動化していく過程は、まさにパズルを解くような知的興奮に満ちています。レビューでは「製造物が分かりやすい」と評価されており、複雑な生産ラインも視覚的に理解しやすい設計となっています。Metacriticでも「前作のあらゆる面で改善された傑作」と高く評価され、Steamでは約6,200件のレビューで98%という圧倒的な好評率を獲得。宇宙規模の壮大な自動化システムを構築できる本作は、生産ラインの最適化に情熱を注ぐプレイヤーのために作られた、まさに「工場建設特化型」のゲームです。
       
       ## 🎨 開発ストーリー
       
-      本作は任天堂EPD制作グループ第4部によって開発されました。開発チームへのインタビューでは、Miiキャラクターを「意思を持った人格のあるいきもの」として表現することにこだわったことが語られています。作成したMiiが本人に似ていなくても、友達と「この目はそっくり！」と盛り上がったり、「これ誰？」と笑い合ったりする体験を大切にしているとのこと。プレイヤーが作ったMiiに愛着を持ってもらえることが、開発チームの喜びだそうです。
+      開発を手がけたtobspr Gamesは、本作の成功について「早期アクセス配信前にプレイテストを徹底的に行い、プレイヤーのフィードバックを着実に取り入れたことが成功につながった」と語っています。同社は前作のヒット以降、スタッフを20名程度に増やし、『ダイソンスフィアプログラム』などの人気タイトルとも協力関係を築いてきました。東京支社も設立し、グローバルな展開を進める注目の開発スタジオです。
       
       ## 👥 こんな人におすすめ
       
-      - 家族や友達と一緒に楽しめるゲームを探している方
-      - キャラクター作成やカスタマイズが好きな方
-      - 予測不能な展開を楽しめる、のんびりとしたゲーム体験を求めている方
+      - 工場の生産ラインを最適化することに喜びを感じる人
+      - 複雑なシステムを構築し、効率を追求するのが好きな人
+      - じっくり時間をかけて遊べる、やり込み要素の多いゲームを求めている人
       
       ## 📅 発売情報
       
       **発売中**  
-      **対応機種**: Nintendo Switch  
-      **開発**: Nintendo EPD Production Group No. 4  
-      **発売元**: 任天堂  
-      **ジャンル**: シミュレーション
-      
-      価格などの詳細は公式情報をご確認ください。
+      対応機種：PC (Microsoft Windows)、Mac、Linux、Nintendo Switch、PlayStation、Xbox Series X/S  
+      Steam早期アクセス版は2024年8月より配信開始。メイン要素の解放まで10〜15時間、全要素解放には効率次第で50〜100時間程度のプレイ時間が見込まれます。価格などの詳細は公式情報をご確認ください。
       
       ## 🎯 Creator's Eye
       
-      本作の評価ポイントは、プレイヤーの創造性を最大限に引き出すカスタマイズの深さと、予測不能な展開を生み出すAIの設計にあります。Miiたちが「自分の意思を持った存在」として動く仕組みは、プレイヤーに驚きと発見を提供し続けます。
-      
-      ゲーム制作において重要なのは、プレイヤーが作ったものに愛着を持てる仕組みです。本作では、完璧な再現度よりも「作る過程の楽しさ」と「予想外の展開」を重視することで、長く遊べる体験を実現しています。シンプルな操作で深い体験を生む設計は、カジュアルゲーム開発の優れた手本と言えるでしょう。
+      本作の成功から学べるのは、「早期アクセス前の徹底的な磨き込み」の重要性です。多くのゲームが早期アクセスで未完成な状態からスタートする中、tobspr Gamesは発売前に大量のプレイテストを実施し、フィードバックを反映させることで、配信開始時点で高いクオリティを実現しました。また「製造物の分かりやすさ」という評価が示すように、複雑なシステムを視覚的に理解しやすく設計することで、プレイヤーの学習曲線を適切にコントロールしています。ゲームデザインにおいて、ターゲット層を明確にし（本作は「工場建設特化」）、その層が求める体験を徹底的に磨き上げるアプローチは、インディーゲーム開発の成功モデルとして参考になるでしょう。
     game:
-      title: "Tomodachi Life: Living the Dream"
-      titleJa: "トモダチコレクション わくわく生活"
+      title: "Shapez 2: Factory"
       genre:
+        - Puzzle
         - Simulator
+        - Strategy
+        - Indie
       platforms:
-        - Nintendo Switch
-      releaseDate: "2026-04-16"
-      developer: "Nintendo EPD Production Group No. 4"
-      publisher: "Nintendo"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cobdqd.jpg"
+        - Linux
+        - PC (Microsoft Windows)
+        - Mac
+      releaseDate: "2026-04-23"
+      developer: "tobspr Games"
+      publisher: "Gamirror Games"
+      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cobyep.jpg"
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvw29.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scvw2a.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1p.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1q.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1r.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1s.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1t.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1u.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33x.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33y.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct33z.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sct340.jpg"
     sourceUrls:
-      igdb: "https://www.igdb.com/games/tomodachi-life-living-the-dream"
-  - title: "1台の車を最大4人で操作！協力型ドライブゲーム『Drive Together』が混沌必至"
+      igdb: "https://www.igdb.com/games/shapez-2-factory"
+  - title: "名作ローグライクデッキ構築ゲーム「Slay the Spire 2」が登場、新キャラクターとカードで帰ってくる"
     category: indie
-    summary: "『Drive Together』は、1台の車を最大4人で分担操作する協力型レーシングゲームです。アクセル、ブレーキ、ステアリングを別々のプレイヤーが担当し、連携の乱れが混乱を生む独特なゲーム性が魅力となっています。"
+    summary: "デッキ構築型ローグライク『Slay the Spire』の続編が2026年3月にアーリーアクセス配信を開始し、高評価を獲得しています。新キャラクターや新効果により戦略の幅が広がり、マルチプレイモードも追加されました。"
     articleBody: |
+      デッキ構築型ローグライクの金字塔『Slay the Spire』の続編が、2026年3月にアーリーアクセスとして配信を開始しました。前作の面白さを受け継ぎながら、新キャラクターや新システムで進化を遂げた本作は、早くも高い評価を獲得しています。
+      
       ## ✨ ゲームの魅力
       
-      『Drive Together』は、1台の車を最大4人で分担操作する、これまでにない協力型レーシングゲームです。一見シンプルなコンセプトながら、実際にプレイすると想像以上のカオスが待っています。
-      
-      - **役割分担が生む新感覚の協力プレイ**: アクセル、ブレーキ、ステアリングをそれぞれ別のプレイヤーが担当。完璧な連携が取れればスムーズな走行が可能ですが、意思疎通が乱れれば大惨事に
-      - **思い通りにならないもどかしさが楽しい**: 自分の意図通りに車をコントロールできないジレンマこそが、このゲーム最大の魅力。協力プレイならではの笑いと混乱が生まれます
-      - **1人から4人まで柔軟に対応**: ソロプレイから最大4人までプレイ可能。人数によって難易度や楽しみ方が変化し、何度でも新鮮な体験ができます
+      - **新キャラクターによる新鮮な戦略体験** - 前作とは異なる戦い方ができる2体の新キャラクターが追加され、デッキ構築の幅が大きく広がりました
+      - **知っているつもりが通じない新効果** - 前作プレイヤーでも新鮮に楽しめる新効果が多数実装され、戦略の再構築が求められます
+      - **絶妙なゲームバランスと爽快感** - シンプルながら達成感が半端ない、神懸かったバランス調整により、何度でも挑戦したくなる中毒性を実現しています
       
       ## 🎨 開発ストーリー
       
-      『Drive Together』は、協力プレイの新しい形を追求したインディーゲームです。1台の車という限られたリソースを複数人で共有するというユニークなアイデアから生まれた本作は、プレイヤー同士のコミュニケーションとチームワークを試す実験的な作品となっています。
+      本作を手がけるのは、前作で同ジャンルの金字塔を築いたMega Crit Gamesです。開発チームは「1のアップデートをずっと続ける計画もあった」と語っていますが、新作として制作することを選択。毎週タスクを評価し、最も影響力のある作業に取り組むという柔軟な開発手法により、「古代人との対話」や「チーズでいっぱいの部屋」といった実験的な要素も生まれました。
       
       ## 💬 プレイヤーの声
       
-      Steamでは「カオスな協力型レーシングゲーム」として紹介されており、その独特なゲームプレイが注目を集めています。複数のドライバーで1台を操作するという斬新なコンセプトが、プレイヤーたちの間で話題となっています。
+      レビューサイトでは100点満点中90点という高評価を獲得。「新効果・新キャラ・年代記システムなど新要素が充実している」「前作プレイヤーはもちろんデッキ構築ゲーが好きな人におすすめ」との声が寄せられています。また、マルチプレイモードの追加も好評で、「友達と遊んでてめっちゃ楽しい」という反応も見られます。
       
       ## 👥 こんな人におすすめ
       
-      - 友達とワイワイ楽しめるパーティーゲームを探している人
-      - 協力プレイでの予測不能な展開やハプニングを楽しみたい人
-      - シンプルなルールながら奥深いゲーム体験を求めている人
+      - 前作『Slay the Spire』をプレイして、さらなる戦略の深みを求めている人
+      - デッキ構築型ゲームが好きで、やりこみ要素を楽しみたい人
+      - 友達と協力しながら戦略を練るマルチプレイを楽しみたい人
       
       ## 📅 発売情報
       
-      **発売日**: 発売中  
-      **対応機種**: PC (Microsoft Windows)  
-      **プレイ人数**: 1〜4人  
-      **配信**: Steam
+      **発売日**: 2026年3月5日（アーリーアクセス配信中）  
+      **対応機種**: PC（Steam）、Mac、Linux  
+      **開発・発売元**: Mega Crit Games  
+      **ジャンル**: デッキ構築型ローグライク
       
       ## 🎯 Creator's Eye
       
-      『Drive Together』が示すのは、「制約こそが面白さを生む」というゲームデザインの本質です。通常なら1人で完結する車の運転を、あえて複数人に分割することで、コミュニケーションエラーや判断のズレといった「人間らしさ」がゲームプレイの核となっています。完璧なコントロールを阻害する設計は、プレイヤー同士の笑いや驚きを生み出す装置として機能しています。シンプルなメカニクスから豊かな体験を創出する、インディーゲームならではの発想力が光る作品です。
+      本作の成功の鍵は、前作の完成度の高さに甘んじず、新要素で進化を遂げた点にあります。「知っているつもりが通じない新効果」という評価が示すように、既存プレイヤーに新鮮な驚きを与えながら、ゲームバランスの絶妙さは維持されています。ゲームデザインにおいて、続編は「安定」と「革新」のバランスが重要ですが、本作はその理想的な形を示しています。また、柔軟な開発手法により生まれた実験的要素も、プレイヤーに予想外の楽しさを提供しています。
     game:
-      title: "Drive Together"
+      title: "Slay the Spire II"
       genre:
+        - Strategy
         - Indie
+        - Card & Board Game
       platforms:
+        - Linux
         - PC (Microsoft Windows)
-      releaseDate: "2026-05-15"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cob91a.jpg"
+        - Mac
+      releaseDate: "2026-03-05"
+      developer: "Mega Crit Games"
+      publisher: "Mega Crit Games"
+      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co82c5.jpg"
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc117ps.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc117pt.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc117pu.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc117pv.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc117pw.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupb.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupd.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrupf.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup6.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup8.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scrup9.jpg"
     sourceUrls:
-      steam: "https://store.steampowered.com/app/4117320"
-      igdb: "https://www.igdb.com/games/drive-together"
-  - title: "人類最後の避難所を守れ！2D探索ACT『Augment Anthem』が描くSFメトロイドヴァニア"
+      steam: "https://store.steampowered.com/app/2868840"
+      igdb: "https://www.igdb.com/games/slay-the-spire-ii"
+  - title: "Forza Horizon 6』日本が舞台、550台超の実車で巡る極上レーシング体験"
     category: indie
-    summary: "汚染されたバンカー7を舞台に人類最後の避難所を守る2Dメトロイドヴァニア『Augment Anthem』。4種類のオーグメントを組み合わせた自由度の高い探索と戦闘が魅力で、2026年5月15日にPC向けに発売中。"
+    summary: "日本の街並みを圧倒的なグラフィックで再現したオープンワールドレーシングゲームで、550台以上の実在車両と自由なカスタマイズが楽しめる。開発チームは18カ月以上かけて日本文化を学び、シリーズ史上最高との高評価を獲得している。"
     articleBody: |
-      人類最後の避難所を守るため、汚染されたバンカー7へと潜入する――。Project Egoが手がける2Dメトロイドヴァニア『Augment Anthem』は、4種類の「オーグメント」システムによる自由度の高い探索と戦闘が魅力の意欲作だ。バイオメカニカルな脅威が蠢く閉鎖空間で、プレイヤーは人類の未来をかけた戦いに挑む。
-      
       ## ✨ ゲームの魅力
       
-      - **4種類のオーグメントシステム**: 武器、移動、トラバーサル（地形踏破）を自在に変化させる4つのオーグメントタイプを組み合わせることで、プレイ体験が大きく変化する独自のカスタマイズシステム
-      - **相互接続された探索空間**: 水没エリアから様々な環境が繋がる広大なバンカー7を舞台に、入手したオーグメントで新たなルートが開かれていくメトロイドヴァニアならではの探索体験
-      - **人類最後の拠点「ヘイブン」の再建**: 汚染された超知能AIが生み出すバイオメカニカルな敵と戦いながら、人類の最後の避難所を取り戻すというSF世界観が物語を牽引
+      - **圧倒的なグラフィックで再現された日本の街並み**：峠道から都会まで、息を呑むほどのクオリティで日本の風景を再現。美しいグラフィックとリアルなサウンドで、まるで本当に日本を走っているかのような没入感を味わえる
+      - **550台以上の実在車両と自由なカスタマイズ**：初心者でも手軽に車を最適化できるチューニング共有機能を搭載。バレーエステートを建設し、カスタマイズ可能なガレージで愛車コレクションを展示できる
+      - **日本文化とヒット音楽が彩る体験**：様々なラジオ局と日本の人気楽曲で雰囲気が倍増。1対1の峠バトルなど、日本のカーカルチャーを反映した多彩なイベントを楽しめる
       
       ## 🎨 開発ストーリー
       
-      『Augment Anthem』を手がけるのは、開発と販売を一手に担うProject Ego。インディースタジオとして、2Dアクションとメトロイドヴァニアの要素を融合させた独自のゲームデザインに挑戦している。汚染された超知能AIという設定や、オーグメントによる能力拡張システムなど、SF的な世界観とゲームシステムの統合に力を注いでいる。
+      開発を手がけるPlayground Gamesは、日本という舞台を「正しく適切な形で」再現するため、18カ月以上前から日本文化の専門家をチームに迎え入れた。開発チームは日本についての基礎知識を共有するセッションを重ね、シリーズ史上最も複雑なマップの構築に挑戦。世界中のファンが待望したロケーションを、今こそ正しく描けるタイミングだと確信し、丁寧な開発プロセスを経て本作を完成させた。
+      
+      ## 💬 プレイヤーの声
+      
+      プレビュー版をプレイしたレビュアーからは「シリーズ史上最高のオープンワールドレーシングゲーム」「マップのデザインは他のゲームより全然すごい」と高評価を獲得。ある評価では100点満点中90点を記録し、「一番洗練されていて最高」との声が寄せられている。
       
       ## 👥 こんな人におすすめ
       
-      - メトロイドヴァニアの探索と成長要素が好きな人
-      - カスタマイズ性の高いアクションゲームを求めている人
-      - ハクスラ要素のある2Dアクションに興味がある人
-      - ディストピア的なSF世界観に惹かれる人
+      - 日本の峠道や都会の街並みを自由に走り回りたい人
+      - 車のカスタマイズやコレクションを楽しみたいカーマニア
+      - 友達とオンラインで一緒にドライブやカーミートを楽しみたい人
       
       ## 📅 発売情報
       
-      - **発売日**: 2026年5月15日発売中
-      - **対応機種**: PC (Microsoft Windows / Steam)
-      - **開発・発売**: Project Ego
-      - **ジャンル**: 2Dメトロイドヴァニア、プラットフォーム、ハック&スラッシュ
+      **発売日**：2026年5月19日（Xbox Series X|S、PC版）、2026年後半（PlayStation 5版）  
+      **対応機種**：Xbox Series X|S、PC（Microsoft Windows、Steam）、PlayStation 5  
+      **価格**：スタンダード エディション 9,800円、デラックス エディション 14,000円、プレミアム エディション 16,800円  
+      **備考**：Game Pass Ultimateで発売初日からプレイ可能、Xbox Play Anywhere対応
       
       ## 🎯 Creator's Eye
       
-      本作の核心は「オーグメントによる段階的な能力拡張」というメトロイドヴァニアの王道を、4種類のタイプを組み合わせるシステムで深化させた点にある。単に新しいアイテムを手に入れるだけでなく、それらの組み合わせによってプレイスタイルが変化する設計は、プレイヤーの選択に意味を持たせる優れたゲームデザインだ。また、バイオメカニカルという敵デザインのテーマ性も、汚染されたAIという世界観と一貫性を保っている。インディーゲーム開発において、限られたリソースの中でシステムと世界観を統合させる好例と言えるだろう。
+      本作が高く評価されているポイントは、文化的背景への深い理解と丁寧な再現にある。開発初期段階から専門家を招き、18カ月以上かけて日本文化を学ぶセッションを重ねたことで、単なる観光地の再現を超えた「本物らしさ」を実現した。ゲームデザインにおいて、舞台となる場所の文化や歴史をリスペクトし、正しく理解することの重要性を示す好例だ。また、初心者向けのチューニング共有機能など、幅広いプレイヤー層への配慮も見事。面白いゲームを作るには、ターゲットとなる文化への敬意と、プレイヤーの多様性を受け入れる柔軟性が不可欠であることを教えてくれる。
     game:
-      title: "Augment Anthem"
+      title: "Forza Horizon 6"
       genre:
-        - Platform
-        - Hack and slash/Beat 'em up
-        - Adventure
-        - Indie
+        - Racing
+        - Simulator
+        - Sport
+        - Arcade
       platforms:
+        - Xbox Series X|S
         - PC (Microsoft Windows)
-      releaseDate: "2026-05-15"
-      developer: "Project Ego"
-      publisher: "Project Ego"
-      developerCountry: "アメリカ"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cobu2y.jpg"
+        - PlayStation 5
+      releaseDate: "2026-05-19"
+      developer: "Playground Games"
+      publisher: "Xbox Game Studios"
+      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cobc5n.jpg"
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9m.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9n.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9o.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9p.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9q.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12q9r.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdi.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdj.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdk.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdl.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdp.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdn.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdm.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdq.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11fdo.jpg"
     sourceUrls:
-      steam: "https://store.steampowered.com/app/3035960"
-      igdb: "https://www.igdb.com/games/augment-anthem"
-  - title: "国際博物館の日特集：古代遺跡と歴史ロマンを冒険できるゲーム5選"
+      steam: "https://store.steampowered.com/app/2483190"
+      igdb: "https://www.igdb.com/games/forza-horizon-6"
+  - title: "国際博物館の日に遊びたい！古代遺跡を冒険する歴史探索ゲーム5選"
     category: feature
-    summary: "国際博物館の日にちなみ、古代遺跡や歴史を冒険できるゲームを紹介。古代エジプトを再現した「アサシン クリード オリジンズ」や考古学者が活躍する「トゥームレイダー」など、歴史ロマンを体感できる作品を厳選して特集。"
+    summary: "国際博物館の日に合わせ、古代遺跡を探索できる歴史ゲームを紹介。トゥームレイダーやアサシンクリード オリジンズなど、考古学者や冒険家となって古代文明の謎を解き明かす作品を厳選し、遺跡の細部まで観察することで歴史知識も身につくと推奨。"
     articleBody: |
-      # 古代遺跡と歴史ロマンを冒険できるゲーム特集
+      # 国際博物館の日特集：古代遺跡を冒険する歴史探索ゲーム
       
-      5月18日は国際博物館の日。博物館で展示される古代遺跡や歴史的遺物には、かつてそこに生きた人々の営みが刻まれています。ゲームの世界でも、失われた文明の謎を解き明かし、歴史のロマンを体感できる作品が数多く存在します。今回は、考古学者や冒険家になった気分で古代世界を探索できるゲームを厳選してご紹介します。
+      5月18日は国際博物館の日。博物館で歴史に触れるのも良いですが、ゲームの世界で古代遺跡を直接探検してみませんか？今回は、考古学者や冒険家になって古代文明の謎を解き明かす、歴史ロマンあふれるゲームを厳選してご紹介します。失われた文明の痕跡を辿り、遺跡に眠る秘密を自らの手で発見する興奮を味わいましょう。
       
       ## 🎮 おすすめゲーム紹介
       
-      ### アサシン クリード オリジンズ
+      ### トゥームレイダー（Tomb Raider）シリーズ
       
-      **テーマとの関連性**: 古代エジプトを舞台に、ピラミッドやスフィンクス、神殿など実在する遺跡を忠実に再現。考古学的な正確さにこだわった歴史探索が楽しめます。
+      **テーマとの関連性**: 考古学者ララ・クロフトが世界中の古代遺跡を探索し、失われた文明の謎を解明する、まさに遺跡探索ゲームの代名詞的存在です。
       
-      紀元前のエジプトを舞台に、アサシン教団の起源を描くオープンワールドアクション。クレオパトラの時代を生きる主人公バエクとなり、広大な砂漠と古代都市を冒険します。
+      若き考古学者ララ・クロフトの冒険を描く、アクションアドベンチャーの金字塔。特に2013年のリブート作以降は、リアルな遺跡描写と歴史考証が魅力です。
       
-      - ピラミッド内部やアレクサンドリア図書館など、歴史的建造物を詳細に探索可能
-      - 「ディスカバリーツアー」モードで戦闘なしの歴史学習体験ができる
-      - 古代エジプトの生活様式や宗教儀式を体験できる
+      - 実在する古代文明をモチーフにした緻密な遺跡デザイン
+      - パズル要素と探索の絶妙なバランス
+      - 歴史的な謎解きと迫力のアクションが融合
       
-      ### トゥームレイダー（2013年リブート版以降）
+      ### アサシン クリード オリジンズ（Assassin's Creed Origins）
       
-      **テーマとの関連性**: 考古学者ララ・クロフトが世界各地の古代遺跡を探索する、まさに遺跡冒険の代名詞的シリーズです。
+      **テーマとの関連性**: 古代エジプトを舞台に、ピラミッドやスフィンクスなど実在する遺跡を忠実に再現。「ディスカバリーツアー」モードでは博物館のように遺跡を学べます。
       
-      若き考古学者ララ・クロフトの成長を描くアクションアドベンチャー。日本の邪馬台国伝説をモチーフにした孤島から、シベリアの失われた都市まで、世界中の神秘的な遺跡を巡ります。
+      古代エジプトを舞台に、歴史の真実を追い求める物語。クレオパトラの時代を生きた主人公バエクとなり、壮大な遺跡群を探索します。
       
-      - 謎解きとアクションが融合した本格的な遺跡探索
-      - 古代文明の痕跡を読み解く考古学的要素が充実
-      - 美しいグラフィックで描かれる幻想的な古代遺跡
+      - ピラミッド内部まで再現された圧倒的な歴史考証
+      - 教育モード搭載で古代エジプト文明を学べる
+      - 広大なオープンワールドに点在する数々の遺跡
       
-      ### インディ・ジョーンズ/大いなる円環
+      ### アンチャーテッド（Uncharted）シリーズ
       
-      **テーマとの関連性**: 映画でおなじみの考古学者インディ・ジョーンズとなり、古代遺跡の謎を解く冒険を体験できる、2024年発売の最新作です。
+      **テーマとの関連性**: トレジャーハンターのネイサン・ドレイクが伝説の古代都市や失われた文明の遺跡を探し求める冒険活劇。映画的な演出で遺跡探索の興奮を体験できます。
       
-      1937年を舞台に、伝説の考古学者インディ・ジョーンズとなって世界各地の遺跡を巡る一人称視点のアドベンチャー。ナチスとの戦いの中で、古代の秘宝を巡る壮大な冒険が展開されます。
+      トレジャーハンター、ネイサン・ドレイクの冒険を描く傑作シリーズ。エルドラド、シャングリラ、アトランティスなど、伝説の遺跡を巡る壮大な物語が展開されます。
       
-      - エジプト、イタリア、タイなど実在する遺跡を舞台にした探索
-      - 鞭や拳銃を使ったアクションと知恵を使った謎解きの両立
-      - 映画さながらの臨場感あふれる冒険体験
+      - 映画のような臨場感あふれる遺跡探索
+      - 歴史と伝説が交錯する魅力的なストーリー
+      - 美しいグラフィックで描かれる古代遺跡の数々
       
-      ### Uncharted（アンチャーテッド）シリーズ
+      ### インディ・ジョーンズと大いなる円環（Indiana Jones and the Great Circle）
       
-      **テーマとの関連性**: トレジャーハンターが失われた古代都市や伝説の遺跡を求めて世界中を冒険する、シネマティックな遺跡探索アクションです。
+      **テーマとの関連性**: 映画でおなじみの考古学者インディ・ジョーンズが主人公。古代遺跡を舞台にした謎解きと冒険が、まさに博物館の日にふさわしい体験を提供します。
       
-      トレジャーハンター、ネイサン・ドレイクの冒険を描くアクションアドベンチャー。エル・ドラド、シャンバラ、アトランティスなど、伝説の失われた都市を求めて危険な旅に出ます。
+      2024年にリリースされた、伝説の考古学者インディ・ジョーンズの最新作。1937年を舞台に、世界各地の古代遺跡を巡りながら謎の「大いなる円環」の秘密に迫ります。
       
-      - 映画のような演出で描かれる古代遺跡の探索
-      - 歴史的な謎解きとパズル要素が満載
-      - 崩れゆく遺跡でのスリリングなアクションシーン
+      - 一人称視点で味わう臨場感あふれる遺跡探索
+      - 歴史的な謎解きパズルと知的な冒険
+      - 映画さながらの本格的な考古学アドベンチャー
       
-      ### ホライゾン ゼロ・ドーン
+      ### 大神（Okami）
       
-      **テーマとの関連性**: 文明崩壊後の世界で、旧世界の遺跡や古代技術の謎を解き明かしていく、SF考古学的な探索が楽しめます。
+      **テーマとの関連性**: 日本神話をベースに、古代日本の神社仏閣や遺跡を巡る和風アドベンチャー。日本の歴史と文化遺産を美しい墨絵タッチで探索できます。
       
-      機械獣が支配する荒野を舞台に、狩人アーロイが失われた文明の謎を追うオープンワールドアクションRPG。崩壊した旧世界の遺跡を探索し、人類の歴史の真実に迫ります。
+      日本神話の世界を舞台にした和風アクションアドベンチャー。太陽神アマテラスとなり、妖怪に侵された日本各地の神社や遺跡を浄化していきます。
       
-      - 廃墟となった現代文明の遺跡を探索する独特の体験
-      - データログや音声記録から過去の出来事を推理する考古学的要素
-      - 美しくも荒廃した世界で古代技術の謎を解き明かす物語
+      - 日本の歴史的建造物や神話が織りなす美しい世界観
+      - 墨絵風のアートスタイルで描かれる古代日本
+      - 神話と歴史が融合した独特の遺跡探索体験
       
       ## 💡 遊び方のポイント
       
-      古代遺跡を舞台にしたゲームを楽しむなら、急いでメインストーリーを進めるのではなく、じっくりと環境を観察することをおすすめします。壁画や碑文、散らばった遺物には物語が隠されています。また、多くの作品には史実に基づいた資料集が用意されているので、ゲームプレイと並行して読むことで、より深く歴史ロマンを味わえるでしょう。
+      これらのゲームを遊ぶ際は、ただクリアを目指すだけでなく、遺跡の細部までじっくり観察してみましょう。開発者が込めた歴史的ディテールや、実在する遺跡との比較を楽しむことで、より深い体験が得られます。また、ゲーム内の資料やデータベースを読み込むことで、実際の歴史知識も身につきます。博物館を訪れる前の予習として、あるいは訪問後の復習として楽しむのもおすすめです。
       
       ## 📝 まとめ
       
-      古代遺跡を探索するゲームは、冒険の興奮と歴史への知的好奇心を同時に満たしてくれます。国際博物館の日をきっかけに、ゲームを通じて古代文明の魅力に触れてみてはいかがでしょうか。画面の向こうには、発見を待つ失われた世界が広がっています。
-    featureImage: "/images/features/feature-7-1778881780878.png"
+      古代遺跡を舞台にしたゲームは、歴史への興味を刺激し、冒険心をくすぐる魅力に満ちています。国際博物館の日をきっかけに、ゲームで古代文明の謎に触れ、実際の博物館や遺跡への興味も深めてみてはいかがでしょうか。画面の向こうに広がる歴史ロマンの世界が、あなたを待っています。
+    featureImage: "/images/features/feature-7-1778943270154.png"
     recommendedGames:
+      - title: "トゥームレイダー"
+        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co3lq1.jpg"
       - title: "アサシン クリード オリジンズ"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co1rbe.jpg"
         officialUrl: "http://assassinscreed.ubisoft.com"
-      - title: "トゥームレイダー（2013年リブート版以降）"
-        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co3lq1.jpg"
-      - title: "インディ・ジョーンズ/大いなる円環"
+      - title: "アンチャーテッド"
+        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co8kfp.jpg"
+      - title: "インディ・ジョーンズと大いなる円環"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co7nbc.jpg"
         officialUrl: "https://www.indianajonesandthegreatcircle.com/"
-      - title: "Uncharted（アンチャーテッド）シリーズ"
-        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co1tp7.jpg"
-        officialUrl: "https://www.unchartedthegame.com/en-us/games/uncharted-collection/"
-      - title: "ホライゾン ゼロ・ドーン"
-        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co2una.jpg"
-        officialUrl: "https://www.guerrilla-games.com/play/horizon"
-  - title: "Ghost of Yotei』300年後の蝦夷が舞台、雪原と草原広がる日本統治外の地へ"
+      - title: "大神"
+        coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co53vn.jpg"
+  - title: "西部劇の黄昏を描く傑作『レッド・デッド・リデンプション2』アーサー・モーガンの贖罪の物語"
     category: classic
-    summary: "『Ghost of Tsushima』の続編として、1603年の蝦夷を舞台に新主人公アツの物語が展開される。"
+    summary: "Rockstar Gamesが8年かけて制作した『Red Dead Redemption 2』は、20世紀初頭のアメリカを舞台にアウトローの生き様を描いた傑作で、圧倒的なグラフィックと徹底したリアリティへのこだわりでゲーム史に残る名作とな。"
     articleBody: |
-      前作『Ghost of Tsushima』から300年後の蝦夷を舞台に、新たな主人公アツの物語が幕を開ける。羊蹄山を中心とした広大な北の大地で、日本の統治が及ばない未開の地を駆け抜ける本作は、前作の成功を受け継ぎながら、さらなる進化を遂げた傑作アクションアドベンチャーだ。
+      2018年、Rockstar Gamesが8年の歳月をかけて世に送り出した『Red Dead Redemption 2』。20世紀初頭のアメリカを舞台に、アウトロー・アーサー・モーガンの生き様を描いた本作は、「ゲームも遂にここまで来たか」と多くのプレイヤーを驚愕させた傑作です。
       
       ## 📜 ゲームの歴史
       
-      2020年に発売された『Ghost of Tsushima』の独立した続編として、2025年10月にPlayStation 5向けに発売された。開発を手がけたSucker Punch Productionsは、前作で確立した時代劇的な演出と本格的な剣戟アクションをさらに洗練。舞台を1603年の蝦夷（現在の北海道）に移し、草原、雪原、そして予期せぬ危険に満ちた、日本の統治外の地という新たな世界観を構築した。
+      前作『Red Dead Redemption』は2010年にPS3とXbox 360で発売され、全世界で1,500万本を売り上げる大ヒットを記録しました。日本でも洋ゲーとしては異例の約15万本を売り上げ、GTAシリーズで培われたRockstarへの信頼を確固たるものにします。そして2018年、満を持して登場した本作は、発売後すぐに文化的な影響力を示し、アメリカの人気アニメ『サウスパーク』でも複数回ネタにされるなど、ゲームの枠を超えた存在感を放ちました。
       
       ## 🏆 名作たる理由
       
-      - **探索の自由度とシームレスな体験**: 広大なオープンワールドには発見すべきキャラクター、ロケーション、秘密のアイテムが散りばめられ、過去と現在を行き来する回想システムが物語と探索を自然につなぎ、演出より体験で語る設計が秀逸である
+      - **圧倒的なグラフィックと世界観**：「ひたすら美しい」と評されるビジュアルは、プレイヤーに「驚喜」をもたらすレベル。20世紀初頭のアメリカを精密に再現したオープンワールドは、まさに生きた世界そのものです。
       
-      - **多彩な戦闘アクション**: 剣戟、闇討ち、さまざまな戦術を駆使できる戦闘システムは、キャンプ全体の制圧から一対一の緊迫した勝負まで、プレイヤーに豊富な選択肢を提供し、挑戦を乗り越える楽しさを実現している
+      - **リアリティへの徹底的なこだわり**：キャラクターの行動や会話、細部に至るまでのディテールが作り込まれ、「リアル」としての素晴らしさを実現。時代が織り成す狂気と侠気が交じり合う世界観が魅力です。
       
-      - **物語の完成度**: ストーリーは素晴らしい完成度を誇り、復讐を求める傭兵アツの物語を最後まで追うには多くの時間を要するほど、世界が提供する発見に満ちている
+      - **心を揺さぶるストーリー**：アウトローたちの生き様を描いた物語は多くのプレイヤーから高評価を獲得。アーサー・モーガンというキャラクターの魅力が、プレイヤーの心に深く刻まれます。
       
       ## 💻 プレイ環境
       
-      本作はPlayStation 5専用タイトルとして発売されている。PlayStation Storeでのデジタル版購入、またはパッケージ版の入手が可能だ。次世代機の性能を活かした美しいグラフィックと快適な動作で、蝦夷の大地を存分に体験できる。
+      本作はPlayStation 4、Xbox One、PC（Microsoft Windows）、Google Stadiaでプレイ可能です。各プラットフォームで西部劇の世界を体験できます。
       
       ## 🎯 Creator's Eye
       
-      『Ghost of Yōtei』が示すのは、「演出より体験で語る」というゲームデザインの本質だ。回想システムによって物語と探索をシームレスに統合し、プレイヤー自身の行動が物語を紡ぐ構造は、映像的な演出に頼らずとも深い没入感を生み出せることを証明している。また、戦闘における多様な選択肢の提供は、プレイヤーそれぞれが自分なりの攻略法を見出せる自由度を実現。この「プレイヤーの選択を尊重する設計」こそが、現代のオープンワールドゲームが目指すべき方向性を示している。
+      本作が示したのは、「リアリティの追求」がゲーム体験にもたらす可能性と課題です。徹底的なディテールへのこだわりは「ゲームも遂にここまで来たか」という驚きを生み出しましたが、同時に「ゲームとしてのテンポ」との葛藤も生みました。この作品から学べるのは、リアリティとゲームプレイの快適さのバランスをどう取るかという、現代のオープンワールドゲーム開発における永遠のテーマです。プレイヤーに何を感じさせたいのか、その目的を明確にすることが、名作を生み出す鍵となるでしょう。
     game:
-      title: "Ghost of Yotei"
+      title: "Red Dead Redemption 2"
+      titleJa: "レッドデッドリデンプション2"
       genre:
+        - Shooter
         - Role-playing (RPG)
         - Adventure
       platforms:
-        - PlayStation 5
-      releaseDate: "2025-10-02"
-      developer: "Sucker Punch Productions"
-      publisher: "Sony Interactive Entertainment"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co9coo.jpg"
+        - Google Stadia
+        - PlayStation 4
+        - PC (Microsoft Windows)
+        - Xbox One
+      releaseDate: "2018-10-26"
+      developer: "Rockstar Games"
+      publisher: "Take-Two Interactive"
+      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co1q1f.jpg"
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzwq.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzwr.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzws.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzwt.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzwu.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzww.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctzwv.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6i.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6j.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6k.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6l.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6m.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scwk6n.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/xegpfnsvlyeld0zkjnrc.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/c9xalka7stjkx4mes7kp.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/dhw6ucx9laj5esv6rngn.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/tdxv4zzkqyjnm9pmwxw0.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/qg7gx276z3hsqlr9xpt6.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/h8f9uojkzvaau8pxsyxi.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/x8xczj2a0y6g9rnhboko.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/kcfpf8wa8esalk0qkpo5.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/uyaminfh8sugglvt247u.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/banftd8fgfytbsfx6mjz.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/dorsz0jbcecmkxvzi3t8.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/mptosgjarjlyqxy7lqsm.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctkgp.jpg"
+        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctkgq.jpg"
     sourceUrls:
-      igdb: "https://www.igdb.com/games/ghost-of-yotei"
+      official: "https://www.rockstargames.com/jp/reddeadredemption2"
+      igdb: "https://www.igdb.com/games/red-dead-redemption-2"
 ---
 
 Game Wire 第7号（2026年5月15日発行）をお届けします。
