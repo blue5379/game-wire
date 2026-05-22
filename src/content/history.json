@@ -245,6 +245,41 @@
       "category": "classic",
       "issueNumber": 7,
       "publishDate": "2026-05-16"
+    },
+    {
+      "normalizedTitle": "tomodachi life living the dream",
+      "title": "Tomodachi Life: Living the Dream",
+      "category": "newRelease",
+      "issueNumber": 8,
+      "publishDate": "2026-05-22"
+    },
+    {
+      "normalizedTitle": "atomic heart blood on crystal",
+      "title": "Atomic Heart: Blood on Crystal",
+      "category": "newRelease",
+      "issueNumber": 8,
+      "publishDate": "2026-05-22"
+    },
+    {
+      "normalizedTitle": "hero company",
+      "title": "Hero Company",
+      "category": "indie",
+      "issueNumber": 8,
+      "publishDate": "2026-05-22"
+    },
+    {
+      "normalizedTitle": "ark survival ascended",
+      "title": "ARK: Survival Ascended",
+      "category": "indie",
+      "issueNumber": 8,
+      "publishDate": "2026-05-22"
+    },
+    {
+      "normalizedTitle": "fivem",
+      "title": "FiveM",
+      "category": "classic",
+      "issueNumber": 8,
+      "publishDate": "2026-05-22"
     }
   ]
 }
