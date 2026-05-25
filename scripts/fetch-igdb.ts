@@ -864,8 +864,10 @@ export async function fetchGameImageAndUrl(
         'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
         'youtube.com', 'twitch.tv', 'reddit.com', 'discord.gg', 'discord.com',
         'store.steampowered.com', 'steampowered.com',
-        'store.playstation.com', 'playstation.com',
-        'nintendo.com', 'xbox.com', 'microsoft.com',
+        'store.playstation.com',        // PS Storeのみ除外
+        'store-jp.nintendo.com',        // 任天堂ストアのみ除外
+        'xbox.com/ja-jp/games/store', 'xbox.com/en-us/games/store',  // Xboxストアのみ除外
+        'microsoft.com',
         'gog.com', 'epicgames.com', 'play.google.com', 'apps.apple.com', 'itunes.apple.com',
         'wikipedia.org', 'fandom.com', 'wiki',
       ];
