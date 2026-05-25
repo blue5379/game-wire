@@ -368,6 +368,10 @@
 
 ### 🔴 バグ修正
 - [x] **#bug-1** Vol.1記事詳細ページの「← Vol.Nに戻る」「Vol.N トップへ」リンクが最新号（Vol.2等）に遷移する問題を修正（`issue/[issueNumber]/article/[slug].astro` の `navHome.href` を `/` から `/archive/${issueNumber}` に変更）
+- [x] **#bug-2** 新作紹介記事に公式ホームページが記載されない問題（`fetch-official-jp-url.ts`）
+  - [x] **(a)** プラットフォーム除外ルール修正: `nintendo.com`→`store-jp.nintendo.com`、`playstation.com`削除（`store.playstation.com`は維持）、`xbox.com`→`xbox.com/ja-jp/games/store`。`fetch-igdb.ts` の `nonOfficialPatterns` も同様に修正
+  - [x] **(b)** `maxResults` を5→10に増やしてTavilyの非決定性への耐性を向上
+  - [x] **(c)** 候補0件またはClaude選別失敗時に別クエリでリトライ（優先度順）: ①`${titleJa} 公式サイト`（クォートなし） ②`${titleEn} 公式サイト 日本語`（英語タイトルのみ） ③`${titleJa} 公式`（キーワード簡略化）
 
 ### 🟡 セキュリティ（LOW）
 - [ ] **#6** 画像URLのHTTPS強制変換（`fetch-igdb.ts`）

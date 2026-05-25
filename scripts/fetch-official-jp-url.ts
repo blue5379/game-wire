@@ -7,6 +7,8 @@ import { tavily } from '@tavily/core';
 import { invokeClaudeModel, initializeBedrockClient } from './bedrock-client.js';
 
 // SNS・ストア・Wiki等のURLを除外するパターン（fetch-igdb.ts の nonOfficialPatterns と共通）
+// 注意: nintendo.com/playstation.com/xbox.com はゲーム紹介ページも持つため、
+//       ストアURLのパターンのみを除外し、紹介ページは通過させる
 export const NON_OFFICIAL_URL_PATTERNS = [
   'facebook.com',
   'twitter.com',
@@ -19,10 +21,10 @@ export const NON_OFFICIAL_URL_PATTERNS = [
   'discord.com',
   'store.steampowered.com',
   'steampowered.com',
-  'store.playstation.com',
-  'playstation.com',
-  'nintendo.com',
-  'xbox.com',
+  'store.playstation.com',   // PS Storeのみ除外（www.playstation.com/ja-jp/games/ は通過）
+  'store-jp.nintendo.com',   // 任天堂ストアのみ除外（www.nintendo.com/jp/switch/ は通過）
+  'xbox.com/ja-jp/games/store',  // Xboxストアのみ除外（xbox.com/ja-JP/games/[title] は通過）
+  'xbox.com/en-us/games/store',
   'microsoft.com',
   'gog.com',
   'epicgames.com',
@@ -74,7 +76,25 @@ async function isUrlAlive(url: string): Promise<boolean> {
 }
 
 /**
+ * Tavily検索でゲームの公式日本語ページ候補を取得（単一クエリ）
+ */
+async function searchWithQuery(
+  client: ReturnType<typeof tavily>,
+  query: string
+): Promise<string[]> {
+  const response = await client.search(query, {
+    maxResults: 10,
+    searchDepth: 'basic',
+    topic: 'general',
+  });
+  return response.results
+    .map((r) => r.url)
+    .filter((url) => !isNonOfficialUrl(url));
+}
+
+/**
  * Tavily検索でゲームの公式日本語ページ候補を取得
+ * 候補が見つからない場合は別クエリでリトライする
  */
 async function searchOfficialJpUrl(
   titleEn: string,
@@ -86,24 +106,34 @@ async function searchOfficialJpUrl(
   }
 
   const client = tavily({ apiKey });
-  const query = titleJa
-    ? `"${titleJa}" OR "${titleEn}" 公式サイト 日本語`
-    : `"${titleEn}" 公式サイト 日本語`;
 
-  try {
-    const response = await client.search(query, {
-      maxResults: 5,
-      searchDepth: 'basic',
-      topic: 'general',
-    });
+  // リトライクエリを優先度順に定義
+  const queries = [
+    // 1st: 現行クエリ（完全一致を強制）
+    titleJa
+      ? `"${titleJa}" OR "${titleEn}" 公式サイト 日本語`
+      : `"${titleEn}" 公式サイト 日本語`,
+    // 2nd: クォートなし日本語タイトル（検索エンジンの柔軟マッチングを活用）
+    ...(titleJa ? [`${titleJa} 公式サイト`] : []),
+    // 3rd: 英語タイトルのみ
+    `${titleEn} 公式サイト 日本語`,
+    // 4th: キーワード簡略化
+    ...(titleJa ? [`${titleJa} 公式`] : []),
+  ];
 
-    return response.results
-      .map((r) => r.url)
-      .filter((url) => !isNonOfficialUrl(url));
-  } catch (error) {
-    console.error(`  Tavily search failed for "${titleEn}":`, error);
-    return [];
+  for (let i = 0; i < queries.length; i++) {
+    try {
+      const candidates = await searchWithQuery(client, queries[i]);
+      if (candidates.length > 0) {
+        if (i > 0) console.log(`    Retry ${i} succeeded with query: ${queries[i]}`);
+        return candidates;
+      }
+    } catch (error) {
+      console.error(`  Tavily search failed (query ${i + 1}) for "${titleEn}":`, error);
+    }
   }
+
+  return [];
 }
 
 /**
