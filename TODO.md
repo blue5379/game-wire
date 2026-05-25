@@ -370,9 +370,10 @@
 - [x] **#bug-1** Vol.1記事詳細ページの「← Vol.Nに戻る」「Vol.N トップへ」リンクが最新号（Vol.2等）に遷移する問題を修正（`issue/[issueNumber]/article/[slug].astro` の `navHome.href` を `/` から `/archive/${issueNumber}` に変更）
 - [x] **#bug-2** 新作紹介記事に公式ホームページが記載されない問題（`fetch-official-jp-url.ts`）
 - [x] **#16** 日本製のゲームのタイトルが英語表記になっている問題（`bedrock-client.ts`）
-  - [x] **(a)** `newReleaseSystem` / `indieSystem` / `classicSystem` の「記事のスタイル」に日本語タイトル優先使用ルールを追記
+  - [x] **(a)** `newReleaseSystem` / `indieSystem` / `classicSystem` / `featureSystem` の「記事のスタイル」に日本語タイトル優先使用ルールを追記
   - [x] **(b)** `titleSystem` に同様のルールを追記
   - [x] **(c)** `buildUserMessage` で `titleJa` が存在する場合は主タイトルとして渡す（「タイトル（日本語）」「タイトル（英語/国際名）」に分離）
+- [x] **#bug-2** 新作紹介記事に公式ホームページが記載されない問題（`fetch-official-jp-url.ts`）
   - [x] **(a)** プラットフォーム除外ルール修正: `nintendo.com`→`store-jp.nintendo.com`、`playstation.com`削除（`store.playstation.com`は維持）、`xbox.com`→`xbox.com/ja-jp/games/store`。`fetch-igdb.ts` の `nonOfficialPatterns` も同様に修正
   - [x] **(b)** `maxResults` を5→10に増やしてTavilyの非決定性への耐性を向上
   - [x] **(c)** 候補0件またはClaude選別失敗時に別クエリでリトライ（優先度順）: ①`${titleJa} 公式サイト`（クォートなし） ②`${titleEn} 公式サイト 日本語`（英語タイトルのみ） ③`${titleJa} 公式`（キーワード簡略化）
