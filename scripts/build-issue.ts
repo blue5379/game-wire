@@ -15,6 +15,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry } from './game-history.js';
+import { validateArticles, writeAndCheckReport } from './validate-article.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -442,6 +443,22 @@ async function main(): Promise<void> {
     console.log(`Added ${historyEntries.length} entries to history`);
   } else {
     console.log('No entries to add to history');
+  }
+
+  // 記事の事後検証（ハルシネーション・タイトル整合性等）
+  const report = validateArticles(generatedIssue.articles, issueNumber);
+  const validationDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
+  // 環境変数 VALIDATION_HIGH_THRESHOLD で fail 閾値を上書き可能（デフォルト: 5）
+  const threshold = parseInt(process.env.VALIDATION_HIGH_THRESHOLD || '5', 10);
+  const passed = writeAndCheckReport(report, validationDir, threshold);
+
+  if (!passed) {
+    console.error(
+      'Validation failed. The issue file was created, but it should be reviewed before publishing.'
+    );
+    if (process.env.VALIDATION_STRICT === 'true') {
+      process.exit(1);
+    }
   }
 
   console.log(`Finished at: ${new Date().toISOString()}`);

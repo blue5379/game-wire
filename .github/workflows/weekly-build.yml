@@ -68,7 +68,53 @@ jobs:
       - name: Build issue
         run: npx tsx scripts/build-issue.ts
 
-      # 6.5. history.json の JSON 整合性チェック
+      # 6.5. バリデーションレポートを Job Summary に出力
+      - name: Validation report summary
+        if: always()
+        run: |
+          REPORT=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
+          if [ -z "$REPORT" ]; then
+            echo "## ⚠️ Article Validation Report" >> $GITHUB_STEP_SUMMARY
+            echo "レポートファイルが見つかりませんでした。" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          TOTAL=$(jq '.totalWarnings' "$REPORT")
+          HIGH=$(jq '.warningsBySeverity.high' "$REPORT")
+          MEDIUM=$(jq '.warningsBySeverity.medium' "$REPORT")
+          LOW=$(jq '.warningsBySeverity.low' "$REPORT")
+          ARTICLES=$(jq '.totalArticles' "$REPORT")
+          ISSUE=$(jq '.issueNumber' "$REPORT")
+
+          if [ "$HIGH" -gt 5 ]; then
+            ICON="❌"
+            STATUS="閾値超過（high: ${HIGH} > 5）"
+          else
+            ICON="✅"
+            STATUS="通過（high: ${HIGH} ≤ 5）"
+          fi
+
+          echo "## ${ICON} Article Validation Report（第${ISSUE}号）" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 項目 | 件数 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 記事数 | ${ARTICLES} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 警告合計 | ${TOTAL} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 HIGH | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 MEDIUM | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟢 LOW | ${LOW} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 判定 | ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$TOTAL" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### 警告一覧" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| 重要度 | 種別 | 記事タイトル | 内容 |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|------|-------------|------|" >> $GITHUB_STEP_SUMMARY
+            jq -r '.warnings[] | "| \(.severity | ascii_upcase) | `\(.type)` | \(.articleTitle) | \(.message) |"' "$REPORT" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # 6.6. history.json の JSON 整合性チェック
       - name: Validate history.json
         run: jq empty src/content/history.json
 
@@ -109,3 +155,9 @@ jobs:
           echo "- **Date**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Publish Date**: ${{ inputs.publish_date || 'Today' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: Deployed to Cloudflare Pages" >> $GITHUB_STEP_SUMMARY
+          REPORT=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
+          if [ -n "$REPORT" ]; then
+            HIGH=$(jq '.warningsBySeverity.high' "$REPORT")
+            TOTAL=$(jq '.totalWarnings' "$REPORT")
+            echo "- **Validation**: 警告 ${TOTAL}件（HIGH: ${HIGH}件）" >> $GITHUB_STEP_SUMMARY
+          fi

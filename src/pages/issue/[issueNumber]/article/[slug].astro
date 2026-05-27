@@ -281,6 +281,14 @@ if (article.articleBody) {
 
   <SourceLinks sourceUrls={article.sourceUrls} />
 
+  <aside class="ai-disclaimer" role="note">
+    <p>
+      <strong>本記事はAIによって自動生成されています。</strong>
+      情報の正確性については最大限配慮していますが、事実と異なる記述が含まれる可能性があります。
+      ゲームの最新情報・正確な仕様・価格・発売日等は、必ず公式サイトや販売店でご確認ください。
+    </p>
+  </aside>
+
   <RelatedArticles
     articles={articles}
     currentIndex={articleIndex}
@@ -292,6 +300,27 @@ if (article.articleBody) {
 </ArticleLayout>
 
 <style>
+  .ai-disclaimer {
+    background: var(--color-surface);
+    border-left: 3px solid var(--color-text-muted);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-md);
+    margin: var(--spacing-md) 0;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+  }
+
+  .ai-disclaimer p {
+    margin: 0;
+  }
+
+  .ai-disclaimer strong {
+    color: var(--color-text);
+    display: inline-block;
+    margin-bottom: 0.25rem;
+  }
+
   .article-main {
     background: var(--color-surface);
     border-radius: var(--radius-md);

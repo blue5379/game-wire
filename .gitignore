@@ -49,3 +49,5 @@ src/content/history-dev.json
 data/aggregated.json
 data/generated-articles.json
 data/selected-games.json
+data/validation/
+data/validation-dev/

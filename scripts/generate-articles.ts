@@ -106,10 +106,21 @@ async function generateTitle(
   category: string,
   gameTitle: string,
   summary?: string,
-  itemCount?: number
+  itemCount?: number,
+  titleJa?: string
 ): Promise<string> {
   const countNote = itemCount !== undefined ? `\n紹介するゲームの本数: ${itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
-  const userMessage = `カテゴリ: ${category}\nゲームタイトル: ${gameTitle}${summary ? `\n概要: ${summary}` : ''}${countNote}\n\n上記の情報を元に、記事タイトルを1つ生成してください。`;
+
+  // タイトル指定: 日本語タイトルがあれば日本語を優先、無ければ英語をそのまま使用
+  const titleSection = titleJa
+    ? `タイトル（日本語、記事内で優先使用）: ${titleJa}\nタイトル（英語/国際名、変更禁止）: ${gameTitle}`
+    : `タイトル（英語/国際名、変更禁止）: ${gameTitle}`;
+
+  const userMessage = `カテゴリ: ${category}
+${titleSection}${summary ? `\n概要: ${summary}` : ''}${countNote}
+
+上記の情報を元に、記事タイトルを1つ生成してください。
+ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。`;
 
   try {
     const response = await invokeClaudeModel(
@@ -121,7 +132,7 @@ async function generateTitle(
   } catch (error) {
     console.warn(`Title generation failed, using fallback: ${error}`);
     // フォールバック: ゲームタイトルをそのまま使用
-    return `注目タイトル『${gameTitle}』をご紹介`;
+    return `注目タイトル『${titleJa || gameTitle}』をご紹介`;
   }
 }
 
@@ -264,11 +275,11 @@ async function generateNewReleaseArticle(
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.newReleaseSystem, userMessage, {
       maxTokens: 3000,
-      temperature: 0.5,
+      temperature: 0.2,
     })
   );
 
-  const title = await generateTitle('大手企業の新作', game.title, game.summary);
+  const title = await generateTitle('大手企業の新作', game.title, game.summary, undefined, game.titleJa);
   const summary = await generateSummary(content);
 
   return {
@@ -343,14 +354,16 @@ async function generateIndieArticle(game: GameData, publishDate: Date): Promise<
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.indieSystem, userMessage, {
       maxTokens: 3000,
-      temperature: 0.5,
+      temperature: 0.2,
     })
   );
 
   const title = await generateTitle(
     '話題のインディーゲーム',
     game.title,
-    game.summary
+    game.summary,
+    undefined,
+    game.titleJa
   );
   const summary = await generateSummary(content);
 
@@ -463,7 +476,7 @@ async function generateFeatureArticle(
   );
   console.log(`  Generating feature article: ${theme}`);
 
-  const relatedGamesList = relatedGames?.slice(0, 5).map((g) => ({
+  const relatedGamesList = relatedGames?.slice(0, 20).map((g) => ({
     title: g.title,
     summary: g.summary,
   }));
@@ -473,7 +486,7 @@ async function generateFeatureArticle(
   const rawContent = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.featureSystem, userMessage, {
       maxTokens: 4000,
-      temperature: 0.5,
+      temperature: 0.2,
     })
   );
 
@@ -572,11 +585,11 @@ async function generateClassicArticle(
   const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.classicSystem, userMessage, {
       maxTokens: 3500,
-      temperature: 0.5,
+      temperature: 0.2,
     })
   );
 
-  const title = await generateTitle('名作深掘り', game.title, game.summary);
+  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa);
   const summary = await generateSummary(content);
 
   return {
@@ -643,6 +656,26 @@ async function main(): Promise<void> {
   console.log('=== Game Wire Article Generation ===');
   console.log(`Started at: ${new Date().toISOString()}`);
   console.log('');
+
+  // ハルシネーション対策: TAVILY_API_KEY 未設定時は fail fast
+  // Web検索なしでの生成は事実根拠が極端に薄くなるため、本番では必須
+  // 開発時に意図的にスキップしたい場合は ALLOW_WITHOUT_WEB_SEARCH=true を設定
+  if (!isTavilyAvailable()) {
+    if (process.env.ALLOW_WITHOUT_WEB_SEARCH === 'true') {
+      console.warn(
+        '⚠️  TAVILY_API_KEY is not set. Article generation will proceed WITHOUT web grounding.\n' +
+          '   This is allowed only because ALLOW_WITHOUT_WEB_SEARCH=true is set.\n' +
+          '   The resulting articles will have higher hallucination risk.'
+      );
+    } else {
+      console.error(
+        '❌ TAVILY_API_KEY is not set.\n' +
+          '   Article generation requires web search grounding to reduce hallucinations.\n' +
+          '   Set TAVILY_API_KEY in your environment, or set ALLOW_WITHOUT_WEB_SEARCH=true to bypass (development only).'
+      );
+      process.exit(1);
+    }
+  }
 
   // 選定済みゲームデータを読み込み
   const selectedPath = path.join(DATA_DIR, 'selected-games.json');
