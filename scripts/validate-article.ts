@@ -25,6 +25,7 @@ export interface ValidationWarning {
   type: string;
   message: string;
   evidence?: string;
+  context?: string; // 本文中の該当箇所（前後の文を含む）
 }
 
 export interface ValidationReport {
@@ -49,6 +50,20 @@ const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /\bmacOS\b|\bMac\b(?![a-zA-Z])/i, canonical: 'Mac' },
   { pattern: /\bLinux\b/i, canonical: 'Linux' },
 ];
+
+/**
+ * 本文中の該当箇所の前後文を抽出する（人間が判断するための文脈）
+ */
+function extractContext(content: string, matchedText: string, windowChars: number = 80): string {
+  const idx = content.indexOf(matchedText);
+  if (idx === -1) return matchedText;
+  const start = Math.max(0, idx - windowChars);
+  const end = Math.min(content.length, idx + matchedText.length + windowChars);
+  const excerpt = content.slice(start, end).replace(/\n+/g, ' ').trim();
+  const prefix = start > 0 ? '…' : '';
+  const suffix = end < content.length ? '…' : '';
+  return `${prefix}${excerpt}${suffix}`;
+}
 
 /**
  * 提供データのプラットフォーム配列を canonical な形に正規化
@@ -214,6 +229,7 @@ export function validatePlatformConsistency(article: GeneratedArticle): Validati
           `本文で「${mentioned}」が言及されていますが、提供データには含まれていません。` +
           `提供データのプラットフォーム: [${[...officialPlatforms].join(', ')}]`,
         evidence: mentioned,
+        context: extractContext(article.content, mentioned),
       });
     }
   }
@@ -263,6 +279,7 @@ export function validatePersonAttribution(article: GeneratedArticle): Validation
         type,
         message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
         evidence: match[0],
+        context: extractContext(content, match[0]),
       });
     }
   }
@@ -318,6 +335,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
           `本文に具体的な数値「${match[0].trim()}」が記載されています。` +
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
+        context: extractContext(content, match[0].trim()),
       });
     }
   }

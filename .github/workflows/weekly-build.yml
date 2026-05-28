@@ -108,10 +108,13 @@ jobs:
           if [ "$TOTAL" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### 警告一覧" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| 重要度 | 種別 | 記事タイトル | 内容 |" >> $GITHUB_STEP_SUMMARY
-            echo "|--------|------|-------------|------|" >> $GITHUB_STEP_SUMMARY
-            jq -r '.warnings[] | "| \(.severity | ascii_upcase) | `\(.type)` | \(.articleTitle) | \(.message) |"' "$REPORT" >> $GITHUB_STEP_SUMMARY
+            jq -r '.warnings[] | (
+              "\n---\n" +
+              "**[\(.severity | ascii_upcase)] \(.type)**  \n" +
+              "記事: \(.articleTitle)  \n" +
+              "内容: \(.message)  \n" +
+              if .context then "> \(.context)" else "" end
+            )' "$REPORT" >> $GITHUB_STEP_SUMMARY
           fi
 
       # 6.6. history.json の JSON 整合性チェック
