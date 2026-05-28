@@ -803,7 +803,7 @@ export async function enrichGameWithIGDB(
  */
 export async function fetchGameImageAndUrl(
   gameName: string
-): Promise<{ coverImage?: string; officialUrl?: string } | null> {
+): Promise<{ coverImage?: string; officialUrl?: string; platforms?: string[]; developer?: string; publisher?: string } | null> {
   const clientId = process.env.IGDB_CLIENT_ID;
   const clientSecret = process.env.IGDB_CLIENT_SECRET;
 
@@ -826,11 +826,19 @@ export async function fetchGameImageAndUrl(
       name: string;
       cover?: { url: string };
       websites?: { url: string; category: number }[];
+      platforms?: { name: string }[];
+      involved_companies?: {
+        company: { name: string };
+        developer: boolean;
+        publisher: boolean;
+      }[];
     }
 
     const query = `
       search "${searchName.replace(/"/g, '\\"')}";
-      fields name, cover.url, websites.url, websites.category;
+      fields name, cover.url, websites.url, websites.category,
+             platforms.name,
+             involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
       limit 1;
     `;
 
@@ -877,7 +885,18 @@ export async function fetchGameImageAndUrl(
       officialUrl = candidate?.url;
     }
 
-    return { coverImage, officialUrl };
+    const platforms = game.platforms?.map((p) => p.name);
+
+    let developer: string | undefined;
+    let publisher: string | undefined;
+    if (game.involved_companies) {
+      for (const ic of game.involved_companies) {
+        if (ic.developer && !developer) developer = ic.company.name;
+        if (ic.publisher && !publisher) publisher = ic.company.name;
+      }
+    }
+
+    return { coverImage, officialUrl, platforms, developer, publisher };
   } catch (error) {
     console.error(`Failed to fetch image/url for "${gameName}":`, error);
     return null;

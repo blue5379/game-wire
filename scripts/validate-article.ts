@@ -25,7 +25,12 @@ export interface ValidationWarning {
   type: string;
   message: string;
   evidence?: string;
-  context?: string; // 本文中の該当箇所（前後の文を含む）
+  context?: string;    // 本文中の該当箇所（前後の文を含む）
+  sourcedFrom?: {      // 検索結果に根拠が見つかった場合のみセット
+    url: string;
+    title: string;
+    snippet: string;
+  };
 }
 
 export interface ValidationReport {
@@ -50,6 +55,24 @@ const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /\bmacOS\b|\bMac\b(?![a-zA-Z])/i, canonical: 'Mac' },
   { pattern: /\bLinux\b/i, canonical: 'Linux' },
 ];
+
+/**
+ * 検索結果の中から、指定したキーワードを含む最初のソースを返す
+ * 見つかった場合: 根拠あり（ウェブ情報由来の可能性が高い）
+ * 見つからない場合: undefined（捏造の可能性が高い）
+ */
+function findSourceFor(
+  keyword: string,
+  sources: Array<{ url: string; title: string; snippet: string }> | undefined
+): { url: string; title: string; snippet: string } | undefined {
+  if (!sources || sources.length === 0) return undefined;
+  const kw = keyword.replace(/,/g, '').toLowerCase();
+  return sources.find((s) => {
+    const snippet = s.snippet.replace(/,/g, '').toLowerCase();
+    const title = s.title.replace(/,/g, '').toLowerCase();
+    return snippet.includes(kw) || title.includes(kw);
+  });
+}
 
 /**
  * 本文中の該当箇所の前後文を抽出する（人間が判断するための文脈）
@@ -197,6 +220,141 @@ export function validateTitleConsistency(article: GeneratedArticle): ValidationW
 }
 
 /**
+ * 特集記事のプラットフォーム整合性を検証
+ * recommendedGames のプラットフォームを合算し、本文中に無関係なプラットフォームが言及されていれば警告
+ */
+export function validateFeaturePlatformConsistency(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+  if (!article.recommendedGames || article.recommendedGames.length === 0) return warnings;
+
+  // 全推薦ゲームのプラットフォームを合算
+  const allPlatforms: string[] = [];
+  for (const rg of article.recommendedGames) {
+    if (rg.platforms) allPlatforms.push(...rg.platforms);
+  }
+  if (allPlatforms.length === 0) return warnings;
+
+  const officialPlatforms = normalizePlatforms(allPlatforms);
+
+  const mentionedPlatforms = new Set<string>();
+  for (const { pattern, canonical } of KNOWN_PLATFORM_PATTERNS) {
+    if (pattern.test(article.content)) {
+      mentionedPlatforms.add(canonical);
+    }
+  }
+
+  for (const mentioned of mentionedPlatforms) {
+    if (!officialPlatforms.has(mentioned)) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity: 'high',
+        type: 'platform-mismatch',
+        message:
+          `本文で「${mentioned}」が言及されていますが、紹介ゲームのいずれにも含まれていません。` +
+          `紹介ゲームのプラットフォーム: [${[...officialPlatforms].join(', ')}]`,
+        evidence: mentioned,
+        context: extractContext(article.content, mentioned),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * 特集記事の人物言及を検証
+ * recommendedGames の developer/publisher を許容リストとして使用
+ */
+export function validateFeaturePersonAttribution(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+
+  const content = article.content;
+
+  const personPatterns: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
+    { pattern: /([一-龥ぁ-んァ-ンー・A-Za-z]+)氏(?:によると|は語|は述べ|のコメント|は明か|は説明|は強調)/g, type: 'person-quote', severity: 'high' },
+    { pattern: /CEO[のは]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /CTO[のは]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /ディレクター[のは・]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /プロデューサー[のは・]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /([一-龥ぁ-んァ-ンー・A-Za-z]+)氏を中心/g, type: 'person-mention', severity: 'medium' },
+  ];
+
+  // 全推薦ゲームの developer/publisher を許容リストに追加
+  const allowedNames = new Set<string>();
+  for (const rg of article.recommendedGames ?? []) {
+    if (rg.developer) allowedNames.add(rg.developer);
+    if (rg.publisher) allowedNames.add(rg.publisher);
+  }
+
+  for (const { pattern, type, severity } of personPatterns) {
+    const matches = content.matchAll(pattern);
+    for (const match of matches) {
+      const name = match[1];
+      if (!name) continue;
+      if (allowedNames.has(name)) continue;
+      if (name.length < 2) continue;
+
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity,
+        type,
+        message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
+        evidence: match[0],
+        context: extractContext(content, match[0]),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * 特集記事の数値クレームを検証
+ */
+export function validateFeatureNumericClaims(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+
+  const content = article.content;
+
+  const numericPatterns: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
+    { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*件/g, type: 'review-count', severity: 'high' },
+    { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*人/g, type: 'user-count', severity: 'high' },
+    { pattern: /(\d+(?:[.,]\d+)?)\s*(?:万|億)\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)/g, type: 'large-count', severity: 'high' },
+    { pattern: /(\d+(?:[.,]\d+)?)\s*時間(?:プレイ|遊)/g, type: 'play-hours', severity: 'medium' },
+    { pattern: /(\d+(?:[.,]\d+)?)\s*(?:円|ドル|USD|\$)/g, type: 'price', severity: 'medium' },
+    { pattern: /(\d+)\s*(?:周年)/g, type: 'anniversary', severity: 'low' },
+    { pattern: /(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
+  ];
+
+  for (const { pattern, type, severity } of numericPatterns) {
+    const matches = content.matchAll(pattern);
+    for (const match of matches) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity,
+        type: `numeric-${type}`,
+        message:
+          `本文に具体的な数値「${match[0].trim()}」が記載されています。` +
+          `提供データに無い数値の場合は捏造の可能性があります。`,
+        evidence: match[0].trim(),
+        context: extractContext(content, match[0].trim()),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 本文中のプラットフォーム言及を検証
  */
 export function validatePlatformConsistency(article: GeneratedArticle): ValidationWarning[] {
@@ -280,6 +438,7 @@ export function validatePersonAttribution(article: GeneratedArticle): Validation
         message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
         evidence: match[0],
         context: extractContext(content, match[0]),
+        sourcedFrom: findSourceFor(name, article.webSearchSources),
       });
     }
   }
@@ -336,6 +495,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
+        sourcedFrom: findSourceFor(match[1], article.webSearchSources),
       });
     }
   }
@@ -353,6 +513,9 @@ export function validateArticle(article: GeneratedArticle): ValidationWarning[] 
     ...validatePlatformConsistency(article),
     ...validatePersonAttribution(article),
     ...validateNumericClaims(article),
+    ...validateFeaturePlatformConsistency(article),
+    ...validateFeaturePersonAttribution(article),
+    ...validateFeatureNumericClaims(article),
   ];
 }
 

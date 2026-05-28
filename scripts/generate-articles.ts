@@ -26,6 +26,7 @@ import { generateFeatureImage } from './generate-feature-image.js';
 import {
   searchGameInfo,
   formatSearchResultsForPrompt,
+  flattenSearchResults,
   isTavilyAvailable,
 } from './fetch-web-search.js';
 import { fetchGameImageAndUrl } from './fetch-igdb.js';
@@ -66,6 +67,13 @@ function getNextIssueNumber(): number {
 // SourceUrls型をインポート
 import type { SourceUrls } from './types.js';
 
+// 記事生成時に使用した Tavily 検索結果の保存用型
+export interface WebSearchSource {
+  url: string;
+  title: string;
+  snippet: string; // content の先頭 300 文字
+}
+
 // 生成された記事の型定義
 export interface GeneratedArticle {
   title: string;
@@ -75,6 +83,7 @@ export interface GeneratedArticle {
   featureImage?: string; // 特集記事用のAI生成画像パス
   recommendedGames?: RecommendedGame[]; // 特集記事のおすすめゲーム
   sourceUrls?: SourceUrls; // 参照元URL
+  webSearchSources?: WebSearchSource[]; // 生成時に参照した Tavily 検索結果
   game?: {
     title: string;
     titleJa?: string;
@@ -244,11 +253,13 @@ async function generateNewReleaseArticle(
 
   // Web検索で追加情報を取得
   let webSearchContext = '';
+  let webSearchSources: WebSearchSource[] = [];
   if (isTavilyAvailable()) {
     try {
       console.log(`    Searching web for additional info...`);
       const searchResults = await searchGameInfo(game.title, 'newRelease', game.developer);
       webSearchContext = formatSearchResultsForPrompt(searchResults);
+      webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
     }
@@ -288,6 +299,7 @@ async function generateNewReleaseArticle(
     summary,
     content,
     sourceUrls: game.sourceUrls,
+    webSearchSources: webSearchSources.length > 0 ? webSearchSources : undefined,
     game: {
       title: game.title,
       titleJa: game.titleJa,
@@ -313,6 +325,7 @@ async function generateIndieArticle(game: GameData, publishDate: Date): Promise<
 
   // 基本の追加コンテキスト
   const contextParts: string[] = [];
+  let webSearchSources: WebSearchSource[] = [];
   if (game.youtubePopularity) {
     contextParts.push(`YouTubeでの累計視聴回数: ${game.youtubePopularity.toLocaleString()}回`);
   }
@@ -326,6 +339,7 @@ async function generateIndieArticle(game: GameData, publishDate: Date): Promise<
       if (webSearchContext) {
         contextParts.push(webSearchContext);
       }
+      webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
     }
@@ -373,6 +387,7 @@ async function generateIndieArticle(game: GameData, publishDate: Date): Promise<
     summary,
     content,
     sourceUrls: game.sourceUrls,
+    webSearchSources: webSearchSources.length > 0 ? webSearchSources : undefined,
     game: {
       title: game.title,
       titleJa: game.titleJa,
@@ -449,6 +464,9 @@ async function enrichRecommendedGames(games: ExtractedGame[]): Promise<Recommend
       title: game.ja,
       coverImage: igdbResult?.coverImage,
       officialUrl: igdbResult?.officialUrl,
+      platforms: igdbResult?.platforms,
+      developer: igdbResult?.developer,
+      publisher: igdbResult?.publisher,
     });
     // レート制限対策
     await new Promise((r) => setTimeout(r, 300));
@@ -541,6 +559,7 @@ async function generateClassicArticle(
 
   // 基本の追加コンテキスト
   const contextParts: string[] = [];
+  let webSearchSources: WebSearchSource[] = [];
   if (game.steamPlayers) {
     contextParts.push(`現在のSteam同時接続数: ${game.steamPlayers.toLocaleString()}人`);
   }
@@ -557,6 +576,7 @@ async function generateClassicArticle(
       if (webSearchContext) {
         contextParts.push(webSearchContext);
       }
+      webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
     }
@@ -598,6 +618,7 @@ async function generateClassicArticle(
     summary,
     content,
     sourceUrls: game.sourceUrls,
+    webSearchSources: webSearchSources.length > 0 ? webSearchSources : undefined,
     game: {
       title: game.title,
       titleJa: game.titleJa,
