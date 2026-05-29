@@ -11,6 +11,7 @@ import {
   validatePlatformConsistency,
   validatePersonAttribution,
   validateNumericClaims,
+  validateFeatureNumericClaims,
   validateArticles,
 } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
@@ -299,6 +300,119 @@ describe('validateNumericClaims', () => {
     // 90単独はパターンにマッチしないため空、年度検査も入らない
     const warnings = validateNumericClaims(article);
     expect(warnings).toHaveLength(0);
+  });
+
+  // --- #19 で追加した取りこぼし対策（実測で漏れていた実在事案）---
+
+  it('「プレイ/遊」を伴わないプレイ時間を検出する（100時間超え）', () => {
+    const article = makeArticle({
+      title: 'RPG特集対象',
+      content: 'メインストーリーだけで50時間以上、サイドクエストを含めると100時間超えの大ボリューム。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const warnings = validateNumericClaims(article);
+    expect(warnings.some((w) => w.type === 'numeric-play-hours')).toBe(true);
+  });
+
+  it('プレイ時間の範囲表記を 1 件として検出する（40〜60時間で二重カウントしない）', () => {
+    const article = makeArticle({
+      title: 'リメイク作',
+      content: '原作のボリュームを40〜60時間のボリュームに拡張した。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const playHours = validateNumericClaims(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toContain('40〜60時間');
+  });
+
+  it('「N万件」のレビュー数を検出する（18万件以上のレビュー）', () => {
+    const article = makeArticle({
+      title: 'ヒット作',
+      content: 'Steamには18万件以上のレビューが寄せられ、96%が好評という評価を得ている。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const warnings = validateNumericClaims(article);
+    expect(warnings.some((w) => w.type === 'numeric-review-count')).toBe(true);
+  });
+
+  it('評価率（パーセント）を検出する', () => {
+    const article = makeArticle({
+      title: '高評価作',
+      content: 'Steamで96%の高評価を獲得した。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const warnings = validateNumericClaims(article);
+    expect(warnings.some((w) => w.type === 'numeric-percentage')).toBe(true);
+  });
+
+  it('収録種類数を検出する（100種類以上の恐竜）', () => {
+    const article = makeArticle({
+      title: 'ARK',
+      content: '100種類以上の恐竜や古代生物をテイムできる。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const warnings = validateNumericClaims(article);
+    expect(warnings.some((w) => w.type === 'numeric-kind-count')).toBe(true);
+  });
+
+  it('概数表現を low で検出する（何百時間）', () => {
+    const article = makeArticle({
+      title: 'やり込み作',
+      content: '何百時間と遊べるほどのコンテンツ量を誇る。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const approx = validateNumericClaims(article).filter((w) => w.type === 'numeric-approx-count');
+    expect(approx).toHaveLength(1);
+    expect(approx[0].severity).toBe('low');
+    // 概数は capture group を持たないため sourcedFrom 照合をスキップする
+    expect(approx[0].sourcedFrom).toBeUndefined();
+  });
+
+  it('発売日の年号を評価率・種類数と誤検知しない', () => {
+    // releaseDate の年（2026）が % や 種 のパターンを誤って踏まないことを確認
+    const article = makeArticle({
+      title: '新作',
+      content: '2026年4月に発売され、2種の限定版が用意された。',
+      game: {
+        title: 'Test',
+        genre: [],
+        platforms: ['PC'],
+        releaseDate: '2026-04-16',
+      },
+    });
+
+    const warnings = validateNumericClaims(article);
+    // 「2種」は 2 桁以上限定の kind-count にマッチしない、年号も誤検知しない
+    expect(warnings.some((w) => w.type === 'numeric-percentage')).toBe(false);
+    expect(warnings.some((w) => w.type === 'numeric-kind-count')).toBe(false);
+  });
+});
+
+describe('validateFeatureNumericClaims', () => {
+  it('特集記事でも拡張パターンを共用して検出する（プレイ時間・%）', () => {
+    const article = makeArticle({
+      title: 'GW特集：連休に遊べる大作',
+      category: 'feature',
+      content: '100時間超えの大作RPGを厳選。いずれもSteamで96%の高評価を獲得している。',
+    });
+
+    const warnings = validateFeatureNumericClaims(article);
+    expect(warnings.some((w) => w.type === 'numeric-play-hours')).toBe(true);
+    expect(warnings.some((w) => w.type === 'numeric-percentage')).toBe(true);
+  });
+
+  it('feature 以外の記事は対象外', () => {
+    const article = makeArticle({
+      category: 'newRelease',
+      content: '100時間超えの大作。',
+    });
+    expect(validateFeatureNumericClaims(article)).toHaveLength(0);
   });
 });
 

@@ -248,6 +248,25 @@ export function formatSearchResultsForPrompt(
 }
 
 /**
+ * 検索結果をフラットな配列に変換（記事への保存用）
+ */
+export function flattenSearchResults(
+  results: GameWebSearchResults
+): Array<{ url: string; title: string; snippet: string }> {
+  const all = [
+    ...(results.reviews ?? []),
+    ...(results.developerInfo ?? []),
+    ...(results.steamReviews ?? []),
+    ...(results.history ?? []),
+  ];
+  return all.map((r) => ({
+    url: r.url,
+    title: r.title,
+    snippet: r.content.slice(0, 300),
+  }));
+}
+
+/**
  * 遅延関数（レート制限対策）
  */
 function delay(ms: number): Promise<void> {

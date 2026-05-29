@@ -113,7 +113,13 @@ jobs:
               "**[\(.severity | ascii_upcase)] \(.type)**  \n" +
               "記事: \(.articleTitle)  \n" +
               "内容: \(.message)  \n" +
-              if .context then "> \(.context)" else "" end
+              if .context then "> \(.context)\n" else "" end +
+              if .sourcedFrom then
+                "🔗 **検索結果に根拠あり（捏造ではない可能性）**: [\(.sourcedFrom.title)](\(.sourcedFrom.url))  \n" +
+                "> \(.sourcedFrom.snippet)"
+              else
+                "⚠️ **検索結果に根拠なし（捏造の可能性あり）**"
+              end
             )' "$REPORT" >> $GITHUB_STEP_SUMMARY
           fi
 

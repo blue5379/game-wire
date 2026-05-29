@@ -25,7 +25,12 @@ export interface ValidationWarning {
   type: string;
   message: string;
   evidence?: string;
-  context?: string; // 本文中の該当箇所（前後の文を含む）
+  context?: string;    // 本文中の該当箇所（前後の文を含む）
+  sourcedFrom?: {      // 検索結果に根拠が見つかった場合のみセット
+    url: string;
+    title: string;
+    snippet: string;
+  };
 }
 
 export interface ValidationReport {
@@ -50,6 +55,24 @@ const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /\bmacOS\b|\bMac\b(?![a-zA-Z])/i, canonical: 'Mac' },
   { pattern: /\bLinux\b/i, canonical: 'Linux' },
 ];
+
+/**
+ * 検索結果の中から、指定したキーワードを含む最初のソースを返す
+ * 見つかった場合: 根拠あり（ウェブ情報由来の可能性が高い）
+ * 見つからない場合: undefined（捏造の可能性が高い）
+ */
+function findSourceFor(
+  keyword: string,
+  sources: Array<{ url: string; title: string; snippet: string }> | undefined
+): { url: string; title: string; snippet: string } | undefined {
+  if (!sources || sources.length === 0) return undefined;
+  const kw = keyword.replace(/,/g, '').toLowerCase();
+  return sources.find((s) => {
+    const snippet = s.snippet.replace(/,/g, '').toLowerCase();
+    const title = s.title.replace(/,/g, '').toLowerCase();
+    return snippet.includes(kw) || title.includes(kw);
+  });
+}
 
 /**
  * 本文中の該当箇所の前後文を抽出する（人間が判断するための文脈）
@@ -197,6 +220,163 @@ export function validateTitleConsistency(article: GeneratedArticle): ValidationW
 }
 
 /**
+ * 特集記事のプラットフォーム整合性を検証
+ * recommendedGames のプラットフォームを合算し、本文中に無関係なプラットフォームが言及されていれば警告
+ */
+export function validateFeaturePlatformConsistency(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+  if (!article.recommendedGames || article.recommendedGames.length === 0) return warnings;
+
+  // 全推薦ゲームのプラットフォームを合算
+  const allPlatforms: string[] = [];
+  for (const rg of article.recommendedGames) {
+    if (rg.platforms) allPlatforms.push(...rg.platforms);
+  }
+  if (allPlatforms.length === 0) return warnings;
+
+  const officialPlatforms = normalizePlatforms(allPlatforms);
+
+  const mentionedPlatforms = new Set<string>();
+  for (const { pattern, canonical } of KNOWN_PLATFORM_PATTERNS) {
+    if (pattern.test(article.content)) {
+      mentionedPlatforms.add(canonical);
+    }
+  }
+
+  for (const mentioned of mentionedPlatforms) {
+    if (!officialPlatforms.has(mentioned)) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity: 'high',
+        type: 'platform-mismatch',
+        message:
+          `本文で「${mentioned}」が言及されていますが、紹介ゲームのいずれにも含まれていません。` +
+          `紹介ゲームのプラットフォーム: [${[...officialPlatforms].join(', ')}]`,
+        evidence: mentioned,
+        context: extractContext(article.content, mentioned),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * 特集記事の人物言及を検証
+ * recommendedGames の developer/publisher を許容リストとして使用
+ */
+export function validateFeaturePersonAttribution(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+
+  const content = article.content;
+
+  const personPatterns: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
+    { pattern: /([一-龥ぁ-んァ-ンー・A-Za-z]+)氏(?:によると|は語|は述べ|のコメント|は明か|は説明|は強調)/g, type: 'person-quote', severity: 'high' },
+    { pattern: /CEO[のは]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /CTO[のは]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /ディレクター[のは・]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /プロデューサー[のは・]([一-龥ぁ-んァ-ンー・A-Za-z]+)/g, type: 'person-title', severity: 'high' },
+    { pattern: /([一-龥ぁ-んァ-ンー・A-Za-z]+)氏を中心/g, type: 'person-mention', severity: 'medium' },
+  ];
+
+  // 全推薦ゲームの developer/publisher を許容リストに追加
+  const allowedNames = new Set<string>();
+  for (const rg of article.recommendedGames ?? []) {
+    if (rg.developer) allowedNames.add(rg.developer);
+    if (rg.publisher) allowedNames.add(rg.publisher);
+  }
+
+  for (const { pattern, type, severity } of personPatterns) {
+    const matches = content.matchAll(pattern);
+    for (const match of matches) {
+      const name = match[1];
+      if (!name) continue;
+      if (allowedNames.has(name)) continue;
+      if (name.length < 2) continue;
+
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity,
+        type,
+        message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
+        evidence: match[0],
+        context: extractContext(content, match[0]),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * ソース不明な可能性が高い数値パターン（捏造リスクの高い具体数値）。
+ *
+ * validateNumericClaims（newRelease/indie/classic）と
+ * validateFeatureNumericClaims（feature）で共用し、両者の検出基準がズレないようにする。
+ *
+ * 設計上の注意:
+ * - 範囲表記（例: `40〜60時間`）は 1 マッチに束ねる。両端を別々に拾うと二重カウントになるため
+ * - capture group `match[1]` は数値部分。概数パターン（`数百〜` / `何十〜`）は数値を持たないので
+ *   呼び出し側では `match[1]` が undefined になりうる前提で扱うこと（knownNumbers 照合をスキップ）
+ */
+const NUMERIC_PATTERNS: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
+  // レビュー件数・ユーザー数・販売数（高リスク）
+  { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*件/g, type: 'review-count', severity: 'high' },
+  { pattern: /(\d+(?:[.,]\d+)?)\s*万\s*件/g, type: 'review-count', severity: 'high' }, // 「18万件」等、万を挟む表記
+  { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*人/g, type: 'user-count', severity: 'high' },
+  { pattern: /(\d+(?:[.,]\d+)?)\s*(?:万|億)\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)/g, type: 'large-count', severity: 'high' },
+  { pattern: /(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
+  // プレイ時間（中リスク）: 「プレイ/遊」直後限定を撤廃し、範囲表記・「以上/超え」等に対応
+  { pattern: /(\d{1,3}(?:[.,]\d+)?(?:[〜～\-]\d{1,3}(?:[.,]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
+  // 価格（中リスク）
+  { pattern: /(\d+(?:[.,]\d+)?)\s*(?:円|ドル|USD|\$)/g, type: 'price', severity: 'medium' },
+  // 評価率（中リスク）: 範囲表記を 1 マッチに束ねる
+  { pattern: /(\d{1,3}(?:[〜～\-]\d{1,3})?)\s*[%％]/g, type: 'percentage', severity: 'medium' },
+  // 収録種類数（低リスク）: 2 桁以上に限定してノイズを抑制
+  { pattern: /(\d{2,}(?:[.,]\d+)?)\s*種(?:類)?(?:以上)?/g, type: 'kind-count', severity: 'low' },
+  // 周年（低リスク）
+  { pattern: /(\d+)\s*(?:周年)/g, type: 'anniversary', severity: 'low' },
+  // 概数表現（低リスク）: 数値捏造というより誇張寄り。capture group を持たない
+  { pattern: /(?:数|何)[十百千万億]+(?:以上)?\s*(?:件|人|本|台|種類?|時間|万本|ユーザー|プレイヤー|ダウンロード|DL|円)/g, type: 'approx-count', severity: 'low' },
+];
+
+/**
+ * 特集記事の数値クレームを検証
+ */
+export function validateFeatureNumericClaims(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'feature') return warnings;
+
+  const content = article.content;
+
+  for (const { pattern, type, severity } of NUMERIC_PATTERNS) {
+    const matches = content.matchAll(pattern);
+    for (const match of matches) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity,
+        type: `numeric-${type}`,
+        message:
+          `本文に具体的な数値「${match[0].trim()}」が記載されています。` +
+          `提供データに無い数値の場合は捏造の可能性があります。`,
+        evidence: match[0].trim(),
+        context: extractContext(content, match[0].trim()),
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 本文中のプラットフォーム言及を検証
  */
 export function validatePlatformConsistency(article: GeneratedArticle): ValidationWarning[] {
@@ -280,6 +460,7 @@ export function validatePersonAttribution(article: GeneratedArticle): Validation
         message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
         evidence: match[0],
         context: extractContext(content, match[0]),
+        sourcedFrom: findSourceFor(name, article.webSearchSources),
       });
     }
   }
@@ -308,23 +489,14 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
     knownNumbers.add(String(parseInt(parts[0], 10)));
   }
 
-  // ソース不明な可能性が高い数値パターン
-  const numericPatterns: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
-    { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*件/g, type: 'review-count', severity: 'high' },
-    { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*人/g, type: 'user-count', severity: 'high' },
-    { pattern: /(\d+(?:[.,]\d+)?)\s*(?:万|億)\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)/g, type: 'large-count', severity: 'high' },
-    { pattern: /(\d+(?:[.,]\d+)?)\s*時間(?:プレイ|遊)/g, type: 'play-hours', severity: 'medium' },
-    { pattern: /(\d+(?:[.,]\d+)?)\s*(?:円|ドル|USD|\$)/g, type: 'price', severity: 'medium' },
-    { pattern: /(\d+)\s*(?:周年)/g, type: 'anniversary', severity: 'low' },
-    { pattern: /(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
-  ];
-
-  for (const { pattern, type, severity } of numericPatterns) {
+  for (const { pattern, type, severity } of NUMERIC_PATTERNS) {
     const matches = content.matchAll(pattern);
     for (const match of matches) {
-      const numericValue = match[1].replace(/,/g, '');
-      // 提供データに含まれていればスキップ
-      if (knownNumbers.has(numericValue)) continue;
+      // 概数パターン（approx-count）は capture group を持たないため match[1] が undefined。
+      // その場合は数値照合・sourcedFrom 照合をスキップする
+      const numericValue = match[1] ? match[1].replace(/,/g, '') : undefined;
+      // 提供データに含まれていればスキップ（releaseDate の年号など）
+      if (numericValue && knownNumbers.has(numericValue)) continue;
 
       warnings.push({
         articleTitle: article.title,
@@ -336,6 +508,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
+        sourcedFrom: numericValue ? findSourceFor(numericValue, article.webSearchSources) : undefined,
       });
     }
   }
@@ -353,6 +526,9 @@ export function validateArticle(article: GeneratedArticle): ValidationWarning[] 
     ...validatePlatformConsistency(article),
     ...validatePersonAttribution(article),
     ...validateNumericClaims(article),
+    ...validateFeaturePlatformConsistency(article),
+    ...validateFeaturePersonAttribution(article),
+    ...validateFeatureNumericClaims(article),
   ];
 }
 

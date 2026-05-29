@@ -128,6 +128,9 @@ export interface RecommendedGame {
   title: string;
   coverImage?: string;
   officialUrl?: string;
+  platforms?: string[];
+  developer?: string;
+  publisher?: string;
 }
 
 // ゲームカテゴリ（記事生成用）
