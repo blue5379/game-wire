@@ -123,6 +123,37 @@ jobs:
             )' "$REPORT" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # LLM-as-a-judge による事実性チェック結果（記録のみ。fail 判定には算入しない）
+          if [ "$(jq 'has("llmJudge") and .llmJudge != null' "$REPORT")" = "true" ]; then
+            JUDGED=$(jq '.llmJudge.judgedArticles' "$REPORT")
+            SKIPPED=$(jq '.llmJudge.skippedArticles' "$REPORT")
+            CONTRA=$(jq '.llmJudge.claimsByVerdict.contradicted' "$REPORT")
+            UNVER=$(jq '.llmJudge.claimsByVerdict.unverifiable' "$REPORT")
+            SUPP=$(jq '.llmJudge.claimsByVerdict.supported' "$REPORT")
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## 🔎 LLM 事実性チェック（参考・fail 判定には非算入）" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| 項目 | 件数 |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+            echo "| 判定した記事 | ${JUDGED} |" >> $GITHUB_STEP_SUMMARY
+            echo "| スキップ記事 | ${SKIPPED} |" >> $GITHUB_STEP_SUMMARY
+            echo "| ✅ 支持 | ${SUPP} |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❌ 矛盾 | ${CONTRA} |" >> $GITHUB_STEP_SUMMARY
+            echo "| ❓ 裏付け不能 | ${UNVER} |" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$(jq '.llmJudge.warnings | length' "$REPORT")" -gt 0 ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### 事実性チェックの指摘" >> $GITHUB_STEP_SUMMARY
+              jq -r '.llmJudge.warnings[] | (
+                "\n---\n" +
+                "**[\(.severity | ascii_upcase)] \(.type)**  \n" +
+                "記事: \(.articleTitle)  \n" +
+                "内容: \(.message)  \n" +
+                if .context then "> \(.context)" else "" end
+              )' "$REPORT" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
       # 6.6. history.json の JSON 整合性チェック
       - name: Validate history.json
         run: jq empty src/content/history.json
