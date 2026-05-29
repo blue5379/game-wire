@@ -372,7 +372,8 @@ export function buildUserMessage(
     userScore?: number | null;
   },
   additionalContext?: string,
-  publishDate?: Date
+  publishDate?: Date,
+  fixInstruction?: string
 ): string {
   const lines: string[] = [];
 
@@ -431,6 +432,11 @@ export function buildUserMessage(
     lines.push(additionalContext);
   }
 
+  if (fixInstruction) {
+    lines.push('');
+    lines.push(fixInstruction);
+  }
+
   lines.push('');
   lines.push('上記の情報を元に、記事本文を書いてください。');
 
@@ -463,7 +469,8 @@ export interface FeatureSelectedGame {
 export function buildFeatureUserMessage(
   theme: string,
   date: Date,
-  selectedGames: FeatureSelectedGame[]
+  selectedGames: FeatureSelectedGame[],
+  fixInstruction?: string
 ): string {
   const lines: string[] = [];
 
@@ -509,6 +516,11 @@ export function buildFeatureUserMessage(
       lines.push(game.webSearchContext);
     }
   });
+
+  if (fixInstruction) {
+    lines.push('');
+    lines.push(fixInstruction);
+  }
 
   lines.push('');
   lines.push(`上記のテーマ「${theme}」に沿って、紹介するゲームを全て取り上げた特集記事を書いてください。`);

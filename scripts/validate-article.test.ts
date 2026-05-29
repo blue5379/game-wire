@@ -13,7 +13,9 @@ import {
   validateNumericClaims,
   validateFeatureNumericClaims,
   validateArticles,
+  buildFixInstruction,
 } from './validate-article.js';
+import type { ValidationWarning } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
 
 function makeArticle(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
@@ -524,5 +526,65 @@ describe('validateArticles (集約)', () => {
     expect(report.totalArticles).toBe(2);
     expect(report.totalWarnings).toBeGreaterThanOrEqual(2);
     expect(report.warningsBySeverity.high).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('buildFixInstruction', () => {
+  const w = (type: string, evidence: string): ValidationWarning => ({
+    articleTitle: 'T',
+    category: 'newRelease',
+    severity: 'high',
+    type,
+    message: '',
+    evidence,
+  });
+
+  it('警告が無ければ空文字列', () => {
+    expect(buildFixInstruction([])).toBe('');
+  });
+
+  it('platform-mismatch は対応機種削除の指示を出す', () => {
+    const out = buildFixInstruction([w('platform-mismatch', 'Nintendo Switch')]);
+    expect(out).toContain('Nintendo Switch');
+    expect(out).toContain('対応機種');
+    expect(out).toContain('前回生成での問題点');
+  });
+
+  it('numeric-* は数値削除の指示を出す', () => {
+    const out = buildFixInstruction([w('numeric-review-count', '18万件')]);
+    expect(out).toContain('18万件');
+    expect(out).toContain('数値');
+  });
+
+  it('person-* は人物削除の指示を出す', () => {
+    const out = buildFixInstruction([w('person-quote', '田中太郎')]);
+    expect(out).toContain('田中太郎');
+    expect(out).toContain('人物');
+  });
+
+  it('title 系はタイトル正確使用の指示を出す', () => {
+    const out = buildFixInstruction([w('title-mismatch', '')]);
+    expect(out).toContain('タイトル');
+  });
+
+  it('同一内容の指示は重複排除される', () => {
+    const out = buildFixInstruction([
+      w('platform-mismatch', 'PC (Steam)'),
+      w('platform-mismatch', 'PC (Steam)'),
+    ]);
+    // 同じ指示文は1行のみ
+    const occurrences = out.split('\n').filter((l) => l.includes('PC (Steam)')).length;
+    expect(occurrences).toBe(1);
+  });
+
+  it('複数種類の警告をすべて指示に含める', () => {
+    const out = buildFixInstruction([
+      w('platform-mismatch', 'Switch'),
+      w('numeric-user-count', '40万人'),
+      w('person-title', '山田'),
+    ]);
+    expect(out).toContain('Switch');
+    expect(out).toContain('40万人');
+    expect(out).toContain('山田');
   });
 });

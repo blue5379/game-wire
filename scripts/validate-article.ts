@@ -576,6 +576,53 @@ export function validateArticle(article: GeneratedArticle): ValidationWarning[] 
 }
 
 /**
+ * 警告から、記事再生成時にプロンプトへ渡す修正指示文を組み立てる（純関数）。
+ *
+ * 警告の type ごとに「提供データに無いので削除/修正せよ」という具体的な指示文を生成する。
+ * evidence（マッチした断片）をそのまま指示に埋め込むことで、AI が何を直すべきか明確にする。
+ *
+ * @param warnings 修正対象の警告（呼び出し側で high のみに絞って渡す想定）
+ * @returns 修正指示ブロック（警告が無ければ空文字列）
+ */
+export function buildFixInstruction(warnings: ValidationWarning[]): string {
+  if (warnings.length === 0) return '';
+
+  // 同一内容の重複指示をまとめる
+  const instructions = new Set<string>();
+
+  for (const w of warnings) {
+    const ev = w.evidence ?? '';
+    if (w.type === 'platform-mismatch') {
+      instructions.add(
+        `「${ev}」は提供データの対応機種に含まれていません。本文から対応機種としての言及を削除してください。`
+      );
+    } else if (w.type === 'title-mismatch' || w.type === 'title-vs-igdb-slug') {
+      instructions.add(
+        `ゲームタイトルは提供データのものを正確に使用してください（短縮・翻訳・改変は禁止）。`
+      );
+    } else if (w.type.startsWith('numeric-')) {
+      instructions.add(
+        `数値「${ev}」は提供データにありません。根拠のない具体的な数値は記載しないでください。`
+      );
+    } else if (w.type.startsWith('person-')) {
+      instructions.add(
+        `人物「${ev}」への言及・発言引用は提供データにありません。人物の名前・肩書き・発言を記載しないでください。`
+      );
+    } else {
+      // その他の type は汎用指示
+      instructions.add(`「${ev}」は提供データで裏付けられません。該当箇所を削除または修正してください。`);
+    }
+  }
+
+  const lines = ['【前回生成での問題点（必ず修正すること）】'];
+  lines.push('前回の記事には以下の問題が検出されました。今回は必ず修正してください:');
+  for (const ins of instructions) {
+    lines.push(`- ${ins}`);
+  }
+  return lines.join('\n');
+}
+
+/**
  * 全記事を検証してレポートを生成
  */
 export function validateArticles(

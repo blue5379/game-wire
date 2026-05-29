@@ -140,6 +140,7 @@ AWS_REGION=              # AWS リージョン（例: us-east-1）
 - 画像の著作権: IGDB の利用規約に従う
 - Bedrock の利用料金に注意
   - 記事生成に加え、`build-issue` 時に **LLM-as-a-judge による事実性チェック**（`scripts/judge-article.ts`）が走る。デフォルト ON で約 $0.3/号の追加コスト。`VALIDATION_LLM_JUDGE=false` で無効化できる
+  - **自動再生成**（`VALIDATION_AUTO_REGENERATE=true`）を有効にすると、high 警告（正規表現バリデータ由来）を持つ記事を修正指示付きで1回だけ作り直す。デフォルト OFF。有効時は最悪で生成コストが約2倍になる
 - **スクリーンショットの配置**: テストや検討に使用するスクリーンショットは `screenshots/` ディレクトリに配置すること（gitignore対象、リポジトリには含まれない）
 
 ## Issue対応ワークフロー
