@@ -51,3 +51,4 @@ data/generated-articles.json
 data/selected-games.json
 data/validation/
 data/validation-dev/
+data/validation-manual/
