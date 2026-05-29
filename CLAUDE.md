@@ -139,6 +139,7 @@ AWS_REGION=              # AWS リージョン（例: us-east-1）
 - API レート制限に注意（特に YouTube Data API）
 - 画像の著作権: IGDB の利用規約に従う
 - Bedrock の利用料金に注意
+  - 記事生成に加え、`build-issue` 時に **LLM-as-a-judge による事実性チェック**（`scripts/judge-article.ts`）が走る。デフォルト ON で約 $0.3/号の追加コスト。`VALIDATION_LLM_JUDGE=false` で無効化できる
 - **スクリーンショットの配置**: テストや検討に使用するスクリーンショットは `screenshots/` ディレクトリに配置すること（gitignore対象、リポジトリには含まれない）
 
 ## Issue対応ワークフロー

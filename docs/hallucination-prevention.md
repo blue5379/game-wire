@@ -224,13 +224,52 @@ npm run validate-issue src/content/issues/issue-XXX.md
 
 ---
 
-## 3. 限界と今後の課題
+## 3. LLM-as-a-judge による事実性チェック
+
+正規表現バリデータ（2章）は「定型的な数値・人名の捏造」しか検出できない。これを補完するため、生成記事の本文と Tavily 検索結果（`webSearchSources`）を別の Claude 呼び出しで照合し、散文レベルの事実性を採点する（`scripts/judge-article.ts`）。
+
+### 3-1. 検出対象
+
+正規表現では原理的に届かない以下を対象とする:
+- 架空のストーリー描写
+- 存在しないゲーム機能の説明
+- 誤った歴史的経緯・リリース時期
+- 固有名詞・因果関係を含む具体的記述
+
+### 3-2. 仕組み
+
+1. 本文から「検証可能な事実主張」を抽出させる
+2. 各主張を検索結果のみを根拠に `supported` / `contradicted` / `unverifiable` で判定させ、`confidence`（0〜1）を付けさせる
+3. 判定を `ValidationWarning` に変換:
+   - `contradicted` かつ confidence ≥ 0.7 → `llm-judge-contradicted`（high）
+   - `contradicted` かつ confidence < 0.7 → `llm-judge-contradicted`（low に格下げ）
+   - `unverifiable` → `llm-judge-unverifiable`（low）
+   - `supported` → 警告化しない（記録のみ）
+
+### 3-3. judge 自身のハルシネーション対策
+
+- プロンプトで「**内部知識を根拠にせず、検索結果のみで判定。根拠が無ければ unverifiable**」と厳命
+- `temperature: 0` で再現性を最大化
+- `confidence` しきい値で低確信の矛盾を格下げ
+- Bedrock 呼び出し・パース失敗時はその記事をスキップしてビルドを止めない
+
+### 3-4. 運用とコスト
+
+- **デフォルト ON**。`VALIDATION_LLM_JUDGE=false` で明示的に無効化できる（安全弁）
+- スキップ条件: Tavily 未設定時、記事に `webSearchSources` が無い場合（照合元が無いと judge 自身が暴走するため）
+- 結果は `ValidationReport.llmJudge` に**正規表現由来の warnings とは分離して**記録し、**fail 判定には算入しない**（LLM は非決定的なため、まず人間レビューに供する段階導入）
+- コスト目安: 約 $0.3/号（週次で月約 $1.2 / 年約 $15 程度）
+
+---
+
+## 4. 限界と今後の課題
 
 ### バリデータが検出できないハルシネーション
 
-- 存在しないゲーム機能の説明（「〇〇システムが特徴的」等）
-- 架空のストーリー描写
-- Tavily 検索結果にたまたま含まれていた誤情報の転記
+- Tavily 検索結果にたまたま含まれていた誤情報の転記（judge も検索結果を根拠とするため検出できない）
+- 検索結果が存在せずスキップされた記事の事実誤り（LLM-judge は `webSearchSources` が無いとスキップする）
+
+※「存在しないゲーム機能の説明」「架空のストーリー描写」は 3 章の LLM-as-a-judge である程度検出できるようになった（ただし非決定的なため fail 判定には算入していない）。
 
 ### 特集記事の生成フロー再設計（実装済み）
 
@@ -243,5 +282,5 @@ npm run validate-issue src/content/issues/issue-XXX.md
 
 ### 今後の課題
 
-- LLM-as-a-judge による散文の事実性チェック（架空のストーリー・存在しない機能の検出）
 - 検出 → 改善の閉ループ（high 警告超過記事の自動再生成）
+- LLM-judge 結果の fail 判定への算入（運用が安定したら、環境変数で contradicted を high 算入）

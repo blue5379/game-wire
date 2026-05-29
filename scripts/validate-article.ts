@@ -40,6 +40,17 @@ export interface ValidationReport {
   totalWarnings: number;
   warningsBySeverity: Record<Severity, number>;
   warnings: ValidationWarning[];
+  /**
+   * LLM-as-a-judge による事実性チェックの結果（P3）。
+   * 正規表現バリデータ（warnings）とは分離して保持し、fail 判定には算入しない（記録のみ）。
+   * judge-article.ts の LlmJudgeReport と構造互換。循環 import を避けるためインライン定義。
+   */
+  llmJudge?: {
+    claimsByVerdict: { supported: number; contradicted: number; unverifiable: number };
+    judgedArticles: number;
+    skippedArticles: number;
+    warnings: ValidationWarning[];
+  };
 }
 
 const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
@@ -631,6 +642,26 @@ export function writeAndCheckReport(
     }
   }
 
+  // LLM-judge の結果（記録のみ。fail 判定には算入しない）
+  if (report.llmJudge) {
+    const j = report.llmJudge;
+    console.log('');
+    console.log('=== LLM Fact-Check (judge) ===');
+    console.log(`Judged: ${j.judgedArticles} articles, Skipped: ${j.skippedArticles}`);
+    console.log(
+      `Claims - supported: ${j.claimsByVerdict.supported}, contradicted: ${j.claimsByVerdict.contradicted}, unverifiable: ${j.claimsByVerdict.unverifiable}`
+    );
+    if (j.warnings.length > 0) {
+      console.log('--- LLM Judge Findings (not counted toward fail threshold) ---');
+      for (const w of j.warnings) {
+        console.log(
+          `  [${w.severity.toUpperCase()}][${w.type}] (${w.category}) ${w.articleTitle}\n    ${w.message}`
+        );
+      }
+    }
+  }
+
+  // fail 判定は正規表現バリデータ由来の warnings のみで行う（judge は算入しない）
   if (report.warningsBySeverity.high > highWarningThreshold) {
     console.error('');
     console.error(

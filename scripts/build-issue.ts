@@ -16,6 +16,7 @@ import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport } from './validate-article.js';
+import { judgeArticles } from './judge-article.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -447,6 +448,11 @@ async function main(): Promise<void> {
 
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
   const report = validateArticles(generatedIssue.articles, issueNumber);
+
+  // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
+  // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。
+  report.llmJudge = await judgeArticles(generatedIssue.articles);
+
   const validationDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
   // 環境変数 VALIDATION_HIGH_THRESHOLD で fail 閾値を上書き可能（デフォルト: 5）
   const threshold = parseInt(process.env.VALIDATION_HIGH_THRESHOLD || '5', 10);
