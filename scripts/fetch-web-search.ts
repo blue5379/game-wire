@@ -254,6 +254,16 @@ export function formatSearchResultsForPrompt(
 }
 
 /**
+ * snippet として保持する検索結果コンテンツの最大長。
+ *
+ * バリデータの sourcedFrom 判定（findSourceFor）はこの snippet に対して照合するため、
+ * 短すぎると本文の数値・人名がコンテンツ後半にあるとき「根拠なし」と誤判定する
+ * （false negative）。Tavily の content はおおむね 1000 文字前後なので、判定に十分な
+ * 長さを確保しつつ、generated-articles.json の肥大化を抑える上限として設定する。
+ */
+const SNIPPET_MAX_LENGTH = 1500;
+
+/**
  * 検索結果をフラットな配列に変換（記事への保存用）
  */
 export function flattenSearchResults(
@@ -268,7 +278,7 @@ export function flattenSearchResults(
   return all.map((r) => ({
     url: r.url,
     title: r.title,
-    snippet: r.content.slice(0, 300),
+    snippet: r.content.slice(0, SNIPPET_MAX_LENGTH),
   }));
 }
 

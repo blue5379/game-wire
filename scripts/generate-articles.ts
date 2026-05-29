@@ -73,7 +73,7 @@ import type { SourceUrls } from './types.js';
 export interface WebSearchSource {
   url: string;
   title: string;
-  snippet: string; // content の先頭 300 文字
+  snippet: string; // content の先頭部分（sourcedFrom 判定用。最大長は fetch-web-search の SNIPPET_MAX_LENGTH）
 }
 
 // 生成された記事の型定義
