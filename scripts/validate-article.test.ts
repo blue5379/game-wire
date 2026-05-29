@@ -452,6 +452,47 @@ describe('validateFeatureNumericClaims', () => {
     expect(pct).toBeDefined();
     expect(pct?.sourcedFrom).toBeUndefined();
   });
+
+  it('数値が別の数字の一部に一致するだけでは sourcedFrom を付けない（false positive 防止）', () => {
+    // 本文の「96%」に対し、検索結果には "1996" しか無い → 根拠とみなさない
+    const article = makeArticle({
+      title: 'GW特集',
+      category: 'feature',
+      content: 'このゲームはSteamで96%の高評価を獲得している。',
+      webSearchSources: [
+        {
+          url: 'https://example.com/history',
+          title: 'Game History',
+          snippet: 'The original game was released in 1996 and became a classic.',
+        },
+      ],
+    });
+
+    const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(pct).toBeDefined();
+    expect(pct?.sourcedFrom).toBeUndefined();
+  });
+
+  it('snippet 後半にある根拠も検出する（snippet 拡大による false negative 改善）', () => {
+    // 300 文字より後ろに数値の根拠がある場合でも sourcedFrom が付くこと
+    const filler = 'あ'.repeat(400);
+    const article = makeArticle({
+      title: 'GW特集',
+      category: 'feature',
+      content: 'このゲームはSteamで96%の高評価を獲得している。',
+      webSearchSources: [
+        {
+          url: 'https://example.com/late',
+          title: 'Review',
+          snippet: `${filler} The game holds a 96% positive rating.`,
+        },
+      ],
+    });
+
+    const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(pct).toBeDefined();
+    expect(pct?.sourcedFrom?.url).toBe('https://example.com/late');
+  });
 });
 
 describe('validateArticles (集約)', () => {

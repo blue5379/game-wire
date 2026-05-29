@@ -57,19 +57,41 @@ const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
 ];
 
 /**
+ * 正規表現のメタ文字をエスケープする
+ */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * 検索結果の中から、指定したキーワードを含む最初のソースを返す
  * 見つかった場合: 根拠あり（ウェブ情報由来の可能性が高い）
  * 見つからない場合: undefined（捏造の可能性が高い）
+ *
+ * @param numeric true の場合、キーワードを数値として扱い「独立したトークン」
+ *   （前後が数字でない）としての一致のみを根拠とする。これにより本文の「96」が
+ *   検索結果の「1996」の一部に誤って一致する false positive を防ぐ。
  */
 function findSourceFor(
   keyword: string,
-  sources: Array<{ url: string; title: string; snippet: string }> | undefined
+  sources: Array<{ url: string; title: string; snippet: string }> | undefined,
+  numeric = false
 ): { url: string; title: string; snippet: string } | undefined {
   if (!sources || sources.length === 0) return undefined;
   const kw = keyword.replace(/,/g, '').toLowerCase();
+  if (kw.length === 0) return undefined;
+
+  // 数値モード: 前後が数字でない位置でのみ一致させる（例: "96" は "1996" にはマッチしない）
+  const numericMatcher = numeric
+    ? new RegExp(`(?<!\\d)${escapeRegExp(kw)}(?!\\d)`)
+    : null;
+
   return sources.find((s) => {
     const snippet = s.snippet.replace(/,/g, '').toLowerCase();
     const title = s.title.replace(/,/g, '').toLowerCase();
+    if (numericMatcher) {
+      return numericMatcher.test(snippet) || numericMatcher.test(title);
+    }
     return snippet.includes(kw) || title.includes(kw);
   });
 }
@@ -374,7 +396,9 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
         // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
-        sourcedFrom: numericValue ? findSourceFor(numericValue, article.webSearchSources) : undefined,
+        sourcedFrom: numericValue
+          ? findSourceFor(numericValue, article.webSearchSources, true)
+          : undefined,
       });
     }
   }
@@ -514,7 +538,9 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
-        sourcedFrom: numericValue ? findSourceFor(numericValue, article.webSearchSources) : undefined,
+        sourcedFrom: numericValue
+          ? findSourceFor(numericValue, article.webSearchSources, true)
+          : undefined,
       });
     }
   }
