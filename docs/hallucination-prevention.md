@@ -280,7 +280,17 @@ npm run validate-issue src/content/issues/issue-XXX.md
 - `webSearchSources` を feature 記事にも保存し、`validateFeaturePersonAttribution` / `validateFeatureNumericClaims` で `sourcedFrom` 判定が機能する
 - `validateFeaturePlatformConsistency` / `validateFeaturePersonAttribution` / `validateFeatureNumericClaims` が feature 記事にも適用される
 
+### 検出 → 改善の閉ループ（実装済み）
+
+high 警告（正規表現バリデータ由来）を持つ記事を、警告内容をプロンプトにフィードバックして**1回だけ自動再生成**する（`scripts/generate-articles.ts` の `main()`）。
+
+- トリガー: `validateArticle()` の high 警告（正規表現由来のみ。LLM-judge は非決定的なため再生成トリガーにしない）
+- フィードバック: `buildFixInstruction()` が警告 type 別の修正指示文を組み立て、`buildUserMessage` / `buildFeatureUserMessage` の `fixInstruction` 引数で本文生成プロンプトに付与する
+- 全カテゴリ対象。feature は本文だけ作り直し、テーマ選定・ゲーム選定・検索・画像生成はやり直さない（コスト抑制）。newRelease/indie/classic も再生成時は検索結果を流用可能
+- 再生成は1記事1回まで（無限ループ防止）。再生成後も high が残る場合はそのまま通す（警告は後段の validate/judge で記録される）
+- **デフォルト OFF**。`VALIDATION_AUTO_REGENERATE=true` で有効化（再生成は生成コストが増えるため opt-in）
+
 ### 今後の課題
 
-- 検出 → 改善の閉ループ（high 警告超過記事の自動再生成）
 - LLM-judge 結果の fail 判定への算入（運用が安定したら、環境変数で contradicted を high 算入）
+- 自動再生成のデフォルト ON 化（運用が安定したら）
