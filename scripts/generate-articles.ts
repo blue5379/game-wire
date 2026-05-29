@@ -18,9 +18,11 @@ import {
   buildUserMessage,
   buildFeatureUserMessage,
   selectFeatureThemeWithAI,
+  selectFeatureGames,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
+import type { FeatureSelectedGame } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 import {
@@ -29,7 +31,7 @@ import {
   flattenSearchResults,
   isTavilyAvailable,
 } from './fetch-web-search.js';
-import { fetchGameImageAndUrl } from './fetch-igdb.js';
+import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -407,125 +409,135 @@ async function generateIndieArticle(game: GameData, publishDate: Date): Promise<
   };
 }
 
-/**
- * おすすめゲームの抽出結果（英語名でIGDB検索、日本語名でh3マッチング）
- */
-interface ExtractedGame {
-  en: string;
-  ja: string;
-}
 
 /**
- * 特集記事の本文からおすすめゲーム名JSONを抽出し、本文から除去する
+ * タイトル照合用の正規化（選定タイトルと候補 GameData の突き合わせに使用）
  */
-function extractRecommendedGameNames(content: string): { cleanContent: string; games: ExtractedGame[] } {
-  // 閉じの```がある場合とない場合（parseArticleResponseで除去される）の両方に対応
-  const jsonBlockRegex = /```json:recommended_games\s*\n([\s\S]*?)(?:```|$)/;
-  const match = content.match(jsonBlockRegex);
-
-  if (!match) {
-    return { cleanContent: content, games: [] };
-  }
-
-  try {
-    const parsed = JSON.parse(match[1].trim());
-    const cleanContent = content.replace(jsonBlockRegex, '').trim();
-
-    if (!Array.isArray(parsed)) {
-      return { cleanContent, games: [] };
-    }
-
-    // 新形式: [{en: "...", ja: "..."}] と旧形式: ["..."] の両方に対応
-    const games: ExtractedGame[] = parsed.map((item: string | { en?: string; ja?: string }) => {
-      if (typeof item === 'string') {
-        return { en: item, ja: item };
-      }
-      return { en: item.en || item.ja || '', ja: item.ja || item.en || '' };
-    }).filter((g: ExtractedGame) => g.en || g.ja);
-
-    return { cleanContent, games };
-  } catch {
-    console.warn('  Failed to parse recommended games JSON');
-    return { cleanContent: content, games: [] };
-  }
-}
-
-/**
- * ゲーム名リストからIGDBで画像・公式URLを取得してRecommendedGame[]を構築
- * 英語名でIGDB検索し、日本語名をタイトルとして使用
- */
-async function enrichRecommendedGames(games: ExtractedGame[]): Promise<RecommendedGame[]> {
-  const results: RecommendedGame[] = [];
-
-  for (const game of games) {
-    console.log(`    Enriching recommended game: ${game.ja} (IGDB: ${game.en})`);
-    const igdbResult = await fetchGameImageAndUrl(game.en);
-    results.push({
-      title: game.ja,
-      coverImage: igdbResult?.coverImage,
-      officialUrl: igdbResult?.officialUrl,
-      platforms: igdbResult?.platforms,
-      developer: igdbResult?.developer,
-      publisher: igdbResult?.publisher,
-    });
-    // レート制限対策
-    await new Promise((r) => setTimeout(r, 300));
-  }
-
-  return results;
+function normalizeForMatch(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[™®©]/g, '')
+    .replace(/[：:\-–—]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
  * 特集記事を生成
+ *
+ * フロー: テーマ選定 → ゲーム選定（候補から確定）→ メタデータ取得（候補GameData流用
+ * ＋公式URL取得＋Tavily検索）→ 本文生成。
+ * ゲームを確定してから正確なメタデータと検索結果を揃えて本文を書くことで、
+ * 本文へのグラウンディングを成立させハルシネーションを抑制する。
  */
-async function generateFeatureArticle(
+export async function generateFeatureArticle(
   publishDate: Date,
   issueNumber: number,
   relatedGames?: GameData[],
   excludeTitles?: string[]
 ): Promise<GeneratedArticle> {
-  // 直近1週間のイベントを取得
+  // --- フェーズ1: テーマ選定 ---
   const events = getEventsInRange(publishDate, 7);
   console.log(`  Found ${events.length} events in the next 7 days`);
 
-  // AIでテーマを選定
   const theme = await selectFeatureThemeWithAI(
     events.map((e) => ({ name: e.name, gameThemeHint: e.gameThemeHint }))
   );
-  console.log(`  Generating feature article: ${theme}`);
+  console.log(`  Feature theme: ${theme}`);
 
-  const relatedGamesList = relatedGames?.slice(0, 20).map((g) => ({
-    title: g.title,
-    summary: g.summary,
-  }));
+  // --- フェーズ2: ゲーム選定（候補リストから確定タイトルを得る）---
+  const candidates = (relatedGames ?? []).slice(0, 20);
+  const selectedTitles = await selectFeatureGames(
+    theme,
+    candidates.map((g) => ({
+      title: g.title,
+      titleJa: g.titleJa,
+      genres: g.genres,
+      summary: g.summary,
+    })),
+    excludeTitles
+  );
+  console.log(`  Selected ${selectedTitles.length} games for feature: ${selectedTitles.join(', ')}`);
 
-  const userMessage = buildFeatureUserMessage(theme, publishDate, relatedGamesList, excludeTitles);
+  // 選定タイトルを候補 GameData に突き合わせる（完全一致 → 正規化一致のフォールバック）
+  const selectedGameData: GameData[] = [];
+  for (const title of selectedTitles) {
+    const exact = candidates.find((g) => g.title === title);
+    const matched =
+      exact ?? candidates.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
+    if (matched) {
+      selectedGameData.push(matched);
+    } else {
+      console.warn(`  Selected title not found in candidates, skipping: "${title}"`);
+    }
+  }
 
-  const rawContent = parseArticleResponse(
+  // --- フェーズ3: メタデータ取得（公式URL + Tavily検索）---
+  const recommendedGames: RecommendedGame[] = [];
+  const webSearchSources: WebSearchSource[] = [];
+  const featureGames: FeatureSelectedGame[] = [];
+
+  for (const game of selectedGameData) {
+    // 公式日本語URL（選定確定後にゲーム単位で取得）
+    let officialUrl: string | undefined;
+    try {
+      const releaseYear = game.releaseDate ? game.releaseDate.slice(0, 4) : undefined;
+      officialUrl =
+        (await fetchOfficialJpUrl({ titleEn: game.title, titleJa: game.titleJa, releaseYear })) ??
+        undefined;
+    } catch (error) {
+      console.warn(`    Failed to fetch official URL for "${game.title}":`, error);
+    }
+
+    // Tavily 検索（本文グラウンディング用）
+    let webSearchContext: string | undefined;
+    if (isTavilyAvailable()) {
+      try {
+        const searchResults = await searchGameInfo(game.title, 'feature', game.developer);
+        webSearchContext = formatSearchResultsForPrompt(searchResults) || undefined;
+        webSearchSources.push(...flattenSearchResults(searchResults));
+        await new Promise((r) => setTimeout(r, 500)); // レート制限対策
+      } catch (error) {
+        console.warn(`    Web search failed for "${game.title}", continuing:`, error);
+      }
+    }
+
+    // 表示用 recommendedGames（候補 GameData のメタデータを流用、IGDB再取得は不要）
+    recommendedGames.push({
+      title: game.titleJa ?? game.title,
+      coverImage: game.coverImage,
+      officialUrl,
+      platforms: game.platforms,
+      developer: game.developer,
+      publisher: game.publisher,
+    });
+
+    // 本文生成プロンプト用の正確なメタデータ＋検索結果
+    featureGames.push({
+      title: game.title,
+      titleJa: game.titleJa,
+      genres: game.genres,
+      platforms: game.platforms,
+      releaseDate: game.releaseDate,
+      developer: game.developer,
+      publisher: game.publisher,
+      summary: game.summary,
+      webSearchContext,
+    });
+  }
+
+  // --- フェーズ4: 本文生成 ---
+  const userMessage = buildFeatureUserMessage(theme, publishDate, featureGames);
+
+  const content = parseArticleResponse(
     await invokeClaudeModel(PromptTemplates.featureSystem, userMessage, {
       maxTokens: 4000,
       temperature: 0.2,
     })
   );
 
-  // おすすめゲーム名を抽出し、本文からJSONブロックを除去
-  const { cleanContent: content, games: extractedGames } = extractRecommendedGameNames(rawContent);
-  console.log(`  Extracted ${extractedGames.length} recommended game names`);
-
-  // IGDBでおすすめゲームの画像・公式URLを取得（英語名で検索）
-  let recommendedGames: RecommendedGame[] | undefined;
-  if (extractedGames.length > 0) {
-    try {
-      console.log('  Enriching recommended games with IGDB data...');
-      recommendedGames = await enrichRecommendedGames(extractedGames);
-      console.log(`  Enriched ${recommendedGames.length} recommended games`);
-    } catch (error) {
-      console.warn('  Failed to enrich recommended games:', error);
-    }
-  }
-
   const summary = await generateSummary(content);
-  const title = await generateTitle('特集', theme, summary, extractedGames.length);
+  const title = await generateTitle('特集', theme, summary, featureGames.length);
 
   // 特集記事用の画像を生成
   let featureImagePath: string | undefined;
@@ -544,7 +556,8 @@ async function generateFeatureArticle(
     summary,
     content,
     featureImage: featureImagePath,
-    recommendedGames,
+    recommendedGames: recommendedGames.length > 0 ? recommendedGames : undefined,
+    webSearchSources: webSearchSources.length > 0 ? webSearchSources : undefined,
   };
 }
 
@@ -844,8 +857,10 @@ async function main(): Promise<void> {
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
 
-// スクリプト実行
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+// スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}

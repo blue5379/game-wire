@@ -140,7 +140,7 @@ export async function searchGameHistory(
  */
 export async function searchGameInfo(
   gameTitle: string,
-  category: 'newRelease' | 'indie' | 'classic',
+  category: 'newRelease' | 'indie' | 'classic' | 'feature',
   developerName?: string
 ): Promise<GameWebSearchResults> {
   console.log(`Searching web for: ${gameTitle} (${category})`);
@@ -173,6 +173,12 @@ export async function searchGameInfo(
       results.reviews = await searchReviews(gameTitle);
       await delay(500);
       results.history = await searchGameHistory(gameTitle);
+      break;
+
+    case 'feature':
+      // 特集: 1記事で複数ゲームを検索するため、ゲームごとはレビューのみに絞る
+      // （検索回数 = 紹介ゲーム数 になるため、開発者情報等は取得せずレイテンシを抑制）
+      results.reviews = await searchReviews(gameTitle);
       break;
   }
 

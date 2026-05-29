@@ -307,6 +307,8 @@ export function validateFeaturePersonAttribution(article: GeneratedArticle): Val
         message: `本文で人物「${name}」が言及されています。提供データに発言ソースがあるか確認してください。`,
         evidence: match[0],
         context: extractContext(content, match[0]),
+        // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
+        sourcedFrom: findSourceFor(name, article.webSearchSources),
       });
     }
   }
@@ -359,6 +361,8 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
   for (const { pattern, type, severity } of NUMERIC_PATTERNS) {
     const matches = content.matchAll(pattern);
     for (const match of matches) {
+      // 概数パターン（approx-count）は capture group を持たないため match[1] が undefined
+      const numericValue = match[1] ? match[1].replace(/,/g, '') : undefined;
       warnings.push({
         articleTitle: article.title,
         category: article.category,
@@ -369,6 +373,8 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
+        // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
+        sourcedFrom: numericValue ? findSourceFor(numericValue, article.webSearchSources) : undefined,
       });
     }
   }
