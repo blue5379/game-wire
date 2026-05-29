@@ -414,6 +414,44 @@ describe('validateFeatureNumericClaims', () => {
     });
     expect(validateFeatureNumericClaims(article)).toHaveLength(0);
   });
+
+  it('webSearchSources に根拠がある数値には sourcedFrom が付く（新フローのグラウンディング）', () => {
+    const article = makeArticle({
+      title: 'GW特集',
+      category: 'feature',
+      content: 'このゲームはSteamで96%の高評価を獲得している。',
+      webSearchSources: [
+        {
+          url: 'https://example.com/review',
+          title: 'Game Review',
+          snippet: 'The game has a 96% positive rating on Steam.',
+        },
+      ],
+    });
+
+    const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(pct).toBeDefined();
+    expect(pct?.sourcedFrom?.url).toBe('https://example.com/review');
+  });
+
+  it('webSearchSources に根拠がない数値は sourcedFrom が undefined（捏造の可能性）', () => {
+    const article = makeArticle({
+      title: 'GW特集',
+      category: 'feature',
+      content: 'このゲームはSteamで96%の高評価を獲得している。',
+      webSearchSources: [
+        {
+          url: 'https://example.com/other',
+          title: 'Unrelated',
+          snippet: 'This snippet does not mention any rating figure.',
+        },
+      ],
+    });
+
+    const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(pct).toBeDefined();
+    expect(pct?.sourcedFrom).toBeUndefined();
+  });
 });
 
 describe('validateArticles (集約)', () => {
