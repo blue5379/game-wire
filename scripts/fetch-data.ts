@@ -80,9 +80,36 @@ function isInvalidGameTitle(title: string): boolean {
 }
 
 /**
- * 2つのタイトルが同じゲームを指すか判定
+ * リリース日文字列から年(YYYY)を抽出。失敗時 undefined。
  */
-function isSameGame(title1: string, title2: string): boolean {
+function extractYear(releaseDate?: string): number | undefined {
+  if (!releaseDate) return undefined;
+  const m = releaseDate.match(/^(\d{4})/);
+  if (!m) return undefined;
+  const y = parseInt(m[1], 10);
+  return Number.isFinite(y) ? y : undefined;
+}
+
+// 同名異作品を区別するための発売年差の閾値（±N年）
+// 早期アクセス→正式版、リマスター、地域別リリース等のズレを許容しつつ、
+// 同名異作品（一般的に10年以上離れる）は弾ける範囲。
+const SAME_GAME_YEAR_TOLERANCE = 3;
+
+/**
+ * Steam ストア URL から appId を抽出
+ */
+function extractSteamAppId(url?: string): number | undefined {
+  if (!url) return undefined;
+  const m = url.match(/store\.steampowered\.com\/app\/(\d+)/);
+  if (!m) return undefined;
+  const id = parseInt(m[1], 10);
+  return Number.isFinite(id) ? id : undefined;
+}
+
+/**
+ * タイトルの文字列が同一ゲームを指す可能性があるか
+ */
+function titleMatches(title1: string, title2: string): boolean {
   const norm1 = normalizeTitle(title1);
   const norm2 = normalizeTitle(title2);
 
@@ -105,6 +132,25 @@ function isSameGame(title1: string, title2: string): boolean {
   if (words1 === words2 && words1.length > 5) return true;
 
   return false;
+}
+
+/**
+ * 2つのゲームが同一作品を指すか判定
+ * - タイトル一致を前提に、発売年が両方判明していれば ±SAME_GAME_YEAR_TOLERANCE 年に限定
+ * - 片方が不明な場合はタイトル一致のみで通す（誤分離 false negative の抑制）
+ */
+function isSameGame(
+  g1: { title: string; releaseDate?: string },
+  g2: { title: string; releaseDate?: string }
+): boolean {
+  if (!titleMatches(g1.title, g2.title)) return false;
+
+  const y1 = extractYear(g1.releaseDate);
+  const y2 = extractYear(g2.releaseDate);
+  if (y1 !== undefined && y2 !== undefined) {
+    if (Math.abs(y1 - y2) > SAME_GAME_YEAR_TOLERANCE) return false;
+  }
+  return true;
 }
 
 /**
@@ -201,8 +247,9 @@ async function aggregateGames(
 
     // 既存のゲームとマッチするか確認
     let matched = false;
-    for (const [key, game] of gameMap.entries()) {
-      if (isSameGame(key, normalized)) {
+    for (const [, game] of gameMap.entries()) {
+      // YouTubeから抽出したタイトルには発売年情報がないため、年照合は適用されずタイトル一致で通る
+      if (isSameGame({ title: game.title, releaseDate: game.releaseDate }, { title: normalized })) {
         game.youtubePopularity = (game.youtubePopularity || 0) + viewCount;
         if (!game.source.includes('youtube')) {
           game.source.push('youtube');
@@ -225,9 +272,25 @@ async function aggregateGames(
     const igdbUrl = igdb.slug ? `https://www.igdb.com/games/${igdb.slug}` : undefined;
 
     // 既存のゲームとマッチするか確認
+    // 第3層: Steam appId が一致すれば強く同一と確定（タイトル・発売年に関係なく優先マージ）
+    const igdbSteamAppId = extractSteamAppId(igdb.steamUrl);
     let matched = false;
-    for (const [key, game] of gameMap.entries()) {
-      if (isSameGame(key, normalized)) {
+    for (const [, game] of gameMap.entries()) {
+      const sameByAppId =
+        igdbSteamAppId !== undefined && game.steamAppId === igdbSteamAppId;
+      const sameByTitleYear = isSameGame(
+        { title: game.title, releaseDate: game.releaseDate },
+        { title: igdb.name, releaseDate: igdb.releaseDate }
+      );
+      // appId が両方分かっていて異なる場合は別作品として確定（強分離）
+      if (
+        igdbSteamAppId !== undefined &&
+        game.steamAppId !== undefined &&
+        game.steamAppId !== igdbSteamAppId
+      ) {
+        continue;
+      }
+      if (sameByAppId || sameByTitleYear) {
         // IGDB データで補完
         game.title = igdb.name; // 正式名称に更新
         game.normalizedTitle = normalizeTitle(igdb.name); // normalizedTitle も正式名称から再計算
@@ -284,8 +347,9 @@ async function aggregateGames(
   for (const score of metacriticData.scores) {
     const normalized = normalizeTitle(score.title);
 
-    for (const [key, game] of gameMap.entries()) {
-      if (isSameGame(key, normalized)) {
+    for (const [, game] of gameMap.entries()) {
+      // Metacritic 側に発売年情報がないため、年照合は適用されずタイトル一致で通る
+      if (isSameGame({ title: game.title, releaseDate: game.releaseDate }, { title: normalized })) {
         game.metascore = score.metascore;
         game.userScore = score.userScore;
         if (!game.source.includes('metacritic')) {
@@ -312,7 +376,9 @@ async function aggregateGames(
     }
 
     if (!game.coverImage || game.genres.length === 0 || !game.sourceUrls?.steam) {
-      const igdbGame = await enrichGameWithIGDB(game.title);
+      // 第2層: 既知の発売年を渡し、検索結果の同名異作品（年が大きく異なる）を拒絶する
+      const expectedYear = extractYear(game.releaseDate);
+      const igdbGame = await enrichGameWithIGDB(game.title, { expectedYear });
       if (igdbGame) {
         game.titleJa = igdbGame.titleJa || game.titleJa;
         game.igdbSlug = igdbGame.slug || game.igdbSlug;
@@ -339,6 +405,11 @@ async function aggregateGames(
         if (igdbGame.steamUrl && !game.sourceUrls?.steam) {
           game.sourceUrls = game.sourceUrls || {};
           game.sourceUrls.steam = igdbGame.steamUrl;
+          // 第3層: Steam appId を保持しておくことで、後段のマージ処理でも強い同一性判定が効く
+          const appId = extractSteamAppId(igdbGame.steamUrl);
+          if (appId !== undefined && game.steamAppId === undefined) {
+            game.steamAppId = appId;
+          }
         }
         enrichedCount++;
         // レート制限対策

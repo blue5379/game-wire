@@ -281,10 +281,15 @@ async function igdbRequest<T>(
 /**
  * ゲーム名で検索してメタデータを取得
  */
+// 同名異作品を区別するための発売年差の閾値（±N年）
+// 第2層: 既知の発売年と検索結果の発売年が大きく異なる場合は別作品として拒絶
+const SEARCH_YEAR_TOLERANCE = 3;
+
 export async function searchGameByName(
   name: string,
   clientId: string,
-  accessToken: string
+  accessToken: string,
+  options?: { expectedYear?: number }
 ): Promise<IGDBGame | null> {
   try {
     // 無効な検索クエリはスキップ
@@ -351,6 +356,18 @@ export async function searchGameByName(
     if (!isRelevantSearchResult(searchName, game.name)) {
       console.log(`  IGDB search result not relevant: "${name}" -> "${game.name}" (skipped)`);
       return null;
+    }
+
+    // 第2層: 期待する発売年が指定されている場合、検索結果の発売年が大きく異なれば
+    // 同名異作品とみなして拒絶する（両方の年が判明している場合のみ照合）
+    if (options?.expectedYear !== undefined && game.first_release_date !== undefined) {
+      const resultYear = new Date(game.first_release_date * 1000).getUTCFullYear();
+      if (Math.abs(resultYear - options.expectedYear) > SEARCH_YEAR_TOLERANCE) {
+        console.log(
+          `  IGDB search result year mismatch: "${name}" -> "${game.name}" (expected ${options.expectedYear}, got ${resultYear}, skipped)`
+        );
+        return null;
+      }
     }
 
     // 開発会社と販売会社、国情報を抽出
@@ -786,7 +803,8 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
 
 // エクスポート: 外部から名前検索を呼び出すための関数
 export async function enrichGameWithIGDB(
-  gameName: string
+  gameName: string,
+  options?: { expectedYear?: number }
 ): Promise<IGDBGame | null> {
   const clientId = process.env.IGDB_CLIENT_ID;
   const clientSecret = process.env.IGDB_CLIENT_SECRET;
@@ -797,7 +815,7 @@ export async function enrichGameWithIGDB(
 
   try {
     const accessToken = await getAccessToken(clientId, clientSecret);
-    return await searchGameByName(gameName, clientId, accessToken);
+    return await searchGameByName(gameName, clientId, accessToken, options);
   } catch (error) {
     console.error(`Failed to enrich game "${gameName}":`, error);
     return null;
