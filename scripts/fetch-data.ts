@@ -311,7 +311,7 @@ async function aggregateGames(
       continue;
     }
 
-    if (!game.coverImage || game.genres.length === 0) {
+    if (!game.coverImage || game.genres.length === 0 || !game.sourceUrls?.steam) {
       const igdbGame = await enrichGameWithIGDB(game.title);
       if (igdbGame) {
         game.titleJa = igdbGame.titleJa || game.titleJa;
@@ -334,6 +334,11 @@ async function aggregateGames(
         if (igdbGame.slug) {
           game.sourceUrls = game.sourceUrls || {};
           game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
+        }
+        // IGDBのwebsites(category=13)からSteam URLを補完
+        if (igdbGame.steamUrl && !game.sourceUrls?.steam) {
+          game.sourceUrls = game.sourceUrls || {};
+          game.sourceUrls.steam = igdbGame.steamUrl;
         }
         enrichedCount++;
         // レート制限対策

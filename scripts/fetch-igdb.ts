@@ -310,7 +310,8 @@ export async function searchGameByName(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count,
              involved_companies.company.country,
-             game_localizations.name, game_localizations.region;
+             game_localizations.name, game_localizations.region,
+             websites.url, websites.category;
       limit 1;
     `;
 
@@ -332,6 +333,7 @@ export async function searchGameByName(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
+      websites?: { url: string; category: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -407,6 +409,10 @@ export async function searchGameByName(
         .filter((url): url is string => url !== undefined),
       rating: game.rating,
       ratingCount: game.rating_count,
+      // category=13がSteamだが返却されないことがあるため、URLパターンでも判定
+      steamUrl: game.websites?.find((w) =>
+        w.category === 13 || w.url.includes('store.steampowered.com')
+      )?.url,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
