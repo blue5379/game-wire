@@ -143,61 +143,49 @@ function normalizePlatforms(platforms: string[]): Set<string> {
 }
 
 /**
- * IGDB slug を簡易的にタイトル風に変換（"company-of-heroes" → "company of heroes"）
+ * 記事本文(content)で正式ゲームタイトルが正しく使われているか検証
+ *
+ * game.title は IGDB の正式名称を無加工で転記したものであり、AI が触れるのは
+ * 本文(content)と見出し(title)のみ。見出しは validateTitleConsistency が見るため、
+ * ここでは「本文中で AI が勝手にタイトルを短縮・翻訳・改変していないか」を検出する。
+ *
+ * 例: game.title="Company of Heroes" なのに本文では一貫して「Hero Company」と書く、
+ *     のように本文に正式タイトルが一度も登場しないケースを捕捉する。
+ *
+ * IGDB slug との照合は行わない（slug は IGDB 内部の URL 識別子であり、name と
+ * 経年で食い違うことがあるため、記事品質の指標にならない）。
  */
-function slugToTitle(slug: string): string {
-  return slug.replace(/-+/g, ' ').replace(/\s+\d+$/, '').trim();
-}
-
-/**
- * IGDB slug 由来のタイトルと game.title が大幅に乖離していないか検証
- * 例: slug="company-of-heroes" だが title="Hero Company" のケースを検出
- */
-export function validateTitleVsIgdbSlug(article: GeneratedArticle): ValidationWarning[] {
+export function validateBodyTitleConsistency(article: GeneratedArticle): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
 
+  // 特集記事はテーマベースで複数ゲームを扱うため対象外
   if (article.category === 'feature') return warnings;
 
-  const igdbUrl = article.sourceUrls?.igdb;
-  if (!igdbUrl || !article.game?.title) return warnings;
+  const game = article.game;
+  if (!game?.title || !article.content) return warnings;
 
-  const slugMatch = igdbUrl.match(/\/games\/([a-z0-9-]+)/i);
-  if (!slugMatch) return warnings;
+  // 記号・空白の差異を吸収して部分一致を見る（見出しチェックと同じ正規化）
+  const normalize = (s: string): string =>
+    s.toLowerCase().replace(/[\s:：・「」『』\[\]【】]/g, '');
 
-  const slug = slugMatch[1].replace(/--\d+$/, ''); // "--1" 等のサフィックスを除去
-  const normalize = (s: string) =>
-    s
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '') // アクセント記号を除去
-      .toLowerCase()
-      .replace(/[:：]/g, '');
-  const slugTitle = normalize(slugToTitle(slug));
-  const gameTitle = normalize(article.game.title);
+  const normalizedContent = normalize(article.content);
+  const containsEn = normalizedContent.includes(normalize(game.title));
+  const containsJa = game.titleJa
+    ? normalizedContent.includes(normalize(game.titleJa))
+    : false;
 
-  // slug の単語と game.title の単語のオーバーラップ率を測る
-  const slugWords = new Set(slugTitle.split(/\s+/).filter((w) => w.length > 2));
-  const titleWords = new Set(gameTitle.split(/\s+/).filter((w) => w.length > 2));
-
-  if (slugWords.size === 0 || titleWords.size === 0) return warnings;
-
-  let overlap = 0;
-  for (const w of titleWords) {
-    if (slugWords.has(w)) overlap++;
-  }
-
-  const overlapRatio = overlap / Math.max(slugWords.size, titleWords.size);
-
-  // 単語のオーバーラップが 60% 未満なら警告（"Hero Company" vs "company-of-heroes" のような事例を捕捉）
-  if (overlapRatio < 0.6) {
+  // 本文中に英語タイトルも日本語タイトルも一度も登場しない＝AIが別名に書き換えた疑い
+  if (!containsEn && !containsJa) {
     warnings.push({
       articleTitle: article.title,
       category: article.category,
       severity: 'high',
-      type: 'title-vs-igdb-slug',
+      type: 'body-title-mismatch',
       message:
-        `game.title「${article.game.title}」が IGDB slug「${slug}」と大幅に乖離しています。` +
-        `AI による誤短縮・改変の可能性があります。`,
-      evidence: `slug=${slug} title=${article.game.title}`,
+        `記事本文に正式ゲームタイトルが一度も登場しません。` +
+        `AI が本文中でタイトルを短縮・翻訳・改変した可能性があります。` +
+        `提供データ: en="${game.title}"${game.titleJa ? `, ja="${game.titleJa}"` : ''}`,
+      evidence: `${game.title}`,
     });
   }
 
@@ -565,7 +553,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
 export function validateArticle(article: GeneratedArticle): ValidationWarning[] {
   return [
     ...validateTitleConsistency(article),
-    ...validateTitleVsIgdbSlug(article),
+    ...validateBodyTitleConsistency(article),
     ...validatePlatformConsistency(article),
     ...validatePersonAttribution(article),
     ...validateNumericClaims(article),
@@ -596,7 +584,7 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
       instructions.add(
         `「${ev}」は提供データの対応機種に含まれていません。本文から対応機種としての言及を削除してください。`
       );
-    } else if (w.type === 'title-mismatch' || w.type === 'title-vs-igdb-slug') {
+    } else if (w.type === 'title-mismatch' || w.type === 'body-title-mismatch') {
       instructions.add(
         `ゲームタイトルは提供データのものを正確に使用してください（短縮・翻訳・改変は禁止）。`
       );
