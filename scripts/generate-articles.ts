@@ -613,10 +613,6 @@ export async function generateFeatureArticle(
     } catch (error) {
       console.warn(`    Failed to fetch official URL for "${game.title}":`, error);
     }
-    // 公式URLが見つからない場合、SteamゲームはストアページをフォールバックURLとして使用
-    if (!officialUrl && game.steamAppId) {
-      officialUrl = `https://store.steampowered.com/app/${game.steamAppId}/`;
-    }
 
     // Tavily 検索（本文グラウンディング用）
     let webSearchContext: string | undefined;
