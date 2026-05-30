@@ -311,7 +311,7 @@ async function aggregateGames(
       continue;
     }
 
-    if (!game.coverImage || game.genres.length === 0) {
+    if (!game.coverImage || game.genres.length === 0 || !game.sourceUrls?.steam) {
       const igdbGame = await enrichGameWithIGDB(game.title);
       if (igdbGame) {
         game.titleJa = igdbGame.titleJa || game.titleJa;

@@ -409,8 +409,10 @@ export async function searchGameByName(
         .filter((url): url is string => url !== undefined),
       rating: game.rating,
       ratingCount: game.rating_count,
-      // IGDB website category 13 = Steam
-      steamUrl: game.websites?.find((w) => w.category === 13)?.url,
+      // category=13がSteamだが返却されないことがあるため、URLパターンでも判定
+      steamUrl: game.websites?.find((w) =>
+        w.category === 13 || w.url.includes('store.steampowered.com')
+      )?.url,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
