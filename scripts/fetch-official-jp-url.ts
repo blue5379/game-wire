@@ -5,6 +5,7 @@
 
 import { tavily } from '@tavily/core';
 import { invokeClaudeModel, initializeBedrockClient } from './bedrock-client.js';
+import { verifyOfficialUrlContent } from './verify-official-url.js';
 
 // SNS・ストア・Wiki等のURLを除外するパターン（fetch-igdb.ts の nonOfficialPatterns と共通）
 // 注意: nintendo.com/playstation.com/xbox.com はゲーム紹介ページも持つため、
@@ -52,27 +53,6 @@ export const NON_OFFICIAL_URL_PATTERNS = [
 function isNonOfficialUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return NON_OFFICIAL_URL_PATTERNS.some((p) => lower.includes(p));
-}
-
-/**
- * URLの生存確認（HTTP HEAD）
- * 403はBot対策サイトの可能性があるため有効と判断する
- */
-async function isUrlAlive(url: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    const response = await fetch(url, {
-      method: 'HEAD',
-      signal: controller.signal,
-      redirect: 'follow',
-    });
-    clearTimeout(timeoutId);
-    // 403はBot対策（CloudFront等）の可能性があるため有効とみなす
-    return response.ok || response.status === 403;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -196,8 +176,10 @@ export async function fetchOfficialJpUrl(params: {
   titleEn: string;
   titleJa?: string;
   releaseYear?: string;
+  developer?: string;
+  publisher?: string;
 }): Promise<string | null> {
-  const { titleEn, titleJa, releaseYear } = params;
+  const { titleEn, titleJa, releaseYear, developer, publisher } = params;
   console.log(`  Fetching official JP URL: ${titleEn}`);
 
   try {
@@ -222,11 +204,20 @@ export async function fetchOfficialJpUrl(params: {
       return null;
     }
 
-    // Step 3: URL生存確認
-    const alive = await isUrlAlive(selectedUrl);
-    if (!alive) {
-      console.log(`    URL not alive: ${selectedUrl}`);
+    // Step 3: 内容一致検証（ページ本文を取得し、当該ゲームの公式かを照合）
+    // HEAD の生存確認だけでは「URL文字列が偶然タイトルに似た無関係サイト」
+    // （例: "Realm of Ink" に対する水墨画ギャラリー "inkrealm.jp"）を弾けない。
+    // mismatch は採用拒否、uncertain（本文取得不可・判定不能）は従来どおり採用する。
+    const verification = await verifyOfficialUrlContent(
+      { titleEn, titleJa, developer, publisher },
+      selectedUrl
+    );
+    if (verification.verdict === 'mismatch') {
+      console.log(`    URL content mismatch, rejected: ${selectedUrl} (${verification.reason})`);
       return null;
+    }
+    if (verification.verdict === 'uncertain') {
+      console.log(`    URL content unverified (adopting anyway): ${selectedUrl} (${verification.reason})`);
     }
 
     console.log(`    Official JP URL: ${selectedUrl}`);

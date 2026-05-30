@@ -114,7 +114,7 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scp95x.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scp961.jpg"
     sourceUrls:
-      official: "https://inkrealm.jp"
+      official: "https://www.4divinity.com/realmofink"
       igdb: "https://www.igdb.com/games/realm-of-ink"
   - title: "家族と絶望を描くインディーアドベンチャー「Richard」が話題に"
     category: indie

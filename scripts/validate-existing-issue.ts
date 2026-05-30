@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { validateArticles, writeAndCheckReport } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
+import { verifyOfficialUrlContent } from './verify-official-url.js';
 
 interface FrontmatterArticle {
   title: string;
@@ -76,10 +77,66 @@ function toGeneratedArticle(fa: FrontmatterArticle): GeneratedArticle {
   };
 }
 
-function main(): void {
-  const arg = process.argv[2];
+/**
+ * 既存号の公式URLを内容検証する（後追い監査）。
+ *
+ * 各記事の sourceUrls.official を verify-official-url.ts でページ本文と照合し、
+ * 無関係サイトの誤採用（mismatch）を可視化する。公開済みの号を後から棚卸しする用途。
+ * Bedrock を呼ぶため `--verify-urls` フラグ指定時のみ実行する。
+ */
+async function auditOfficialUrls(frontmatter: IssueFrontmatter): Promise<void> {
+  console.log('Auditing official URLs (content verification)...');
+  let checked = 0;
+  let mismatched = 0;
+
+  for (const fa of frontmatter.articles) {
+    const candidates: Array<{ source: string; url: string }> = [];
+    if (fa.sourceUrls?.official) {
+      candidates.push({ source: 'sourceUrls.official', url: fa.sourceUrls.official });
+    }
+
+    if (candidates.length === 0) continue;
+
+    const game = fa.game;
+    if (!game) {
+      console.log(`  [skip] "${fa.title}": game メタ無しのため検証不能`);
+      continue;
+    }
+
+    for (const { source, url } of candidates) {
+      checked++;
+      const result = await verifyOfficialUrlContent(
+        {
+          titleEn: game.title,
+          titleJa: game.titleJa,
+          developer: game.developer,
+          publisher: game.publisher,
+        },
+        url
+      );
+      const label =
+        result.verdict === 'match' ? '✓ match' : result.verdict === 'mismatch' ? '✗ MISMATCH' : '? uncertain';
+      console.log(`  [${label}] ${game.title} (${source}): ${url}`);
+      console.log(`           ${result.reason}`);
+      if (result.verdict === 'mismatch') mismatched++;
+    }
+  }
+
+  console.log('');
+  console.log(`Official URL audit: ${checked} checked, ${mismatched} mismatched.`);
+  if (mismatched > 0) {
+    console.log('⚠️  内容不一致の公式URLが見つかりました。手動で修正してください。');
+  }
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const verifyUrls = args.includes('--verify-urls');
+  const arg = args.find((a) => !a.startsWith('--'));
   if (!arg) {
-    console.error('Usage: npx tsx scripts/validate-existing-issue.ts <path-to-issue.md>');
+    console.error(
+      'Usage: npx tsx scripts/validate-existing-issue.ts [--verify-urls] <path-to-issue.md>'
+    );
     process.exit(1);
   }
 
@@ -103,6 +160,11 @@ function main(): void {
   const tmpDir = path.join(process.cwd(), 'data', 'validation-manual');
   // しきい値を非常に大きくして必ず通すモードで出力（観察目的のため）
   writeAndCheckReport(report, tmpDir, 9999);
+
+  if (verifyUrls) {
+    console.log('');
+    await auditOfficialUrls(frontmatter);
+  }
 }
 
 main();
