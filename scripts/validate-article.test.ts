@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   validateTitleConsistency,
-  validateTitleVsIgdbSlug,
+  validateBodyTitleConsistency,
   validatePlatformConsistency,
   validatePersonAttribution,
   validateNumericClaims,
@@ -85,34 +85,32 @@ describe('validateTitleConsistency', () => {
   });
 });
 
-describe('validateTitleVsIgdbSlug', () => {
-  it('issue-008 の Hero Company 事案を検出する（slug=company-of-heroes だが title=Hero Company）', () => {
+describe('validateBodyTitleConsistency', () => {
+  it('本文中でタイトルを別名に改変している事案を検出する（Company of Heroes → Hero Company）', () => {
     const article = makeArticle({
-      title: '歴史を変えた中隊を指揮せよ！',
+      title: '歴史を変えた中隊を指揮せよ！『Company of Heroes』',
       category: 'indie',
-      sourceUrls: {
-        igdb: 'https://www.igdb.com/games/company-of-heroes',
-      },
+      content:
+        '## ✨ ゲームの魅力\n\n「Hero Company」は戦術性が光るRTSです。' +
+        'Hero Company の戦場では緻密な判断が求められます。',
       game: {
-        title: 'Hero Company',
+        title: 'Company of Heroes',
         genre: [],
         platforms: ['PC'],
       },
     });
 
-    const warnings = validateTitleVsIgdbSlug(article);
+    const warnings = validateBodyTitleConsistency(article);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].type).toBe('title-vs-igdb-slug');
+    expect(warnings[0].type).toBe('body-title-mismatch');
     expect(warnings[0].severity).toBe('high');
   });
 
-  it('slug と title が一致していれば警告しない', () => {
+  it('本文中に英語の正式タイトルが含まれていれば警告しない', () => {
     const article = makeArticle({
       title: 'ARK 紹介',
       category: 'indie',
-      sourceUrls: {
-        igdb: 'https://www.igdb.com/games/ark-survival-ascended',
-      },
+      content: '本作「ARK: Survival Ascended」は広大なオープンワールドが魅力です。',
       game: {
         title: 'ARK: Survival Ascended',
         genre: [],
@@ -120,16 +118,30 @@ describe('validateTitleVsIgdbSlug', () => {
       },
     });
 
-    expect(validateTitleVsIgdbSlug(article)).toHaveLength(0);
+    expect(validateBodyTitleConsistency(article)).toHaveLength(0);
   });
 
-  it('slug の "--1" 等のサフィックスを除去する', () => {
+  it('本文中に日本語タイトルが含まれていれば警告しない（英語タイトル不在でも可）', () => {
     const article = makeArticle({
-      title: 'Atomic Heart DLC',
+      title: 'ファイナルファンタジー特集',
       category: 'newRelease',
-      sourceUrls: {
-        igdb: 'https://www.igdb.com/games/atomic-heart-blood-on-crystal--1',
+      content: '「ファイナルファンタジーXVI」は壮大な物語が展開されます。',
+      game: {
+        title: 'Final Fantasy XVI',
+        titleJa: 'ファイナルファンタジーXVI',
+        genre: [],
+        platforms: ['PS5'],
       },
+    });
+
+    expect(validateBodyTitleConsistency(article)).toHaveLength(0);
+  });
+
+  it('記号・空白の差異は許容する（コロンや全角の違いで誤検知しない）', () => {
+    const article = makeArticle({
+      title: 'Atomic Heart 紹介',
+      category: 'newRelease',
+      content: '本作「Atomic Heart：Blood on Crystal」をご紹介します。',
       game: {
         title: 'Atomic Heart: Blood on Crystal',
         genre: [],
@@ -137,16 +149,36 @@ describe('validateTitleVsIgdbSlug', () => {
       },
     });
 
-    expect(validateTitleVsIgdbSlug(article)).toHaveLength(0);
+    expect(validateBodyTitleConsistency(article)).toHaveLength(0);
+  });
+
+  it('IGDB の name/slug 不整合では誤検知しない（本文が正式名なら slug は無関係）', () => {
+    // slug は "richard-and-alice" だが name は "Richard"。本文では正しく Richard と書いている
+    const article = makeArticle({
+      title: '家族と絶望を描くインディーアドベンチャー「Richard」が話題に',
+      category: 'indie',
+      content: '「Richard」は家族、絶望、天候をテーマにしたミステリーアドベンチャーです。',
+      sourceUrls: {
+        igdb: 'https://www.igdb.com/games/richard-and-alice',
+      },
+      game: {
+        title: 'Richard',
+        genre: [],
+        platforms: ['PC'],
+      },
+    });
+
+    expect(validateBodyTitleConsistency(article)).toHaveLength(0);
   });
 
   it('特集記事はチェック対象外', () => {
     const article = makeArticle({
       title: '今週の注目',
       category: 'feature',
+      content: '本文に何も含まれていなくても feature は対象外',
     });
 
-    expect(validateTitleVsIgdbSlug(article)).toHaveLength(0);
+    expect(validateBodyTitleConsistency(article)).toHaveLength(0);
   });
 });
 
