@@ -55,6 +55,7 @@ export interface IGDBGame {
   screenshotUrls?: string[];
   rating?: number;
   ratingCount?: number;
+  steamUrl?: string;
 }
 
 export interface IGDBData {

@@ -335,6 +335,11 @@ async function aggregateGames(
           game.sourceUrls = game.sourceUrls || {};
           game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
         }
+        // IGDBのwebsites(category=13)からSteam URLを補完
+        if (igdbGame.steamUrl && !game.sourceUrls?.steam) {
+          game.sourceUrls = game.sourceUrls || {};
+          game.sourceUrls.steam = igdbGame.steamUrl;
+        }
         enrichedCount++;
         // レート制限対策
         if (enrichedCount % 5 === 0) {
