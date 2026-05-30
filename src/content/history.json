@@ -280,6 +280,41 @@
       "category": "classic",
       "issueNumber": 8,
       "publishDate": "2026-05-22"
+    },
+    {
+      "normalizedTitle": "007 first light",
+      "title": "007 First Light",
+      "category": "newRelease",
+      "issueNumber": 9,
+      "publishDate": "2026-05-30"
+    },
+    {
+      "normalizedTitle": "realm of ink",
+      "title": "Realm of Ink",
+      "category": "newRelease",
+      "issueNumber": 9,
+      "publishDate": "2026-05-30"
+    },
+    {
+      "normalizedTitle": "the legend of you",
+      "title": "The Legend of You",
+      "category": "indie",
+      "issueNumber": 9,
+      "publishDate": "2026-05-30"
+    },
+    {
+      "normalizedTitle": "brokenlore follow",
+      "title": "BrokenLore: FOLLOW",
+      "category": "indie",
+      "issueNumber": 9,
+      "publishDate": "2026-05-30"
+    },
+    {
+      "normalizedTitle": "cyberpunk 2077",
+      "title": "Cyberpunk 2077",
+      "category": "classic",
+      "issueNumber": 9,
+      "publishDate": "2026-05-30"
     }
   ]
 }
