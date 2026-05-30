@@ -67,6 +67,11 @@ jobs:
       # 6. 号を組み立て
       - name: Build issue
         run: npx tsx scripts/build-issue.ts
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
 
       # 6.5. バリデーションレポートを Job Summary に出力
       - name: Validation report summary
