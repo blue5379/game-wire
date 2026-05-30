@@ -560,8 +560,13 @@ export async function generateFeatureArticle(
     try {
       const releaseYear = game.releaseDate ? game.releaseDate.slice(0, 4) : undefined;
       officialUrl =
-        (await fetchOfficialJpUrl({ titleEn: game.title, titleJa: game.titleJa, releaseYear })) ??
-        undefined;
+        (await fetchOfficialJpUrl({
+          titleEn: game.title,
+          titleJa: game.titleJa,
+          releaseYear,
+          developer: game.developer,
+          publisher: game.publisher,
+        })) ?? undefined;
     } catch (error) {
       console.warn(`    Failed to fetch official URL for "${game.title}":`, error);
     }

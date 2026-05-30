@@ -392,6 +392,8 @@ async function enrichSelectedGamesWithOfficialUrl(
         titleEn: game.title,
         titleJa: game.titleJa,
         releaseYear,
+        developer: game.developer,
+        publisher: game.publisher,
       });
 
       if (officialUrl) {
