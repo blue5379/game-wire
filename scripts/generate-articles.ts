@@ -19,6 +19,7 @@ import {
   buildFeatureUserMessage,
   selectFeatureThemeWithAI,
   selectFeatureGames,
+  prefilterFeatureCandidatesByTheme,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
@@ -42,6 +43,12 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const ISSUES_DIR = DEV_MODE
   ? path.join(process.cwd(), 'src', 'content', 'issues-dev')
   : path.join(process.cwd(), 'src', 'content', 'issues');
+
+// 特集記事のゲーム選定に関する定数
+// 一次選抜（テーマ事前フィルタ）で残す候補数の上限。最終選定 selectFeatureGames に渡る母集団。
+const FEATURE_CANDIDATE_LIMIT = 20;
+// 特集記事に最低限欲しいゲーム本数。これを下回ると警告を出す（selectFeatureGames の下限と揃える）。
+const FEATURE_MIN_GAMES = 3;
 
 /**
  * 次の号番号を取得
@@ -523,7 +530,34 @@ export async function generateFeatureArticle(
   console.log(`  Feature theme: ${theme}`);
 
   // --- フェーズ2: ゲーム選定（候補リストから確定タイトルを得る）---
-  const candidates = (relatedGames ?? []).slice(0, 20);
+  // 候補プールはテーマ非依存の人気順で並んでいるため、先頭を機械的に切ると
+  // テーマに合うゲームが枠外に落ちて選定本数が減る（vol.9で特集が1本になった原因）。
+  // そこで、まずテーマ事前フィルタ（LLM一次選抜）でテーマ関連の上位を抽出してから
+  // 最終選定に渡す。フィルタが空（候補が上限以下 or LLM失敗）の場合は従来通り先頭を使う。
+  const allCandidates = relatedGames ?? [];
+  const prefilteredTitles = await prefilterFeatureCandidatesByTheme(
+    theme,
+    allCandidates.map((g) => ({
+      title: g.title,
+      titleJa: g.titleJa,
+      genres: g.genres,
+      summary: g.summary,
+    })),
+    FEATURE_CANDIDATE_LIMIT
+  );
+
+  let candidates: GameData[];
+  if (prefilteredTitles.length > 0) {
+    const prefilterSet = new Set(prefilteredTitles.map((t) => normalizeForMatch(t)));
+    candidates = allCandidates
+      .filter((g) => prefilterSet.has(normalizeForMatch(g.title)))
+      .slice(0, FEATURE_CANDIDATE_LIMIT);
+    console.log(`  Theme prefilter narrowed candidates to ${candidates.length} games`);
+  } else {
+    candidates = allCandidates.slice(0, FEATURE_CANDIDATE_LIMIT);
+    console.log(`  Theme prefilter returned nothing, falling back to top ${candidates.length} games`);
+  }
+
   const selectedTitles = await selectFeatureGames(
     theme,
     candidates.map((g) => ({
@@ -547,6 +581,15 @@ export async function generateFeatureArticle(
     } else {
       console.warn(`  Selected title not found in candidates, skipping: "${title}"`);
     }
+  }
+
+  // 特集ゲームが規定本数を下回ったら警告（黙って薄い特集が出るのを検知するため）。
+  // テーマが限定的で候補が枯渇した場合に起こり得る。
+  if (selectedGameData.length < FEATURE_MIN_GAMES) {
+    console.warn(
+      `  ⚠ Feature article has only ${selectedGameData.length} game(s) (expected >= ${FEATURE_MIN_GAMES}). ` +
+        `Theme "${theme}" may be too narrow or candidate pool too small.`
+    );
   }
 
   // --- フェーズ3: メタデータ取得（公式URL + Tavily検索）---
