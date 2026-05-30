@@ -27,12 +27,16 @@ jobs:
       - name: Build Astro site
         run: npm run build
 
+      # Cloudflare の deployments API はコミットメッセージが有効な UTF-8 文字列
+      # であることを要求し、--commit-dirty=true は HEAD のコミットメッセージを
+      # そのまま送る。HEAD が日本語・絵文字を含むと [code: 8000111] で失敗するため、
+      # --commit-message に ASCII の固定文字列を明示して回避する。
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name=game-wire --commit-dirty=true
+          command: pages deploy dist --project-name=game-wire --commit-dirty=true --commit-message="Manual deploy via deploy-only workflow"
 
       - name: Deploy summary
         run: |
