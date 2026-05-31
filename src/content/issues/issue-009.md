@@ -58,7 +58,8 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz0hs.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scz0ht.jpg"
     sourceUrls:
-      steam: "https://store.steampowered.com/app/1488462"
+      official: "https://ioi.dk/007firstlightgame"
+      steam: "https://store.steampowered.com/app/3768760"
       igdb: "https://www.igdb.com/games/007-first-light"
   - title: "水墨画風アクションRoguelite『Realm of Ink』、物語世界に囚われたヒロインの脱出劇"
     category: newRelease
@@ -148,7 +149,7 @@ articles:
       
       本作が評価される最大の理由は、世界構築の徹底した作り込みにあります。メインストーリーだけでなく、サブキャラクターやNPCに至るまで個性と背景を持たせることで、プレイヤーは「生きた世界」を感じることができます。また、ターン制と戦略要素を融合させたバトルシステムは、プレイヤーに思考の余地を与えながらも、多様なプレイスタイルを許容する設計となっています。面白いゲームを作るには、システムの完成度だけでなく、プレイヤーが世界に没入できる「細部へのこだわり」が重要であることを、この作品は教えてくれます。
     game:
-      title: "The Legend of You"
+      title: "The Legend of Heroes: Trails in the Sky"
       titleJa: "英雄伝説 空の軌跡 FC"
       genre:
         - Role-playing (RPG)
@@ -169,7 +170,7 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scooc2.jpg"
     sourceUrls:
       official: "https://www.falcom.co.jp/ed6"
-      steam: "https://store.steampowered.com/app/4101210"
+      steam: "https://store.steampowered.com/app/251150"
       igdb: "https://www.igdb.com/games/the-legend-of-heroes-trails-in-the-sky"
   - title: "心の闇と向き合う一人称ホラー「BrokenLore: FOLLOW」、いじめと自己受容を描く心理サスペンス"
     category: indie
