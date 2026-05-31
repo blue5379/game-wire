@@ -88,6 +88,29 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
 const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
 
 /**
+ * Steam Storefront API から指定 appId のゲーム名を取得（検証用）
+ * - appId が存在しない / Steam に published されていない場合は null を返す
+ * - 成人向けフラグなどは見ない（検証は name 比較のみ）
+ *
+ * Issue #49 対策: IGDB websites などから採用しようとしている Steam URL の
+ * appId が実在し、かつ期待するゲーム名と一致するかをクロスチェックする。
+ */
+export async function fetchSteamAppName(appId: number): Promise<string | null> {
+  try {
+    const response = await fetch(
+      `https://store.steampowered.com/api/appdetails?appids=${appId}&l=english`
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const entry = data[appId];
+    if (!entry?.success) return null;
+    return entry.data?.name || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Steam公式APIからゲーム詳細（名前・成人向けフラグ）を取得
  */
 async function getAppDetails(appId: number): Promise<{ name: string | null; isAdultContent: boolean }> {
