@@ -56,6 +56,7 @@ export interface IGDBGame {
   rating?: number;
   ratingCount?: number;
   steamUrl?: string;
+  officialUrl?: string; // IGDB websites から推定した公式サイトURL
 }
 
 export interface IGDBData {

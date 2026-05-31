@@ -380,6 +380,27 @@ async function aggregateGames(
       const expectedYear = extractYear(game.releaseDate);
       const igdbGame = await enrichGameWithIGDB(game.title, { expectedYear });
       if (igdbGame) {
+        // 第4層: enrich後の整合性チェック（Issue #50対策）
+        // searchGameByName の単語マッチが甘い経路で別ゲームが返るケースを最後に弾く。
+        // appId が一致するなら無条件に同一とみなす（強い同一性）。
+        // それ以外で title / 発売年が大きく食い違う場合は上書きを拒否し、enrich失敗扱いにする。
+        const igdbAppId = extractSteamAppId(igdbGame.steamUrl);
+        const sameByAppId =
+          igdbAppId !== undefined &&
+          game.steamAppId !== undefined &&
+          game.steamAppId === igdbAppId;
+        if (!sameByAppId) {
+          const sameByTitleYear = isSameGame(
+            { title: game.title, releaseDate: game.releaseDate },
+            { title: igdbGame.name, releaseDate: igdbGame.releaseDate }
+          );
+          if (!sameByTitleYear) {
+            console.warn(
+              `  IGDB enrich rejected (identity mismatch): "${game.title}" vs "${igdbGame.name}"`
+            );
+            continue;
+          }
+        }
         game.titleJa = igdbGame.titleJa || game.titleJa;
         game.igdbSlug = igdbGame.slug || game.igdbSlug;
         game.genres = igdbGame.genres || game.genres;
@@ -474,6 +495,21 @@ async function enrichSelectedGamesWithOfficialUrl(
 
       if (officialUrl) {
         game.sourceUrls = { ...game.sourceUrls, official: officialUrl };
+        continue;
+      }
+
+      // フォールバック (Issue #49b対策):
+      // 日本語公式ページが見つからなかった場合、IGDBの公式サイトURLを採用する。
+      // 海外ゲームで日本語専用サイトを持たないタイトル（例: 007 First Light）でも
+      // 何らかの公式リンクを記事に出せるようにする。
+      const igdbFallback = await enrichGameWithIGDB(game.title, {
+        expectedYear: game.releaseDate
+          ? new Date(game.releaseDate).getFullYear()
+          : undefined,
+      });
+      if (igdbFallback?.officialUrl) {
+        console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+        game.sourceUrls = { ...game.sourceUrls, official: igdbFallback.officialUrl };
       }
     } catch (error) {
       console.error(`  enrichOfficialUrl failed for "${game.title}":`, error);
