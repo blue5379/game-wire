@@ -182,8 +182,25 @@ function sanitizeIgdbSearchTerm(term: string): string {
     .trim();
 }
 
+// 単語マッチング判定で除外する英語のstopword
+// "The Legend of You" と "The Legend of Heroes: Trails in the Sky" のように
+// 共通単語が the/of/legend のような汎用語のみで一致してしまうのを防ぐ
+const ENGLISH_STOPWORDS = new Set([
+  'the', 'of', 'in', 'on', 'at', 'an', 'and', 'or', 'to', 'for',
+  'with', 'is', 'by', 'a', 'as', 'be', 'it',
+  // ゲーム名で頻出のジャンル/汎用語（単独一致では同一性根拠にならない）
+  'legend', 'legends', 'tales', 'story', 'world', 'war', 'wars',
+  'game', 'games', 'edition', 'remake', 'remaster', 'remastered',
+]);
+
 /**
  * 検索結果が検索クエリに対して妥当かどうかをチェック
+ *
+ * 厳格化ポリシー（Issue #50対策）:
+ * - 完全一致 / 部分文字列一致は従来どおり許容
+ * - 単語重複判定では stopword（the/of/legend など）を除外
+ * - stopword 以外の意味語が **2語以上** 共通する場合のみ一致とみなす
+ * - 1語のみ共通の場合は、その語が短いクエリ全体の主要部分を占める場合に限り許容
  */
 function isRelevantSearchResult(query: string, resultName: string): boolean {
   const normalizedQuery = query.toLowerCase().replace(/[^\w\s]/g, '').trim();
@@ -202,18 +219,62 @@ function isRelevantSearchResult(query: string, resultName: string): boolean {
     return true;
   }
 
-  // 単語の重複をチェック
-  const queryWords = new Set(normalizedQuery.split(/\s+/));
+  // 単語の重複をチェック（stopwordを除外）
+  const queryWords = normalizedQuery.split(/\s+/).filter((w) => w.length > 0);
   const resultWords = new Set(normalizedResult.split(/\s+/));
-  const commonWords = [...queryWords].filter(w => w.length > 2 && resultWords.has(w));
+  const queryContent = queryWords.filter(
+    (w) => w.length > 2 && !ENGLISH_STOPWORDS.has(w)
+  );
+  const commonContent = queryContent.filter((w) => resultWords.has(w));
 
-  // 少なくとも1つの意味のある単語が一致
-  if (commonWords.length > 0) {
+  // クエリ側に意味語が無い場合は判定不能 → 拒絶
+  if (queryContent.length === 0) {
+    return false;
+  }
+
+  // 意味語が2語以上共通: 一致と判定
+  if (commonContent.length >= 2) {
+    return true;
+  }
+
+  // 意味語が1語のみ共通: クエリ全体がその1語のみで構成される場合（"Balatro" 等）
+  // のみ許容。複数語クエリで1語しか一致しない場合は別作品の可能性が高いので拒絶。
+  if (commonContent.length === 1 && queryContent.length === 1) {
     return true;
   }
 
   return false;
 }
+
+/**
+ * IGDB websites 配列から公式サイトURLを推定
+ * category=1 (Official website) を優先、無ければ非ストア・非SNS の最初のURLを採用
+ */
+function pickOfficialUrlFromWebsites(
+  websites?: { url: string; category?: number }[]
+): string | undefined {
+  if (!websites?.length) return undefined;
+  const officialByCategory = websites.find((w) => w.category === 1)?.url;
+  if (officialByCategory) return officialByCategory;
+  const nonOfficialPatterns = [
+    'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
+    'youtube.com', 'twitch.tv', 'reddit.com', 'discord.gg', 'discord.com',
+    'bsky.app',
+    'store.steampowered.com', 'steampowered.com',
+    'store.playstation.com', 'store-jp.nintendo.com',
+    'xbox.com/ja-jp/games/store', 'xbox.com/en-us/games/store',
+    'microsoft.com',
+    'gog.com', 'epicgames.com', 'play.google.com',
+    'apps.apple.com', 'itunes.apple.com',
+    'wikipedia.org', 'fandom.com', 'wiki',
+  ];
+  return websites.find(
+    (w) => !nonOfficialPatterns.some((p) => w.url.toLowerCase().includes(p))
+  )?.url;
+}
+
+// テスト用にエクスポート
+export const __test = { isRelevantSearchResult, pickOfficialUrlFromWebsites };
 
 /**
  * Twitch OAuth2 アクセストークンを取得
@@ -430,6 +491,7 @@ export async function searchGameByName(
       steamUrl: game.websites?.find((w) =>
         w.category === 13 || w.url.includes('store.steampowered.com')
       )?.url,
+      officialUrl: pickOfficialUrlFromWebsites(game.websites),
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
