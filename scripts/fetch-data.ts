@@ -13,6 +13,7 @@ import * as path from 'node:path';
 import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
+import { fetchSteamAppName } from './fetch-steam.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
@@ -445,6 +446,60 @@ async function aggregateGames(
 }
 
 /**
+ * 選定済み6本の Steam URL を Steam Storefront API で検証する
+ *
+ * Issue #49 対策: IGDB の websites などから採用された Steam URL の appId が
+ * 実在するか、また Steam 上の name が IGDB の game.title と十分一致するかを
+ * クロスチェックする。失敗した場合は Steam URL を削除し、誤リンクの掲載を防ぐ。
+ *
+ * Steam Top Sellers / Top Played 由来の URL（既に Steam で実在確認済み）は
+ * appId と Steam name の整合性が源流で取れているため、ここでは name 一致のみ
+ * を緩く確認する。
+ */
+async function verifySelectedGamesSteamUrl(
+  selectedGames: SelectedGames
+): Promise<void> {
+  const allGames: GameData[] = [
+    ...selectedGames.newReleases,
+    ...selectedGames.indies,
+    ...(selectedGames.featured ? [selectedGames.featured] : []),
+    ...(selectedGames.classic ? [selectedGames.classic] : []),
+  ];
+
+  for (const game of allGames) {
+    const steamUrl = game.sourceUrls?.steam;
+    if (!steamUrl) continue;
+    const appId = extractSteamAppId(steamUrl);
+    if (appId === undefined) continue;
+
+    try {
+      const steamName = await fetchSteamAppName(appId);
+      if (!steamName) {
+        console.warn(
+          `  [SteamVerify] appId ${appId} not found on Steam, removing URL: "${game.title}"`
+        );
+        delete game.sourceUrls!.steam;
+        if (game.steamAppId === appId) game.steamAppId = undefined;
+        continue;
+      }
+      const sameName = isSameGame(
+        { title: game.title, releaseDate: game.releaseDate },
+        { title: steamName }
+      );
+      if (!sameName) {
+        console.warn(
+          `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${steamName}"), removing URL`
+        );
+        delete game.sourceUrls!.steam;
+        if (game.steamAppId === appId) game.steamAppId = undefined;
+      }
+    } catch (error) {
+      console.warn(`  [SteamVerify] failed for "${game.title}":`, error);
+    }
+  }
+}
+
+/**
  * 選定済みゲームに公式日本語URLを付与
  * selectGamesForArticles() 後に呼ぶことで、対象6本のみに絞って調査できる
  */
@@ -686,6 +741,11 @@ async function main(): Promise<void> {
   console.log(`Indies: ${selectedGames.indies.length}`);
   console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);
   console.log(`Classic: ${selectedGames.classic?.title || 'None'}`);
+
+  // 選定済みゲームの Steam URL を実在検証（Issue #49 対策）
+  console.log('');
+  console.log('Verifying Steam URLs for selected games...');
+  await verifySelectedGamesSteamUrl(selectedGames);
 
   // 選定済みゲームに公式日本語URLを付与
   console.log('');
