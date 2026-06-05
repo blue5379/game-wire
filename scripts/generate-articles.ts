@@ -39,11 +39,11 @@ import { validateArticle, buildFixInstruction } from './validate-article.js';
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
 
-// Web検索失敗カウンター（generate-articles.ts 実行中に累積）
-const webSearchStats = {
-  searchFailures: 0,      // Tavilyキーワード検索の失敗回数
-  pageContentFailures: 0, // 公式ページ取得の失敗回数
-};
+// Web検索失敗カウンター型（main()でローカルに生成し参照渡し）
+interface WebSearchStats {
+  searchFailures: number;
+  pageContentFailures: number;
+}
 
 // データディレクトリ
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -282,7 +282,8 @@ YES または NO のみを1行で出力してください。理由は不要で�
 async function generateNewReleaseArticle(
   game: GameData,
   publishDate: Date,
-  regenOpts?: RegenerateOptions
+  regenOpts?: RegenerateOptions,
+  stats?: WebSearchStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating new release article: ${game.title}`);
 
@@ -297,19 +298,19 @@ async function generateNewReleaseArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
-      webSearchStats.searchFailures++;
+      if (stats) stats.searchFailures++;
     }
   }
 
-  // Steam/公式ページのコンテンツを取得
+  // Steam/公式ページのコンテンツを取得（再生成時はスキップ）
   let officialPageContext: string | undefined;
-  if (isTavilyAvailable()) {
+  if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
     const pageContents = await fetchOfficialPageContents({
       steamUrl: game.sourceUrls?.steam,
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
-    webSearchStats.pageContentFailures += pageContents.failures;
+    if (stats) stats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -376,7 +377,8 @@ async function generateNewReleaseArticle(
 async function generateIndieArticle(
   game: GameData,
   publishDate: Date,
-  regenOpts?: RegenerateOptions
+  regenOpts?: RegenerateOptions,
+  stats?: WebSearchStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating indie article: ${game.title}`);
 
@@ -404,7 +406,7 @@ async function generateIndieArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
-      webSearchStats.searchFailures++;
+      if (stats) stats.searchFailures++;
     }
   }
 
@@ -418,7 +420,7 @@ async function generateIndieArticle(
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
-    webSearchStats.pageContentFailures += pageContents.failures;
+    if (stats) stats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -563,7 +565,8 @@ export async function generateFeatureArticle(
   publishDate: Date,
   issueNumber: number,
   relatedGames?: GameData[],
-  excludeTitles?: string[]
+  excludeTitles?: string[],
+  stats?: WebSearchStats
 ): Promise<{ article: GeneratedArticle; context: FeatureArticleContext }> {
   // --- フェーズ1: テーマ選定 ---
   const events = getEventsInRange(publishDate, 7);
@@ -669,7 +672,7 @@ export async function generateFeatureArticle(
         await new Promise((r) => setTimeout(r, 500)); // レート制限対策
       } catch (error) {
         console.warn(`    Web search failed for "${game.title}", continuing:`, error);
-        webSearchStats.searchFailures++;
+        if (stats) stats.searchFailures++;
       }
     }
 
@@ -728,7 +731,8 @@ export async function generateFeatureArticle(
 async function generateClassicArticle(
   game: GameData,
   publishDate: Date,
-  regenOpts?: RegenerateOptions
+  regenOpts?: RegenerateOptions,
+  stats?: WebSearchStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating classic article: ${game.title}`);
 
@@ -759,7 +763,7 @@ async function generateClassicArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
-      webSearchStats.searchFailures++;
+      if (stats) stats.searchFailures++;
     }
   }
 
@@ -773,7 +777,7 @@ async function generateClassicArticle(
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
-    webSearchStats.pageContentFailures += pageContents.failures;
+    if (stats) stats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -925,6 +929,9 @@ async function main(): Promise<void> {
   console.log(`Next issue number: ${nextIssueNumber}`);
   console.log('');
 
+  // Web検索失敗カウンター（main()スコープで管理し各generate関数に参照渡し）
+  const webSearchStats: WebSearchStats = { searchFailures: 0, pageContentFailures: 0 };
+
   // 記事と、その記事を修正指示付きで作り直す再生成クロージャをまとめて保持する。
   // 各 generate 関数のシグネチャ差は regenerate クロージャで吸収する。
   const regenerables: Array<{
@@ -940,7 +947,7 @@ async function main(): Promise<void> {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
-      const article = await generateNewReleaseArticle(game, publishDate);
+      const article = await generateNewReleaseArticle(game, publishDate, undefined, webSearchStats);
       regenerables.push({
         article,
         regenerate: (fix) => generateNewReleaseArticle(game, publishDate, { fixInstruction: fix }),
@@ -961,7 +968,7 @@ async function main(): Promise<void> {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
-      const article = await generateIndieArticle(game, publishDate);
+      const article = await generateIndieArticle(game, publishDate, undefined, webSearchStats);
       regenerables.push({
         article,
         regenerate: (fix) => generateIndieArticle(game, publishDate, { fixInstruction: fix }),
@@ -1002,7 +1009,8 @@ async function main(): Promise<void> {
       publishDate,
       nextIssueNumber,
       filteredAllGames,
-      alreadySelectedTitles
+      alreadySelectedTitles,
+      webSearchStats
     );
     regenerables.push({
       article: featureArticle,
@@ -1023,7 +1031,7 @@ async function main(): Promise<void> {
       if (await isAdultContentByAI(classicGame)) {
         console.warn(`  Skipping adult content classic game: "${classicGame.title}"`);
       } else {
-        const article = await generateClassicArticle(classicGame, publishDate);
+        const article = await generateClassicArticle(classicGame, publishDate, undefined, webSearchStats);
         regenerables.push({
           article,
           regenerate: (fix) => generateClassicArticle(classicGame, publishDate, { fixInstruction: fix }),
