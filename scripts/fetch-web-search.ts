@@ -309,7 +309,7 @@ export async function fetchOfficialPageContents(params: {
   steamUrl?: string;
   officialUrl?: string;
   officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback';
-}): Promise<{ steamContent?: string; officialContent?: string }> {
+}): Promise<{ steamContent?: string; officialContent?: string; failures: number }> {
   const { steamUrl, officialUrl, officialUrlSource } = params;
 
   const urlsToFetch: { url: string; key: 'steam' | 'official' }[] = [];
@@ -321,11 +321,11 @@ export async function fetchOfficialPageContents(params: {
   }
 
   if (urlsToFetch.length === 0) {
-    return {};
+    return { failures: 0 };
   }
 
   const client = initializeTavilyClient();
-  const result: { steamContent?: string; officialContent?: string } = {};
+  const result: { steamContent?: string; officialContent?: string; failures: number } = { failures: 0 };
 
   for (const { url, key } of urlsToFetch) {
     try {
@@ -337,9 +337,11 @@ export async function fetchOfficialPageContents(params: {
         else result.officialContent = content;
       } else {
         console.warn(`    fetchOfficialPageContents: no content for ${url}`);
+        result.failures++;
       }
     } catch (error) {
       console.warn(`    fetchOfficialPageContents: failed to fetch ${url}: ${error}`);
+      result.failures++;
     }
     await delay(300);
   }

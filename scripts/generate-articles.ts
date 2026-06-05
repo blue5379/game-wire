@@ -39,6 +39,12 @@ import { validateArticle, buildFixInstruction } from './validate-article.js';
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
 
+// Web検索失敗カウンター（generate-articles.ts 実行中に累積）
+const webSearchStats = {
+  searchFailures: 0,      // Tavilyキーワード検索の失敗回数
+  pageContentFailures: 0, // 公式ページ取得の失敗回数
+};
+
 // データディレクトリ
 const DATA_DIR = path.join(process.cwd(), 'data');
 const ISSUES_DIR = DEV_MODE
@@ -130,6 +136,10 @@ export interface GeneratedIssue {
   articles: GeneratedArticle[];
   generatedAt: string;
   publishDate: string;
+  webSearchStats?: {
+    searchFailures: number;       // Tavilyキーワード検索の失敗回数
+    pageContentFailures: number;  // 公式ページ取得の失敗回数
+  };
 }
 
 /**
@@ -287,6 +297,7 @@ async function generateNewReleaseArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
+      webSearchStats.searchFailures++;
     }
   }
 
@@ -298,6 +309,7 @@ async function generateNewReleaseArticle(
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
+    webSearchStats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -392,6 +404,7 @@ async function generateIndieArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
+      webSearchStats.searchFailures++;
     }
   }
 
@@ -405,6 +418,7 @@ async function generateIndieArticle(
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
+    webSearchStats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -655,6 +669,7 @@ export async function generateFeatureArticle(
         await new Promise((r) => setTimeout(r, 500)); // レート制限対策
       } catch (error) {
         console.warn(`    Web search failed for "${game.title}", continuing:`, error);
+        webSearchStats.searchFailures++;
       }
     }
 
@@ -744,6 +759,7 @@ async function generateClassicArticle(
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
       console.warn(`    Web search failed, continuing without: ${error}`);
+      webSearchStats.searchFailures++;
     }
   }
 
@@ -757,6 +773,7 @@ async function generateClassicArticle(
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
     });
+    webSearchStats.pageContentFailures += pageContents.failures;
     const parts: string[] = [];
     if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
@@ -1051,6 +1068,10 @@ async function main(): Promise<void> {
     articles,
     generatedAt: new Date().toISOString(),
     publishDate: publishDateStr,
+    webSearchStats: {
+      searchFailures: webSearchStats.searchFailures,
+      pageContentFailures: webSearchStats.pageContentFailures,
+    },
   };
 
   const outputPath = path.join(DATA_DIR, 'generated-articles.json');
@@ -1065,6 +1086,16 @@ async function main(): Promise<void> {
   console.log(`  - Classics: ${articles.filter((a) => a.category === 'classic').length}`);
   console.log('');
   console.log(`Output saved to: ${outputPath}`);
+
+  const totalFailures = webSearchStats.searchFailures + webSearchStats.pageContentFailures;
+  if (totalFailures > 0) {
+    console.warn('');
+    console.warn(`⚠️  Web search failures detected:`);
+    console.warn(`   - Keyword search failures: ${webSearchStats.searchFailures}`);
+    console.warn(`   - Official page fetch failures: ${webSearchStats.pageContentFailures}`);
+    console.warn(`   These failures may have reduced article quality.`);
+  }
+
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
 
