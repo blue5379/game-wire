@@ -549,7 +549,7 @@ async function enrichSelectedGamesWithOfficialUrl(
       });
 
       if (officialUrl) {
-        game.sourceUrls = { ...game.sourceUrls, official: officialUrl };
+        game.sourceUrls = { ...game.sourceUrls, official: officialUrl, officialUrlSource: 'tavily' };
         continue;
       }
 
@@ -564,7 +564,11 @@ async function enrichSelectedGamesWithOfficialUrl(
       });
       if (igdbFallback?.officialUrl) {
         console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
-        game.sourceUrls = { ...game.sourceUrls, official: igdbFallback.officialUrl };
+        game.sourceUrls = {
+          ...game.sourceUrls,
+          official: igdbFallback.officialUrl,
+          officialUrlSource: igdbFallback.officialUrlSource,
+        };
       }
     } catch (error) {
       console.error(`  enrichOfficialUrl failed for "${game.title}":`, error);

@@ -492,6 +492,11 @@ export async function searchGameByName(
         w.category === 13 || w.url.includes('store.steampowered.com')
       )?.url,
       officialUrl: pickOfficialUrlFromWebsites(game.websites),
+      officialUrlSource: game.websites?.find((w) => w.category === 1)
+        ? 'igdb-official'
+        : pickOfficialUrlFromWebsites(game.websites)
+          ? 'igdb-fallback'
+          : undefined,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);

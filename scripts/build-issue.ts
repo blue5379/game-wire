@@ -461,7 +461,7 @@ async function main(): Promise<void> {
   }
 
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
-  const report = validateArticles(generatedIssue.articles, issueNumber);
+  const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats);
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。

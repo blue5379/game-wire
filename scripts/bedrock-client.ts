@@ -373,12 +373,14 @@ export function buildUserMessage(
   },
   additionalContext?: string,
   publishDate?: Date,
-  fixInstruction?: string
+  fixInstruction?: string,
+  officialPageContext?: string
 ): string {
   const lines: string[] = [];
 
   lines.push(`【ゲーム情報】`);
   lines.push(`※以下のタイトル・各メタデータは正確な公式情報です。本文内では一字一句正確に転記し、短縮・翻訳・並べ替え・改変は禁止です。`);
+  lines.push(`※対応機種・発売日はこのゲーム情報欄の表記を使用すること。Web検索結果や公式ページの表記（例: "Steam"、"PC Game Pass"）で置き換えてはならない。`);
   if (gameInfo.titleJa) {
     lines.push(`タイトル（日本語、記事内で優先使用）: ${gameInfo.titleJa}`);
     lines.push(`タイトル（英語/国際名、変更禁止）: ${gameInfo.title}`);
@@ -426,9 +428,16 @@ export function buildUserMessage(
     lines.push(`ユーザースコア: ${gameInfo.userScore}`);
   }
 
+  if (officialPageContext) {
+    lines.push('');
+    lines.push(`【公式ページ情報】`);
+    lines.push(`※以下はSteamストアページおよび公式サイトから取得した情報です。対応機種・発売日の記述がゲーム情報欄と異なる場合はゲーム情報欄を優先すること。`);
+    lines.push(officialPageContext);
+  }
+
   if (additionalContext) {
     lines.push('');
-    lines.push(`【追加情報】`);
+    lines.push(`【追加情報（レビュー・開発者情報）】`);
     lines.push(additionalContext);
   }
 

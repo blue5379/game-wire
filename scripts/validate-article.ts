@@ -40,6 +40,10 @@ export interface ValidationReport {
   totalWarnings: number;
   warningsBySeverity: Record<Severity, number>;
   warnings: ValidationWarning[];
+  webSearchStats?: {
+    searchFailures: number;
+    pageContentFailures: number;
+  };
   /**
    * LLM-as-a-judge による事実性チェックの結果（P3）。
    * 正規表現バリデータ（warnings）とは分離して保持し、fail 判定には算入しない（記録のみ）。
@@ -615,7 +619,8 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
  */
 export function validateArticles(
   articles: GeneratedArticle[],
-  issueNumber: number
+  issueNumber: number,
+  webSearchStats?: { searchFailures: number; pageContentFailures: number }
 ): ValidationReport {
   const warnings: ValidationWarning[] = [];
   for (const article of articles) {
@@ -635,6 +640,7 @@ export function validateArticles(
     totalWarnings: warnings.length,
     warningsBySeverity,
     warnings,
+    webSearchStats,
   };
 }
 
@@ -665,6 +671,17 @@ export function writeAndCheckReport(
   console.log(
     `  - high: ${report.warningsBySeverity.high}, medium: ${report.warningsBySeverity.medium}, low: ${report.warningsBySeverity.low}`
   );
+  if (report.webSearchStats) {
+    const s = report.webSearchStats;
+    const totalFail = s.searchFailures + s.pageContentFailures;
+    if (totalFail > 0) {
+      console.warn(
+        `  ⚠️  Web search failures: keyword=${s.searchFailures}, page-fetch=${s.pageContentFailures}`
+      );
+    } else {
+      console.log(`  Web search failures: 0`);
+    }
+  }
   console.log(`Report saved: ${reportPath}`);
 
   if (report.warnings.length > 0) {

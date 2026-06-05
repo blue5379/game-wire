@@ -103,12 +103,22 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| 項目 | 件数 |" >> $GITHUB_STEP_SUMMARY
           echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          SEARCH_FAIL=$(jq '.webSearchStats.searchFailures // 0' "$REPORT")
+          PAGE_FAIL=$(jq '.webSearchStats.pageContentFailures // 0' "$REPORT")
+          TOTAL_WEB_FAIL=$((SEARCH_FAIL + PAGE_FAIL))
+
           echo "| 記事数 | ${ARTICLES} |" >> $GITHUB_STEP_SUMMARY
           echo "| 警告合計 | ${TOTAL} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🔴 HIGH | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🟡 MEDIUM | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
           echo "| 🟢 LOW | ${LOW} |" >> $GITHUB_STEP_SUMMARY
           echo "| 判定 | ${STATUS} |" >> $GITHUB_STEP_SUMMARY
+          if [ "$TOTAL_WEB_FAIL" -gt 0 ]; then
+            echo "| ⚠️ Web検索失敗（キーワード） | ${SEARCH_FAIL} |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⚠️ Web検索失敗（ページ取得） | ${PAGE_FAIL} |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| ✅ Web検索失敗 | 0 |" >> $GITHUB_STEP_SUMMARY
+          fi
 
           if [ "$TOTAL" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
