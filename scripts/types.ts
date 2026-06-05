@@ -57,6 +57,7 @@ export interface IGDBGame {
   ratingCount?: number;
   steamUrl?: string;
   officialUrl?: string; // IGDB websites から推定した公式サイトURL
+  officialUrlSource?: 'igdb-official' | 'igdb-fallback'; // officialUrl の由来
 }
 
 export interface IGDBData {
@@ -144,6 +145,7 @@ export interface SourceUrls {
   igdb?: string;
   metacritic?: string;
   official?: string; // 公式日本語ページ
+  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback'; // official URLの取得元
 }
 
 // 記事生成用のゲーム選定結果

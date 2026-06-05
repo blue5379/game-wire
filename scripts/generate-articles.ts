@@ -31,6 +31,7 @@ import {
   formatSearchResultsForPrompt,
   flattenSearchResults,
   isTavilyAvailable,
+  fetchOfficialPageContents,
 } from './fetch-web-search.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
@@ -289,6 +290,20 @@ async function generateNewReleaseArticle(
     }
   }
 
+  // Steam/公式ページのコンテンツを取得
+  let officialPageContext: string | undefined;
+  if (isTavilyAvailable()) {
+    const pageContents = await fetchOfficialPageContents({
+      steamUrl: game.sourceUrls?.steam,
+      officialUrl: game.sourceUrls?.official,
+      officialUrlSource: game.sourceUrls?.officialUrlSource,
+    });
+    const parts: string[] = [];
+    if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
+    if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
+    if (parts.length > 0) officialPageContext = parts.join('\n\n');
+  }
+
   const userMessage = buildUserMessage(
     'newRelease',
     {
@@ -305,7 +320,8 @@ async function generateNewReleaseArticle(
     },
     webSearchContext || undefined,
     publishDate,
-    regenOpts?.fixInstruction
+    regenOpts?.fixInstruction,
+    officialPageContext
   );
 
   const content = parseArticleResponse(
@@ -381,6 +397,20 @@ async function generateIndieArticle(
 
   const additionalContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
+  // Steam/公式ページのコンテンツを取得
+  let officialPageContext: string | undefined;
+  if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
+    const pageContents = await fetchOfficialPageContents({
+      steamUrl: game.sourceUrls?.steam,
+      officialUrl: game.sourceUrls?.official,
+      officialUrlSource: game.sourceUrls?.officialUrlSource,
+    });
+    const parts: string[] = [];
+    if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
+    if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
+    if (parts.length > 0) officialPageContext = parts.join('\n\n');
+  }
+
   const userMessage = buildUserMessage(
     'indie',
     {
@@ -397,7 +427,8 @@ async function generateIndieArticle(
     },
     additionalContext,
     publishDate,
-    regenOpts?.fixInstruction
+    regenOpts?.fixInstruction,
+    officialPageContext
   );
 
   const content = parseArticleResponse(
@@ -718,6 +749,20 @@ async function generateClassicArticle(
 
   const additionalContext = contextParts.length > 0 ? contextParts.join('\n\n') : undefined;
 
+  // Steam/公式ページのコンテンツを取得
+  let officialPageContext: string | undefined;
+  if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
+    const pageContents = await fetchOfficialPageContents({
+      steamUrl: game.sourceUrls?.steam,
+      officialUrl: game.sourceUrls?.official,
+      officialUrlSource: game.sourceUrls?.officialUrlSource,
+    });
+    const parts: string[] = [];
+    if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
+    if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
+    if (parts.length > 0) officialPageContext = parts.join('\n\n');
+  }
+
   const userMessage = buildUserMessage(
     'classic',
     {
@@ -734,7 +779,8 @@ async function generateClassicArticle(
     },
     additionalContext,
     publishDate,
-    regenOpts?.fixInstruction
+    regenOpts?.fixInstruction,
+    officialPageContext
   );
 
   const content = parseArticleResponse(

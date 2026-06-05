@@ -295,3 +295,54 @@ function delay(ms: number): Promise<void> {
 export function isTavilyAvailable(): boolean {
   return !!process.env.TAVILY_API_KEY;
 }
+
+// 公式ページ取得時のコンテンツ最大長（プロンプトサイズ抑制）
+const OFFICIAL_PAGE_MAX_LENGTH = 3000;
+
+/**
+ * SteamストアページおよびOfficialページの内容をTavily extractで取得する。
+ * 取得失敗時はスキップして警告ログのみ（ビルド継続）。
+ *
+ * officialUrlSource が 'igdb-fallback' の場合は品質保証がないためスキップ。
+ */
+export async function fetchOfficialPageContents(params: {
+  steamUrl?: string;
+  officialUrl?: string;
+  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback';
+}): Promise<{ steamContent?: string; officialContent?: string }> {
+  const { steamUrl, officialUrl, officialUrlSource } = params;
+
+  const urlsToFetch: { url: string; key: 'steam' | 'official' }[] = [];
+  if (steamUrl) {
+    urlsToFetch.push({ url: steamUrl, key: 'steam' });
+  }
+  if (officialUrl && officialUrlSource !== 'igdb-fallback') {
+    urlsToFetch.push({ url: officialUrl, key: 'official' });
+  }
+
+  if (urlsToFetch.length === 0) {
+    return {};
+  }
+
+  const client = initializeTavilyClient();
+  const result: { steamContent?: string; officialContent?: string } = {};
+
+  for (const { url, key } of urlsToFetch) {
+    try {
+      const response = await client.extract([url], { extractDepth: 'basic' });
+      const extracted = response.results[0];
+      if (extracted?.rawContent) {
+        const content = sanitizeWebContent(extracted.rawContent).slice(0, OFFICIAL_PAGE_MAX_LENGTH);
+        if (key === 'steam') result.steamContent = content;
+        else result.officialContent = content;
+      } else {
+        console.warn(`    fetchOfficialPageContents: no content for ${url}`);
+      }
+    } catch (error) {
+      console.warn(`    fetchOfficialPageContents: failed to fetch ${url}: ${error}`);
+    }
+    await delay(300);
+  }
+
+  return result;
+}

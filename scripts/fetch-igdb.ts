@@ -273,6 +273,21 @@ function pickOfficialUrlFromWebsites(
   )?.url;
 }
 
+/**
+ * IGDB websites からURLと取得元種別を返す
+ * fetch-data.ts のフォールバック処理で officialUrlSource を設定するために使用
+ */
+export function pickOfficialUrlWithSource(
+  websites?: { url: string; category?: number }[]
+): { url: string; source: 'igdb-official' | 'igdb-fallback' } | undefined {
+  if (!websites?.length) return undefined;
+  const official = websites.find((w) => w.category === 1);
+  if (official) return { url: official.url, source: 'igdb-official' };
+  const url = pickOfficialUrlFromWebsites(websites);
+  if (url) return { url, source: 'igdb-fallback' };
+  return undefined;
+}
+
 // テスト用にエクスポート
 export const __test = { isRelevantSearchResult, pickOfficialUrlFromWebsites };
 
@@ -492,6 +507,11 @@ export async function searchGameByName(
         w.category === 13 || w.url.includes('store.steampowered.com')
       )?.url,
       officialUrl: pickOfficialUrlFromWebsites(game.websites),
+      officialUrlSource: game.websites?.find((w) => w.category === 1)
+        ? 'igdb-official'
+        : pickOfficialUrlFromWebsites(game.websites)
+          ? 'igdb-fallback'
+          : undefined,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
