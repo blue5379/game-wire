@@ -59,7 +59,6 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scp95x.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scp961.jpg"
     sourceUrls:
-      official: "https://realmofink.com/en/index.html"
       steam: "https://store.steampowered.com/app/2597080"
       igdb: "https://www.igdb.com/games/realm-of-ink"
   - title: "UE5製タクティカルシューター「Wild Assault」大規模戦場でチーム戦を展開"
