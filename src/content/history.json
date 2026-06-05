@@ -315,6 +315,41 @@
       "category": "classic",
       "issueNumber": 9,
       "publishDate": "2026-05-30"
+    },
+    {
+      "normalizedTitle": "librarian tidy up the arcane library!",
+      "title": "Librarian: Tidy Up the Arcane Library!",
+      "category": "newRelease",
+      "issueNumber": 10,
+      "publishDate": "2026-06-05"
+    },
+    {
+      "normalizedTitle": "john carpenter's toxic commando",
+      "title": "John Carpenter's Toxic Commando",
+      "category": "newRelease",
+      "issueNumber": 10,
+      "publishDate": "2026-06-05"
+    },
+    {
+      "normalizedTitle": "the amazing digital dating sim",
+      "title": "The Amazing Digital Dating Sim",
+      "category": "indie",
+      "issueNumber": 10,
+      "publishDate": "2026-06-05"
+    },
+    {
+      "normalizedTitle": "drawn together",
+      "title": "Drawn Together",
+      "category": "indie",
+      "issueNumber": 10,
+      "publishDate": "2026-06-05"
+    },
+    {
+      "normalizedTitle": "ghost of yotei",
+      "title": "Ghost of Yotei",
+      "category": "classic",
+      "issueNumber": 10,
+      "publishDate": "2026-06-05"
     }
   ]
 }
