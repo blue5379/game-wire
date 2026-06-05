@@ -27,6 +27,15 @@ const ISSUES_DIR = DEV_MODE
   ? path.join(process.cwd(), 'src', 'content', 'issues-dev')
   : path.join(process.cwd(), 'src', 'content', 'issues');
 
+async function isUrlAlive(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 次の号番号を取得
  */
@@ -112,7 +121,7 @@ function categoryToJapanese(
 /**
  * 記事データをYAML frontmatter用にフォーマット
  */
-function formatArticleForFrontmatter(article: GeneratedArticle): string {
+async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<string> {
   const lines: string[] = [];
 
   lines.push(`  - title: "${escapeYamlString(article.title)}"`);
@@ -221,7 +230,12 @@ function formatArticleForFrontmatter(article: GeneratedArticle): string {
   if (article.sourceUrls) {
     lines.push(`    sourceUrls:`);
     if (article.sourceUrls.official) {
-      lines.push(`      official: "${article.sourceUrls.official}"`);
+      const alive = await isUrlAlive(article.sourceUrls.official);
+      if (alive) {
+        lines.push(`      official: "${article.sourceUrls.official}"`);
+      } else {
+        console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
+      }
     }
     if (article.sourceUrls.steam) {
       lines.push(`      steam: "${article.sourceUrls.steam}"`);
@@ -250,11 +264,11 @@ function escapeYamlString(str: string): string {
 /**
  * Markdownファイルを生成
  */
-function generateMarkdownContent(
+async function generateMarkdownContent(
   issueNumber: number,
   publishDate: Date,
   articles: GeneratedArticle[]
-): string {
+): Promise<string> {
   const title = generateIssueTitle(issueNumber, publishDate);
   const description = generateIssueDescription(issueNumber, articles);
   const dateStr = format(publishDate, 'yyyy-MM-dd');
@@ -273,7 +287,7 @@ function generateMarkdownContent(
   } else {
     frontmatter.push('articles:');
     for (const article of articles) {
-      frontmatter.push(formatArticleForFrontmatter(article));
+      frontmatter.push(await formatArticleForFrontmatter(article));
     }
   }
 
@@ -401,7 +415,7 @@ async function main(): Promise<void> {
   const issueFileName = `issue-${String(issueNumber).padStart(3, '0')}.md`;
   const issuePath = path.join(ISSUES_DIR, issueFileName);
 
-  const markdownContent = generateMarkdownContent(
+  const markdownContent = await generateMarkdownContent(
     issueNumber,
     publishDate,
     generatedIssue.articles
