@@ -163,7 +163,8 @@ async function generateTitle(
 ${titleSection}${summary ? `\n概要: ${summary}` : ''}${countNote}
 
 上記の情報を元に、記事タイトルを1つ生成してください。
-ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。`;
+ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。
+記事タイトルには必ず上記のゲームタイトル（日本語名があれば日本語名）をそのまま含めてください。`;
 
   try {
     const response = await invokeClaudeModel(
