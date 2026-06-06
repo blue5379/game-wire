@@ -92,7 +92,7 @@ async function search(
 export async function searchReviews(
   gameTitle: string
 ): Promise<WebSearchResult[]> {
-  const query = `"${gameTitle}" レビュー 評価 感想`;
+  const query = `"${gameTitle}" ゲーム レビュー 評価 感想`;
   console.log(`  Searching reviews: ${gameTitle}`);
   return search(query, { maxResults: 3, searchDepth: 'basic' });
 }
@@ -106,7 +106,7 @@ export async function searchDeveloperInfo(
   developerName?: string
 ): Promise<WebSearchResult[]> {
   const developerPart = developerName ? ` "${developerName}"` : '';
-  const query = `"${gameTitle}"${developerPart} 開発者 インタビュー OR 開発秘話 OR 開発ブログ`;
+  const query = `"${gameTitle}"${developerPart} ゲーム 開発者 インタビュー OR 開発秘話 OR 開発ブログ`;
   console.log(`  Searching developer info: ${gameTitle}`);
   return search(query, { maxResults: 3, searchDepth: 'advanced' });
 }
@@ -118,7 +118,7 @@ export async function searchDeveloperInfo(
 export async function searchSteamReviews(
   gameTitle: string
 ): Promise<WebSearchResult[]> {
-  const query = `"${gameTitle}" Steam レビュー 評価 プレイヤー 感想`;
+  const query = `"${gameTitle}" ゲーム Steam レビュー 評価 プレイヤー 感想`;
   console.log(`  Searching Steam reviews: ${gameTitle}`);
   return search(query, { maxResults: 3, searchDepth: 'basic' });
 }
