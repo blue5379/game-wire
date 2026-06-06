@@ -121,7 +121,11 @@ if (article.articleBody) {
     for (const game of games) {
       if (!game.coverImage && !game.officialUrl) continue;
       // h3タグのテキストにゲーム名が含まれる箇所を探して、直後にカードを挿入
-      const h3Regex = new RegExp(`(<h3[^>]*>([^<]*${game.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*)</h3>)`);
+      // markedがアポストロフィを&#39;にエスケープするため、両形式にマッチさせる
+      const escapedTitle = game.title
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/'/g, "(?:'|&#39;|&apos;)");
+      const h3Regex = new RegExp(`(<h3[^>]*>([^<]*${escapedTitle}[^<]*)</h3>)`);
       const match = rawHtml.match(h3Regex);
       if (match) {
         let card = '<div class="inline-game-card">';
