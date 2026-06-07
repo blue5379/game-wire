@@ -135,7 +135,7 @@ if (article.articleBody) {
         if (game.officialUrl && isSafeUrl(game.officialUrl)) {
           card += `<a href="${escapeAttr(game.officialUrl)}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト</a>`;
         }
-        card += '</div><div class="inline-game-card-clear"></div>';
+        card += '</div>';
         rawHtml = rawHtml.replace(match[0], match[0] + card);
       }
     }
@@ -364,6 +364,7 @@ if (article.articleBody) {
     color: var(--color-text);
     margin-top: var(--spacing-md);
     margin-bottom: var(--spacing-xs);
+    clear: both;
   }
 
   .generated-content :global(p) {
@@ -465,10 +466,6 @@ if (article.articleBody) {
     font-weight: 600;
     border-radius: var(--radius-sm);
     transition: background 0.2s ease;
-  }
-
-  .generated-content :global(.inline-game-card-clear) {
-    clear: both;
   }
 
   .generated-content :global(.inline-game-link:hover) {
