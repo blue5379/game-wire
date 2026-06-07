@@ -280,6 +280,7 @@ articles:
         officialUrl: "https://subnautica.com/ja"
       - title: "Windrose"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/cobwn8.jpg"
+        officialUrl: "https://www.pocketpair.jp/publishing/windrose"
       - title: "Darwin's Paradox!"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co9e1h.jpg"
         officialUrl: "https://www.konami.com/games/darwins_paradox/jp/ja"
