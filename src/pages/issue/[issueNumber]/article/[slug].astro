@@ -133,7 +133,7 @@ if (article.articleBody) {
           card += `<img src="${escapeAttr(game.coverImage)}" alt="${escapeAttr(game.title)}" class="inline-game-image" loading="lazy" />`;
         }
         if (game.officialUrl && isSafeUrl(game.officialUrl)) {
-          card += `<a href="${escapeAttr(game.officialUrl)}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト →</a>`;
+          card += `<a href="${escapeAttr(game.officialUrl)}" target="_blank" rel="noopener noreferrer" class="inline-game-link">公式サイト</a>`;
         }
         card += '</div>';
         rawHtml = rawHtml.replace(match[0], match[0] + card);
@@ -454,7 +454,6 @@ if (article.articleBody) {
   .generated-content :global(.inline-game-link) {
     display: block;
     padding: var(--spacing-sm) var(--spacing-md);
-    margin-top: var(--spacing-xs);
     font-size: 0.85rem;
     color: #fff;
     background: var(--color-primary);
