@@ -350,6 +350,41 @@
       "category": "classic",
       "issueNumber": 10,
       "publishDate": "2026-06-05"
+    },
+    {
+      "normalizedTitle": "mina the hollower",
+      "title": "Mina the Hollower",
+      "category": "newRelease",
+      "issueNumber": 11,
+      "publishDate": "2026-06-12"
+    },
+    {
+      "normalizedTitle": "lego batman legacy of the dark knight",
+      "title": "LEGO Batman: Legacy of the Dark Knight",
+      "category": "newRelease",
+      "issueNumber": 11,
+      "publishDate": "2026-06-12"
+    },
+    {
+      "normalizedTitle": "witchspire",
+      "title": "Witchspire",
+      "category": "indie",
+      "issueNumber": 11,
+      "publishDate": "2026-06-12"
+    },
+    {
+      "normalizedTitle": "33 immortals",
+      "title": "33 Immortals",
+      "category": "indie",
+      "issueNumber": 11,
+      "publishDate": "2026-06-12"
+    },
+    {
+      "normalizedTitle": "final fantasy vii remake intergrade",
+      "title": "FINAL FANTASY VII REMAKE INTERGRADE",
+      "category": "classic",
+      "issueNumber": 11,
+      "publishDate": "2026-06-12"
     }
   ]
 }
