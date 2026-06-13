@@ -29,7 +29,7 @@ articles:
       ## 📅 発売情報
       
       **発売日**: 発売中  
-      **対応機種**: PC (Microsoft Windows)、PlayStation 5、Xbox Series X|S、Nintendo Switch、Nintendo Switch 2、Mac、Linux  
+      **対応機種**: PC (Microsoft Windows)、PlayStation 5、Xbox Series X|S、Nintendo Switch、Nintendo Switch 2  
       **開発・発売元**: Yacht Club Games  
       **対応言語**: 日本語を含む13言語に対応
       
@@ -45,11 +45,9 @@ articles:
         - Indie
       platforms:
         - Xbox Series X|S
-        - Linux
         - Nintendo Switch 2
         - PC (Microsoft Windows)
         - PlayStation 5
-        - Mac
         - Nintendo Switch
       releaseDate: "2026-05-29"
       developer: "Yacht Club Games"
