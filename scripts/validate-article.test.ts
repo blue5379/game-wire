@@ -215,6 +215,21 @@ describe('validatePlatformConsistency', () => {
 
     expect(validatePlatformConsistency(article)).toHaveLength(0);
   });
+
+  it('提供データが "PC (Microsoft Windows)" でも記事内の "PC (Steam)" 表記は警告しない', () => {
+    const article = makeArticle({
+      title: 'Witchspire',
+      category: 'indie',
+      content: 'PC (Steam) で発売中のインディーゲームです。',
+      game: {
+        title: 'Witchspire',
+        genre: [],
+        platforms: ['PC (Microsoft Windows)'],
+      },
+    });
+
+    expect(validatePlatformConsistency(article)).toHaveLength(0);
+  });
 });
 
 describe('validatePersonAttribution', () => {
