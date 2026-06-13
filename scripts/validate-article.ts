@@ -64,7 +64,7 @@ const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /PlayStation\s*4|PS\s*4/i, canonical: 'PlayStation 4' },
   { pattern: /Xbox\s*Series\s*X(\|S)?/i, canonical: 'Xbox Series X|S' },
   { pattern: /Xbox\s*One/i, canonical: 'Xbox One' },
-  { pattern: /\bSteam\b/i, canonical: 'PC (Steam)' },
+  { pattern: /\bSteam\b|\bMicrosoft Windows\b/i, canonical: 'PC (Steam)' },
   { pattern: /\biOS\b/i, canonical: 'iOS' },
   { pattern: /\bAndroid\b/i, canonical: 'Android' },
   { pattern: /\bmacOS\b|\bMac\b(?![a-zA-Z])/i, canonical: 'Mac' },
