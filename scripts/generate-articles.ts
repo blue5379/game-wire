@@ -34,6 +34,7 @@ import {
   fetchOfficialPageContents,
 } from './fetch-web-search.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
+import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
 
 // 開発モード判定
@@ -659,6 +660,16 @@ export async function generateFeatureArticle(
           developer: game.developer,
           publisher: game.publisher,
         })) ?? undefined;
+
+      if (!officialUrl) {
+        const igdbFallback = await enrichGameWithIGDB(game.title, {
+          expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
+        });
+        if (igdbFallback?.officialUrl) {
+          console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+          officialUrl = igdbFallback.officialUrl;
+        }
+      }
     } catch (error) {
       console.warn(`    Failed to fetch official URL for "${game.title}":`, error);
     }
