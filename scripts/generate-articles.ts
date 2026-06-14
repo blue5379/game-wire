@@ -20,11 +20,10 @@ import {
   selectFeatureThemeWithAI,
   selectFeatureGames,
   prefilterFeatureCandidatesByTheme,
-  formatQualitySignals,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
-import type { FeatureSelectedGame, FeatureCandidateWithSearch } from './bedrock-client.js';
+import type { FeatureSelectedGame, FeatureCandidateBase, FeatureCandidateWithSearch } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 import {
@@ -512,6 +511,25 @@ function normalizeForMatch(title: string): string {
 }
 
 /**
+ * GameData を prefilter / select 用の候補型に変換する。
+ * qualified / fringe / フォールバックの3箇所で同一マッピングを使うためここに集約。
+ */
+function toFeatureCandidate(g: GameData): FeatureCandidateBase {
+  return {
+    title: g.title,
+    titleJa: g.titleJa,
+    genres: g.genres,
+    summary: g.summary,
+    igdbRating: g.igdbRating,
+    igdbRatingCount: g.igdbRatingCount,
+    metascore: g.metascore,
+    steamRank: g.steamRank,
+    steamPlayers: g.steamPlayers,
+    youtubePopularity: g.youtubePopularity,
+  };
+}
+
+/**
  * 特集記事の選定対象として品質基準を満たすかを判定する。
  * 複数の経路でいずれか1つを満たせば qualified とする（OR判定）。
  * 評価数が少なく信頼性の低いタイトル（ファンゲーム等）を fringe に分類するために使用。
@@ -617,18 +635,7 @@ export async function generateFeatureArticle(
 
   const prefilteredTitles = await prefilterFeatureCandidatesByTheme(
     theme,
-    qualified.map((g) => ({
-      title: g.title,
-      titleJa: g.titleJa,
-      genres: g.genres,
-      summary: g.summary,
-      igdbRating: g.igdbRating,
-      igdbRatingCount: g.igdbRatingCount,
-      metascore: g.metascore,
-      steamRank: g.steamRank,
-      steamPlayers: g.steamPlayers,
-      youtubePopularity: g.youtubePopularity,
-    })),
+    qualified.map(toFeatureCandidate),
     FEATURE_CANDIDATE_LIMIT
   );
 
@@ -665,16 +672,7 @@ export async function generateFeatureArticle(
   }
 
   const candidatesWithSearch: FeatureCandidateWithSearch[] = prefiltered.map((g) => ({
-    title: g.title,
-    titleJa: g.titleJa,
-    genres: g.genres,
-    summary: g.summary,
-    igdbRating: g.igdbRating,
-    igdbRatingCount: g.igdbRatingCount,
-    metascore: g.metascore,
-    steamRank: g.steamRank,
-    steamPlayers: g.steamPlayers,
-    youtubePopularity: g.youtubePopularity,
+    ...toFeatureCandidate(g),
     webSearchSnippet: searchSnippets.get(g.title),
   }));
 
@@ -706,18 +704,7 @@ export async function generateFeatureArticle(
     );
     const fringePrefilterTitles = await prefilterFeatureCandidatesByTheme(
       theme,
-      fringe.map((g) => ({
-        title: g.title,
-        titleJa: g.titleJa,
-        genres: g.genres,
-        summary: g.summary,
-        igdbRating: g.igdbRating,
-        igdbRatingCount: g.igdbRatingCount,
-        metascore: g.metascore,
-        steamRank: g.steamRank,
-        steamPlayers: g.steamPlayers,
-        youtubePopularity: g.youtubePopularity,
-      })),
+      fringe.map(toFeatureCandidate),
       FEATURE_CANDIDATE_LIMIT
     );
 
@@ -726,17 +713,27 @@ export async function generateFeatureArticle(
       ? fringe.filter((g) => fringePrefilterSet.has(normalizeForMatch(g.title)))
       : fringe.slice(0, FEATURE_CANDIDATE_LIMIT);
 
+    // fringe 候補にも Tavily 検索を実施（qualified と同様に Web スニペットを付与）
+    if (isTavilyAvailable()) {
+      for (const game of fringePrefiltered) {
+        if (searchSnippets.has(game.title)) continue; // qualified 段階で検索済みならスキップ
+        try {
+          const snippets = await searchGameInfo(game.title, 'feature', game.developer);
+          if (snippets) {
+            searchSnippets.set(game.title, formatSearchResultsForPrompt(snippets));
+            searchSourcesCache.set(game.title, flattenSearchResults(snippets));
+          }
+        } catch (error) {
+          console.warn(`    Web search failed for "${game.title}" (fringe stage):`, error);
+          if (stats) stats.searchFailures++;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
     const fringeCandidates: FeatureCandidateWithSearch[] = fringePrefiltered.map((g) => ({
-      title: g.title,
-      titleJa: g.titleJa,
-      genres: g.genres,
-      summary: g.summary,
-      igdbRating: g.igdbRating,
-      igdbRatingCount: g.igdbRatingCount,
-      metascore: g.metascore,
-      steamRank: g.steamRank,
-      steamPlayers: g.steamPlayers,
-      youtubePopularity: g.youtubePopularity,
+      ...toFeatureCandidate(g),
+      webSearchSnippet: searchSnippets.get(g.title),
     }));
 
     const allCandidatesForFallback: FeatureCandidateWithSearch[] = [
