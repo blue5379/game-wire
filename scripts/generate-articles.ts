@@ -646,12 +646,14 @@ export async function generateFeatureArticle(
 
   // Web検索による実態確認（prefilter通過分のみ）
   const searchSnippets = new Map<string, string>();
+  const searchSourcesCache = new Map<string, WebSearchSource[]>();
   if (isTavilyAvailable()) {
     for (const game of prefiltered) {
       try {
         const snippets = await searchGameInfo(game.title, 'feature', game.developer);
         if (snippets) {
           searchSnippets.set(game.title, formatSearchResultsForPrompt(snippets));
+          searchSourcesCache.set(game.title, flattenSearchResults(snippets));
         }
       } catch (error) {
         console.warn(`    Web search failed for "${game.title}" (prefilter stage):`, error);
@@ -809,6 +811,8 @@ export async function generateFeatureArticle(
     const cachedSnippet = searchSnippets.get(game.title);
     if (cachedSnippet) {
       webSearchContext = cachedSnippet || undefined;
+      const cachedSrcs = searchSourcesCache.get(game.title);
+      if (cachedSrcs) webSearchSources.push(...cachedSrcs);
     } else if (isTavilyAvailable()) {
       try {
         const searchResults = await searchGameInfo(game.title, 'feature', game.developer);
