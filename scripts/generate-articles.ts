@@ -12,6 +12,7 @@ config({ path: '.env' });
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SelectedGames, GameData, RecommendedGame } from './types.js';
+import { getCooldownTitles } from './game-history.js';
 import {
   invokeClaudeModel,
   PromptTemplates,
@@ -1264,16 +1265,31 @@ async function main(): Promise<void> {
       ...(selectedGames.classic ? [selectedGames.classic.title] : []),
     ];
 
+    // feature クールダウン中のタイトルも除外（フェーズ2の能動探索で同じ名作が毎号反復するのを防ぐ）
+    const featureCooldownTitles = getCooldownTitles('feature', publishDate);
+    if (featureCooldownTitles.size > 0) {
+      console.log(`  Feature cooldown: ${featureCooldownTitles.size} titles on cooldown`);
+    }
+
     // 除外対象を relatedGames からも取り除き、AIへの矛盾した指示を防ぐ
+    // feature クールダウン中のタイトルも aggregated.json 候補から除外する
     const filteredAllGames = allGames.filter(
-      (g) => !alreadySelectedTitles.includes(g.title)
+      (g) =>
+        !alreadySelectedTitles.includes(g.title) &&
+        !featureCooldownTitles.has(g.normalizedTitle)
     );
+
+    // LLM への提案除外リストにはクールダウン中タイトルも含める
+    const featureExcludeTitles = [
+      ...alreadySelectedTitles,
+      ...[...featureCooldownTitles],
+    ];
 
     const { article: featureArticle, context: featureContext } = await generateFeatureArticle(
       publishDate,
       nextIssueNumber,
       filteredAllGames,
-      alreadySelectedTitles,
+      featureExcludeTitles,
       webSearchStats
     );
     regenerables.push({
