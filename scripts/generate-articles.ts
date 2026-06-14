@@ -20,10 +20,11 @@ import {
   selectFeatureThemeWithAI,
   selectFeatureGames,
   prefilterFeatureCandidatesByTheme,
+  formatQualitySignals,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
-import type { FeatureSelectedGame } from './bedrock-client.js';
+import type { FeatureSelectedGame, FeatureCandidateWithSearch } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 import {
@@ -57,6 +58,12 @@ const ISSUES_DIR = DEV_MODE
 const FEATURE_CANDIDATE_LIMIT = 20;
 // 特集記事に最低限欲しいゲーム本数。これを下回ると警告を出す（selectFeatureGames の下限と揃える）。
 const FEATURE_MIN_GAMES = 3;
+// IGDB評価数の最低ライン（品質フィルタ）
+const FEATURE_IGDB_RC_MIN = 15;
+// 高評価少数票の救済しきい値（評価が非常に高い場合の評価数下限緩和）
+const FEATURE_IGDB_RATING_STRONG = 85;
+// 救済経路での最低評価数
+const FEATURE_IGDB_RC_FLOOR = 8;
 
 /**
  * 次の号番号を取得
@@ -505,6 +512,23 @@ function normalizeForMatch(title: string): string {
 }
 
 /**
+ * 特集記事の選定対象として品質基準を満たすかを判定する。
+ * 複数の経路でいずれか1つを満たせば qualified とする（OR判定）。
+ * 評価数が少なく信頼性の低いタイトル（ファンゲーム等）を fringe に分類するために使用。
+ */
+function isFeatureQualified(g: GameData): boolean {
+  if (g.igdbRatingCount != null && g.igdbRatingCount >= FEATURE_IGDB_RC_MIN) return true;
+  if (g.steamRank != null) return true;
+  if (g.steamPlayers != null && g.steamPlayers > 0) return true;
+  if (g.metascore != null) return true;
+  if (
+    g.igdbRating != null && g.igdbRating >= FEATURE_IGDB_RATING_STRONG &&
+    g.igdbRatingCount != null && g.igdbRatingCount >= FEATURE_IGDB_RC_FLOOR
+  ) return true;
+  return false;
+}
+
+/**
  * 特集記事の本文生成に必要な確定済みコンテキスト。
  * 再生成時に、テーマ選定・ゲーム選定・検索・画像生成をやり直さず本文だけ作り直すために使う。
  */
@@ -585,51 +609,156 @@ export async function generateFeatureArticle(
   // そこで、まずテーマ事前フィルタ（LLM一次選抜）でテーマ関連の上位を抽出してから
   // 最終選定に渡す。フィルタが空（候補が上限以下 or LLM失敗）の場合は従来通り先頭を使う。
   const allCandidates = relatedGames ?? [];
+
+  // 品質フィルタ: qualified / fringe に分割
+  const qualified = allCandidates.filter(isFeatureQualified);
+  const fringe = allCandidates.filter((g) => !isFeatureQualified(g));
+  console.log(`  Feature candidates: ${qualified.length} qualified, ${fringe.length} fringe`);
+
   const prefilteredTitles = await prefilterFeatureCandidatesByTheme(
     theme,
-    allCandidates.map((g) => ({
+    qualified.map((g) => ({
       title: g.title,
       titleJa: g.titleJa,
       genres: g.genres,
       summary: g.summary,
+      igdbRating: g.igdbRating,
+      igdbRatingCount: g.igdbRatingCount,
+      metascore: g.metascore,
+      steamRank: g.steamRank,
+      steamPlayers: g.steamPlayers,
+      youtubePopularity: g.youtubePopularity,
     })),
     FEATURE_CANDIDATE_LIMIT
   );
 
-  let candidates: GameData[];
+  let prefiltered: GameData[];
   if (prefilteredTitles.length > 0) {
     const prefilterSet = new Set(prefilteredTitles.map((t) => normalizeForMatch(t)));
-    candidates = allCandidates
+    prefiltered = qualified
       .filter((g) => prefilterSet.has(normalizeForMatch(g.title)))
       .slice(0, FEATURE_CANDIDATE_LIMIT);
-    console.log(`  Theme prefilter narrowed candidates to ${candidates.length} games`);
+    console.log(`  Theme prefilter narrowed candidates to ${prefiltered.length} games`);
   } else {
-    candidates = allCandidates.slice(0, FEATURE_CANDIDATE_LIMIT);
-    console.log(`  Theme prefilter returned nothing, falling back to top ${candidates.length} games`);
+    prefiltered = qualified.slice(0, FEATURE_CANDIDATE_LIMIT);
+    console.log(`  Theme prefilter returned nothing, falling back to top ${prefiltered.length} qualified games`);
   }
+
+  // Web検索による実態確認（prefilter通過分のみ）
+  const searchSnippets = new Map<string, string>();
+  if (isTavilyAvailable()) {
+    for (const game of prefiltered) {
+      try {
+        const snippets = await searchGameInfo(game.title, 'feature', game.developer);
+        if (snippets) {
+          searchSnippets.set(game.title, formatSearchResultsForPrompt(snippets));
+        }
+      } catch (error) {
+        console.warn(`    Web search failed for "${game.title}" (prefilter stage):`, error);
+        if (stats) stats.searchFailures++;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    console.log(`  Web search completed for ${searchSnippets.size}/${prefiltered.length} candidates`);
+  }
+
+  const candidatesWithSearch: FeatureCandidateWithSearch[] = prefiltered.map((g) => ({
+    title: g.title,
+    titleJa: g.titleJa,
+    genres: g.genres,
+    summary: g.summary,
+    igdbRating: g.igdbRating,
+    igdbRatingCount: g.igdbRatingCount,
+    metascore: g.metascore,
+    steamRank: g.steamRank,
+    steamPlayers: g.steamPlayers,
+    youtubePopularity: g.youtubePopularity,
+    webSearchSnippet: searchSnippets.get(g.title),
+  }));
 
   const selectedTitles = await selectFeatureGames(
     theme,
-    candidates.map((g) => ({
-      title: g.title,
-      titleJa: g.titleJa,
-      genres: g.genres,
-      summary: g.summary,
-    })),
+    candidatesWithSearch,
     excludeTitles
   );
   console.log(`  Selected ${selectedTitles.length} games for feature: ${selectedTitles.join(', ')}`);
 
   // 選定タイトルを候補 GameData に突き合わせる（完全一致 → 正規化一致のフォールバック）
+  // 検索対象は prefiltered（qualified のうちテーマ事前フィルタ通過分）
   const selectedGameData: GameData[] = [];
   for (const title of selectedTitles) {
-    const exact = candidates.find((g) => g.title === title);
+    const exact = prefiltered.find((g) => g.title === title);
     const matched =
-      exact ?? candidates.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
+      exact ?? prefiltered.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
     if (matched) {
       selectedGameData.push(matched);
     } else {
       console.warn(`  Selected title not found in candidates, skipping: "${title}"`);
+    }
+  }
+
+  // 不足時: fringe から段階的に補充（qualified のみでは FEATURE_MIN_GAMES を下回る場合）
+  if (selectedGameData.length < FEATURE_MIN_GAMES && fringe.length > 0) {
+    console.warn(
+      `  [WARN] qualified only gave ${selectedGameData.length} games, supplementing from fringe`
+    );
+    const fringePrefilterTitles = await prefilterFeatureCandidatesByTheme(
+      theme,
+      fringe.map((g) => ({
+        title: g.title,
+        titleJa: g.titleJa,
+        genres: g.genres,
+        summary: g.summary,
+        igdbRating: g.igdbRating,
+        igdbRatingCount: g.igdbRatingCount,
+        metascore: g.metascore,
+        steamRank: g.steamRank,
+        steamPlayers: g.steamPlayers,
+        youtubePopularity: g.youtubePopularity,
+      })),
+      FEATURE_CANDIDATE_LIMIT
+    );
+
+    const fringePrefilterSet = new Set(fringePrefilterTitles.map((t) => normalizeForMatch(t)));
+    const fringePrefiltered = fringePrefilterTitles.length > 0
+      ? fringe.filter((g) => fringePrefilterSet.has(normalizeForMatch(g.title)))
+      : fringe.slice(0, FEATURE_CANDIDATE_LIMIT);
+
+    const fringeCandidates: FeatureCandidateWithSearch[] = fringePrefiltered.map((g) => ({
+      title: g.title,
+      titleJa: g.titleJa,
+      genres: g.genres,
+      summary: g.summary,
+      igdbRating: g.igdbRating,
+      igdbRatingCount: g.igdbRatingCount,
+      metascore: g.metascore,
+      steamRank: g.steamRank,
+      steamPlayers: g.steamPlayers,
+      youtubePopularity: g.youtubePopularity,
+    }));
+
+    const allCandidatesForFallback: FeatureCandidateWithSearch[] = [
+      ...candidatesWithSearch,
+      ...fringeCandidates,
+    ];
+
+    const fallbackTitles = await selectFeatureGames(
+      theme,
+      allCandidatesForFallback,
+      excludeTitles
+    );
+    console.log(`  Fallback selection: ${fallbackTitles.join(', ')}`);
+
+    for (const title of fallbackTitles) {
+      const alreadySelected = selectedGameData.some((g) => g.title === title);
+      if (alreadySelected) continue;
+      const allPool = [...prefiltered, ...fringePrefiltered];
+      const exact = allPool.find((g) => g.title === title);
+      const matched =
+        exact ?? allPool.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
+      if (matched) {
+        selectedGameData.push(matched);
+      }
     }
   }
 
@@ -675,8 +804,12 @@ export async function generateFeatureArticle(
     }
 
     // Tavily 検索（本文グラウンディング用）
+    // prefilter 通過時に検索済みの場合はキャッシュを流用し再検索しない
     let webSearchContext: string | undefined;
-    if (isTavilyAvailable()) {
+    const cachedSnippet = searchSnippets.get(game.title);
+    if (cachedSnippet) {
+      webSearchContext = cachedSnippet || undefined;
+    } else if (isTavilyAvailable()) {
       try {
         const searchResults = await searchGameInfo(game.title, 'feature', game.developer);
         webSearchContext = formatSearchResultsForPrompt(searchResults) || undefined;
