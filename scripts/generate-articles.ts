@@ -20,6 +20,7 @@ import {
   selectFeatureThemeWithAI,
   selectFeatureGames,
   prefilterFeatureCandidatesByTheme,
+  proposeThemeGamesFromKnowledge,
   parseArticleResponse,
   parseTitleResponse,
 } from './bedrock-client.js';
@@ -36,6 +37,7 @@ import {
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
+import { isBlockedAdultGame } from './adult-blocklist.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -547,6 +549,93 @@ function isFeatureQualified(g: GameData): boolean {
 }
 
 /**
+ * LLM が提案したゲームタイトルを IGDB で実在検証し、GameData として返す（フェーズ2）。
+ *
+ * - enrichGameWithIGDB() で検索し、null（不在/非関連/年不一致）は破棄する
+ * - アダルトコンテンツ（ブロックリスト）に該当するものは除外する
+ * - 通過分は IGDBGame フィールドを GameData にマッピングして返す
+ * - aggregated.json には書き戻さない（読み取り元を汚さない）
+ */
+async function verifyProposedGames(
+  proposals: { title: string; reason: string; expectedYear?: number }[]
+): Promise<GameData[]> {
+  const verified: GameData[] = [];
+
+  for (const proposal of proposals) {
+    if (isBlockedAdultGame(proposal.title)) {
+      console.log(`  [verify] Skipped (blocked): "${proposal.title}"`);
+      continue;
+    }
+
+    const igdb = await enrichGameWithIGDB(proposal.title, {
+      expectedYear: proposal.expectedYear,
+    });
+
+    if (!igdb) {
+      console.log(`  [verify] Not found in IGDB: "${proposal.title}"`);
+      continue;
+    }
+
+    if (isBlockedAdultGame(igdb.name)) {
+      console.log(`  [verify] Skipped (blocked by IGDB name): "${igdb.name}"`);
+      continue;
+    }
+
+    const gameData: GameData = {
+      title: igdb.name,
+      titleJa: igdb.titleJa,
+      normalizedTitle: igdb.name.toLowerCase().trim(),
+      igdbSlug: igdb.slug,
+      genres: igdb.genres ?? [],
+      platforms: igdb.platforms ?? [],
+      releaseDate: igdb.releaseDate,
+      developer: igdb.developer,
+      publisher: igdb.publisher,
+      developerCountry: igdb.developerCountry,
+      coverImage: igdb.coverUrl,
+      screenshots: igdb.screenshotUrls,
+      summary: igdb.summary,
+      igdbRating: igdb.rating,
+      igdbRatingCount: igdb.ratingCount,
+      source: ['igdb'],
+      sourceUrls: {
+        igdb: igdb.slug ? `https://www.igdb.com/games/${igdb.slug}` : undefined,
+        steam: igdb.steamUrl,
+        official: igdb.officialUrl,
+        officialUrlSource: igdb.officialUrlSource,
+      },
+    };
+
+    console.log(
+      `  [verify] Verified: "${proposal.title}" -> "${igdb.name}" (IGDB rc=${igdb.ratingCount ?? 'n/a'})`
+    );
+    verified.push(gameData);
+
+    await new Promise((r) => setTimeout(r, 250));
+  }
+
+  return verified;
+}
+
+/**
+ * 候補ゲームリストの重複を除去して返す（フェーズ2: 合流時の重複除去）。
+ *
+ * normalizeForMatch による正規化タイトル一致で重複を判定し、先頭（aggregated.json 側）を優先する。
+ */
+function deduplicateGames(games: GameData[]): GameData[] {
+  const seen = new Set<string>();
+  const result: GameData[] = [];
+  for (const g of games) {
+    const key = normalizeForMatch(g.title);
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(g);
+    }
+  }
+  return result;
+}
+
+/**
  * 特集記事の本文生成に必要な確定済みコンテキスト。
  * 再生成時に、テーマ選定・ゲーム選定・検索・画像生成をやり直さず本文だけ作り直すために使う。
  */
@@ -626,7 +715,36 @@ export async function generateFeatureArticle(
   // テーマに合うゲームが枠外に落ちて選定本数が減る（vol.9で特集が1本になった原因）。
   // そこで、まずテーマ事前フィルタ（LLM一次選抜）でテーマ関連の上位を抽出してから
   // 最終選定に渡す。フィルタが空（候補が上限以下 or LLM失敗）の場合は従来通り先頭を使う。
-  const allCandidates = relatedGames ?? [];
+
+  // フェーズ2 候補プール拡張: LLM の知識ベースからテーマ関連ゲームを提案し
+  // enrichGameWithIGDB() で実在検証してから aggregated.json 候補と合流させる。
+  // 検証通過分のみを合流させることで selectFeatureGames の「候補 title からのみ選べ」制約を維持する。
+  const existingTitles = (relatedGames ?? []).map((g) => g.title);
+  const gameThemeHint =
+    events.length > 0 ? events.map((e) => e.gameThemeHint).join(', ') : theme;
+
+  let proposedAndVerified: GameData[] = [];
+  try {
+    const { proposals } = await proposeThemeGamesFromKnowledge(
+      theme,
+      gameThemeHint,
+      existingTitles
+    );
+    console.log(`  LLM proposed ${proposals.length} games for theme`);
+
+    if (proposals.length > 0) {
+      proposedAndVerified = await verifyProposedGames(proposals);
+      console.log(
+        `  Verified ${proposedAndVerified.length}/${proposals.length} proposed games via IGDB`
+      );
+    }
+  } catch (error) {
+    console.warn('  Failed to propose/verify theme games, continuing with existing candidates:', error);
+  }
+
+  // aggregated.json 候補 + 検証通過提案ゲームを合流（重複除去）
+  // aggregated.json には書き戻さない（読み取り元を汚さない）
+  const allCandidates = deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified]);
 
   // 品質フィルタ: qualified / fringe に分割
   const qualified = allCandidates.filter(isFeatureQualified);
