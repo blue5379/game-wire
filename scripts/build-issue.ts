@@ -453,6 +453,19 @@ async function main(): Promise<void> {
       )
     );
 
+  // 特集記事のゲームを履歴に保存（フェーズ2でテーマ起点探索が加わり反復リスクが増加したため）
+  // recommendedGames の title は日本語名なので、game フィールドと突き合わせるのが理想だが、
+  // feature 記事は game フィールドを持たないため recommendedGames の title をそのまま使う
+  for (const article of generatedIssue.articles) {
+    if (article.category === 'feature' && article.recommendedGames) {
+      for (const game of article.recommendedGames) {
+        historyEntries.push(
+          createHistoryEntry(game.title, 'feature', issueNumber, publishDateStr)
+        );
+      }
+    }
+  }
+
   if (historyEntries.length > 0) {
     saveHistory(historyEntries);
     console.log(`Added ${historyEntries.length} entries to history`);

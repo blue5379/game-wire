@@ -624,6 +624,106 @@ JSON形式で出力してください。`;
 }
 
 /**
+ * テーマ起点でゲームを提案するシステムプロンプト（フェーズ2: テーマ知識ベース候補拡張）
+ *
+ * aggregated.json（今週人気）にない往年の名作・定番タイトルを補完するために使う。
+ * 提案結果は enrichGameWithIGDB() で実在検証してから候補リストへ合流させる。
+ */
+const featureThemeGameProposalPrompt = `あなたはゲーム情報の専門家です。
+指定されたテーマに最もよく合う、評価の高い・定番のゲームを最大15本提案してください。
+
+## 提案ルール（厳守）
+1. **実在が確実なゲームだけを提案する**: 曖昧な記憶や創作は禁止。確実に知っているタイトルのみ
+2. **発売年問わず名作を含めてよい**: 今週のトレンドだけでなく、テーマに合う往年の名作・定番も積極的に含める
+3. **除外リストのゲームは提案しない**: 提供された「除外タイトル」に含まれるゲームは絶対に選ばない
+4. **expectedYear（発売年）を必ず付ける**: 発売年が不明な場合はnullにする（同名異作品の誤マッチ防止に使用）
+5. **ファンゲーム・非公式作品は提案しない**: 公式作品のみを対象とする
+
+## 出力形式
+以下のJSON形式で出力してください（JSON以外は出力しない）:
+{
+  "proposals": [
+    { "title": "Game Title", "reason": "テーマとの関連を一文で", "expectedYear": 2018 },
+    { "title": "Another Game", "reason": "関連理由", "expectedYear": null }
+  ]
+}
+
+※ title は英語の正式タイトルを使用すること（日本語タイトルがある場合でも英語タイトルで）。`;
+
+/**
+ * テーマ起点でゲームタイトルを提案する（フェーズ2: テーマ知識ベース候補拡張）
+ *
+ * aggregated.json に無い往年の名作・定番タイトルを LLM の知識から補完する。
+ * 提案結果は enrichGameWithIGDB() で実在検証してからのみ候補リストに合流させること。
+ *
+ * @param theme 特集テーマ
+ * @param gameThemeHint テーマのゲーム関連ヒント（イベント名等）
+ * @param excludeTitles 既に候補リストに存在するため除外するタイトル
+ */
+export async function proposeThemeGamesFromKnowledge(
+  theme: string,
+  gameThemeHint: string,
+  excludeTitles: string[]
+): Promise<{ proposals: { title: string; reason: string; expectedYear?: number }[] }> {
+  const excludeSection =
+    excludeTitles.length > 0
+      ? `\n【除外タイトル（既存候補に含まれるため提案しないこと）】\n${excludeTitles.map((t) => `- ${t}`).join('\n')}`
+      : '';
+
+  const userMessage = `【特集テーマ】
+${theme}
+
+【テーマのゲーム関連ヒント】
+${gameThemeHint}
+${excludeSection}
+
+上記テーマに合う評価の高い・定番のゲームを最大15本提案してください。
+実在が確実なタイトルのみをJSON形式で出力してください。`;
+
+  try {
+    const response = await invokeClaudeModel(featureThemeGameProposalPrompt, userMessage, {
+      maxTokens: 1500,
+      temperature: 0.5,
+    });
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn('Failed to extract JSON from theme game proposal response');
+      return { proposals: [] };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      proposals?: { title: unknown; reason: unknown; expectedYear?: unknown }[];
+    };
+
+    if (!Array.isArray(parsed.proposals)) {
+      return { proposals: [] };
+    }
+
+    const validProposals = parsed.proposals
+      .filter(
+        (p): p is { title: string; reason: string; expectedYear?: number } =>
+          typeof p.title === 'string' &&
+          p.title.length > 0 &&
+          typeof p.reason === 'string'
+      )
+      .map((p) => ({
+        title: p.title,
+        reason: p.reason,
+        expectedYear:
+          typeof p.expectedYear === 'number' && !isNaN(p.expectedYear)
+            ? Math.floor(p.expectedYear)
+            : undefined,
+      }));
+
+    return { proposals: validProposals };
+  } catch (error) {
+    console.error('Failed to propose theme games from knowledge:', error);
+    return { proposals: [] };
+  }
+}
+
+/**
  * 特集記事のゲーム選定用システムプロンプト
  *
  * テーマに合うゲームを候補リストから選ぶことだけに専念させる（本文は書かせない）。

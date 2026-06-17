@@ -19,7 +19,9 @@ const COOLDOWN_WEEKS: Record<string, number> = {
   newRelease: 17, // 約4ヶ月
   indie: 35,      // 約8ヶ月
   classic: 52,    // 約12ヶ月
-  feature: 0,
+  // フェーズ2でテーマ起点の能動探索が加わり「毎号同じ名作が反復」するリスクが生じるため、
+  // feature にもクールダウンを設定する（Issue #81 / Issue #38 と整合）
+  feature: 17,    // 約4ヶ月
 };
 
 export interface HistoryEntry {
