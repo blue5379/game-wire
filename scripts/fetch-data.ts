@@ -17,6 +17,7 @@ import { fetchSteamAppName } from './fetch-steam.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
+import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import type {
   SteamData,
@@ -672,6 +673,8 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
 
   const indieGames = games
     .filter(isIndie)
+    .filter((g) => !isFanGame(g))
+    .filter((g) => isQualifiedGame(g))
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => g.source.includes('steam') || g.source.includes('igdb')) // 実在確認済みのみ
     .filter((g) => g.coverImage || g.summary)
