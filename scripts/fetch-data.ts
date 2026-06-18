@@ -462,6 +462,12 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
+  // Steam CDN フォールバック: IGDB enrich 失敗で coverImage が null のゲームに補完
+  for (const game of gameMap.values()) {
+    if (!game.coverImage && game.steamAppId) {
+      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
+    }
+  }
 
   return Array.from(gameMap.values());
 }
@@ -500,7 +506,11 @@ async function verifySelectedGamesSteamUrl(
           `  [SteamVerify] appId ${appId} not found on Steam, removing URL: "${game.title}"`
         );
         delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) game.steamAppId = undefined;
+        if (game.steamAppId === appId) {
+          game.steamAppId = undefined;
+          // Steam CDN フォールバック URL も無効になるためクリア
+          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
+        }
         continue;
       }
       const sameName = isSameGame(
@@ -512,7 +522,11 @@ async function verifySelectedGamesSteamUrl(
           `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${steamName}"), removing URL`
         );
         delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) game.steamAppId = undefined;
+        if (game.steamAppId === appId) {
+          game.steamAppId = undefined;
+          // Steam CDN フォールバック URL も無効になるためクリア
+          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
+        }
       }
     } catch (error) {
       console.warn(`  [SteamVerify] failed for "${game.title}":`, error);
