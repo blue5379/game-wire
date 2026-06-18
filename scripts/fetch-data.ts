@@ -462,6 +462,12 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
+  // Steam CDN フォールバック: IGDB enrich 失敗で coverImage が null のゲームに補完
+  for (const game of gameMap.values()) {
+    if (!game.coverImage && game.steamAppId) {
+      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
+    }
+  }
 
   return Array.from(gameMap.values());
 }

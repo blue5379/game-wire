@@ -41,51 +41,54 @@ const config = placeholderConfig[category];
 <div
   class:list={['cover-image', className, { 'cover-image--placeholder': !hasImage }]}
   style={`--aspect-ratio: ${aspectRatio}; --placeholder-gradient: ${config.gradient}`}
+  data-has-image={hasImage ? 'true' : undefined}
 >
-  {
-    hasImage ? (
-      <img src={src} alt={alt} loading="lazy" />
-    ) : (
-      <div class="placeholder">
-        <div class="placeholder-pattern"></div>
-        <div class="placeholder-content">
-          {config.icon === 'gamepad' && (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="6" width="20" height="12" rx="2" />
-              <path d="M6 12h4m-2-2v4" />
-              <circle cx="17" cy="10" r="1" />
-              <circle cx="15" cy="14" r="1" />
-            </svg>
-          )}
-          {config.icon === 'star' && (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-          )}
-          {config.icon === 'magazine' && (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-              <line x1="8" y1="6" x2="16" y2="6" />
-              <line x1="8" y1="10" x2="16" y2="10" />
-              <line x1="8" y1="14" x2="12" y2="14" />
-            </svg>
-          )}
-          {config.icon === 'trophy' && (
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-              <path d="M4 22h16" />
-              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-              <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-            </svg>
-          )}
-          <span class="placeholder-label">{config.label}</span>
-        </div>
-      </div>
-    )
-  }
+  {hasImage && (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onerror="this.setAttribute('data-error','1'); this.parentElement.classList.add('cover-image--placeholder')"
+    />
+  )}
+  <div class="placeholder">
+    <div class="placeholder-pattern"></div>
+    <div class="placeholder-content">
+      {config.icon === 'gamepad' && (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="6" width="20" height="12" rx="2" />
+          <path d="M6 12h4m-2-2v4" />
+          <circle cx="17" cy="10" r="1" />
+          <circle cx="15" cy="14" r="1" />
+        </svg>
+      )}
+      {config.icon === 'star' && (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      )}
+      {config.icon === 'magazine' && (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          <line x1="8" y1="6" x2="16" y2="6" />
+          <line x1="8" y1="10" x2="16" y2="10" />
+          <line x1="8" y1="14" x2="12" y2="14" />
+        </svg>
+      )}
+      {config.icon === 'trophy' && (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+          <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+          <path d="M4 22h16" />
+          <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+          <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+          <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+        </svg>
+      )}
+      <span class="placeholder-label">{config.label}</span>
+    </div>
+  </div>
 </div>
 
 <style>
@@ -102,9 +105,16 @@ const config = placeholderConfig[category];
     height: 100%;
     object-fit: cover;
     transition: transform 0.3s ease;
+    position: relative;
+    z-index: 1;
   }
 
-  .cover-image:hover img {
+  /* 画像が正常に読み込まれている間は placeholder を隠す */
+  .cover-image img:not([data-error]) ~ .placeholder {
+    display: none;
+  }
+
+  .cover-image:hover img:not([data-error]) {
     transform: scale(1.05);
   }
 
