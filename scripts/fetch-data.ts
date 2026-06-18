@@ -506,7 +506,11 @@ async function verifySelectedGamesSteamUrl(
           `  [SteamVerify] appId ${appId} not found on Steam, removing URL: "${game.title}"`
         );
         delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) game.steamAppId = undefined;
+        if (game.steamAppId === appId) {
+          game.steamAppId = undefined;
+          // Steam CDN フォールバック URL も無効になるためクリア
+          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
+        }
         continue;
       }
       const sameName = isSameGame(
@@ -518,7 +522,11 @@ async function verifySelectedGamesSteamUrl(
           `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${steamName}"), removing URL`
         );
         delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) game.steamAppId = undefined;
+        if (game.steamAppId === appId) {
+          game.steamAppId = undefined;
+          // Steam CDN フォールバック URL も無効になるためクリア
+          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
+        }
       }
     } catch (error) {
       console.warn(`  [SteamVerify] failed for "${game.title}":`, error);

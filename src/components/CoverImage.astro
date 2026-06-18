@@ -41,7 +41,6 @@ const config = placeholderConfig[category];
 <div
   class:list={['cover-image', className, { 'cover-image--placeholder': !hasImage }]}
   style={`--aspect-ratio: ${aspectRatio}; --placeholder-gradient: ${config.gradient}`}
-  data-has-image={hasImage ? 'true' : undefined}
 >
   {hasImage && (
     <img
