@@ -105,8 +105,11 @@ const config = placeholderConfig[category];
     height: 100%;
     object-fit: cover;
     transition: transform 0.3s ease;
-    position: relative;
-    z-index: 1;
+  }
+
+  /* ロード失敗した img は非表示にして placeholder を見せる */
+  .cover-image img[data-error] {
+    display: none;
   }
 
   /* 画像が正常に読み込まれている間は placeholder を隠す */
