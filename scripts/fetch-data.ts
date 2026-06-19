@@ -470,7 +470,123 @@ async function aggregateGames(
     }
   }
 
-  return Array.from(gameMap.values());
+  return deduplicateGames(Array.from(gameMap.values()));
+}
+
+/**
+ * steamAppId → igdbSlug の順で同一ゲームの重複エントリをマージする。
+ *
+ * aggregateGames 内では、IGDB の steamUrl が未セットのタイミングで別エントリとして
+ * 挿入されることがある（例: "サブノーティカ２" と "Subnautica 2"）。
+ * enrich フェーズで steamAppId が補完された後でも gameMap のキーは分裂したままなので、
+ * 全フェーズ完了後にここで識別子ベースの後処理 dedup を行う。
+ *
+ * マージ先: steamRank が小さい方、なければ source 数が多い方、それも同じなら先着。
+ * スコア・人気指標は合算ではなく「より良い値」を採用する（重複加算を防ぐ）。
+ */
+function deduplicateGames(games: GameData[]): GameData[] {
+  // グループ化: steamAppId が同じものをまとめる
+  const byAppId = new Map<number, GameData[]>();
+  const noAppId: GameData[] = [];
+
+  for (const game of games) {
+    if (game.steamAppId !== undefined) {
+      const group = byAppId.get(game.steamAppId) ?? [];
+      group.push(game);
+      byAppId.set(game.steamAppId, group);
+    } else {
+      noAppId.push(game);
+    }
+  }
+
+  // steamAppId なし組: igdbSlug が同じものをさらにグループ化
+  const bySlug = new Map<string, GameData[]>();
+  const remaining: GameData[] = [];
+
+  for (const game of noAppId) {
+    if (game.igdbSlug) {
+      const group = bySlug.get(game.igdbSlug) ?? [];
+      group.push(game);
+      bySlug.set(game.igdbSlug, group);
+    } else {
+      remaining.push(game);
+    }
+  }
+
+  const merged: GameData[] = [];
+
+  for (const group of [...byAppId.values(), ...bySlug.values()]) {
+    if (group.length === 1) {
+      merged.push(group[0]);
+      continue;
+    }
+
+    // マージ先を選ぶ: steamRank 小 → source 数大 → 先着
+    group.sort((a, b) => {
+      const ra = a.steamRank ?? Infinity;
+      const rb = b.steamRank ?? Infinity;
+      if (ra !== rb) return ra - rb;
+      return b.source.length - a.source.length;
+    });
+
+    const primary = group[0];
+    const duplicates = group.slice(1);
+
+    // IGDB ソースを持つエントリが存在すれば、そのタイトルを正式名称として採用する
+    // （Steam 由来の日本語ローカライズ名より IGDB の英語正式名を優先）
+    const igdbEntry = group.find((g) => g.source.includes('igdb'));
+    if (igdbEntry && igdbEntry !== primary) {
+      primary.title = igdbEntry.title;
+      primary.normalizedTitle = igdbEntry.normalizedTitle;
+    }
+
+    for (const dup of duplicates) {
+      console.log(
+        `  [Dedup] Merging "${dup.title}" into "${primary.title}" (steamAppId=${primary.steamAppId ?? ''}, igdbSlug=${primary.igdbSlug ?? ''})`
+      );
+      // titleJa: どちらかにあれば補完
+      if (!primary.titleJa && dup.titleJa) primary.titleJa = dup.titleJa;
+      // メタデータ: primary に欠けていれば補完
+      primary.igdbSlug = primary.igdbSlug ?? dup.igdbSlug;
+      primary.genres = primary.genres.length ? primary.genres : dup.genres;
+      primary.platforms = primary.platforms.length ? primary.platforms : dup.platforms;
+      primary.releaseDate = primary.releaseDate ?? dup.releaseDate;
+      primary.developer = primary.developer ?? dup.developer;
+      primary.publisher = primary.publisher ?? dup.publisher;
+      primary.developerCountry = primary.developerCountry ?? dup.developerCountry;
+      primary.coverImage = primary.coverImage ?? dup.coverImage;
+      primary.screenshots = primary.screenshots ?? dup.screenshots;
+      primary.summary = primary.summary ?? dup.summary;
+      // スコア・人気指標は「より良い値」を採用
+      primary.steamRank = Math.min(primary.steamRank ?? Infinity, dup.steamRank ?? Infinity);
+      if (primary.steamRank === Infinity) primary.steamRank = undefined;
+      primary.steamPlayers = Math.max(primary.steamPlayers ?? 0, dup.steamPlayers ?? 0) || undefined;
+      primary.youtubePopularity = Math.max(primary.youtubePopularity ?? 0, dup.youtubePopularity ?? 0) || undefined;
+      primary.metascore = primary.metascore ?? dup.metascore;
+      primary.userScore = primary.userScore ?? dup.userScore;
+      primary.igdbRating = primary.igdbRating ?? dup.igdbRating;
+      primary.igdbRatingCount = primary.igdbRatingCount ?? dup.igdbRatingCount;
+      // source リストをマージ
+      for (const s of dup.source) {
+        if (!primary.source.includes(s)) primary.source.push(s);
+      }
+      // sourceUrls をマージ
+      if (dup.sourceUrls) {
+        primary.sourceUrls = { ...dup.sourceUrls, ...primary.sourceUrls };
+      }
+    }
+
+    merged.push(primary);
+  }
+
+  merged.push(...remaining);
+
+  const dedupCount = games.length - merged.length;
+  if (dedupCount > 0) {
+    console.log(`  [Dedup] Removed ${dedupCount} duplicate entries`);
+  }
+
+  return merged;
 }
 
 /**
