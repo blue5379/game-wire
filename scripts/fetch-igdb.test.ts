@@ -107,4 +107,13 @@ describe('pickOfficialUrlFromWebsites', () => {
     expect(pickOfficialUrlFromWebsites([])).toBeUndefined();
     expect(pickOfficialUrlFromWebsites(undefined)).toBeUndefined();
   });
+
+  it('Issue #30: category 不在フォールバックは URL の内容を検証しないため無関係サイトを候補にしうる', () => {
+    // SNS・ストア除外パターンに当たらないURLであれば、
+    // ゲームと無関係なサイトでも採用候補として返す。
+    // → 呼び出し側で verifyOfficialUrlContent() を通して mismatch を弾く必要がある（Issue #30 対応）。
+    const unrelatedUrl = 'https://some-unrelated-site.example.com';
+    const url = pickOfficialUrlFromWebsites([{ url: unrelatedUrl }]);
+    expect(url).toBe(unrelatedUrl);
+  });
 });
