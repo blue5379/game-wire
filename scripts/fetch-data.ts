@@ -695,16 +695,21 @@ async function enrichSelectedGamesWithOfficialUrl(
           : undefined,
       });
       if (igdbFallback?.officialUrl) {
-        const verification = await verifyOfficialUrlContent(
-          { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
-          igdbFallback.officialUrl
-        );
-        if (verification.verdict === 'mismatch') {
-          console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
-        } else {
-          if (verification.verdict === 'uncertain') {
+        let adoptUrl = true;
+        // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
+        if (igdbFallback.officialUrlSource !== 'igdb-official') {
+          const verification = await verifyOfficialUrlContent(
+            { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
+            igdbFallback.officialUrl
+          );
+          if (verification.verdict === 'mismatch') {
+            console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
+            adoptUrl = false;
+          } else if (verification.verdict === 'uncertain') {
             console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
           }
+        }
+        if (adoptUrl) {
           console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
           game.sourceUrls = {
             ...game.sourceUrls,

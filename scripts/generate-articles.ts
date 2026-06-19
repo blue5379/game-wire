@@ -563,7 +563,8 @@ async function verifyProposedGames(
     }
 
     let verifiedOfficialUrl = igdb.officialUrl;
-    if (igdb.officialUrl) {
+    // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
+    if (igdb.officialUrl && igdb.officialUrlSource !== 'igdb-official') {
       const verification = await verifyOfficialUrlContent(
         { titleEn: igdb.name, titleJa: igdb.titleJa, developer: igdb.developer, publisher: igdb.publisher },
         igdb.officialUrl
@@ -890,7 +891,9 @@ export async function generateFeatureArticle(
 
   for (const game of selectedGameData) {
     // 公式日本語URL（選定確定後にゲーム単位で取得）
-    let officialUrl: string | undefined;
+    // verifyProposedGames() で検証済みの URL が既にある場合はそれを初期値とし、
+    // Tavily が上書きできれば（日本語URL優先）上書き、できなければそのまま使う。
+    let officialUrl: string | undefined = game.sourceUrls?.official;
     try {
       const releaseYear = game.releaseDate ? game.releaseDate.slice(0, 4) : undefined;
       officialUrl =
@@ -900,23 +903,28 @@ export async function generateFeatureArticle(
           releaseYear,
           developer: game.developer,
           publisher: game.publisher,
-        })) ?? undefined;
+        })) ?? officialUrl;
 
       if (!officialUrl) {
         const igdbFallback = await enrichGameWithIGDB(game.title, {
           expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
         });
         if (igdbFallback?.officialUrl) {
-          const verification = await verifyOfficialUrlContent(
-            { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
-            igdbFallback.officialUrl
-          );
-          if (verification.verdict === 'mismatch') {
-            console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
-          } else {
-            if (verification.verdict === 'uncertain') {
+          let adoptUrl = true;
+          // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
+          if (igdbFallback.officialUrlSource !== 'igdb-official') {
+            const verification = await verifyOfficialUrlContent(
+              { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
+              igdbFallback.officialUrl
+            );
+            if (verification.verdict === 'mismatch') {
+              console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
+              adoptUrl = false;
+            } else if (verification.verdict === 'uncertain') {
               console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
             }
+          }
+          if (adoptUrl) {
             console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
             officialUrl = igdbFallback.officialUrl;
           }
