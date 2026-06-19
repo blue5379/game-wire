@@ -681,6 +681,12 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
     .sort((a, b) => indieScore(b) - indieScore(a));
 
+  if (indieGames.length === 0) {
+    console.warn('[Warning] indieGames is empty after quality filters — indie articles will be missing');
+  } else if (indieGames.length < 2) {
+    console.warn(`[Warning] indieGames has only ${indieGames.length} candidate(s) — fewer than 2 indie articles may be generated`);
+  }
+
   const indies = indieGames
     .filter((g) => !newReleases.some((nr) => nr.title === g.title))
     .slice(0, 2);

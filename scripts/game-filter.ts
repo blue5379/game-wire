@@ -19,6 +19,7 @@ export const QUALITY_IGDB_RC_FLOOR = 8;
  */
 export function isQualifiedGame(g: GameData): boolean {
   if (g.igdbRatingCount != null && g.igdbRatingCount >= QUALITY_IGDB_RC_MIN) return true;
+  // Steam Charts 掲載ゲームはチャート存在自体を品質シグナルとして扱う
   if (g.steamRank != null) return true;
   if (g.steamPlayers != null && g.steamPlayers > 0) return true;
   if (g.metascore != null) return true;
@@ -29,26 +30,20 @@ export function isQualifiedGame(g: GameData): boolean {
   return false;
 }
 
-// ファンゲーム・非公式作品を示すタイトルキーワード
-const FAN_GAME_TITLE_KEYWORDS = [
-  'fan game',
-  'fangame',
-  'fan-game',
-  'unofficial',
-  'non-official',
-];
+// ファンゲーム・非公式作品を示すタイトルキーワード（word-boundary マッチ）
+// \b を使うことで "fantasy"/"unofficially" などの部分一致を防ぐ
+const FAN_GAME_TITLE_PATTERN = /\b(fan\s*game|fangame|fan-game|unofficial|non-official)\b/i;
 
 // ファンゲーム・非公式作品を示すジャンルタグ（IGDB）
 const FAN_GAME_GENRES = ['fan game', 'fangame'];
 
 /**
  * ファンゲーム・非公式作品かどうかを判定する。
- * タイトルのキーワードマッチと IGDB ジャンルタグで検出する。
+ * タイトルの word-boundary マッチと IGDB ジャンルタグで検出する。
  * summary は誤検知リスクが高いため対象外。
  */
 export function isFanGame(g: GameData): boolean {
-  const titleLower = g.title.toLowerCase();
-  if (FAN_GAME_TITLE_KEYWORDS.some((kw) => titleLower.includes(kw))) return true;
+  if (FAN_GAME_TITLE_PATTERN.test(g.title)) return true;
   if (g.genres?.some((genre) => FAN_GAME_GENRES.includes(genre.toLowerCase()))) return true;
   return false;
 }
