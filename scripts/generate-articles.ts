@@ -38,6 +38,7 @@ import {
 } from './fetch-web-search.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
+import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 
@@ -561,6 +562,20 @@ async function verifyProposedGames(
       continue;
     }
 
+    let verifiedOfficialUrl = igdb.officialUrl;
+    if (igdb.officialUrl) {
+      const verification = await verifyOfficialUrlContent(
+        { titleEn: igdb.name, titleJa: igdb.titleJa, developer: igdb.developer, publisher: igdb.publisher },
+        igdb.officialUrl
+      );
+      if (verification.verdict === 'mismatch') {
+        console.log(`  [verify] IGDB official URL content mismatch, rejected: ${igdb.officialUrl} (${verification.reason})`);
+        verifiedOfficialUrl = undefined;
+      } else if (verification.verdict === 'uncertain') {
+        console.log(`  [verify] IGDB official URL content unverified (adopting anyway): ${igdb.officialUrl} (${verification.reason})`);
+      }
+    }
+
     const gameData: GameData = {
       title: igdb.name,
       titleJa: igdb.titleJa,
@@ -581,8 +596,8 @@ async function verifyProposedGames(
       sourceUrls: {
         igdb: igdb.slug ? `https://www.igdb.com/games/${igdb.slug}` : undefined,
         steam: igdb.steamUrl,
-        official: igdb.officialUrl,
-        officialUrlSource: igdb.officialUrlSource,
+        official: verifiedOfficialUrl,
+        officialUrlSource: verifiedOfficialUrl ? igdb.officialUrlSource : undefined,
       },
     };
 
@@ -892,8 +907,19 @@ export async function generateFeatureArticle(
           expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
         });
         if (igdbFallback?.officialUrl) {
-          console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
-          officialUrl = igdbFallback.officialUrl;
+          const verification = await verifyOfficialUrlContent(
+            { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
+            igdbFallback.officialUrl
+          );
+          if (verification.verdict === 'mismatch') {
+            console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
+          } else {
+            if (verification.verdict === 'uncertain') {
+              console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
+            }
+            console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+            officialUrl = igdbFallback.officialUrl;
+          }
         }
       }
     } catch (error) {

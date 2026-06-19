@@ -19,6 +19,7 @@ import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
+import { verifyOfficialUrlContent } from './verify-official-url.js';
 import type {
   SteamData,
   YouTubeData,
@@ -694,12 +695,23 @@ async function enrichSelectedGamesWithOfficialUrl(
           : undefined,
       });
       if (igdbFallback?.officialUrl) {
-        console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
-        game.sourceUrls = {
-          ...game.sourceUrls,
-          official: igdbFallback.officialUrl,
-          officialUrlSource: igdbFallback.officialUrlSource,
-        };
+        const verification = await verifyOfficialUrlContent(
+          { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
+          igdbFallback.officialUrl
+        );
+        if (verification.verdict === 'mismatch') {
+          console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
+        } else {
+          if (verification.verdict === 'uncertain') {
+            console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
+          }
+          console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+          game.sourceUrls = {
+            ...game.sourceUrls,
+            official: igdbFallback.officialUrl,
+            officialUrlSource: igdbFallback.officialUrlSource,
+          };
+        }
       }
     } catch (error) {
       console.error(`  enrichOfficialUrl failed for "${game.title}":`, error);
