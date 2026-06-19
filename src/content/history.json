@@ -385,6 +385,76 @@
       "category": "classic",
       "issueNumber": 11,
       "publishDate": "2026-06-12"
+    },
+    {
+      "normalizedTitle": "gothic 1 remake",
+      "title": "Gothic 1 Remake",
+      "category": "newRelease",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "s&box",
+      "title": "S&box",
+      "category": "newRelease",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "めっちゃカメレオン",
+      "title": "めっちゃカメレオン",
+      "category": "indie",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "冒険家エリオットの千年物語",
+      "title": "冒険家エリオットの千年物語",
+      "category": "indie",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "slay the spire 2",
+      "title": "Slay the Spire 2",
+      "category": "classic",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "it takes two",
+      "title": "It Takes Two",
+      "category": "feature",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "unravel two",
+      "title": "Unravel Two",
+      "category": "feature",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "lovers みんなですすめ！宇宙の旅",
+      "title": "Lovers: みんなですすめ！宇宙の旅",
+      "category": "feature",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "lego スター ウォーズ・スカイウォーカー サーガ",
+      "title": "LEGO スター ウォーズ・スカイウォーカー サーガ",
+      "category": "feature",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "ヒューマン フォール フラット",
+      "title": "ヒューマン フォール フラット",
+      "category": "feature",
+      "issueNumber": 12,
+      "publishDate": "2026-06-19"
     }
   ]
 }
