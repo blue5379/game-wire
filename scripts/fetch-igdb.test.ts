@@ -108,14 +108,12 @@ describe('pickOfficialUrlFromWebsites', () => {
     expect(pickOfficialUrlFromWebsites(undefined)).toBeUndefined();
   });
 
-  it('Issue #30: category 不在フォールバックは無関係サイトを拾う可能性がある（内容一致検証が必要）', () => {
-    // "Realm of Ink" に対して IGDB が category 未設定で inkrealm.jp を返した場合、
-    // pickOfficialUrlFromWebsites はパターン除外に引っかからず採用候補とする。
-    // → この戻り値に verifyOfficialUrlContent() を通すことで mismatch を弾く（Issue #30 対応）。
-    const url = pickOfficialUrlFromWebsites([
-      { url: 'https://inkrealm.jp' }, // 水墨画ギャラリー（無関係）
-    ]);
-    // pickOfficialUrlFromWebsites 単体では除外できない（内容は見ない）
-    expect(url).toBe('https://inkrealm.jp');
+  it('Issue #30: category 不在フォールバックは URL の内容を検証しないため無関係サイトを候補にしうる', () => {
+    // SNS・ストア除外パターンに当たらないURLであれば、
+    // ゲームと無関係なサイトでも採用候補として返す。
+    // → 呼び出し側で verifyOfficialUrlContent() を通して mismatch を弾く必要がある（Issue #30 対応）。
+    const unrelatedUrl = 'https://some-unrelated-site.example.com';
+    const url = pickOfficialUrlFromWebsites([{ url: unrelatedUrl }]);
+    expect(url).toBe(unrelatedUrl);
   });
 });
