@@ -13,6 +13,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SelectedGames, GameData, RecommendedGame } from './types.js';
 import { getCooldownTitles } from './game-history.js';
+import { isQualifiedGame } from './game-filter.js';
 import {
   invokeClaudeModel,
   PromptTemplates,
@@ -60,12 +61,6 @@ const ISSUES_DIR = DEV_MODE
 const FEATURE_CANDIDATE_LIMIT = 20;
 // 特集記事に最低限欲しいゲーム本数。これを下回ると警告を出す（selectFeatureGames の下限と揃える）。
 const FEATURE_MIN_GAMES = 3;
-// IGDB評価数の最低ライン（品質フィルタ）
-const FEATURE_IGDB_RC_MIN = 15;
-// 高評価少数票の救済しきい値（評価が非常に高い場合の評価数下限緩和）
-const FEATURE_IGDB_RATING_STRONG = 85;
-// 救済経路での最低評価数
-const FEATURE_IGDB_RC_FLOOR = 8;
 
 /**
  * 次の号番号を取得
@@ -532,22 +527,6 @@ function toFeatureCandidate(g: GameData): FeatureCandidateBase {
   };
 }
 
-/**
- * 特集記事の選定対象として品質基準を満たすかを判定する。
- * 複数の経路でいずれか1つを満たせば qualified とする（OR判定）。
- * 評価数が少なく信頼性の低いタイトル（ファンゲーム等）を fringe に分類するために使用。
- */
-function isFeatureQualified(g: GameData): boolean {
-  if (g.igdbRatingCount != null && g.igdbRatingCount >= FEATURE_IGDB_RC_MIN) return true;
-  if (g.steamRank != null) return true;
-  if (g.steamPlayers != null && g.steamPlayers > 0) return true;
-  if (g.metascore != null) return true;
-  if (
-    g.igdbRating != null && g.igdbRating >= FEATURE_IGDB_RATING_STRONG &&
-    g.igdbRatingCount != null && g.igdbRatingCount >= FEATURE_IGDB_RC_FLOOR
-  ) return true;
-  return false;
-}
 
 /**
  * LLM が提案したゲームタイトルを IGDB で実在検証し、GameData として返す（フェーズ2）。
@@ -748,8 +727,8 @@ export async function generateFeatureArticle(
   const allCandidates = deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified]);
 
   // 品質フィルタ: qualified / fringe に分割
-  const qualified = allCandidates.filter(isFeatureQualified);
-  const fringe = allCandidates.filter((g) => !isFeatureQualified(g));
+  const qualified = allCandidates.filter(isQualifiedGame);
+  const fringe = allCandidates.filter((g) => !isQualifiedGame(g));
   console.log(`  Feature candidates: ${qualified.length} qualified, ${fringe.length} fringe`);
 
   const prefilteredTitles = await prefilterFeatureCandidatesByTheme(

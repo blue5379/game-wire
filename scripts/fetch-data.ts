@@ -17,6 +17,7 @@ import { fetchSteamAppName } from './fetch-steam.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
+import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import type {
   SteamData,
@@ -672,11 +673,19 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
 
   const indieGames = games
     .filter(isIndie)
+    .filter((g) => !isFanGame(g))
+    .filter((g) => isQualifiedGame(g))
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => g.source.includes('steam') || g.source.includes('igdb')) // 実在確認済みのみ
     .filter((g) => g.coverImage || g.summary)
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
     .sort((a, b) => indieScore(b) - indieScore(a));
+
+  if (indieGames.length === 0) {
+    console.warn('[Warning] indieGames is empty after quality filters — indie articles will be missing');
+  } else if (indieGames.length < 2) {
+    console.warn(`[Warning] indieGames has only ${indieGames.length} candidate(s) — fewer than 2 indie articles may be generated`);
+  }
 
   const indies = indieGames
     .filter((g) => !newReleases.some((nr) => nr.title === g.title))
