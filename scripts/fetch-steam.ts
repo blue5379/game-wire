@@ -98,20 +98,27 @@ const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
 
 /**
  * Featured Categories の `item.name` と Storefront `appData.name` が
- * 同じゲームを指しているか粗く判定する（Issue #102 対策）。
+ * 同じ appId に紐付く正当なペアか判定する（Issue #102 対策）。
+ *
+ * **設計意図**: 「同じゲームか」ではなく「Featured 側 name と Storefront 側 name が
+ * 同じ appId を指していると見なせる粒度か」を見ている。前方一致や類似プレフィックスは
+ * 意図的に許容する — 採用後は Storefront の name で上書きするため、たとえ
+ * "Doom" vs "Doomsday" のように真は別ゲームでも、appId と name は最終的に整合する
+ * （appId 12345 → name="Doomsday" として一貫した状態で保存される）。
+ * 真に守りたいのは「appId 32470 が両者で全く別物を指している」というケース。
  *
  * Featured Categories の Top Sellers / New Releases にはエディションのバンドル等で
  * appId とタイトルの組合せがズレるエントリが稀に混入する（観測済み: appId=32470 が
  * "サイバーパンク2077 アルティメットエディション" として返されたが、appId 32470 の
  * 実体は "STAR WARS™ Empire at War - Gold Pack" だった）。
  *
- * 入口でこの不整合を弾くため、以下を不一致と判定する:
+ * 判定:
  * - 双方を正規化（小文字化、空白除去、記号除去）した上で
- * - 共通プレフィックス比較で短い側の 60% 以上が一致しなければ別ゲーム
+ * - 完全一致 OR 前方一致 OR 共通プレフィックス比較で短い側の 60% 以上が一致 → true
  *
  * 多言語表記（"Apex Legends" vs "エーペックスレジェンズ"）は文字種が異なるため
- * 一致判定できないが、Featured Categories は通常 cc/l パラメータで言語が統一される
- * ため実害は小さい。完全一致や前方一致で十分なケースをカバーする。
+ * 一致判定できないが、Featured Categories と Storefront API は同じ cc/l パラメータで
+ * 取得しているため実害は小さい（同一 API 内では言語が揃う）。
  */
 export function isSameSteamApp(itemName: string, appDataName: string): boolean {
   const norm = (s: string) =>

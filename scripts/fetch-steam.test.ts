@@ -73,4 +73,25 @@ describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
       isSameSteamApp('エーペックスレジェンズ', 'Apex Legends')
     ).toBe(false);
   });
+
+  // 境界値テスト（CLAUDE.md「境界値テスト必須」観点）
+  it('1文字完全一致 → true', () => {
+    expect(isSameSteamApp('a', 'a')).toBe(true);
+  });
+
+  it('1文字違い → false（共通プレフィックス 0/1=0% < 60%）', () => {
+    expect(isSameSteamApp('a', 'b')).toBe(false);
+  });
+
+  it('共通プレフィックス 50% (= 1/2) → false（60% 閾値未満）', () => {
+    expect(isSameSteamApp('ab', 'ac')).toBe(false);
+  });
+
+  it('共通プレフィックス 60% (= 3/5) → true（境界値ちょうど）', () => {
+    expect(isSameSteamApp('abcde', 'abcxy')).toBe(true);
+  });
+
+  it('共通プレフィックス 40% (= 2/5) → false', () => {
+    expect(isSameSteamApp('abcde', 'abxyz')).toBe(false);
+  });
 });
