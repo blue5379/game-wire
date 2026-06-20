@@ -161,7 +161,6 @@ articles:
       title: "めっちゃカメレオン"
       platforms:
         - PC
-    sourceUrls:
   - title: "話題のインディーゲーム「冒険家エリオットの千年物語」が注目を集める理由"
     category: indie
     summary: "スクウェア・エニックスのHD-2D初の完全新作アクションRPGで、レベルの概念がない独自の成長システムが特徴です。冒険家と妖精が4つの時代を巡る物語で、ローカル2人協力プレイに対応しています。"
@@ -198,7 +197,6 @@ articles:
       title: "冒険家エリオットの千年物語"
       platforms:
         - PC
-    sourceUrls:
   - title: "父の日に親子で協力！一緒に楽しめるゲーム5選"
     category: feature
     summary: "父の日に親子で楽しめる協力ゲームを紹介。GOTY受賞の「It Takes Two」や毛糸のキャラが協力する「Unravel Two」など、アクションやパズル要素を含む5作品を厳選し、一緒に達成する喜びを共有できる内容となっている。"
