@@ -723,9 +723,14 @@ async function verifySelectedGamesSteamUrl(
       }
       // 英語名・日本語名のいずれか一方でも一致すれば OK とする（Issue #108）。
       // Steam の name はロケールで切り替わるため、game.title の言語が不明な
-      // 状況で片方だけ比較すると false negative になる
-      const candidates = [steamNames.en, steamNames.ja].filter(
-        (n): n is string => typeof n === 'string' && n.length > 0
+      // 状況で片方だけ比較すると false negative になる。
+      // 英語タイトルゲームは en === ja となるため Set で重複排除する
+      const candidates = Array.from(
+        new Set(
+          [steamNames.en, steamNames.ja].filter(
+            (n): n is string => typeof n === 'string' && n.length > 0
+          )
+        )
       );
       const sameName = candidates.some((name) =>
         isSameGame(

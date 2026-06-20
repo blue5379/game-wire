@@ -97,9 +97,8 @@ describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
 });
 
 describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => {
-  const originalFetch = global.fetch;
   afterEach(() => {
-    global.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   function buildResponse(appId: number, name: string | undefined, ok = true) {
@@ -111,11 +110,12 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
             ? { success: false }
             : { success: true, data: { name } },
         }),
-    } as any;
+    } as Response;
   }
 
   it('英語名と日本語名の両方を返す（Storefront が言語別に異なる name を返すケース）', async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    vi.spyOn(global, 'fetch').mockImplementation((input: any) => {
+      const url = String(input);
       if (url.includes('l=english')) {
         return Promise.resolve(buildResponse(4704690, 'MECCHA CHAMELEON'));
       }
@@ -131,7 +131,7 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
   });
 
   it('日本語ロケールが英語名と同じ name を返すケース（英語タイトルのゲーム）', async () => {
-    global.fetch = vi.fn().mockResolvedValue(
+    vi.spyOn(global, 'fetch').mockResolvedValue(
       buildResponse(2483190, 'Forza Horizon 6')
     );
 
@@ -140,14 +140,15 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
   });
 
   it('appId が存在しない（両ロケールとも success=false）→ null', async () => {
-    global.fetch = vi.fn().mockResolvedValue(buildResponse(99999999, undefined));
+    vi.spyOn(global, 'fetch').mockResolvedValue(buildResponse(99999999, undefined));
 
     const result = await fetchSteamAppName(99999999);
     expect(result).toBeNull();
   });
 
   it('片方の言語のみ name を返す → 取れた方だけ載せる', async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
+    vi.spyOn(global, 'fetch').mockImplementation((input: any) => {
+      const url = String(input);
       if (url.includes('l=english')) {
         return Promise.resolve(buildResponse(123, 'Some Game'));
       }
@@ -159,18 +160,19 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
   });
 
   it('英語/日本語の両ロケール呼び出しに cc が明示される（IP 地域依存を排除）', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(buildResponse(456, 'Test'));
-    global.fetch = fetchMock;
+    const fetchSpy = vi
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(buildResponse(456, 'Test'));
 
     await fetchSteamAppName(456);
 
-    const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string);
+    const calledUrls = fetchSpy.mock.calls.map((c) => String(c[0]));
     expect(calledUrls.some((u) => u.includes('l=japanese') && u.includes('cc=jp'))).toBe(true);
     expect(calledUrls.some((u) => u.includes('l=english') && u.includes('cc=us'))).toBe(true);
   });
 
   it('fetch が throw → null（呼び出し側を巻き込まない）', async () => {
-    global.fetch = vi.fn().mockRejectedValue(new Error('network down'));
+    vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
 
     const result = await fetchSteamAppName(4704690);
     expect(result).toBeNull();
