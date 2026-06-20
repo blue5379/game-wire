@@ -22,6 +22,7 @@ import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
+import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
 import type {
   SteamData,
   YouTubeData,
@@ -560,17 +561,6 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
-  // aggregate フェーズでの coverImage 暫定フォールバック（PR-C 配線まで）
-  // finalizeGameMetadata（HEAD 200 検証付き）は PR-C の selectIndieGamesWithFallback 内で呼ばれる予定。
-  // それまでは coverImage がない場合に Steam CDN URL を仮セットしておく（HEAD 検証は行わない）。
-  // 個人開発タイトル（library_600x900.jpg が 404 になるケース）は
-  // PR-C の差し替えフローで正しい URL（header_image）に置き換えられる。
-  for (const game of gameMap.values()) {
-    if (!game.coverImage && game.steamAppId) {
-      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
-    }
-  }
-
   return deduplicateGames(Array.from(gameMap.values()));
 }
 
@@ -827,7 +817,7 @@ async function enrichSelectedGamesWithOfficialUrl(
 /**
  * 記事生成用にゲームを選定
  */
-function selectGamesForArticles(games: GameData[]): SelectedGames {
+async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames> {
   const now = new Date();
 
   // カテゴリ別クールダウン中タイトルを取得
@@ -861,37 +851,46 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
   const newReleases = recentGames.slice(0, 2);
 
   // インディーゲーム（developer が大手スタジオ・子会社でないもの）
-  // isIndieGame は developer が undefined の場合 ok:false を返すため、
-  // developer 不明のゲームは後段フィルタで除外される（PR-C で差し替えフローに移行予定）
-  const isIndie = (game: GameData): boolean => isIndieGame(game).ok;
-
+  // isIndieGame は developer が undefined の場合でも ok（話題性ルートで後段補完）
   const indieScore = (g: GameData): number =>
     (g.youtubePopularity || 0) +
     (g.steamRank ? 1000 - g.steamRank : 0) +
     (g.igdbRating || 0) * 10;
 
-  const indieGames = games
-    .filter(isIndie)
+  const indieRanked = games
+    .filter((g) => isIndieGame(g).ok)
     .filter((g) => !isFanGame(g))
     .filter((g) => isQualifiedGame(g))
     .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => g.source.includes('steam') || g.source.includes('igdb')) // 実在確認済みのみ
-    // 記事化に最低限必要なメタデータ。カバー画像（Steam CDN 由来は404でも文字列として埋まる）に加え、
-    // 開発元・発売元・発売日のいずれかが揃っていることを要求する。
-    // Issue #94: IGDB 未登録 + Steam Storefront 補完も失敗したゲームを除外する。
-    .filter((g) => g.coverImage && (g.developer || g.publisher || g.releaseDate))
+    .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
+    .filter((g) => !newReleases.some((nr) => nr.title === g.title))
     .sort((a, b) => indieScore(b) - indieScore(a));
 
-  if (indieGames.length === 0) {
-    console.warn('[Warning] indieGames is empty after quality filters — indie articles will be missing');
-  } else if (indieGames.length < 2) {
-    console.warn(`[Warning] indieGames has only ${indieGames.length} candidate(s) — fewer than 2 indie articles may be generated`);
+  // youtubePopularity 降順リスト（話題性 percentile 計算用）
+  const youtubePopularitySorted = [...indieRanked].sort(
+    (a, b) => (b.youtubePopularity ?? 0) - (a.youtubePopularity ?? 0)
+  );
+
+  const indieSelection = await selectIndieGamesWithFallback(indieRanked, 2, {
+    youtubePopularitySorted,
+  });
+
+  const indies = indieSelection.adopted;
+  const indieReserves = indieRanked.slice(2); // 採用後の残りを予備として記録
+
+  if (indieSelection.rejected.length > 0) {
+    console.log('[indie] rejected candidates:');
+    for (const r of indieSelection.rejected) {
+      console.log(`  - ${r.title}: ${r.reason}`);
+    }
   }
 
-  const indies = indieGames
-    .filter((g) => !newReleases.some((nr) => nr.title === g.title))
-    .slice(0, 2);
+  if (indies.length === 0) {
+    console.warn('[Warning] indie採用0件 — indie記事は生成されません');
+  } else if (indies.length < 2) {
+    console.warn(`[Warning] indie採用${indies.length}件 — 2件未満で発行します`);
+  }
 
   // 特集記事用（シーズンイベント関連 or 人気タイトル）
   const featured =
@@ -927,7 +926,7 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
   return {
     newReleases,
     indies,
-    indieReserves: [], // PR-C で差し替えフロー実装時に使用
+    indieReserves,
     featured,
     classic,
   };
@@ -1002,7 +1001,7 @@ async function main(): Promise<void> {
   // 記事用ゲーム選定
   console.log('');
   console.log('Selecting games for articles...');
-  const selectedGames = selectGamesForArticles(games);
+  const selectedGames = await selectGamesForArticles(games);
   console.log(`New Releases: ${selectedGames.newReleases.length}`);
   console.log(`Indies: ${selectedGames.indies.length}`);
   console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);

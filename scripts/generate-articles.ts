@@ -1195,7 +1195,7 @@ async function main(): Promise<void> {
     console.warn('Selected games file not found, using fallback data');
     selectedGames = {
       newReleases: [createFallbackGame('newRelease')],
-      indies: [createFallbackGame('indie')],
+      indies: [], // 選定データなし: 0件で発行
       indieReserves: [],
       featured: null,
       classic: createFallbackGame('classic'),
