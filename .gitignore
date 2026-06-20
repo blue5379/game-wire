@@ -40,7 +40,8 @@ screenshots/
 .playwright-mcp/
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/commands/
 
 # Development generated content
 src/content/issues-dev/
