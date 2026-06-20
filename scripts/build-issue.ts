@@ -228,23 +228,28 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
 
   // 参照元URLを出力（gameの有無に関わらず）
   if (article.sourceUrls) {
-    lines.push(`    sourceUrls:`);
+    const urlLines: string[] = [];
     if (article.sourceUrls.official) {
       const alive = await isUrlAlive(article.sourceUrls.official);
       if (alive) {
-        lines.push(`      official: "${article.sourceUrls.official}"`);
+        urlLines.push(`      official: "${article.sourceUrls.official}"`);
       } else {
         console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
       }
     }
     if (article.sourceUrls.steam) {
-      lines.push(`      steam: "${article.sourceUrls.steam}"`);
+      urlLines.push(`      steam: "${article.sourceUrls.steam}"`);
     }
     if (article.sourceUrls.igdb) {
-      lines.push(`      igdb: "${article.sourceUrls.igdb}"`);
+      urlLines.push(`      igdb: "${article.sourceUrls.igdb}"`);
     }
     if (article.sourceUrls.metacritic) {
-      lines.push(`      metacritic: "${article.sourceUrls.metacritic}"`);
+      urlLines.push(`      metacritic: "${article.sourceUrls.metacritic}"`);
+    }
+    // 有効なURLが1件以上ある場合のみキーを書き込む（空の sourceUrls: null はスキーマ違反になるため）
+    if (urlLines.length > 0) {
+      lines.push(`    sourceUrls:`);
+      lines.push(...urlLines);
     }
   }
 
