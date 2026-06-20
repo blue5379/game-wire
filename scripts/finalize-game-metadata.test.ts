@@ -29,8 +29,8 @@ function makeGame(overrides: Partial<GameData>): GameData {
   };
 }
 
-const REQUIRED_ALL = { cover: true, developer: true, sourceUrl: true } as const;
-const REQUIRED_NO_DEV = { cover: true, developer: false, sourceUrl: true } as const;
+const REQUIRED_ALL = { cover: true, developer: true, sourceUrl: true, steamRecommendations: true } as const;
+const REQUIRED_NO_DEV = { cover: true, developer: false, sourceUrl: true, steamRecommendations: true } as const;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -149,8 +149,10 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
     });
     const headerImageUrl = 'https://cdn.akamai.steamstatic.com/steam/apps/4704690/header.jpg';
     mockEnrich.mockResolvedValue(null);
-    // All HEAD checks fail (Steam CDN 404)
-    mockHeadOk.mockResolvedValue(false);
+    // Steam CDN library_600x900 → 404; Storefront header_image → 200
+    mockHeadOk.mockImplementation((url: string) =>
+      Promise.resolve(url === headerImageUrl)
+    );
     mockGetOrientation.mockResolvedValue('landscape');
 
     // Stub Storefront API response
@@ -226,6 +228,7 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
     mockGetOrientation.mockResolvedValue('portrait');
 
     const result = await finalizeGameMetadata(game, REQUIRED_ALL);
+    expect(result.ok).toBe(true);
     if (result.ok) expect(result.game.coverImageOrientation).toBe('portrait');
   });
 
@@ -236,7 +239,10 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
       sourceUrls: { steam: 'https://store.steampowered.com/app/4704690' },
     });
     mockEnrich.mockResolvedValue(null);
-    mockHeadOk.mockResolvedValue(false);
+    // Steam CDN HEAD fails; header_image HEAD succeeds
+    mockHeadOk.mockImplementation((url: string) =>
+      Promise.resolve(url.includes('header'))
+    );
     mockGetOrientation.mockResolvedValue('landscape');
 
     global.fetch = vi.fn().mockResolvedValue({
@@ -256,6 +262,7 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
     } as any);
 
     const result = await finalizeGameMetadata(game, REQUIRED_NO_DEV);
+    expect(result.ok).toBe(true);
     if (result.ok) expect(result.game.coverImageOrientation).toBe('landscape');
   });
 });
@@ -298,6 +305,7 @@ describe('finalizeGameMetadata - IGDB field completion', () => {
     } as any);
 
     const result = await finalizeGameMetadata(game, REQUIRED_ALL);
+    expect(result.ok).toBe(true);
     if (result.ok) expect(result.game.developer).toBe('Original Dev');
   });
 });
@@ -306,19 +314,43 @@ describe('finalizeGameMetadata - fetch count constraint', () => {
   it('IGDB and Storefront are each called at most once per candidate', async () => {
     const game = makeGame({
       steamAppId: 12345,
-      coverImage: 'https://example.com/cover.jpg',
-      developer: 'Indie Dev',
+      // No coverImage or developer → triggers both IGDB and Storefront
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
     mockEnrich.mockResolvedValue(null);
 
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        '12345': {
+          success: true,
+          data: {
+            header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/12345/header.jpg',
+            release_date: { coming_soon: false, date: '2026年1月1日' },
+            developers: ['Some Studio'],
+            publishers: ['Some Publisher'],
+            screenshots: [],
+            recommendations: { total: 100 },
+          },
+        },
+      }),
+    } as any);
+    global.fetch = fetchMock;
+
     await finalizeGameMetadata(game, REQUIRED_ALL);
+
+    // IGDB は 1 回のみ
     expect(mockEnrich).toHaveBeenCalledTimes(1);
+    // Steam Storefront API は 1 回のみ（needsStorefrontCompletion が true の間 1 回だけ fetch する）
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const calledUrl: string = fetchMock.mock.calls[0][0];
+    expect(calledUrl).toContain('store.steampowered.com/api/appdetails');
+    expect(calledUrl).toContain('12345');
   });
 });
 
 describe('finalizeGameMetadata - structured error logging', () => {
-  it('network error produces console.warn with structured JSON, not silent', async () => {
+  it('network error produces console.warn with structured JSON containing scope and step', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const game = makeGame({
       steamAppId: 12345,
@@ -326,14 +358,29 @@ describe('finalizeGameMetadata - structured error logging', () => {
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
     mockEnrich.mockResolvedValue(null);
+    // HEAD request throws network error → should produce structured warn
     mockHeadOk.mockRejectedValue(new Error('network failure'));
     global.fetch = vi.fn().mockRejectedValue(new Error('storefront network failure'));
 
     await finalizeGameMetadata(game, REQUIRED_ALL);
 
-    const calls = warnSpy.mock.calls.flat().join('\n');
-    // At least one structured log should have been emitted
-    expect(calls.length).toBeGreaterThan(0);
+    expect(warnSpy).toHaveBeenCalled();
+
+    // Every warn call must emit valid JSON with scope and step fields
+    const jsonLogs = warnSpy.mock.calls
+      .flat()
+      .map((arg) => {
+        try { return JSON.parse(String(arg)); } catch { return null; }
+      })
+      .filter(Boolean);
+
+    expect(jsonLogs.length).toBeGreaterThan(0);
+    for (const log of jsonLogs) {
+      expect(log).toHaveProperty('scope', 'finalize-game-metadata');
+      expect(log).toHaveProperty('step');
+      expect(typeof log.step).toBe('string');
+    }
+
     warnSpy.mockRestore();
   });
 });

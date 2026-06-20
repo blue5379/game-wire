@@ -464,8 +464,9 @@ async function aggregateGames(
     // steamAppId がなければ Storefront から取得できないのでスキップ
     // coverImage が埋まっていても developer / steamRecommendations の補完は必要なので続行
     if (!game.steamAppId) continue;
-    // developer・steamRecommendations・screenshots のどれかが欠けている場合に補完を試みる
+    // developer・steamRecommendations・coverImage・screenshots のどれかが欠けている場合に補完を試みる
     const needsCompletion =
+      !game.coverImage ||
       !game.developer || game.steamRecommendations === undefined ||
       !game.screenshots || game.screenshots.length === 0;
     if (!needsCompletion) continue;
@@ -559,7 +560,16 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
-
+  // aggregate フェーズでの coverImage 暫定フォールバック（PR-C 配線まで）
+  // finalizeGameMetadata（HEAD 200 検証付き）は PR-C の selectIndieGamesWithFallback 内で呼ばれる予定。
+  // それまでは coverImage がない場合に Steam CDN URL を仮セットしておく（HEAD 検証は行わない）。
+  // 個人開発タイトル（library_600x900.jpg が 404 になるケース）は
+  // PR-C の差し替えフローで正しい URL（header_image）に置き換えられる。
+  for (const game of gameMap.values()) {
+    if (!game.coverImage && game.steamAppId) {
+      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
+    }
+  }
 
   return deduplicateGames(Array.from(gameMap.values()));
 }

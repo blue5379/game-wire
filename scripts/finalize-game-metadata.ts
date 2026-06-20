@@ -28,6 +28,8 @@ export interface RequiredFields {
   cover: boolean;
   developer: boolean;
   sourceUrl: boolean;
+  /** true のとき steamRecommendations がなければ Storefront API を呼ぶ（話題性ルート用） */
+  steamRecommendations?: boolean;
 }
 
 const DATE_MISMATCH_DAYS =
@@ -183,12 +185,26 @@ export async function finalizeGameMetadata(
         }
 
         // coverImage 最終フォールバック: Steam Storefront header_image
-        // API レスポンスに含まれるので存在保証。横長（460×215）が基本
+        // API レスポンスに含まれるので存在保証だが、念のため headOk() で確認する
         if (!game.coverImage && data.header_image) {
           const headerUrl = String(data.header_image);
-          const orientation = await getImageOrientation(headerUrl).catch(() => null);
-          game.coverImage = headerUrl;
-          game.coverImageOrientation = orientation ?? 'landscape';
+          const alive = await headOk(headerUrl).catch((err) => {
+            console.warn(
+              JSON.stringify({
+                scope: 'finalize-game-metadata',
+                title: game.title,
+                step: 'header-image-head',
+                reason: String(err),
+              })
+            );
+            return false;
+          });
+          if (alive) {
+            const orientation = await getImageOrientation(headerUrl).catch(() => null);
+            game.coverImage = headerUrl;
+            // header_image は横長（460×215）が基本。orientation 取得失敗なら landscape とみなす
+            game.coverImageOrientation = orientation ?? 'landscape';
+          }
         }
 
         // screenshots
@@ -239,8 +255,7 @@ function needsStorefrontCompletion(game: GameData, required: RequiredFields): bo
   if (required.cover && !game.coverImage) return true;
   if (required.developer && !game.developer) return true;
   if (required.sourceUrl && !hasAnySourceUrl(game)) return true;
-  // steamRecommendations は話題性ルートで常に欲しい
-  if (game.steamRecommendations === undefined) return true;
+  if (required.steamRecommendations && game.steamRecommendations === undefined) return true;
   return false;
 }
 
