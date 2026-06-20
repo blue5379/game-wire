@@ -564,7 +564,8 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
-  // Steam CDN フォールバック: IGDB enrich 失敗で coverImage が null のゲームに補完
+  // Steam CDN フォールバック: 上記の Storefront enrich が API 障害等で失敗（catch 経路）した場合の最終バックストップ。
+  // 通常経路では Storefront enrich 内で同じ URL を割り当て済み。
   for (const game of gameMap.values()) {
     if (!game.coverImage && game.steamAppId) {
       game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
