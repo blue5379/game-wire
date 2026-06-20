@@ -385,62 +385,6 @@
       "category": "classic",
       "issueNumber": 11,
       "publishDate": "2026-06-12"
-    },
-    {
-      "normalizedTitle": "gothic 1 remake",
-      "title": "Gothic 1 Remake",
-      "category": "newRelease",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "s&box",
-      "title": "S&box",
-      "category": "newRelease",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "めっちゃカメレオン",
-      "title": "めっちゃカメレオン",
-      "category": "indie",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "slay the spire 2",
-      "title": "Slay the Spire 2",
-      "category": "indie",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "dungeon blitz r",
-      "title": "Dungeon Blitz R",
-      "category": "classic",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "it takes two",
-      "title": "It Takes Two",
-      "category": "feature",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "unravel two",
-      "title": "Unravel Two",
-      "category": "feature",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
-    },
-    {
-      "normalizedTitle": "スーパーマリオ 3dワールド + フューリーワールド",
-      "title": "スーパーマリオ 3Dワールド + フューリーワールド",
-      "category": "feature",
-      "issueNumber": 12,
-      "publishDate": "2026-06-19"
     }
   ]
 }
