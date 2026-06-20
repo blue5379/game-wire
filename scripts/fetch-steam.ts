@@ -156,11 +156,13 @@ export async function fetchSteamAppName(
     try {
       // cc を明示することでランナーの IP 地域に依存しないロケール返却を担保する
       // （cc 省略時は Steam が IP から自動判定し、l パラメータと不整合になることがある）
+      // fetchWithRetry を使うことで 429/503 などの一時障害でリトライが走り、
+      // 片方のロケールのみ失敗して部分結果になるケースを抑制する（Issue #108 review）
       const cc = locale === 'japanese' ? 'jp' : 'us';
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=${cc}&l=${locale}`
       );
-      if (!response.ok) return null;
+      // fetchWithRetry は !response.ok 時に throw するため ok チェック不要
       const data = await response.json();
       const entry = data[appId];
       if (!entry?.success) return null;

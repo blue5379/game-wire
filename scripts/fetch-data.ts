@@ -739,7 +739,7 @@ async function verifySelectedGamesSteamUrl(
         )
       );
       if (!sameName) {
-        const namesShown = candidates.join(' / ') || '(no name returned)';
+        const namesShown = candidates.join(' / ');
         console.warn(
           `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${namesShown}"), removing URL`
         );

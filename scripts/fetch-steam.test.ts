@@ -99,11 +99,14 @@ describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
 describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
-  function buildResponse(appId: number, name: string | undefined, ok = true) {
+  // fetchWithRetry は ok:true のみ return し、ok:false は throw する。
+  // appId が存在しない場合は ok:true + success:false で表現する
+  function buildResponse(appId: number, name: string | undefined) {
     return {
-      ok,
+      ok: true,
       json: () =>
         Promise.resolve({
           [appId]: name === undefined
@@ -122,7 +125,7 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
       if (url.includes('l=japanese')) {
         return Promise.resolve(buildResponse(4704690, 'めっちゃカメレオン'));
       }
-      return Promise.resolve(buildResponse(4704690, undefined, false));
+      return Promise.resolve(buildResponse(4704690, undefined));
     });
 
     const result = await fetchSteamAppName(4704690);
@@ -171,10 +174,15 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
     expect(calledUrls.some((u) => u.includes('l=english') && u.includes('cc=us'))).toBe(true);
   });
 
-  it('fetch が throw → null（呼び出し側を巻き込まない）', async () => {
+  it('fetch が全リトライ失敗 → null（呼び出し側を巻き込まない）', async () => {
+    // fetchWithRetry はリトライ間に setTimeout を挟むため fake timer を使う
+    vi.useFakeTimers();
     vi.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
 
-    const result = await fetchSteamAppName(4704690);
+    const promise = fetchSteamAppName(4704690);
+    // fetchWithRetry の delay * (i+1) 分だけ時間を進めてリトライを消化させる
+    await vi.runAllTimersAsync();
+    const result = await promise;
     expect(result).toBeNull();
   });
 });
