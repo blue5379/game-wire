@@ -55,16 +55,25 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
     // Featured categories から top_sellers を探す
     if (data.top_sellers?.items) {
       for (const item of data.top_sellers.items.slice(0, 20)) {
-        // appdetails で成人向けコンテンツかチェック
-        const { isAdultContent } = await getAppDetails(item.id);
+        // appdetails で成人向けコンテンツチェック + appId/name 整合性検証（Issue #102）
+        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
+        // appId と Featured Categories の name が乖離している場合は除外
+        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
+          console.warn(
+            `  [Steam] appId/name mismatch in top_sellers: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         topSellers.push({
           appId: item.id,
-          name: item.name,
+          // Storefront API の正規名を優先（Featured Categories の name はバンドル名等で不正確な場合がある）
+          name: storefrontName ?? item.name,
           priceFormatted: item.final_price
             ? `¥${(item.final_price / 100).toLocaleString()}`
             : '無料',
@@ -86,6 +95,46 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
 // 2: Frequent Nudity or Sexual Content
 // 3: Adult Only Sexual Content
 const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
+
+/**
+ * Featured Categories の `item.name` と Storefront `appData.name` が
+ * 同じ appId に紐付く正当なペアか判定する（Issue #102 対策）。
+ *
+ * **設計意図**: 「同じゲームか」ではなく「Featured 側 name と Storefront 側 name が
+ * 同じ appId を指していると見なせる粒度か」を見ている。前方一致や類似プレフィックスは
+ * 意図的に許容する — 採用後は Storefront の name で上書きするため、たとえ
+ * "Doom" vs "Doomsday" のように真は別ゲームでも、appId と name は最終的に整合する
+ * （appId 12345 → name="Doomsday" として一貫した状態で保存される）。
+ * 真に守りたいのは「appId 32470 が両者で全く別物を指している」というケース。
+ *
+ * Featured Categories の Top Sellers / New Releases にはエディションのバンドル等で
+ * appId とタイトルの組合せがズレるエントリが稀に混入する（観測済み: appId=32470 が
+ * "サイバーパンク2077 アルティメットエディション" として返されたが、appId 32470 の
+ * 実体は "STAR WARS™ Empire at War - Gold Pack" だった）。
+ *
+ * 判定:
+ * - 双方を正規化（小文字化、空白除去、記号除去）した上で
+ * - 完全一致 OR 前方一致 OR 共通プレフィックス比較で短い側の 60% 以上が一致 → true
+ *
+ * 多言語表記（"Apex Legends" vs "エーペックスレジェンズ"）は文字種が異なるため
+ * 一致判定できないが、Featured Categories と Storefront API は同じ cc/l パラメータで
+ * 取得しているため実害は小さい（同一 API 内では言語が揃う）。
+ */
+export function isSameSteamApp(itemName: string, appDataName: string): boolean {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[\s　™®©:;'",.\-_!?()[\]【】「」『』]/g, '');
+  const a = norm(itemName);
+  const b = norm(appDataName);
+  if (!a || !b) return true; // 片方空なら検証保留
+  if (a === b) return true;
+  if (a.startsWith(b) || b.startsWith(a)) return true;
+  // 共通プレフィックスが短い側の 60% 以上
+  const shorter = a.length < b.length ? a : b;
+  const longer = a.length < b.length ? b : a;
+  let common = 0;
+  while (common < shorter.length && shorter[common] === longer[common]) common++;
+  return common / shorter.length >= 0.6;
+}
 
 /**
  * Steam Storefront API から指定 appId のゲーム名を取得（検証用）
@@ -186,15 +235,22 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
     // new_releases カテゴリから取得
     if (data.new_releases?.items) {
       for (const item of data.new_releases.items.slice(0, 10)) {
-        const { isAdultContent } = await getAppDetails(item.id);
+        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
+        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
+          console.warn(
+            `  [Steam] appId/name mismatch in new_releases: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         newReleases.push({
           appId: item.id,
-          name: item.name,
+          name: storefrontName ?? item.name,
           priceFormatted: item.final_price
             ? `¥${(item.final_price / 100).toLocaleString()}`
             : '無料',
@@ -207,15 +263,22 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
     // coming_soon カテゴリも取得
     if (data.coming_soon?.items) {
       for (const item of data.coming_soon.items.slice(0, 5)) {
-        const { isAdultContent } = await getAppDetails(item.id);
+        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
+        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
+          console.warn(
+            `  [Steam] appId/name mismatch in coming_soon: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
         newReleases.push({
           appId: item.id,
-          name: item.name,
+          name: storefrontName ?? item.name,
           priceFormatted: item.final_price
             ? `¥${(item.final_price / 100).toLocaleString()}`
             : '価格未定',
