@@ -85,6 +85,31 @@ describe('meetsPopularityThreshold', () => {
     expect(meetsPopularityThreshold(g, sorted)).toBe(false);
   });
 
+  it('youtubePopularity = 境界値ちょうど（thresholdScore）→ true', () => {
+    // n=5, percentile=0.30: thresholdIndex = floor(5 * 0.70) = 3, thresholdScore = sorted[3] = 400
+    const sorted = [
+      makeGame({ youtubePopularity: 1000 }),
+      makeGame({ youtubePopularity: 800 }),
+      makeGame({ youtubePopularity: 600 }),
+      makeGame({ youtubePopularity: 400 }),
+      makeGame({ youtubePopularity: 200 }),
+    ];
+    const g = makeGame({ youtubePopularity: 400 }); // 境界値ちょうど
+    expect(meetsPopularityThreshold(g, sorted)).toBe(true);
+  });
+
+  it('youtubePopularity = 境界値 - 1 → false', () => {
+    const sorted = [
+      makeGame({ youtubePopularity: 1000 }),
+      makeGame({ youtubePopularity: 800 }),
+      makeGame({ youtubePopularity: 600 }),
+      makeGame({ youtubePopularity: 400 }),
+      makeGame({ youtubePopularity: 200 }),
+    ];
+    const g = makeGame({ youtubePopularity: 399 });
+    expect(meetsPopularityThreshold(g, sorted)).toBe(false);
+  });
+
   it('no data at all → false', () => {
     const g = makeGame({});
     expect(meetsPopularityThreshold(g, [])).toBe(false);

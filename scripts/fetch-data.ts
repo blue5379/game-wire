@@ -850,15 +850,16 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
 
   const newReleases = recentGames.slice(0, 2);
 
-  // インディーゲーム（developer が大手スタジオ・子会社でないもの）
-  // isIndieGame は developer が undefined の場合でも ok（話題性ルートで後段補完）
+  // インディーゲーム候補（大手スタジオと確定できるものだけ除外）
+  // developer=undefined は 'no-developer' で ok:false になるが、候補プールには含める。
+  // 話題性ルートで steamRawDeveloper を使った「個人開発（アカウント名）」補完を後段で行う。
   const indieScore = (g: GameData): number =>
     (g.youtubePopularity || 0) +
     (g.steamRank ? 1000 - g.steamRank : 0) +
     (g.igdbRating || 0) * 10;
 
   const indieRanked = games
-    .filter((g) => isIndieGame(g).ok)
+    .filter((g) => { const r = isIndieGame(g); return r.ok || r.reason === 'no-developer'; })
     .filter((g) => !isFanGame(g))
     .filter((g) => isQualifiedGame(g))
     .filter((g) => !isInvalidGameTitle(g.title))
@@ -877,7 +878,12 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
   });
 
   const indies = indieSelection.adopted;
-  const indieReserves = indieRanked.slice(2); // 採用後の残りを予備として記録
+  // 採用・拒否の処理を経ていない残り候補（デバッグ/ログ用）
+  const adoptedTitles = new Set(indieSelection.adopted.map((g) => g.normalizedTitle));
+  const rejectedTitles = new Set(indieSelection.rejected.map((r) => r.title));
+  const indieReserves = indieRanked.filter(
+    (g) => !adoptedTitles.has(g.normalizedTitle) && !rejectedTitles.has(g.title)
+  );
 
   if (indieSelection.rejected.length > 0) {
     console.log('[indie] rejected candidates:');

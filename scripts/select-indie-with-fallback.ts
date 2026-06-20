@@ -31,6 +31,8 @@ export interface SelectionResult {
   rejected: Array<{ title: string; reason: string }>;
 }
 
+// steamRecommendations: true は Storefront API 呼び出しトリガー用。
+// hasAllRequiredFields では steamRecommendations は評価されない（RequiredFields の設計による）。
 const NORMAL_REQUIRED = { cover: true, developer: true, sourceUrl: true, steamRecommendations: true } as const;
 
 /**
@@ -93,7 +95,21 @@ export async function selectIndieGamesWithFallback(
   while (adopted.length < targetCount && queue.length > 0) {
     const candidate = queue.shift()!;
 
-    const finalizeResult = await finalizeGameMetadata(candidate, NORMAL_REQUIRED);
+    let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
+    try {
+      finalizeResult = await finalizeGameMetadata(candidate, NORMAL_REQUIRED);
+    } catch (err) {
+      console.warn(
+        JSON.stringify({
+          scope: 'select-indie-with-fallback',
+          title: candidate.title,
+          step: 'finalize',
+          reason: String(err),
+        })
+      );
+      rejected.push({ title: candidate.title, reason: 'finalize-error' });
+      continue;
+    }
 
     if (finalizeResult.ok) {
       adopted.push(finalizeResult.game);
