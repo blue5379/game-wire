@@ -20,6 +20,7 @@ import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { verifyOfficialUrlContent } from './verify-official-url.js';
+import { isIndieGame } from './indie-classifier.js';
 import type {
   SteamData,
   YouTubeData,
@@ -861,44 +862,10 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
 
   const newReleases = recentGames.slice(0, 2);
 
-  // インディーゲーム（YouTubeで話題 or Steamで人気、大手ではない）
-  const largePublishers = [
-    'nintendo',
-    'sony',
-    'microsoft',
-    'ea',
-    'ubisoft',
-    'activision',
-    'blizzard',
-    'square enix',
-    'capcom',
-    'bandai namco',
-    'sega',
-    'konami',
-    'take-two',
-    'bethesda',
-    'game freak',
-    'ゲームフリーク',
-    'rockstar',
-    'valve',
-    'riot',
-    'epic games',
-    'mihoyo',
-    'hoyoverse',
-    'netease',
-    'tencent',
-    'mojang',
-  ];
-
-  const isIndie = (game: GameData): boolean => {
-    const hasIndieTag = game.genres?.some((g) => g.toLowerCase() === 'indie') ?? false;
-    const publisher = (game.publisher || '').toLowerCase();
-    const developer = (game.developer || '').toLowerCase();
-    const isNotLargePublisher = !largePublishers.some(
-      (p) => publisher.includes(p) || developer.includes(p)
-    );
-    return hasIndieTag || isNotLargePublisher;
-  };
+  // インディーゲーム（developer が大手スタジオ・子会社でないもの）
+  // isIndieGame は developer が undefined の場合 ok:false を返すため、
+  // developer 不明のゲームは後段フィルタで除外される（PR-C で差し替えフローに移行予定）
+  const isIndie = (game: GameData): boolean => isIndieGame(game).ok;
 
   const indieScore = (g: GameData): number =>
     (g.youtubePopularity || 0) +
