@@ -12,6 +12,7 @@ interface GameInfoType {
   publisher?: string;
   developerCountry?: string;
   coverImage?: string;
+  coverImageOrientation?: 'portrait' | 'landscape';
   metascore?: number | null;
   userScore?: number | null;
   isAiInferred?: boolean;
@@ -87,6 +88,7 @@ const categoryColors: Record<string, string> = {
               publisher={game.publisher}
               developerCountry={game.developerCountry}
               coverImage={game.coverImage}
+              coverImageOrientation={game.coverImageOrientation}
               metascore={game.metascore}
               userScore={game.userScore}
               isAiInferred={game.isAiInferred}

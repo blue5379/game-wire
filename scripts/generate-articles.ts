@@ -130,6 +130,7 @@ export interface GeneratedArticle {
     publisher?: string;
     developerCountry?: string;
     coverImage?: string;
+    coverImageOrientation?: 'portrait' | 'landscape';
     screenshots?: string[];
     metascore?: number | null;
     userScore?: number | null;
@@ -371,6 +372,7 @@ async function generateNewReleaseArticle(
       publisher: game.publisher,
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
+      coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
       metascore: game.metascore,
       userScore: game.userScore,
@@ -487,6 +489,7 @@ async function generateIndieArticle(
       publisher: game.publisher,
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
+      coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
       metascore: game.metascore,
       userScore: game.userScore,
@@ -1191,6 +1194,7 @@ async function main(): Promise<void> {
     selectedGames = {
       newReleases: [createFallbackGame('newRelease')],
       indies: [createFallbackGame('indie')],
+      indieReserves: [],
       featured: null,
       classic: createFallbackGame('classic'),
     };

@@ -5,9 +5,11 @@ interface Props {
   aspectRatio?: '16/9' | '4/3' | '1/1' | '3/4';
   class?: string;
   category?: 'newRelease' | 'indie' | 'feature' | 'classic';
+  orientation?: 'portrait' | 'landscape';
 }
 
-const { src, alt, aspectRatio = '16/9', class: className, category = 'newRelease' } = Astro.props;
+const { src, alt, aspectRatio = '16/9', class: className, category = 'newRelease', orientation } = Astro.props;
+const isLandscape = orientation === 'landscape';
 
 const hasImage = src && src.trim() !== '';
 
@@ -39,14 +41,24 @@ const config = placeholderConfig[category];
 ---
 
 <div
-  class:list={['cover-image', className, { 'cover-image--placeholder': !hasImage }]}
+  class:list={['cover-image', className, { 'cover-image--placeholder': !hasImage, 'cover-image--landscape': isLandscape }]}
   style={`--aspect-ratio: ${aspectRatio}; --placeholder-gradient: ${config.gradient}`}
 >
+  {hasImage && isLandscape && (
+    <img
+      src={src}
+      alt=""
+      aria-hidden="true"
+      class="cover-image__blur-bg"
+      loading="lazy"
+    />
+  )}
   {hasImage && (
     <img
       src={src}
       alt={alt}
       loading="lazy"
+      class={isLandscape ? 'cover-image__contain' : undefined}
       onerror="this.setAttribute('data-error','1'); this.parentElement.classList.add('cover-image--placeholder')"
     />
   )}
@@ -106,17 +118,51 @@ const config = placeholderConfig[category];
     transition: transform 0.3s ease;
   }
 
+  /* 横長画像: contain で収め、背景はぼかし版で埋める */
+  .cover-image--landscape {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cover-image__blur-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: blur(20px);
+    transform: scale(1.1);
+    z-index: 0;
+    transition: none !important;
+  }
+
+  .cover-image__contain {
+    object-fit: contain !important;
+    position: relative;
+    z-index: 1;
+  }
+
   /* ロード失敗した img は非表示にして placeholder を見せる */
   .cover-image img[data-error] {
     display: none;
   }
 
-  /* 画像が正常に読み込まれている間は placeholder を隠す */
-  .cover-image img:not([data-error]) ~ .placeholder {
+  /* ぼかし背景のロード失敗は無視 */
+  .cover-image__blur-bg[data-error] {
     display: none;
   }
 
-  .cover-image:hover img:not([data-error]) {
+  /* 画像が正常に読み込まれている間は placeholder を隠す */
+  .cover-image img.cover-image__contain:not([data-error]) ~ .placeholder,
+  .cover-image img:not(.cover-image__contain):not(.cover-image__blur-bg):not([data-error]) ~ .placeholder {
+    display: none;
+  }
+
+  .cover-image:hover img.cover-image__contain:not([data-error]) {
+    transform: scale(1.05);
+  }
+
+  .cover-image:hover img:not(.cover-image__contain):not(.cover-image__blur-bg):not([data-error]) {
     transform: scale(1.05);
   }
 
