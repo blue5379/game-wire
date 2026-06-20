@@ -193,6 +193,37 @@ describe('isLargeStudio', () => {
     // "Konami Digital Entertainment" should still match via alias
     expect(isLargeStudio('Konami Digital Entertainment')).toMatchObject({ hit: true });
   });
+
+  // CRITICAL #1 修正確認: 'EA' 単体がブロックされること
+  it('EA (single abbrev) is large', () => {
+    expect(isLargeStudio('EA')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Electronic Arts is large', () => {
+    expect(isLargeStudio('Electronic Arts')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  // CRITICAL #2 修正確認: Take-Two と Rockstar 地域スタジオがブロックされること
+  it('Take-Two Interactive is large', () => {
+    expect(isLargeStudio('Take-Two Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Rockstar North (GTA dev studio) is subsidiary', () => {
+    expect(isLargeStudio('Rockstar North')).toMatchObject({ hit: true, list: 'subsidiary' });
+  });
+
+  it('Rockstar San Diego is subsidiary', () => {
+    expect(isLargeStudio('Rockstar San Diego')).toMatchObject({ hit: true, list: 'subsidiary' });
+  });
+
+  // WARNING 修正確認: Ubisoft 地域スタジオがブロックされること
+  it('Ubisoft Massive is large', () => {
+    expect(isLargeStudio('Ubisoft Massive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Ubisoft Nadeo is large', () => {
+    expect(isLargeStudio('Ubisoft Nadeo')).toMatchObject({ hit: true, list: 'large' });
+  });
 });
 
 describe('isIndieGame', () => {
