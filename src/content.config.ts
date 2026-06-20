@@ -10,6 +10,7 @@ const gameSchema = z.object({
   publisher: z.string().optional(),
   developerCountry: z.string().optional(),
   coverImage: z.string().optional(),
+  coverImageOrientation: z.enum(['portrait', 'landscape']).optional(),
   screenshots: z.array(z.string()).optional(),
   metascore: z.number().nullable().optional(),
   userScore: z.number().nullable().optional(),
