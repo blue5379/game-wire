@@ -468,8 +468,11 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Updating game history...');
   const publishDateStr = format(publishDate, 'yyyy-MM-dd');
+  // hidden 記事は読者の目に触れないため、クールダウン対象から除外して
+  // 翌週以降に再選定されるようにする（Issue #94）
   const historyEntries = generatedIssue.articles
     .filter((a) => a.category !== 'feature' && a.game?.title)
+    .filter((a) => !isCriticallyIncompleteArticle(a))
     .map((a) =>
       createHistoryEntry(
         a.game!.title,
