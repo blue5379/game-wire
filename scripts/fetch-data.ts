@@ -763,40 +763,40 @@ async function verifySelectedGamesSteamUrl(
  *
  * cover と sourceUrl の両方が揃っているかのみをチェックする。
  * developer は enrich フェーズで補完できないケースもあるため zombie 判定には含めない。
+ *
+ * @pre enrichSelectedGamesWithOfficialUrl の呼び出し後に実行すること。
+ *   enrich が sourceUrls.official をセットする場合があり、zombie 判定の sourceUrl チェックが
+ *   それに依存するため、順序を逆転させると official URL しか持たないゲームが誤除去される。
  */
 export function removeZombieGames(selectedGames: SelectedGames): void {
+  // developer: false — RequiredFields で省略不可のため false で明示的に「チェックしない」を表現する
   const required = { cover: true, developer: false, sourceUrl: true };
 
-  const before = {
-    newReleases: selectedGames.newReleases.length,
-    indies: selectedGames.indies.length,
+  const filterArray = (arr: GameData[], label: string): { filtered: GameData[]; removedCount: number } => {
+    const filtered = arr.filter((g) => {
+      const ok = hasAllRequiredFields(g, required);
+      if (!ok) {
+        console.warn(`  [ZombieFilter] Removing "${g.title}" from ${label} (missing cover or sourceUrl)`);
+      }
+      return ok;
+    });
+    return { filtered, removedCount: arr.length - filtered.length };
   };
 
-  selectedGames.newReleases = selectedGames.newReleases.filter((g) => {
-    const ok = hasAllRequiredFields(g, required);
-    if (!ok) {
-      console.warn(
-        `  [ZombieFilter] Removing "${g.title}" from newReleases (missing cover or sourceUrl)`
-      );
-    }
-    return ok;
-  });
+  const { filtered: newReleases, removedCount: removedNewReleases } = filterArray(selectedGames.newReleases, 'newReleases');
+  selectedGames.newReleases = newReleases;
 
-  selectedGames.indies = selectedGames.indies.filter((g) => {
-    const ok = hasAllRequiredFields(g, required);
-    if (!ok) {
-      console.warn(
-        `  [ZombieFilter] Removing "${g.title}" from indies (missing cover or sourceUrl)`
-      );
-    }
-    return ok;
-  });
+  const { filtered: indies, removedCount: removedIndies } = filterArray(selectedGames.indies, 'indies');
+  selectedGames.indies = indies;
+
+  let removedSingletons = 0;
 
   if (selectedGames.featured && !hasAllRequiredFields(selectedGames.featured, required)) {
     console.warn(
       `  [ZombieFilter] Nullifying featured "${selectedGames.featured.title}" (missing cover or sourceUrl)`
     );
     selectedGames.featured = null;
+    removedSingletons++;
   }
 
   if (selectedGames.classic && !hasAllRequiredFields(selectedGames.classic, required)) {
@@ -804,15 +804,13 @@ export function removeZombieGames(selectedGames: SelectedGames): void {
       `  [ZombieFilter] Nullifying classic "${selectedGames.classic.title}" (missing cover or sourceUrl)`
     );
     selectedGames.classic = null;
+    removedSingletons++;
   }
 
-  const removed = {
-    newReleases: before.newReleases - selectedGames.newReleases.length,
-    indies: before.indies - selectedGames.indies.length,
-  };
-  if (removed.newReleases > 0 || removed.indies > 0) {
+  const totalRemoved = removedNewReleases + removedIndies + removedSingletons;
+  if (totalRemoved > 0) {
     console.log(
-      `  [ZombieFilter] Removed ${removed.newReleases} newRelease(s), ${removed.indies} indie(s) as zombie`
+      `  [ZombieFilter] Removed ${removedNewReleases} newRelease(s), ${removedIndies} indie(s), ${removedSingletons} singleton(s) as zombie`
     );
   }
 }
