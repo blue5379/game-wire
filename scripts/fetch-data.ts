@@ -735,6 +735,13 @@ async function verifySelectedGamesSteamUrl(
           // Steam CDN フォールバック URL も無効になるためクリア
           if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
         }
+        // Issue #103 (残存パス): sourceUrls.steam と coverImage は削除されたが、
+        // game オブジェクト自体は selectedGames の配列から取り除かれない（zombie 状態）。
+        // IGDB websites 経由で採用された Steam URL がここで不一致検出された場合、
+        // 当該ゲームが必須情報欠落のまま記事生成パイプラインへ流れる可能性がある。
+        // 根治には mismatch 検出時に selectedGames.{indies,newReleases,...} から
+        // game を除去し、indieReserves 等の予備から補充する仕組みが必要。
+        // Refs #103
       }
     } catch (error) {
       console.warn(`  [SteamVerify] failed for "${game.title}":`, error);
