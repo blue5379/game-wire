@@ -5,7 +5,148 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSteamReleaseDate, isQualifiedCompanyName } from './fetch-data.js';
+import { parseSteamReleaseDate, isQualifiedCompanyName, removeZombieGames } from './fetch-data.js';
+import type { SelectedGames, GameData } from './types.js';
+
+// テスト用 GameData ファクトリ（必須フィールドのみ設定）
+function makeGame(overrides: Partial<GameData> = {}): GameData {
+  return {
+    title: 'Test Game',
+    normalizedTitle: 'test game',
+    genres: [],
+    platforms: [],
+    source: ['steam'],
+    ...overrides,
+  };
+}
+
+// テスト用 SelectedGames ファクトリ
+function makeSelected(overrides: Partial<SelectedGames> = {}): SelectedGames {
+  return {
+    newReleases: [],
+    indies: [],
+    indieReserves: [],
+    featured: null,
+    classic: null,
+    ...overrides,
+  };
+}
+
+describe('removeZombieGames - Issue #103 zombie ゲーム除去', () => {
+  it('cover と sourceUrl が揃っているゲームはそのまま残す', () => {
+    const game = makeGame({
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/123' },
+    });
+    const selected = makeSelected({ newReleases: [game], indies: [game] });
+
+    removeZombieGames(selected);
+
+    expect(selected.newReleases).toHaveLength(1);
+    expect(selected.indies).toHaveLength(1);
+  });
+
+  it('coverImage が欠落したゲームを newReleases から除去する', () => {
+    const zombie = makeGame({
+      title: 'Zombie Game',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999' },
+      // coverImage なし
+    });
+    const ok = makeGame({
+      title: 'OK Game',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/100' },
+    });
+    const selected = makeSelected({ newReleases: [zombie, ok] });
+
+    removeZombieGames(selected);
+
+    expect(selected.newReleases).toHaveLength(1);
+    expect(selected.newReleases[0].title).toBe('OK Game');
+  });
+
+  it('sourceUrls が全くないゲームを indies から除去する', () => {
+    const zombie = makeGame({
+      title: 'No URL Indie',
+      coverImage: 'https://example.com/cover.jpg',
+      // sourceUrls なし
+    });
+    const selected = makeSelected({ indies: [zombie] });
+
+    removeZombieGames(selected);
+
+    expect(selected.indies).toHaveLength(0);
+  });
+
+  it('sourceUrls.steam が消えても sourceUrls.official があればゾンビにならない', () => {
+    const game = makeGame({
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { official: 'https://example.com/official' },
+    });
+    const selected = makeSelected({ newReleases: [game] });
+
+    removeZombieGames(selected);
+
+    expect(selected.newReleases).toHaveLength(1);
+  });
+
+  it('featured が zombie なら null に置き換える', () => {
+    const zombie = makeGame({
+      title: 'Zombie Featured',
+      coverImage: 'https://example.com/cover.jpg',
+      // sourceUrls なし
+    });
+    const selected = makeSelected({ featured: zombie });
+
+    removeZombieGames(selected);
+
+    expect(selected.featured).toBeNull();
+  });
+
+  it('classic が zombie なら null に置き換える', () => {
+    const zombie = makeGame({
+      title: 'Zombie Classic',
+      // coverImage なし
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1' },
+    });
+    const selected = makeSelected({ classic: zombie });
+
+    removeZombieGames(selected);
+
+    expect(selected.classic).toBeNull();
+  });
+
+  it('developer が欠落していてもゾンビ判定しない（cover + sourceUrl で判定）', () => {
+    const game = makeGame({
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/200' },
+      // developer なし
+    });
+    const selected = makeSelected({ indies: [game] });
+
+    removeZombieGames(selected);
+
+    expect(selected.indies).toHaveLength(1);
+  });
+
+  it('featured が null の場合は何も変えない（クラッシュしない）', () => {
+    const selected = makeSelected({ featured: null, classic: null });
+
+    expect(() => removeZombieGames(selected)).not.toThrow();
+    expect(selected.featured).toBeNull();
+    expect(selected.classic).toBeNull();
+  });
+
+  it('indieReserves は zombie フィルタの対象外（変更しない）', () => {
+    const zombie = makeGame({ title: 'Reserve Zombie' }); // cover も sourceUrl もなし
+    const selected = makeSelected({ indieReserves: [zombie] });
+
+    removeZombieGames(selected);
+
+    // indieReserves は finalize 未済なので触らない
+    expect(selected.indieReserves).toHaveLength(1);
+  });
+});
 
 describe('parseSteamReleaseDate', () => {
   it('Steam Storefront の "YYYY年M月D日" 形式を YYYY-MM-DD に正規化する', () => {
