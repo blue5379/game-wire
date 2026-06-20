@@ -99,6 +99,33 @@ function extractYear(releaseDate?: string): number | undefined {
 const SAME_GAME_YEAR_TOLERANCE = 3;
 
 /**
+ * Steam Storefront `release_date.date`（"2026年6月9日" など）を YYYY-MM-DD に正規化。
+ * 想定外フォーマットは undefined を返す。
+ */
+export function parseSteamReleaseDate(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const m = raw.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
+  if (!m) return undefined;
+  const yyyy = m[1];
+  const mm = m[2].padStart(2, '0');
+  const dd = m[3].padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Steam Storefront の developers/publishers の文字列が、
+ * 開発者/発行者として表示すべき正式名称か判定する品質ガード。
+ *
+ * `lemorion_1224` のような Steam アカウント名そのままを除外するため、
+ * 「英数字とアンダースコアのみで20文字未満」を不採用とする。
+ */
+export function isQualifiedCompanyName(name: string): boolean {
+  if (!name) return false;
+  const looksLikeAccountName = /^[a-z0-9_]+$/i.test(name) && name.length < 20;
+  return !looksLikeAccountName;
+}
+
+/**
  * Steam ストア URL から appId を抽出
  */
 function extractSteamAppId(url?: string): number | undefined {
@@ -444,6 +471,79 @@ async function aggregateGames(
     }
   }
   console.log(`Enriched ${enrichedCount} games with IGDB data`);
+
+  // Steam Storefront API による補完: IGDB enrich が成功しなかったゲームを Steam の公式情報で穴埋め
+  // - 対象: coverImage が未設定で、かつ steamAppId が判明しているゲーム
+  // - フィールド単位で空欄のみ埋める（IGDB 由来の値は上書きしない）
+  // - summary / genres は埋めない（マーケコピー・表記揺れ回避のため）
+  console.log('Enriching games with Steam Storefront API...');
+  let storefrontEnrichedCount = 0;
+  let storefrontFailedCount = 0;
+  for (const game of gameMap.values()) {
+    if (game.coverImage || !game.steamAppId) continue;
+
+    try {
+      const response = await fetch(
+        `https://store.steampowered.com/api/appdetails?appids=${game.steamAppId}&cc=jp&l=japanese`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!response.ok) {
+        storefrontFailedCount++;
+        continue;
+      }
+      const json = (await response.json()) as Record<string, { success?: boolean; data?: any }>;
+      const entry = json[String(game.steamAppId)];
+      if (!entry?.success || !entry.data) {
+        storefrontFailedCount++;
+        continue;
+      }
+      const data = entry.data;
+
+      // releaseDate: 未確定（coming_soon: true）は埋めない
+      if (!game.releaseDate && data.release_date && !data.release_date.coming_soon) {
+        const parsed = parseSteamReleaseDate(data.release_date.date);
+        if (parsed) game.releaseDate = parsed;
+      }
+
+      // developer / publisher: 品質ガードを通過したもののみ採用
+      if (!game.developer && Array.isArray(data.developers) && data.developers.length > 0) {
+        const dev = String(data.developers[0]).trim();
+        if (isQualifiedCompanyName(dev)) game.developer = dev;
+      }
+      if (!game.publisher && Array.isArray(data.publishers) && data.publishers.length > 0) {
+        const pub = String(data.publishers[0]).trim();
+        if (isQualifiedCompanyName(pub)) game.publisher = pub;
+      }
+
+      // coverImage: Steam Storefront 自体は縦長カバーを返さないため CDN の library_600x900 を採用
+      // （404 時は CoverImage.astro の onerror で placeholder にフォールバックされる）
+      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
+
+      // screenshots: 1920x1080 の URL を先頭5件
+      if ((!game.screenshots || game.screenshots.length === 0) && Array.isArray(data.screenshots)) {
+        const urls = data.screenshots
+          .map((s: any) => s?.path_full)
+          .filter((u: unknown): u is string => typeof u === 'string')
+          .slice(0, 5);
+        if (urls.length > 0) game.screenshots = urls;
+      }
+
+      storefrontEnrichedCount++;
+      // レート制限対策（既存 IGDB enrich と同等）
+      if (storefrontEnrichedCount % 5 === 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    } catch (error) {
+      storefrontFailedCount++;
+      console.warn(
+        `  Steam Storefront enrich failed for "${game.title}" (appId=${game.steamAppId}):`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+  console.log(
+    `Enriched ${storefrontEnrichedCount} games with Steam Storefront (${storefrontFailedCount} failed)`
+  );
 
   // Metacritic スコアが不足しているゲームを補完
   console.log('Enriching games with Metacritic scores...');
@@ -810,7 +910,10 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
     .filter((g) => isQualifiedGame(g))
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => g.source.includes('steam') || g.source.includes('igdb')) // 実在確認済みのみ
-    .filter((g) => g.coverImage || g.summary)
+    // 記事化に最低限必要なメタデータ。カバー画像（Steam CDN 由来は404でも文字列として埋まる）に加え、
+    // 開発元・発売元・発売日のいずれかが揃っていることを要求する。
+    // Issue #94: IGDB 未登録 + Steam Storefront 補完も失敗したゲームを除外する。
+    .filter((g) => g.coverImage && (g.developer || g.publisher || g.releaseDate))
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
     .sort((a, b) => indieScore(b) - indieScore(a));
 

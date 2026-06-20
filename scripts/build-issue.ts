@@ -119,6 +119,21 @@ function categoryToJapanese(
 }
 
 /**
+ * Issue #94 最終防衛線: 記事のメタデータが極端に欠落しているかを判定する。
+ * coverImage が空、かつ developer/publisher/releaseDate がすべて空の場合、
+ * 記事として体裁が成立しないため hidden 扱いにする。
+ * feature 記事は game フィールドを持たないため対象外。
+ */
+export function isCriticallyIncompleteArticle(article: GeneratedArticle): boolean {
+  if (article.category === 'feature') return false;
+  const game = article.game;
+  if (!game) return true;
+  const hasCover = Boolean(game.coverImage);
+  const hasAnyMeta = Boolean(game.developer || game.publisher || game.releaseDate);
+  return !hasCover && !hasAnyMeta;
+}
+
+/**
  * 記事データをYAML frontmatter用にフォーマット
  */
 async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<string> {
@@ -127,6 +142,12 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
   lines.push(`  - title: "${escapeYamlString(article.title)}"`);
   lines.push(`    category: ${article.category}`);
   lines.push(`    summary: "${escapeYamlString(article.summary)}"`);
+  if (isCriticallyIncompleteArticle(article)) {
+    console.warn(
+      `  [WARN] Article "${article.title}" is critically incomplete (no cover/developer/publisher/releaseDate); marking as hidden.`
+    );
+    lines.push(`    hidden: true`);
+  }
 
   // AI生成コンテンツを保存（複数行対応）
   // Note: 'content' is reserved in Astro, so we use 'articleBody'
