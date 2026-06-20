@@ -23,6 +23,7 @@ import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
+import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import type {
   SteamData,
   YouTubeData,
@@ -749,17 +750,68 @@ async function verifySelectedGamesSteamUrl(
           // Steam CDN フォールバック URL も無効になるためクリア
           if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
         }
-        // Issue #103 (残存パス): sourceUrls.steam と coverImage は削除されたが、
-        // game オブジェクト自体は selectedGames の配列から取り除かれない（zombie 状態）。
-        // IGDB websites 経由で採用された Steam URL がここで不一致検出された場合、
-        // 当該ゲームが必須情報欠落のまま記事生成パイプラインへ流れる可能性がある。
-        // 根治には mismatch 検出時に selectedGames.{indies,newReleases,...} から
-        // game を除去し、indieReserves 等の予備から補充する仕組みが必要。
-        // Refs #103
       }
     } catch (error) {
       console.warn(`  [SteamVerify] failed for "${game.title}":`, error);
     }
+  }
+}
+
+/**
+ * verifySelectedGamesSteamUrl / enrichSelectedGamesWithOfficialUrl による
+ * フィールドクリア後に必須情報が欠落したゲームを選定配列から取り除く（Issue #103）。
+ *
+ * cover と sourceUrl の両方が揃っているかのみをチェックする。
+ * developer は enrich フェーズで補完できないケースもあるため zombie 判定には含めない。
+ *
+ * @pre enrichSelectedGamesWithOfficialUrl の呼び出し後に実行すること。
+ *   enrich が sourceUrls.official をセットする場合があり、zombie 判定の sourceUrl チェックが
+ *   それに依存するため、順序を逆転させると official URL しか持たないゲームが誤除去される。
+ */
+export function removeZombieGames(selectedGames: SelectedGames): void {
+  // developer: false — RequiredFields で省略不可のため false で明示的に「チェックしない」を表現する
+  const required = { cover: true, developer: false, sourceUrl: true };
+
+  const filterArray = (arr: GameData[], label: string): { filtered: GameData[]; removedCount: number } => {
+    const filtered = arr.filter((g) => {
+      const ok = hasAllRequiredFields(g, required);
+      if (!ok) {
+        console.warn(`  [ZombieFilter] Removing "${g.title}" from ${label} (missing cover or sourceUrl)`);
+      }
+      return ok;
+    });
+    return { filtered, removedCount: arr.length - filtered.length };
+  };
+
+  const { filtered: newReleases, removedCount: removedNewReleases } = filterArray(selectedGames.newReleases, 'newReleases');
+  selectedGames.newReleases = newReleases;
+
+  const { filtered: indies, removedCount: removedIndies } = filterArray(selectedGames.indies, 'indies');
+  selectedGames.indies = indies;
+
+  let removedSingletons = 0;
+
+  if (selectedGames.featured && !hasAllRequiredFields(selectedGames.featured, required)) {
+    console.warn(
+      `  [ZombieFilter] Nullifying featured "${selectedGames.featured.title}" (missing cover or sourceUrl)`
+    );
+    selectedGames.featured = null;
+    removedSingletons++;
+  }
+
+  if (selectedGames.classic && !hasAllRequiredFields(selectedGames.classic, required)) {
+    console.warn(
+      `  [ZombieFilter] Nullifying classic "${selectedGames.classic.title}" (missing cover or sourceUrl)`
+    );
+    selectedGames.classic = null;
+    removedSingletons++;
+  }
+
+  const totalRemoved = removedNewReleases + removedIndies + removedSingletons;
+  if (totalRemoved > 0) {
+    console.log(
+      `  [ZombieFilter] Removed ${removedNewReleases} newRelease(s), ${removedIndies} indie(s), ${removedSingletons} singleton(s) as zombie`
+    );
   }
 }
 
@@ -1043,6 +1095,11 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Fetching official Japanese URLs for selected games...');
   await enrichSelectedGamesWithOfficialUrl(selectedGames);
+
+  // verifySelectedGamesSteamUrl / enrich によるフィールドクリア後に zombie を除去（Issue #103）
+  console.log('');
+  console.log('Removing zombie games (missing cover or sourceUrl after verification)...');
+  removeZombieGames(selectedGames);
 
   // 統合データの構築
   const aggregatedData: AggregatedData = {

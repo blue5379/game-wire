@@ -1223,6 +1223,14 @@ async function main(): Promise<void> {
     regenerate: (fix: string) => Promise<GeneratedArticle>;
   }> = [];
 
+  // zombie 除去後の件数チェック（不足でも続行してサイレント短縮を可視化する）
+  if (selectedGames.newReleases.length < 2) {
+    console.warn(`  [ArticleGen] newReleases has only ${selectedGames.newReleases.length} game(s) — issue will have fewer new-release articles`);
+  }
+  if (selectedGames.indies.length < 2) {
+    console.warn(`  [ArticleGen] indies has only ${selectedGames.indies.length} game(s) — issue will have fewer indie articles`);
+  }
+
   // 1. 大手企業新作記事（2本）
   console.log('Generating new release articles...');
   for (const game of selectedGames.newReleases.slice(0, 2)) {
