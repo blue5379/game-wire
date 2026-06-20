@@ -3,6 +3,7 @@ interface Article {
   title: string;
   category: 'newRelease' | 'indie' | 'feature' | 'classic';
   summary: string;
+  hidden?: boolean;
   coverImage?: string;
   game?: {
     title: string;
@@ -20,10 +21,10 @@ interface Props {
 
 const { articles, currentIndex, issueNumber, category, basePath = '' } = Astro.props;
 
-// 同じカテゴリの記事をフィルタリング（現在の記事を除く）
+// 同じカテゴリの記事をフィルタリング（現在の記事と hidden 記事は除く）
 const relatedArticles = articles
   .map((article, index) => ({ ...article, index }))
-  .filter((article) => article.category === category && article.index !== currentIndex)
+  .filter((article) => article.category === category && article.index !== currentIndex && !article.hidden)
   .slice(0, 3);
 
 const categoryLabels: Record<string, string> = {

@@ -87,20 +87,30 @@ interface Props {
 const { issue, article, articleIndex } = Astro.props;
 const { issueNumber } = Astro.params;
 
-// 前後の記事を取得
+// 前後の記事を取得（hidden 記事は getStaticPaths でページ生成されないため、
+// nav からも除外しないとリンク先が 404 になる）
 const articles = issue.data.articles;
-const prevArticle = articleIndex > 0 ? articles[articleIndex - 1] : null;
-const nextArticle = articleIndex < articles.length - 1 ? articles[articleIndex + 1] : null;
+const visibleArticles = articles
+  .map((article: any, index: number) => ({ article, index }))
+  .filter(({ article }: { article: any }) => !article.hidden);
+const visiblePos = visibleArticles.findIndex(
+  ({ index }: { index: number }) => index === articleIndex
+);
+const prevEntry = visiblePos > 0 ? visibleArticles[visiblePos - 1] : null;
+const nextEntry =
+  visiblePos >= 0 && visiblePos < visibleArticles.length - 1
+    ? visibleArticles[visiblePos + 1]
+    : null;
 
 // ナビゲーション用データ
-const navPrev = prevArticle ? {
-  href: `/issue/${issueNumber}/article/${articleIndex - 1}`,
-  title: prevArticle.title,
+const navPrev = prevEntry ? {
+  href: `/issue/${issueNumber}/article/${prevEntry.index}`,
+  title: prevEntry.article.title,
 } : undefined;
 
-const navNext = nextArticle ? {
-  href: `/issue/${issueNumber}/article/${articleIndex + 1}`,
-  title: nextArticle.title,
+const navNext = nextEntry ? {
+  href: `/issue/${issueNumber}/article/${nextEntry.index}`,
+  title: nextEntry.article.title,
 } : undefined;
 
 const navHome = {
