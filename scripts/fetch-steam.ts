@@ -140,23 +140,41 @@ export function isSameSteamApp(itemName: string, appDataName: string): boolean {
  * Steam Storefront API から指定 appId のゲーム名を取得（検証用）
  * - appId が存在しない / Steam に published されていない場合は null を返す
  * - 成人向けフラグなどは見ない（検証は name 比較のみ）
+ * - 英語名と日本語名の両方を返す。Steam ストアは多言語ローカライズで
+ *   appId に対して英語/日本語など異なる name を返すため、検証側で
+ *   どちらか一方でも一致すれば OK と判定する用途
  *
  * Issue #49 対策: IGDB websites などから採用しようとしている Steam URL の
  * appId が実在し、かつ期待するゲーム名と一致するかをクロスチェックする。
+ * Issue #108 対策: 日本語タイトルゲームで英語名のみの比較だと常に不一致に
+ * なるため、英語/日本語の両方を取得する。
  */
-export async function fetchSteamAppName(appId: number): Promise<string | null> {
-  try {
-    const response = await fetch(
-      `https://store.steampowered.com/api/appdetails?appids=${appId}&l=english`
-    );
-    if (!response.ok) return null;
-    const data = await response.json();
-    const entry = data[appId];
-    if (!entry?.success) return null;
-    return entry.data?.name || null;
-  } catch {
-    return null;
-  }
+export async function fetchSteamAppName(
+  appId: number
+): Promise<{ en: string | null; ja: string | null } | null> {
+  const fetchName = async (locale: 'english' | 'japanese'): Promise<string | null> => {
+    try {
+      // cc を明示することでランナーの IP 地域に依存しないロケール返却を担保する
+      // （cc 省略時は Steam が IP から自動判定し、l パラメータと不整合になることがある）
+      // fetchWithRetry を使うことで 429/503 などの一時障害でリトライが走り、
+      // 片方のロケールのみ失敗して部分結果になるケースを抑制する（Issue #108 review）
+      const cc = locale === 'japanese' ? 'jp' : 'us';
+      const response = await fetchWithRetry(
+        `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=${cc}&l=${locale}`
+      );
+      // fetchWithRetry は !response.ok 時に throw するため ok チェック不要
+      const data = await response.json();
+      const entry = data[appId];
+      if (!entry?.success) return null;
+      return entry.data?.name || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const [en, ja] = await Promise.all([fetchName('english'), fetchName('japanese')]);
+  if (en === null && ja === null) return null;
+  return { en, ja };
 }
 
 /**

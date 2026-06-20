@@ -708,8 +708,8 @@ async function verifySelectedGamesSteamUrl(
     if (appId === undefined) continue;
 
     try {
-      const steamName = await fetchSteamAppName(appId);
-      if (!steamName) {
+      const steamNames = await fetchSteamAppName(appId);
+      if (!steamNames) {
         console.warn(
           `  [SteamVerify] appId ${appId} not found on Steam, removing URL: "${game.title}"`
         );
@@ -721,13 +721,27 @@ async function verifySelectedGamesSteamUrl(
         }
         continue;
       }
-      const sameName = isSameGame(
-        { title: game.title, releaseDate: game.releaseDate },
-        { title: steamName }
+      // 英語名・日本語名のいずれか一方でも一致すれば OK とする（Issue #108）。
+      // Steam の name はロケールで切り替わるため、game.title の言語が不明な
+      // 状況で片方だけ比較すると false negative になる。
+      // 英語タイトルゲームは en === ja となるため Set で重複排除する
+      const candidates = Array.from(
+        new Set(
+          [steamNames.en, steamNames.ja].filter(
+            (n): n is string => typeof n === 'string' && n.length > 0
+          )
+        )
+      );
+      const sameName = candidates.some((name) =>
+        isSameGame(
+          { title: game.title, releaseDate: game.releaseDate },
+          { title: name }
+        )
       );
       if (!sameName) {
+        const namesShown = candidates.join(' / ');
         console.warn(
-          `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${steamName}"), removing URL`
+          `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${namesShown}"), removing URL`
         );
         delete game.sourceUrls!.steam;
         if (game.steamAppId === appId) {
