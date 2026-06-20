@@ -154,9 +154,11 @@ export async function fetchSteamAppName(
 ): Promise<{ en: string | null; ja: string | null } | null> {
   const fetchName = async (locale: 'english' | 'japanese'): Promise<string | null> => {
     try {
-      const cc = locale === 'japanese' ? '&cc=jp' : '';
+      // cc を明示することでランナーの IP 地域に依存しないロケール返却を担保する
+      // （cc 省略時は Steam が IP から自動判定し、l パラメータと不整合になることがある）
+      const cc = locale === 'japanese' ? 'jp' : 'us';
       const response = await fetch(
-        `https://store.steampowered.com/api/appdetails?appids=${appId}${cc}&l=${locale}`
+        `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=${cc}&l=${locale}`
       );
       if (!response.ok) return null;
       const data = await response.json();

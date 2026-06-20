@@ -158,7 +158,7 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
     expect(result).toEqual({ en: 'Some Game', ja: null });
   });
 
-  it('日本語ロケール呼び出しは cc=jp パラメータを含む', async () => {
+  it('英語/日本語の両ロケール呼び出しに cc が明示される（IP 地域依存を排除）', async () => {
     const fetchMock = vi.fn().mockResolvedValue(buildResponse(456, 'Test'));
     global.fetch = fetchMock;
 
@@ -166,7 +166,7 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
 
     const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string);
     expect(calledUrls.some((u) => u.includes('l=japanese') && u.includes('cc=jp'))).toBe(true);
-    expect(calledUrls.some((u) => u.includes('l=english'))).toBe(true);
+    expect(calledUrls.some((u) => u.includes('l=english') && u.includes('cc=us'))).toBe(true);
   });
 
   it('fetch が throw → null（呼び出し側を巻き込まない）', async () => {
