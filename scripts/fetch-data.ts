@@ -21,6 +21,7 @@ import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { isIndieGame } from './indie-classifier.js';
+import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import type {
   SteamData,
   YouTubeData,
@@ -99,32 +100,11 @@ function extractYear(releaseDate?: string): number | undefined {
 // 同名異作品（一般的に10年以上離れる）は弾ける範囲。
 const SAME_GAME_YEAR_TOLERANCE = 3;
 
-/**
- * Steam Storefront `release_date.date`（"2026年6月9日" など）を YYYY-MM-DD に正規化。
- * 想定外フォーマットは undefined を返す。
- */
-export function parseSteamReleaseDate(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const m = raw.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
-  if (!m) return undefined;
-  const yyyy = m[1];
-  const mm = m[2].padStart(2, '0');
-  const dd = m[3].padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-/**
- * Steam Storefront の developers/publishers の文字列が、
- * 開発者/発行者として表示すべき正式名称か判定する品質ガード。
- *
- * `lemorion_1224` のような Steam アカウント名そのままを除外するため、
- * 「英数字とアンダースコアのみで20文字未満」を不採用とする。
- */
-export function isQualifiedCompanyName(name: string): boolean {
-  if (!name) return false;
-  const looksLikeAccountName = /^[a-z0-9_]+$/i.test(name) && name.length < 20;
-  return !looksLikeAccountName;
-}
+// steam-utils.ts に移動済み。後方互換のため re-export する
+export { parseSteamReleaseDate, isQualifiedCompanyName } from './steam-utils.js';
+// テスト内での import 競合を避けるため内部使用は エイリアス経由
+const parseSteamReleaseDate = _parseSteamReleaseDate;
+const isQualifiedCompanyName = _isQualifiedCompanyName;
 
 /**
  * Steam ストア URL から appId を抽出
@@ -481,7 +461,15 @@ async function aggregateGames(
   let storefrontEnrichedCount = 0;
   let storefrontFailedCount = 0;
   for (const game of gameMap.values()) {
-    if (game.coverImage || !game.steamAppId) continue;
+    // steamAppId がなければ Storefront から取得できないのでスキップ
+    // coverImage が埋まっていても developer / steamRecommendations の補完は必要なので続行
+    if (!game.steamAppId) continue;
+    // developer・steamRecommendations・coverImage・screenshots のどれかが欠けている場合に補完を試みる
+    const needsCompletion =
+      !game.coverImage ||
+      !game.developer || game.steamRecommendations === undefined ||
+      !game.screenshots || game.screenshots.length === 0;
+    if (!needsCompletion) continue;
 
     try {
       const response = await fetch(
@@ -507,18 +495,25 @@ async function aggregateGames(
       }
 
       // developer / publisher: 品質ガードを通過したもののみ採用
-      if (!game.developer && Array.isArray(data.developers) && data.developers.length > 0) {
+      // steamRawDeveloper は品質ガード前の生値を保存（PR-C の話題性ルートで使用）
+      if (Array.isArray(data.developers) && data.developers.length > 0) {
         const dev = String(data.developers[0]).trim();
-        if (isQualifiedCompanyName(dev)) game.developer = dev;
+        game.steamRawDeveloper = game.steamRawDeveloper ?? dev;
+        if (!game.developer && isQualifiedCompanyName(dev)) game.developer = dev;
       }
       if (!game.publisher && Array.isArray(data.publishers) && data.publishers.length > 0) {
         const pub = String(data.publishers[0]).trim();
         if (isQualifiedCompanyName(pub)) game.publisher = pub;
       }
 
-      // coverImage: Steam Storefront 自体は縦長カバーを返さないため CDN の library_600x900 を採用
-      // （404 時は CoverImage.astro の onerror で placeholder にフォールバックされる）
-      game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
+      // steamRecommendations: 話題性閾値判定用
+      if (game.steamRecommendations === undefined && data.recommendations?.total != null) {
+        game.steamRecommendations = Number(data.recommendations.total);
+      }
+
+      // coverImage: aggregate フェーズでは CDN URL を無条件代入しない。
+      // HEAD 200 検証は finalizeGameMetadata（PR-B）で行う。
+      // ここでは screenshots のみ取得する。
 
       // screenshots: 1920x1080 の URL を先頭5件
       if ((!game.screenshots || game.screenshots.length === 0) && Array.isArray(data.screenshots)) {
@@ -565,8 +560,11 @@ async function aggregateGames(
   }
   console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
 
-  // Steam CDN フォールバック: 上記の Storefront enrich が API 障害等で失敗（catch 経路）した場合の最終バックストップ。
-  // 通常経路では Storefront enrich 内で同じ URL を割り当て済み。
+  // aggregate フェーズでの coverImage 暫定フォールバック（PR-C 配線まで）
+  // finalizeGameMetadata（HEAD 200 検証付き）は PR-C の selectIndieGamesWithFallback 内で呼ばれる予定。
+  // それまでは coverImage がない場合に Steam CDN URL を仮セットしておく（HEAD 検証は行わない）。
+  // 個人開発タイトル（library_600x900.jpg が 404 になるケース）は
+  // PR-C の差し替えフローで正しい URL（header_image）に置き換えられる。
   for (const game of gameMap.values()) {
     if (!game.coverImage && game.steamAppId) {
       game.coverImage = `https://cdn.cloudflare.steamstatic.com/steam/apps/${game.steamAppId}/library_600x900.jpg`;
@@ -929,6 +927,7 @@ function selectGamesForArticles(games: GameData[]): SelectedGames {
   return {
     newReleases,
     indies,
+    indieReserves: [], // PR-C で差し替えフロー実装時に使用
     featured,
     classic,
   };

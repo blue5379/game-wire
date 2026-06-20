@@ -12,6 +12,7 @@ interface Props {
   publisher?: string;
   developerCountry?: string;
   coverImage?: string;
+  coverImageOrientation?: 'portrait' | 'landscape';
   metascore?: number | null;
   userScore?: number | null;
   isAiInferred?: boolean;
@@ -28,6 +29,7 @@ const {
   publisher,
   developerCountry,
   coverImage,
+  coverImageOrientation,
   metascore,
   userScore,
   isAiInferred,
@@ -42,7 +44,7 @@ const isFieldInferred = (fieldName: string) => {
 
 <div class="game-card">
   <div class="game-cover">
-    <CoverImage src={coverImage} alt={title} aspectRatio="3/4" />
+    <CoverImage src={coverImage} alt={title} aspectRatio="3/4" orientation={coverImageOrientation} />
   </div>
   <div class="game-details">
     {titleJa ? (

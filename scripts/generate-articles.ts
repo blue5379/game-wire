@@ -130,6 +130,7 @@ export interface GeneratedArticle {
     publisher?: string;
     developerCountry?: string;
     coverImage?: string;
+    coverImageOrientation?: 'portrait' | 'landscape';
     screenshots?: string[];
     metascore?: number | null;
     userScore?: number | null;
@@ -371,6 +372,7 @@ async function generateNewReleaseArticle(
       publisher: game.publisher,
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
+      coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
       metascore: game.metascore,
       userScore: game.userScore,
@@ -487,6 +489,7 @@ async function generateIndieArticle(
       publisher: game.publisher,
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
+      coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
       metascore: game.metascore,
       userScore: game.userScore,
@@ -1185,12 +1188,15 @@ async function main(): Promise<void> {
   if (fs.existsSync(selectedPath)) {
     const rawData = fs.readFileSync(selectedPath, 'utf-8');
     selectedGames = JSON.parse(rawData) as SelectedGames;
+    // backward compat: old JSON files predating PR-B may not have indieReserves
+    selectedGames.indieReserves ??= [];
     console.log('Loaded selected games from:', selectedPath);
   } else {
     console.warn('Selected games file not found, using fallback data');
     selectedGames = {
       newReleases: [createFallbackGame('newRelease')],
       indies: [createFallbackGame('indie')],
+      indieReserves: [],
       featured: null,
       classic: createFallbackGame('classic'),
     };

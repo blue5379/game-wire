@@ -104,6 +104,12 @@ export interface GameData {
   youtubePopularity?: number;
   source: ('steam' | 'youtube' | 'igdb' | 'metacritic')[];
   sourceUrls?: SourceUrls; // 参照元URL
+  /** Steam Storefront から取得した生の developer 文字列（isQualifiedCompanyName で弾かれる前の値） */
+  steamRawDeveloper?: string;
+  /** Steam recommendations 件数（話題性閾値判定用） */
+  steamRecommendations?: number;
+  /** カバー画像の向き。HEAD 200 検証済み URL のみ coverImage に入る。横長画像は blur 背景で表示 */
+  coverImageOrientation?: 'portrait' | 'landscape';
   // AI推測情報
   isAiInferred?: boolean; // AIによる推測情報かどうか
   aiInferredFields?: string[]; // AIが推測したフィールド名のリスト
@@ -152,6 +158,7 @@ export interface SourceUrls {
 export interface SelectedGames {
   newReleases: GameData[]; // 大手企業の新作 2本
   indies: GameData[]; // インディーゲーム 2本
+  indieReserves: GameData[]; // インディー差し替え予備プール（デバッグ/ログ用）
   featured: GameData | null; // 特集記事用
   classic: GameData | null; // 名作深掘り用
 }

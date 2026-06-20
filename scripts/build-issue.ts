@@ -219,6 +219,10 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
       lines.push(`      coverImage: "${article.game.coverImage}"`);
     }
 
+    if (article.game.coverImageOrientation) {
+      lines.push(`      coverImageOrientation: "${article.game.coverImageOrientation}"`);
+    }
+
     if (article.game.screenshots && article.game.screenshots.length > 0) {
       lines.push(`      screenshots:`);
       for (const screenshot of article.game.screenshots) {
