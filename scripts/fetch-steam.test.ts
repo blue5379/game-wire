@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { isSameSteamApp } from './fetch-steam';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { isSameSteamApp, fetchSteamAppName } from './fetch-steam';
 
 describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
   // Vol.12 動作確認で実際に観測された取り違えケース
@@ -93,5 +93,86 @@ describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
 
   it('共通プレフィックス 40% (= 2/5) → false', () => {
     expect(isSameSteamApp('abcde', 'abxyz')).toBe(false);
+  });
+});
+
+describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  function buildResponse(appId: number, name: string | undefined, ok = true) {
+    return {
+      ok,
+      json: () =>
+        Promise.resolve({
+          [appId]: name === undefined
+            ? { success: false }
+            : { success: true, data: { name } },
+        }),
+    } as any;
+  }
+
+  it('英語名と日本語名の両方を返す（Storefront が言語別に異なる name を返すケース）', async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('l=english')) {
+        return Promise.resolve(buildResponse(4704690, 'MECCHA CHAMELEON'));
+      }
+      if (url.includes('l=japanese')) {
+        return Promise.resolve(buildResponse(4704690, 'めっちゃカメレオン'));
+      }
+      return Promise.resolve(buildResponse(4704690, undefined, false));
+    });
+
+    const result = await fetchSteamAppName(4704690);
+    expect(result).not.toBeNull();
+    expect(result).toEqual({ en: 'MECCHA CHAMELEON', ja: 'めっちゃカメレオン' });
+  });
+
+  it('日本語ロケールが英語名と同じ name を返すケース（英語タイトルのゲーム）', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      buildResponse(2483190, 'Forza Horizon 6')
+    );
+
+    const result = await fetchSteamAppName(2483190);
+    expect(result).toEqual({ en: 'Forza Horizon 6', ja: 'Forza Horizon 6' });
+  });
+
+  it('appId が存在しない（両ロケールとも success=false）→ null', async () => {
+    global.fetch = vi.fn().mockResolvedValue(buildResponse(99999999, undefined));
+
+    const result = await fetchSteamAppName(99999999);
+    expect(result).toBeNull();
+  });
+
+  it('片方の言語のみ name を返す → 取れた方だけ載せる', async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('l=english')) {
+        return Promise.resolve(buildResponse(123, 'Some Game'));
+      }
+      return Promise.resolve(buildResponse(123, undefined));
+    });
+
+    const result = await fetchSteamAppName(123);
+    expect(result).toEqual({ en: 'Some Game', ja: null });
+  });
+
+  it('日本語ロケール呼び出しは cc=jp パラメータを含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(buildResponse(456, 'Test'));
+    global.fetch = fetchMock;
+
+    await fetchSteamAppName(456);
+
+    const calledUrls = fetchMock.mock.calls.map((c: any[]) => c[0] as string);
+    expect(calledUrls.some((u) => u.includes('l=japanese') && u.includes('cc=jp'))).toBe(true);
+    expect(calledUrls.some((u) => u.includes('l=english'))).toBe(true);
+  });
+
+  it('fetch が throw → null（呼び出し側を巻き込まない）', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error('network down'));
+
+    const result = await fetchSteamAppName(4704690);
+    expect(result).toBeNull();
   });
 });
