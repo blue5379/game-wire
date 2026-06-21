@@ -38,8 +38,8 @@ const storePlatformSchema = z.enum([
 const storeLinkSchema = z.object({
   platform: storePlatformSchema,
   url: z.string(),
-  resolvedBy: z.enum(['cache', 'igdb-website', 'storesearch', 'web-search', 'manual']),
-  confidence: z.enum(['high', 'medium', 'low']),
+  resolvedBy: z.enum(['cache', 'igdb-website', 'storesearch', 'web-search', 'manual']).optional(),
+  confidence: z.enum(['high', 'medium', 'low']).optional(),
 });
 
 const sourceUrlsSchema = z.object({

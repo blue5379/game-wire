@@ -4,14 +4,7 @@
  * 記事の情報ソースへのリンクを表示
  */
 
-type StorePlatform = 'steam' | 'nintendo' | 'playstation' | 'xbox' | 'appstore' | 'googleplay' | 'epicgames' | 'gog';
-
-interface StoreLink {
-  platform: StorePlatform;
-  url: string;
-  resolvedBy?: string;
-  confidence?: string;
-}
+import type { StorePlatform, StoreLink } from '../../scripts/types';
 
 interface Props {
   sourceUrls?: {
@@ -77,6 +70,7 @@ const hasLinks =
       )}
       {normalizedStores.map((store) => {
         const meta = STORE_META[store.platform];
+        if (!meta) return null;
         return (
           <li>
             <a
