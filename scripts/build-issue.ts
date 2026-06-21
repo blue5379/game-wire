@@ -262,8 +262,26 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
         console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
       }
     }
+    // stores[]: Identity Resolver 解決済みのプラットフォーム別リンク
+    if (article.sourceUrls.stores && article.sourceUrls.stores.length > 0) {
+      urlLines.push(`      stores:`);
+      for (const store of article.sourceUrls.stores) {
+        urlLines.push(`        - platform: "${store.platform}"`);
+        urlLines.push(`          url: "${store.url}"`);
+        if (store.resolvedBy) {
+          urlLines.push(`          resolvedBy: "${store.resolvedBy}"`);
+        }
+        if (store.confidence) {
+          urlLines.push(`          confidence: "${store.confidence}"`);
+        }
+      }
+    }
+    // steam: 後方互換フィールド（stores[] にも同じ URL が入っている場合はスキップ）
     if (article.sourceUrls.steam) {
-      urlLines.push(`      steam: "${article.sourceUrls.steam}"`);
+      const alreadyInStores = article.sourceUrls.stores?.some((s) => s.platform === 'steam');
+      if (!alreadyInStores) {
+        urlLines.push(`      steam: "${article.sourceUrls.steam}"`);
+      }
     }
     if (article.sourceUrls.igdb) {
       urlLines.push(`      igdb: "${article.sourceUrls.igdb}"`);

@@ -9,6 +9,9 @@ import type { StoreLink, StorePlatform } from './types.js';
 import { resolveSteam } from './resolvers/steam.js';
 import { resolveNintendo } from './resolvers/nintendo.js';
 import { resolvePlayStation } from './resolvers/playstation.js';
+import { resolveXbox } from './resolvers/xbox.js';
+import { resolveAppStore } from './resolvers/appstore.js';
+import { resolveGooglePlay } from './resolvers/googleplay.js';
 
 export interface ResolveInput {
   title: string;
@@ -64,8 +67,17 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
   const stores: StoreLink[] = [];
   const trace: ResolveOutput['trace'] = {};
 
-  // Steam / Nintendo / PlayStation は独立しているため並列実行
-  const [steamResult, nintendoResult, psResult] = await Promise.all([
+  const isMobile = hasMobilePlatform(input.platforms);
+
+  const resolverCommon = {
+    title: input.title,
+    titleJa: input.titleJa,
+    releaseDate: input.releaseDate,
+    igdbWebsites: input.igdbWebsites,
+  };
+
+  // Steam / Nintendo / PlayStation / Xbox は常時並列実行
+  const [steamResult, nintendoResult, psResult, xboxResult] = await Promise.all([
     resolveSteam({
       title: input.title,
       titleJa: input.titleJa,
@@ -74,18 +86,9 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
       igdbWebsites: input.igdbWebsites,
       knownSteamAppId: input.knownSteamAppId,
     }),
-    resolveNintendo({
-      title: input.title,
-      titleJa: input.titleJa,
-      releaseDate: input.releaseDate,
-      igdbWebsites: input.igdbWebsites,
-    }),
-    resolvePlayStation({
-      title: input.title,
-      titleJa: input.titleJa,
-      releaseDate: input.releaseDate,
-      igdbWebsites: input.igdbWebsites,
-    }),
+    resolveNintendo(resolverCommon),
+    resolvePlayStation(resolverCommon),
+    resolveXbox(resolverCommon),
   ]);
 
   trace.steam = { attempts: steamResult.attempts };
@@ -97,12 +100,21 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
   trace.playstation = { attempts: psResult.attempts };
   if (psResult.link) stores.push(psResult.link);
 
-  // Xbox は常時実行予定（PR-3 以降で実装）
-  trace.xbox = { attempts: [{ method: 'not-implemented', ok: false, reason: 'Xbox resolver is planned for PR-3' }] };
+  trace.xbox = { attempts: xboxResult.attempts };
+  if (xboxResult.link) stores.push(xboxResult.link);
 
-  if (hasMobilePlatform(input.platforms)) {
-    trace.appstore = { attempts: [{ method: 'not-implemented', ok: false, reason: 'App Store resolver is planned for PR-3' }] };
-    trace.googleplay = { attempts: [{ method: 'not-implemented', ok: false, reason: 'Google Play resolver is planned for PR-3' }] };
+  // iOS / Android はプラットフォーム指定がある場合のみ実行
+  if (isMobile) {
+    const [appStoreResult, googlePlayResult] = await Promise.all([
+      resolveAppStore(resolverCommon),
+      resolveGooglePlay(resolverCommon),
+    ]);
+
+    trace.appstore = { attempts: appStoreResult.attempts };
+    if (appStoreResult.link) stores.push(appStoreResult.link);
+
+    trace.googleplay = { attempts: googlePlayResult.attempts };
+    if (googlePlayResult.link) stores.push(googlePlayResult.link);
   }
 
   return { stores, trace };

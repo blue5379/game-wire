@@ -65,9 +65,13 @@ export async function finalizeGameMetadata(
           game.sourceUrls.igdb =
             game.sourceUrls.igdb ?? `https://www.igdb.com/games/${igdb.slug}`;
         }
-        if (igdb.steamUrl && !game.sourceUrls?.steam) {
-          game.sourceUrls = game.sourceUrls ?? {};
-          game.sourceUrls.steam = igdb.steamUrl;
+        // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+        // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
+        if (igdb.steamUrl) {
+          const appId = igdb.steamUrl.match(/\/app\/(\d+)/)?.[1];
+          if (appId && game.steamAppId === undefined) {
+            game.steamAppId = parseInt(appId, 10);
+          }
         }
 
         // IGDB の発売日との ±90 日チェック（両方判明している場合のみ）
@@ -247,7 +251,8 @@ function hasAnySourceUrl(game: GameData): boolean {
   return Boolean(
     game.sourceUrls?.steam ||
     game.sourceUrls?.official ||
-    game.sourceUrls?.igdb
+    game.sourceUrls?.igdb ||
+    (game.sourceUrls?.stores && game.sourceUrls.stores.length > 0)
   );
 }
 

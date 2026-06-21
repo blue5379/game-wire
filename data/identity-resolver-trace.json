@@ -1,0 +1,287 @@
+{
+  "Vampire Crawlers: The Turbo Wildcard from Vampire Survivors": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "appstore": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "itunes-search",
+          "ok": false,
+          "reason": "no matching result in iTunes Search"
+        }
+      ]
+    },
+    "googleplay": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    }
+  },
+  "Rooftop Rascal: The Farmer Cat": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no Steam URL in IGDB websites"
+        },
+        {
+          "method": "storesearch",
+          "ok": false,
+          "reason": "no matching result in storesearch"
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Nintendo"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Xbox"
+        }
+      ]
+    }
+  },
+  "Echoes of Aincrad": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Nintendo"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Xbox"
+        }
+      ]
+    }
+  },
+  "Mesozoic Dawn": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Nintendo"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for PlayStation"
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "no Tavily results for Xbox"
+        }
+      ]
+    }
+  },
+  "Forza Horizon 6": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    }
+  }
+}
