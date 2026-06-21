@@ -81,6 +81,19 @@ describe('isSameGame', () => {
   });
 });
 
+describe('isSameGame — Steam locale 日付フォーマット対応', () => {
+  it('appdetails 形式 "Nov 1, 2023" でも年差チェックが機能する', () => {
+    // 年末尾フォーマット vs ISO フォーマット → 年差 0 → true
+    expect(isSameGame('Doom', 'Doom', '2016-05-13', 'May 13, 2016')).toBe(true);
+  });
+
+  it('appdetails 形式で年差 > 2 の場合に reject する', () => {
+    // "1 Nov, 2023" 形式のテスト
+    expect(isSameGame('Doom', 'Doom', '1993-12-10', 'Dec 10, 1993')).toBe(true);
+    expect(isSameGame('Doom', 'Doom', '1993-12-10', 'May 13, 2016')).toBe(false);
+  });
+});
+
 describe('matchesAnyTitle', () => {
   it('英名・日本語名のどちらかが一致すれば true', () => {
     expect(

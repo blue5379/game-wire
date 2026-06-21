@@ -21,10 +21,18 @@ export interface ResolveInput {
   platforms?: string[];
 }
 
+/** プラットフォームごとの解決トレース */
+export type PlatformTrace = { attempts: { method: string; ok: boolean; reason?: string }[] };
+
 export interface ResolveOutput {
   stores: StoreLink[];
-  /** 各プラットフォームの解決トレース（観測可能性のため） */
-  trace: Record<StorePlatform, { attempts: { method: string; ok: boolean; reason?: string }[] }>;
+  /**
+   * 各プラットフォームの解決トレース（観測可能性のため）。
+   * 未実装プラットフォームや mobile 非対象ゲームのキーは存在しない場合がある。
+   * Partial<Record<...>> ではなく index signature で表現することで
+   * 既知キーへのアクセスは型安全、未設定キーは undefined として扱われる。
+   */
+  trace: Partial<Record<StorePlatform, PlatformTrace>>;
 }
 
 /**
@@ -32,14 +40,16 @@ export interface ResolveOutput {
  */
 function hasMobilePlatform(platforms?: string[]): boolean {
   if (!platforms?.length) return false;
-  const lower = platforms.map((p) => p.toLowerCase());
-  return lower.some((p) =>
-    p.includes('ios') ||
-    p.includes('android') ||
-    p.includes('mobile') ||
-    p.includes('iphone') ||
-    p.includes('ipad')
-  );
+  return platforms.some((p) => {
+    const lower = p.toLowerCase();
+    return (
+      lower.includes('ios') ||
+      lower.includes('android') ||
+      lower.includes('mobile') ||
+      lower.includes('iphone') ||
+      lower.includes('ipad')
+    );
+  });
 }
 
 /**
@@ -52,41 +62,41 @@ function hasMobilePlatform(platforms?: string[]): boolean {
  */
 export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveOutput> {
   const stores: StoreLink[] = [];
-  const trace = {} as ResolveOutput['trace'];
+  const trace: ResolveOutput['trace'] = {};
 
-  // ─── Steam（常時実行） ────────────────────────────────────────────────────
-  const steamResult = await resolveSteam({
-    title: input.title,
-    titleJa: input.titleJa,
-    igdbSlug: input.igdbSlug,
-    releaseDate: input.releaseDate,
-    igdbWebsites: input.igdbWebsites,
-    knownSteamAppId: input.knownSteamAppId,
-  });
+  // Steam / Nintendo / PlayStation は独立しているため並列実行
+  const [steamResult, nintendoResult, psResult] = await Promise.all([
+    resolveSteam({
+      title: input.title,
+      titleJa: input.titleJa,
+      igdbSlug: input.igdbSlug,
+      releaseDate: input.releaseDate,
+      igdbWebsites: input.igdbWebsites,
+      knownSteamAppId: input.knownSteamAppId,
+    }),
+    resolveNintendo({
+      title: input.title,
+      titleJa: input.titleJa,
+      releaseDate: input.releaseDate,
+      igdbWebsites: input.igdbWebsites,
+    }),
+    resolvePlayStation({
+      title: input.title,
+      titleJa: input.titleJa,
+      releaseDate: input.releaseDate,
+      igdbWebsites: input.igdbWebsites,
+    }),
+  ]);
+
   trace.steam = { attempts: steamResult.attempts };
   if (steamResult.link) stores.push(steamResult.link);
 
-  // ─── Nintendo（常時実行） ──────────────────────────────────────────────────
-  const nintendoResult = await resolveNintendo({
-    title: input.title,
-    titleJa: input.titleJa,
-    releaseDate: input.releaseDate,
-    igdbWebsites: input.igdbWebsites,
-  });
   trace.nintendo = { attempts: nintendoResult.attempts };
   if (nintendoResult.link) stores.push(nintendoResult.link);
 
-  // ─── PlayStation（常時実行） ───────────────────────────────────────────────
-  const psResult = await resolvePlayStation({
-    title: input.title,
-    titleJa: input.titleJa,
-    releaseDate: input.releaseDate,
-    igdbWebsites: input.igdbWebsites,
-  });
   trace.playstation = { attempts: psResult.attempts };
   if (psResult.link) stores.push(psResult.link);
 
-  // ─── Xbox / iOS / Android は PR-2 スコープ外（trace エントリのみ設置） ─────
   // Xbox は常時実行予定（PR-3 以降で実装）
   trace.xbox = { attempts: [{ method: 'not-implemented', ok: false, reason: 'Xbox resolver is planned for PR-3' }] };
 

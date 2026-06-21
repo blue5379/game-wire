@@ -98,9 +98,9 @@ function extractSteamUrlFromIgdb(
   igdbWebsites?: { url: string; category?: number }[]
 ): string | null {
   if (!igdbWebsites) return null;
-  const site = igdbWebsites.find(
-    (w) => w.category === 13 && w.url.includes('store.steampowered.com')
-  );
+  // category=13 (Steam) が理想だが、category 1 (official site) や未設定で
+  // store.steampowered.com が登録されているケースも救済する
+  const site = igdbWebsites.find((w) => w.url.includes('store.steampowered.com'));
   return site?.url ?? null;
 }
 
@@ -186,18 +186,24 @@ export async function resolveSteam(input: SteamResolverInput): Promise<SteamReso
   // ─── 経路3: Steam Store Search API ────────────────────────────────────────
   const searchResult = await searchByTitle(queryTitles, input.releaseDate);
   if (searchResult) {
-    attempts.push({ method: 'storesearch', ok: true });
-    return {
-      link: {
-        platform: 'steam',
-        url: buildSteamUrl(searchResult.appId),
-        resolvedBy: 'storesearch',
-        confidence: 'high',
-      },
-      attempts,
-    };
+    // storesearch のタイトル一致だけでは誤マッチがあるため appdetails で再確認する
+    const verified = await verifyAppIdByName(searchResult.appId, queryTitles, input.releaseDate);
+    if (verified) {
+      attempts.push({ method: 'storesearch', ok: true });
+      return {
+        link: {
+          platform: 'steam',
+          url: buildSteamUrl(searchResult.appId),
+          resolvedBy: 'storesearch',
+          confidence: 'high',
+        },
+        attempts,
+      };
+    }
+    attempts.push({ method: 'storesearch', ok: false, reason: 'storesearch hit but appdetails name mismatch' });
+  } else {
+    attempts.push({ method: 'storesearch', ok: false, reason: 'no matching result in storesearch' });
   }
-  attempts.push({ method: 'storesearch', ok: false, reason: 'no matching result in storesearch' });
 
   return { link: null, attempts };
 }

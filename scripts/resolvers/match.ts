@@ -26,12 +26,19 @@ export function normalizeTitle(title: string): string {
 }
 
 /**
- * リリース年を文字列から抽出する（YYYY-MM-DD or YYYY 形式）
+ * リリース年を文字列から抽出する。
+ * - ISO 先頭: "YYYY-MM-DD" / "YYYY"
+ * - Steam appdetails 形式: "Nov 1, 2023" / "1 Nov, 2023"（年が末尾）
  */
 function extractYear(dateStr?: string): number | undefined {
   if (!dateStr) return undefined;
-  const m = dateStr.match(/^(\d{4})/);
-  return m ? parseInt(m[1], 10) : undefined;
+  // ISO / 先頭4桁
+  let m = dateStr.match(/^(\d{4})/);
+  if (m) return parseInt(m[1], 10);
+  // Steam appdetails locale 形式（年が末尾）
+  m = dateStr.match(/(\d{4})$/);
+  if (m) return parseInt(m[1], 10);
+  return undefined;
 }
 
 /**

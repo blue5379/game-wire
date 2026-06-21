@@ -7,53 +7,14 @@
  */
 
 import type { StoreLink } from '../types.js';
+import { headOk } from '../url-health.js';
+import { searchStorePage } from './tavily-search.js';
 
 const PLAYSTATION_URL_PATTERNS = ['playstation.com'];
 
 function isPlayStationUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return PLAYSTATION_URL_PATTERNS.some((p) => lower.includes(p));
-}
-
-/**
- * URL の HEAD リクエストで 200 系ステータスかを検証する
- */
-async function headCheck(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(8000),
-      redirect: 'follow',
-    });
-    return res.status >= 200 && res.status < 300;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Tavily で PlayStation 公式ページ候補を取得する
- */
-async function searchWithTavily(queryTitles: string[]): Promise<string[]> {
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return [];
-
-  const { tavily } = await import('@tavily/core');
-  const client = tavily({ apiKey });
-
-  const query = `"${queryTitles[0]}" site:playstation.com/ja-jp`;
-  try {
-    const response = await client.search(query, {
-      maxResults: 5,
-      searchDepth: 'basic',
-      topic: 'general',
-    });
-    return response.results
-      .map((r) => r.url)
-      .filter((url) => isPlayStationUrl(url));
-  } catch {
-    return [];
-  }
 }
 
 export interface PlayStationResolverInput {
@@ -83,7 +44,7 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
   if (input.igdbWebsites?.length) {
     const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url));
     if (psSite) {
-      const alive = await headCheck(psSite.url);
+      const alive = await headOk(psSite.url, 8000);
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
         return {
@@ -91,7 +52,8 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
             platform: 'playstation',
             url: psSite.url,
             resolvedBy: 'igdb-website',
-            confidence: 'high',
+            // HEAD のみでは名前確認できないため medium とする（PR-3 で name check 追加予定）
+            confidence: 'medium',
           },
           attempts,
         };
@@ -105,10 +67,10 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
   }
 
   // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
-  const candidates = await searchWithTavily(queryTitles);
+  const candidates = await searchStorePage(queryTitles, 'site:playstation.com/ja-jp', isPlayStationUrl);
   if (candidates.length > 0) {
     for (const url of candidates) {
-      const alive = await headCheck(url);
+      const alive = await headOk(url, 8000);
       if (alive) {
         attempts.push({ method: 'web-search', ok: true });
         return {
