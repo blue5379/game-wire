@@ -347,7 +347,6 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12s60.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc12s61.jpg"
     sourceUrls:
-      official: "https://theminesa.studio/"
       igdb: "https://www.igdb.com/games/dungeon-blitz-r"
 ---
 
