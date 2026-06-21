@@ -111,6 +111,7 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc133f8.jpg"
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc133f1.jpg"
     sourceUrls:
+      steam: "https://store.steampowered.com/app/590830/sbox/"
       igdb: "https://www.igdb.com/games/s-and-box"
   - title: "Slay the Spire 2、新キャラクターと新カードを携えて帰還"
     category: indie
