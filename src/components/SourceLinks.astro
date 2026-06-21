@@ -4,24 +4,62 @@
  * 記事の情報ソースへのリンクを表示
  */
 
+type StorePlatform = 'steam' | 'nintendo' | 'playstation' | 'xbox' | 'appstore' | 'googleplay' | 'epicgames' | 'gog';
+
+interface StoreLink {
+  platform: StorePlatform;
+  url: string;
+  resolvedBy?: string;
+  confidence?: string;
+}
+
 interface Props {
   sourceUrls?: {
     steam?: string;
     igdb?: string;
     metacritic?: string;
     official?: string;
+    officialUrlSource?: string;
+    stores?: StoreLink[];
   };
 }
 
 const { sourceUrls } = Astro.props;
 
-// リンクがない場合は何も表示しない
-const hasLinks = sourceUrls && (
-  sourceUrls.official ||
-  sourceUrls.steam ||
-  sourceUrls.igdb ||
-  sourceUrls.metacritic
-);
+const STORE_META: Record<StorePlatform, { icon: string; label: string; hoverColor: string }> = {
+  steam:       { icon: '🎮', label: 'Steamストアページ',        hoverColor: '#1b2838' },
+  nintendo:    { icon: '🔴', label: 'Nintendo Switch eShop', hoverColor: '#e4000f' },
+  playstation: { icon: '🔵', label: 'PlayStation Store',      hoverColor: '#003087' },
+  xbox:        { icon: '🟢', label: 'Xbox Store',              hoverColor: '#107c10' },
+  appstore:    { icon: '📱', label: 'App Store (iOS)',         hoverColor: '#0071e3' },
+  googleplay:  { icon: '▶️',  label: 'Google Play',            hoverColor: '#01875f' },
+  epicgames:   { icon: '⚫', label: 'Epic Games Store',        hoverColor: '#2f2f2f' },
+  gog:         { icon: '🌌', label: 'GOG',                     hoverColor: '#86328a' },
+};
+
+// 旧 steam フィールドを stores[] に変換する互換シム
+const normalizedStores: StoreLink[] = sourceUrls?.stores
+  ? [...sourceUrls.stores]
+  : [];
+
+if (
+  sourceUrls?.steam &&
+  !normalizedStores.some((s) => s.platform === 'steam')
+) {
+  normalizedStores.unshift({
+    platform: 'steam',
+    url: sourceUrls.steam,
+    resolvedBy: 'cache',
+    confidence: 'high',
+  });
+}
+
+const hasLinks =
+  sourceUrls &&
+  (sourceUrls.official ||
+    normalizedStores.length > 0 ||
+    sourceUrls.igdb ||
+    sourceUrls.metacritic);
 ---
 
 {hasLinks && (
@@ -37,15 +75,24 @@ const hasLinks = sourceUrls && (
           </a>
         </li>
       )}
-      {sourceUrls.steam && (
-        <li>
-          <a href={sourceUrls.steam} target="_blank" rel="noopener noreferrer" class="link-item steam">
-            <span class="icon">🎮</span>
-            <span class="text">Steamストアページ</span>
-            <span class="external-icon">↗</span>
-          </a>
-        </li>
-      )}
+      {normalizedStores.map((store) => {
+        const meta = STORE_META[store.platform];
+        return (
+          <li>
+            <a
+              href={store.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class={`link-item store store-${store.platform}`}
+              style={`--store-hover: ${meta.hoverColor}`}
+            >
+              <span class="icon">{meta.icon}</span>
+              <span class="text">{meta.label}</span>
+              <span class="external-icon">↗</span>
+            </a>
+          </li>
+        );
+      })}
       {sourceUrls.igdb && (
         <li>
           <a href={sourceUrls.igdb} target="_blank" rel="noopener noreferrer" class="link-item igdb">
@@ -128,8 +175,8 @@ const hasLinks = sourceUrls && (
     color: #006aff;
   }
 
-  .link-item.steam:hover {
-    color: #1b2838;
+  .link-item.store:hover {
+    color: var(--store-hover);
   }
 
   .link-item.igdb:hover {
@@ -139,7 +186,6 @@ const hasLinks = sourceUrls && (
   .link-item.metacritic:hover {
     color: #ffcc33;
   }
-
 
   @media (max-width: 768px) {
     .source-links {

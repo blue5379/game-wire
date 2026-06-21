@@ -145,13 +145,35 @@ export interface RecommendedGame {
 // ゲームカテゴリ（記事生成用）
 export type GameCategory = 'newRelease' | 'indie' | 'feature' | 'classic';
 
+export type StorePlatform =
+  | 'steam'
+  | 'nintendo'
+  | 'playstation'
+  | 'xbox'
+  | 'appstore'
+  | 'googleplay'
+  | 'epicgames'
+  | 'gog';
+
+export interface StoreLink {
+  platform: StorePlatform;
+  url: string;
+  resolvedBy: 'cache' | 'igdb-website' | 'storesearch' | 'web-search' | 'manual';
+  confidence: 'high' | 'medium' | 'low';
+}
+
 // 参照元URL
 export interface SourceUrls {
-  steam?: string;
+  /** 公式日本語ページ（既存） */
+  official?: string;
+  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback';
+  /** プラットフォーム別ストアリンク（複数） */
+  stores?: StoreLink[];
+  /** 補助リンク（既存、後方互換） */
   igdb?: string;
   metacritic?: string;
-  official?: string; // 公式日本語ページ
-  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback'; // official URLの取得元
+  /** @deprecated stores[] に移行。互換シムで変換する */
+  steam?: string;
 }
 
 // 記事生成用のゲーム選定結果

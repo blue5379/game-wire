@@ -24,11 +24,31 @@ const recommendedGameSchema = z.object({
   officialUrl: z.string().optional(),
 });
 
+const storePlatformSchema = z.enum([
+  'steam',
+  'nintendo',
+  'playstation',
+  'xbox',
+  'appstore',
+  'googleplay',
+  'epicgames',
+  'gog',
+]);
+
+const storeLinkSchema = z.object({
+  platform: storePlatformSchema,
+  url: z.string(),
+  resolvedBy: z.enum(['cache', 'igdb-website', 'storesearch', 'web-search', 'manual']),
+  confidence: z.enum(['high', 'medium', 'low']),
+});
+
 const sourceUrlsSchema = z.object({
-  steam: z.string().optional(),
+  official: z.string().optional(),
+  officialUrlSource: z.enum(['tavily', 'igdb-official', 'igdb-fallback']).optional(),
+  stores: z.array(storeLinkSchema).optional(),
   igdb: z.string().optional(),
   metacritic: z.string().optional(),
-  official: z.string().optional(), // 公式日本語ページ
+  steam: z.string().optional(),
 });
 
 const articleSchema = z.object({
