@@ -299,6 +299,43 @@ describe('R2b: 他プラットフォーム取りこぼし検知', () => {
     const violations = checkR2b(game, trace);
     expect(violations.some((v) => v.ruleId === 'R2b')).toBe(true);
   });
+
+  it('PS 専売ゲームで Nintendo trace が ok=true でも R2b 違反は出ない（プラットフォーム不一致）', () => {
+    // PS 専売なのに Resolver が Nintendo URL を誤マッチで ok=true にした場合の偽違反を防ぐ
+    const game = makeGame({
+      title: 'God of War',
+      platforms: ['PlayStation 5'],
+      sourceUrls: { stores: [] },
+    });
+    // Nintendo trace に ok=true があっても PS 専売ゲームには Nintendo チェックを適用しない
+    const trace: ResolverTrace = {
+      'God of War': {
+        nintendo: { attempts: [{ method: 'igdb-website', ok: true }] },
+        xbox:      { attempts: [{ method: 'igdb-website', ok: true }] },
+      },
+    };
+    const violations = checkR2b(game, trace);
+    expect(violations.filter((v) => v.detail.includes('Nintendo'))).toHaveLength(0);
+    expect(violations.filter((v) => v.detail.includes('Xbox'))).toHaveLength(0);
+  });
+
+  it('PS+Switch マルチ対応ゲームで両方の trace が ok=true → Nintendo と PS 両方の R2b 違反', () => {
+    const game = makeGame({
+      title: 'Hollow Knight',
+      platforms: ['Nintendo Switch', 'PlayStation 4'],
+      sourceUrls: { stores: [] },
+    });
+    const trace: ResolverTrace = {
+      'Hollow Knight': {
+        nintendo:    { attempts: [{ method: 'igdb-website', ok: true }] },
+        playstation: { attempts: [{ method: 'igdb-website', ok: true }] },
+      },
+    };
+    const violations = checkR2b(game, trace);
+    expect(violations.some((v) => v.detail.includes('Nintendo'))).toBe(true);
+    expect(violations.some((v) => v.detail.includes('PlayStation'))).toBe(true);
+    expect(violations.filter((v) => v.detail.includes('Xbox'))).toHaveLength(0);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

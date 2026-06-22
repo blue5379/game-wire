@@ -693,7 +693,7 @@ function deduplicateGames(games: GameData[]): GameData[] {
  */
 async function reconcileSelectedGames(
   selectedGames: SelectedGames
-): Promise<void> {
+): Promise<ResolverTrace> {
   const allGames: GameData[] = [
     ...selectedGames.newReleases,
     ...selectedGames.indies,
@@ -765,10 +765,11 @@ async function reconcileSelectedGames(
     }
   }
 
-  // トレースを出力
+  // トレースをファイルに出力し、呼び出し元にも返す（Gate がディスク再読み不要）
   const tracePath = path.join(DATA_DIR, 'identity-resolver-trace.json');
   fs.writeFileSync(tracePath, JSON.stringify(traceOutput, null, 2));
   console.log(`  Identity resolver trace saved to: ${tracePath}`);
+  return traceOutput as ResolverTrace;
 }
 
 /**
@@ -1135,7 +1136,7 @@ async function main(): Promise<void> {
   // 選定済みゲームのストア URL を Identity Resolver で補完・検証（Issue #116 対策）
   console.log('');
   console.log('Reconciling store URLs for selected games via Identity Resolver...');
-  await reconcileSelectedGames(selectedGames);
+  const resolverTrace = await reconcileSelectedGames(selectedGames);
 
   // 選定済みゲームに公式日本語URLを付与
   console.log('');
@@ -1151,22 +1152,11 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Running Completeness Gate...');
   const gateMode = getGateMode();
-  const traceRaw = (() => {
-    try {
-      const tracePath = path.join(DATA_DIR, 'identity-resolver-trace.json');
-      if (fs.existsSync(tracePath)) {
-        return JSON.parse(fs.readFileSync(tracePath, 'utf-8')) as ResolverTrace;
-      }
-    } catch {
-      // trace が読めない場合はスキップ（Gate は trace なしでも動作する）
-    }
-    return undefined;
-  })();
   const reservePool: GameData[] = [
     ...selectedGames.newReleasesReserves,
     ...selectedGames.indieReserves,
   ];
-  const gateReport = await runCompletenessGate(selectedGames, traceRaw, reservePool, gateMode);
+  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode);
   console.log(`  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, replaced=${gateReport.replacedGames.length}`);
   if (gateReport.violations.length > 0) {
     for (const v of gateReport.violations) {

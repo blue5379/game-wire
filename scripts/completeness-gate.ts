@@ -146,13 +146,20 @@ export function checkR2b(game: GameData, trace: ResolverTrace | undefined): Gate
   const violations: GateViolation[] = [];
   if (!hasConsolePlatform(game.platforms)) return violations;
 
-  const platformChecks: { traceKey: string; storeKey: string; label: string }[] = [
-    { traceKey: 'nintendo', storeKey: 'nintendo', label: 'Nintendo' },
-    { traceKey: 'playstation', storeKey: 'playstation', label: 'PlayStation' },
-    { traceKey: 'xbox', storeKey: 'xbox', label: 'Xbox' },
+  // platformKeywords: game.platforms[] にこのキーワードが含まれる場合のみチェック対象とする。
+  // hasConsolePlatform で「何らかのコンソール対応」は確認済みだが、
+  // PS 専売ゲームに Nintendo/Xbox の R2b 違反を出さないよう各プラットフォームで絞り込む。
+  const platformChecks: { traceKey: string; storeKey: string; label: string; platformKeywords: string[] }[] = [
+    { traceKey: 'nintendo', storeKey: 'nintendo', label: 'Nintendo', platformKeywords: ['nintendo', 'switch'] },
+    { traceKey: 'playstation', storeKey: 'playstation', label: 'PlayStation', platformKeywords: ['playstation'] },
+    { traceKey: 'xbox', storeKey: 'xbox', label: 'Xbox', platformKeywords: ['xbox'] },
   ];
 
-  for (const { traceKey, storeKey, label } of platformChecks) {
+  const platformsLower = (game.platforms ?? []).map((p) => p.toLowerCase());
+
+  for (const { traceKey, storeKey, label, platformKeywords } of platformChecks) {
+    const gameHasPlatform = platformKeywords.some((kw) => platformsLower.some((p) => p.includes(kw)));
+    if (!gameHasPlatform) continue;
     const hasInStores = game.sourceUrls?.stores?.some((s: StoreLink) => s.platform === storeKey);
     if (hasInStores) continue;
     if (traceHasConfidentResult(trace, game.title, traceKey, 'high')) {
