@@ -52,7 +52,7 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
             platform: 'playstation',
             url: psSite.url,
             resolvedBy: 'igdb-website',
-            // HEAD のみでは名前確認できないため medium とする（PR-3 で name check 追加予定）
+            // HEAD のみでは名前確認できないため medium とする（将来的に name check を追加予定）
             confidence: 'medium',
           },
           attempts,

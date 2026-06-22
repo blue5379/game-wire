@@ -66,7 +66,10 @@ export function meetsPopularityThreshold(
 function isOnlyDeveloperMissing(game: GameData): boolean {
   const hasCover = Boolean(game.coverImage);
   const hasSourceUrl = Boolean(
-    game.sourceUrls?.steam || game.sourceUrls?.official || game.sourceUrls?.igdb
+    game.sourceUrls?.steam ||
+    game.sourceUrls?.official ||
+    game.sourceUrls?.igdb ||
+    (game.sourceUrls?.stores && game.sourceUrls.stores.length > 0)
   );
   return hasCover && hasSourceUrl && !game.developer;
 }
