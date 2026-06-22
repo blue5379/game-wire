@@ -119,12 +119,13 @@ describe('既知ケース回帰テスト（known-cases.json）', () => {
 
       const result = await resolveGameIdentity(tc.input);
 
-      // 期待される stores の件数確認
+      // Steam が存在しないことを個別に検証
       if (tc.expectedSteamEmpty) {
         const steamLink = result.stores.find((s) => s.platform === 'steam');
         expect(steamLink).toBeUndefined();
       }
 
+      // expected.stores に列挙されたプラットフォームが stores に存在するか検証
       for (const expectedStore of tc.expected.stores) {
         const found = result.stores.find((s) => s.platform === expectedStore.platform);
         expect(
@@ -140,9 +141,12 @@ describe('既知ケース回帰テスト（known-cases.json）', () => {
         }
       }
 
-      // expected.stores が空なら stores も空（Steam が存在しないケース）
-      if (tc.expected.stores.length === 0 && !tc.expectedSteamEmpty) {
-        expect(result.stores).toHaveLength(0);
+      // expected.stores が空なら stores も空（expectedSteamEmpty に依らず常に検証）
+      if (tc.expected.stores.length === 0) {
+        expect(
+          result.stores,
+          `Issue #${tc.issue} "${tc.scenario}": stores が空でない`
+        ).toHaveLength(0);
       }
     });
   }
