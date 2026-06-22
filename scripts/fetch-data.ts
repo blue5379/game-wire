@@ -1195,8 +1195,8 @@ async function main(): Promise<void> {
   fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
   console.log(`Selected games saved to: ${selectedPath}`);
 
-  if (gateMode === 'fail' && gateReport.violations.length > 0) {
-    console.error('  [CompletenessGate] FAIL: violations found, aborting.');
+  if (gateMode === 'fail' && gateReport.hasMutableViolations) {
+    console.error('  [CompletenessGate] FAIL: mutable violations found, aborting.');
     process.exit(1);
   }
 

@@ -13,8 +13,8 @@
  *
  * 動作モード（環境変数 COMPLETENESS_GATE）:
  * - "warn"（DEV_MODE 既定）: validation-dev/completeness-report.json に記録のみ
- * - "replace"（PR-5 マージ後本番）: 違反した newReleases/indies は次候補に差し替え
- * - "fail"（PR-6 で昇格）: process.exit(1)
+ * - "replace": 違反した newReleases/indies は次候補に差し替え
+ * - "fail"（PR-6 本番既定）: hasMutableViolations=true 時に呼び出し側が process.exit(1)
  */
 
 import type { GameData, SelectedGames, StoreLink } from './types.js';
@@ -34,6 +34,11 @@ export interface GateReport {
   mode: GateMode;
   violations: GateViolation[];
   replacedGames: string[];
+  /**
+   * newReleases / indies に違反があるか（featured/classic の warn-only 違反は含まない）。
+   * mode=fail の exit 判定は呼び出し側がこのフラグを使う。
+   */
+  hasMutableViolations: boolean;
 }
 
 /**
@@ -52,12 +57,12 @@ export type ResolverTrace = Record<
 
 /**
  * 動作モードを環境変数から取得する。
- * DEV_MODE=true のときデフォルト "warn"、それ以外は "replace"。
+ * DEV_MODE=true のときデフォルト "warn"、それ以外は "fail"（PR-6 で本番デフォルト昇格）。
  */
 export function getGateMode(): GateMode {
   const env = process.env.COMPLETENESS_GATE;
   if (env === 'warn' || env === 'replace' || env === 'fail') return env;
-  return process.env.DEV_MODE === 'true' ? 'warn' : 'replace';
+  return process.env.DEV_MODE === 'true' ? 'warn' : 'fail';
 }
 
 const ALLOWED_IMAGE_HOSTS = ['images.igdb.com', 'cdn.cloudflare.steamstatic.com'];
@@ -258,7 +263,7 @@ export async function runCompletenessGate(
   reserveGames: GameData[],
   mode: GateMode
 ): Promise<GateReport> {
-  const report: GateReport = { mode, violations: [], replacedGames: [] };
+  const report: GateReport = { mode, violations: [], replacedGames: [], hasMutableViolations: false };
 
   // 対象: newReleases + indies（featured / classic は差し替えが複雑なため warn のみ）
   const mutableArrays: { key: 'newReleases' | 'indies'; arr: GameData[] }[] = [
@@ -281,12 +286,16 @@ export async function runCompletenessGate(
     }
   }
 
-  // featured / classic の違反も記録（差し替えなし）
+  // featured / classic の違反も記録（差し替えなし・fail 判定対象外）
   for (const game of singletons) {
     if (!game) continue;
     const v = await checkGame(game, trace);
     report.violations.push(...v);
   }
+
+  // hasMutableViolations: newReleases/indies の違反がある場合のみ true
+  // featured/classic の warn-only 違反は含まない（設計書: featured/classic は差し替えが複雑なため）
+  report.hasMutableViolations = violatingTitles.size > 0;
 
   // mode=replace: 違反した newReleases/indies を次候補に差し替え
   if (mode === 'replace' && violatingTitles.size > 0) {

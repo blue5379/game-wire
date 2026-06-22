@@ -112,8 +112,8 @@ describe('getGateMode', () => {
     expect(getGateMode()).toBe('warn');
   });
 
-  it('DEV_MODE 未設定かつ COMPLETENESS_GATE 未設定 → "replace"', () => {
-    expect(getGateMode()).toBe('replace');
+  it('DEV_MODE 未設定かつ COMPLETENESS_GATE 未設定 → "fail"（PR-6 で本番デフォルト昇格）', () => {
+    expect(getGateMode()).toBe('fail');
   });
 });
 
@@ -593,6 +593,62 @@ describe('runCompletenessGate: 違反ゲームの normalizedTitle が予備候�
     expect(report.replacedGames).toContain('Shared Title Remaster');
     expect(selected.newReleases.some((g) => g.title === 'Shared Title Remaster')).toBe(true);
     expect(selected.newReleases.some((g) => g.title === 'Shared Title')).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: mode=fail
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: mode=fail', () => {
+  it('newReleases 違反があると hasMutableViolations=true を返す', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const violatingGame = makeGame({
+      title: 'Zombie Game',
+      normalizedTitle: 'zombie game',
+      sourceUrls: { stores: [] }, // R1 違反
+    });
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    expect(report.hasMutableViolations).toBe(true);
+    expect(report.violations.some((v) => v.gameTitle === 'Zombie Game')).toBe(true);
+  });
+
+  it('違反がなければ hasMutableViolations=false を返す', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const healthyGame = makeGame({
+      title: 'Healthy Game',
+      normalizedTitle: 'healthy game',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/abc.jpg',
+    });
+    const selected = makeSelectedGames({ newReleases: [healthyGame] });
+
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    expect(report.hasMutableViolations).toBe(false);
+    expect(report.violations).toHaveLength(0);
+  });
+
+  it('featured のみに違反があっても hasMutableViolations=false（fail 対象外）', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const violatingFeatured = makeGame({
+      title: 'Featured Zombie',
+      normalizedTitle: 'featured zombie',
+      sourceUrls: { stores: [] }, // R1 違反
+    });
+    const selected = makeSelectedGames({ featured: violatingFeatured });
+
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    // featured 違反は violations に記録されるが fail 対象にはならない
+    expect(report.violations.some((v) => v.gameTitle === 'Featured Zombie')).toBe(true);
+    expect(report.hasMutableViolations).toBe(false);
   });
 });
 
