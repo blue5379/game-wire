@@ -1,0 +1,121 @@
+[
+  {
+    "issue": 116,
+    "scenario": "IGDB websites null だが Steam に存在（S&box）",
+    "input": {
+      "title": "S&box",
+      "igdbSlug": "s-and-box",
+      "releaseDate": "2026-04-28",
+      "platforms": ["PC"]
+    },
+    "steamSearchMock": {
+      "term": "S&box",
+      "items": [{ "id": 590830, "name": "S&box", "date": "2026-04-28" }]
+    },
+    "steamAppDetailsMock": {
+      "appId": 590830,
+      "name": "S&box",
+      "date": "Apr 28, 2026"
+    },
+    "expected": {
+      "stores": [{ "platform": "steam", "confidence": "high" }]
+    }
+  },
+  {
+    "issue": 46,
+    "scenario": "同名異作品（年差 > 2年でリジェクト）",
+    "input": {
+      "title": "Doom",
+      "releaseDate": "1993-12-10",
+      "platforms": ["PC"]
+    },
+    "steamSearchMock": {
+      "term": "Doom",
+      "items": [{ "id": 2280, "name": "Doom", "date": "2016-05-13" }]
+    },
+    "expected": {
+      "stores": []
+    }
+  },
+  {
+    "issue": 108,
+    "scenario": "日本語タイトルで Steam 解決",
+    "input": {
+      "title": "MECCHA CHAMELEON",
+      "titleJa": "めっちゃカメレオン",
+      "releaseDate": "2024-01-01",
+      "platforms": ["PC"]
+    },
+    "steamSearchMock": {
+      "term": "MECCHA CHAMELEON",
+      "items": [{ "id": 4704690, "name": "MECCHA CHAMELEON", "date": "2024-01-01" }]
+    },
+    "steamAppDetailsMock": {
+      "appId": 4704690,
+      "name": "MECCHA CHAMELEON",
+      "date": "Jan 1, 2024"
+    },
+    "expected": {
+      "stores": [{ "platform": "steam", "confidence": "high" }]
+    }
+  },
+  {
+    "issue": 49,
+    "scenario": "記号タイトル正規化（Half-Life: Alyx）",
+    "input": {
+      "title": "Half-Life: Alyx",
+      "releaseDate": "2020-03-23",
+      "platforms": ["PC"]
+    },
+    "steamSearchMock": {
+      "term": "Half-Life: Alyx",
+      "items": [{ "id": 546560, "name": "Half-Life: Alyx", "date": "2020-03-23" }]
+    },
+    "steamAppDetailsMock": {
+      "appId": 546560,
+      "name": "Half-Life: Alyx",
+      "date": "Mar 23, 2020"
+    },
+    "expected": {
+      "stores": [{ "platform": "steam", "confidence": "high" }]
+    }
+  },
+  {
+    "issue": 103,
+    "scenario": "Switch 専売タイトル（スプラトゥーン3）— Steam に存在しない",
+    "input": {
+      "title": "Splatoon 3",
+      "titleJa": "スプラトゥーン3",
+      "releaseDate": "2022-09-09",
+      "platforms": ["Nintendo Switch"]
+    },
+    "steamSearchMock": {
+      "term": "Splatoon 3",
+      "items": []
+    },
+    "expected": {
+      "stores": []
+    },
+    "expectedSteamEmpty": true
+  },
+  {
+    "issue": 115,
+    "scenario": "IGDB websites に Steam URL がある場合（Elden Ring）",
+    "input": {
+      "title": "Elden Ring",
+      "releaseDate": "2022-02-25",
+      "platforms": ["PC", "PlayStation 5", "Xbox Series X"],
+      "igdbWebsites": [
+        { "url": "https://store.steampowered.com/app/1245620/", "category": 13 }
+      ]
+    },
+    "steamAppDetailsMock": {
+      "appId": 1245620,
+      "name": "ELDEN RING",
+      "date": "Feb 25, 2022"
+    },
+    "expected": {
+      "stores": [{ "platform": "steam", "confidence": "high" }]
+    }
+  }
+]

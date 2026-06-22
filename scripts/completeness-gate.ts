@@ -52,12 +52,12 @@ export type ResolverTrace = Record<
 
 /**
  * 動作モードを環境変数から取得する。
- * DEV_MODE=true のときデフォルト "warn"、それ以外は "replace"。
+ * DEV_MODE=true のときデフォルト "warn"、それ以外は "fail"（PR-6 で本番デフォルト昇格）。
  */
 export function getGateMode(): GateMode {
   const env = process.env.COMPLETENESS_GATE;
   if (env === 'warn' || env === 'replace' || env === 'fail') return env;
-  return process.env.DEV_MODE === 'true' ? 'warn' : 'replace';
+  return process.env.DEV_MODE === 'true' ? 'warn' : 'fail';
 }
 
 const ALLOWED_IMAGE_HOSTS = ['images.igdb.com', 'cdn.cloudflare.steamstatic.com'];
@@ -286,6 +286,15 @@ export async function runCompletenessGate(
     if (!game) continue;
     const v = await checkGame(game, trace);
     report.violations.push(...v);
+  }
+
+  // mode=fail: 違反があれば即終了
+  if (mode === 'fail' && report.violations.length > 0) {
+    console.error('[CompletenessGate] fail: violations detected:');
+    for (const v of report.violations) {
+      console.error(`  [${v.ruleId}] ${v.gameTitle}: ${v.detail}`);
+    }
+    process.exit(1);
   }
 
   // mode=replace: 違反した newReleases/indies を次候補に差し替え
