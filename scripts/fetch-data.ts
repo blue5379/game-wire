@@ -25,6 +25,8 @@ import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
 import { selectNewReleasesWithFallback, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
 import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
+import { runCompletenessGate, getGateMode } from './completeness-gate.js';
+import type { ResolverTrace } from './completeness-gate.js';
 import type {
   SteamData,
   YouTubeData,
@@ -691,7 +693,7 @@ function deduplicateGames(games: GameData[]): GameData[] {
  */
 async function reconcileSelectedGames(
   selectedGames: SelectedGames
-): Promise<void> {
+): Promise<ResolverTrace> {
   const allGames: GameData[] = [
     ...selectedGames.newReleases,
     ...selectedGames.indies,
@@ -763,10 +765,11 @@ async function reconcileSelectedGames(
     }
   }
 
-  // トレースを出力
+  // トレースをファイルに出力し、呼び出し元にも返す（Gate がディスク再読み不要）
   const tracePath = path.join(DATA_DIR, 'identity-resolver-trace.json');
   fs.writeFileSync(tracePath, JSON.stringify(traceOutput, null, 2));
   console.log(`  Identity resolver trace saved to: ${tracePath}`);
+  return traceOutput as ResolverTrace;
 }
 
 /**
@@ -1133,7 +1136,7 @@ async function main(): Promise<void> {
   // 選定済みゲームのストア URL を Identity Resolver で補完・検証（Issue #116 対策）
   console.log('');
   console.log('Reconciling store URLs for selected games via Identity Resolver...');
-  await reconcileSelectedGames(selectedGames);
+  const resolverTrace = await reconcileSelectedGames(selectedGames);
 
   // 選定済みゲームに公式日本語URLを付与
   console.log('');
@@ -1144,6 +1147,32 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Removing zombie games (missing cover or sourceUrl after verification)...');
   removeZombieGames(selectedGames);
+
+  // Completeness Gate: 客観事実の機械検証（LLM 不使用）
+  console.log('');
+  console.log('Running Completeness Gate...');
+  const gateMode = getGateMode();
+  const reservePool: GameData[] = [
+    ...selectedGames.newReleasesReserves,
+    ...selectedGames.indieReserves,
+  ];
+  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode);
+  console.log(`  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, replaced=${gateReport.replacedGames.length}`);
+  if (gateReport.violations.length > 0) {
+    for (const v of gateReport.violations) {
+      console.warn(`  [CompletenessGate] ${v.ruleId} "${v.gameTitle}": ${v.detail}`);
+    }
+  }
+
+  // Gate レポートを出力
+  const isDev = process.env.DEV_MODE === 'true';
+  const reportDir = isDev
+    ? path.join(process.cwd(), 'data', 'validation-dev')
+    : path.join(DATA_DIR);
+  fs.mkdirSync(reportDir, { recursive: true });
+  const reportPath = path.join(reportDir, 'completeness-report.json');
+  fs.writeFileSync(reportPath, JSON.stringify(gateReport, null, 2));
+  console.log(`  Completeness report saved to: ${reportPath}`);
 
   // 統合データの構築
   const aggregatedData: AggregatedData = {
@@ -1165,6 +1194,11 @@ async function main(): Promise<void> {
   const selectedPath = path.join(DATA_DIR, 'selected-games.json');
   fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
   console.log(`Selected games saved to: ${selectedPath}`);
+
+  if (gateMode === 'fail' && gateReport.violations.length > 0) {
+    console.error('  [CompletenessGate] FAIL: violations found, aborting.');
+    process.exit(1);
+  }
 
   // サマリー出力
   console.log('');
