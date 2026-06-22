@@ -388,7 +388,7 @@ async function aggregateGames(
       continue;
     }
 
-    if (!game.coverImage || game.genres.length === 0 || !game.sourceUrls?.steam) {
+    if (!game.coverImage || game.genres.length === 0) {
       // 第2層: 既知の発売年を渡し、検索結果の同名異作品（年が大きく異なる）を拒絶する
       const expectedYear = extractYear(game.releaseDate);
       const igdbGame = await enrichGameWithIGDB(game.title, { expectedYear });
@@ -740,21 +740,24 @@ async function reconcileSelectedGames(
         }
         console.log(`  [Reconcile] "${game.title}": Steam resolved → ${steamStore.url} (confidence=${steamStore.confidence})`);
       } else {
-        // Steam が解決されなかった場合、旧 steam フィールドを削除して誤リンクを防ぐ
-        const hadSteam = !!game.sourceUrls.steam;
-        if (hadSteam) {
-          console.warn(`  [Reconcile] "${game.title}": Steam URL removed (Resolver could not confirm)`);
-          delete game.sourceUrls.steam;
-          // Steam CDN 由来の coverImage も無効化
-          if (legacySteamAppId && game.coverImage?.includes(`/steam/apps/${legacySteamAppId}/`)) {
-            game.coverImage = undefined;
+        // Steam が Resolver で解決されなかった場合:
+        // knownSteamAppId が既知（Steam Top Sellers 由来など信頼できる appId）なら
+        // 一時的な storesearch 失敗の可能性があるため既存 URL を保持する。
+        // appId 不明の場合のみ削除して誤リンクを防ぐ。
+        if (!legacySteamAppId) {
+          const hadSteam = !!game.sourceUrls.steam;
+          if (hadSteam) {
+            console.warn(`  [Reconcile] "${game.title}": Steam URL removed (Resolver could not confirm, no known appId)`);
+            delete game.sourceUrls.steam;
           }
+        } else {
+          console.log(`  [Reconcile] "${game.title}": Steam storesearch failed but knownAppId=${legacySteamAppId}, keeping existing steam URL`);
         }
       }
     } else {
-      // Resolver で1件も解決できなかった場合は既存 steam フィールドをそのまま保持
-      // （sourceUrls.steam が唯一の URL の場合、zombie 除去で落ちる可能性があるが
-      //  Resolver 未対応プラットフォームやレート制限による失敗を救済するため残す）
+      // Resolver で1件も解決できなかった場合:
+      // knownSteamAppId がある場合は storesearch の一時失敗とみなし既存 URL を保持する。
+      // knownSteamAppId もない場合はそもそも steam URL は存在しないはずなので保持しても問題なし。
       console.warn(`  [Reconcile] "${game.title}": no stores resolved, keeping existing sourceUrls`);
     }
   }
