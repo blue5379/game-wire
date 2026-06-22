@@ -9,7 +9,6 @@
       "platforms": ["PC"]
     },
     "steamSearchMock": {
-      "term": "S&box",
       "items": [{ "id": 590830, "name": "S&box", "date": "2026-04-28" }]
     },
     "steamAppDetailsMock": {
@@ -30,7 +29,6 @@
       "platforms": ["PC"]
     },
     "steamSearchMock": {
-      "term": "Doom",
       "items": [{ "id": 2280, "name": "Doom", "date": "2016-05-13" }]
     },
     "expected": {
@@ -47,7 +45,6 @@
       "platforms": ["PC"]
     },
     "steamSearchMock": {
-      "term": "MECCHA CHAMELEON",
       "items": [{ "id": 4704690, "name": "MECCHA CHAMELEON", "date": "2024-01-01" }]
     },
     "steamAppDetailsMock": {
@@ -68,7 +65,6 @@
       "platforms": ["PC"]
     },
     "steamSearchMock": {
-      "term": "Half-Life: Alyx",
       "items": [{ "id": 546560, "name": "Half-Life: Alyx", "date": "2020-03-23" }]
     },
     "steamAppDetailsMock": {
@@ -90,7 +86,6 @@
       "platforms": ["Nintendo Switch"]
     },
     "steamSearchMock": {
-      "term": "Splatoon 3",
       "items": []
     },
     "expected": {

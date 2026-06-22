@@ -39,7 +39,6 @@ interface KnownCase {
     knownSteamAppId?: number;
   };
   steamSearchMock?: {
-    term: string;
     items: { id: number; name: string; date?: string }[];
   };
   steamAppDetailsMock?: {
