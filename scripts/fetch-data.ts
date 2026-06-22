@@ -798,6 +798,19 @@ export function removeZombieGames(selectedGames: SelectedGames): void {
   const { filtered: newReleases, removedCount: removedNewReleases } = filterArray(selectedGames.newReleases, 'newReleases');
   selectedGames.newReleases = newReleases;
 
+  // zombie で抜けた分を reserves から補充（最大 targetCount=2 まで）
+  if (removedNewReleases > 0 && selectedGames.newReleasesReserves.length > 0) {
+    const shortfall = 2 - selectedGames.newReleases.length;
+    const currentTitles = new Set(selectedGames.newReleases.map((g) => g.normalizedTitle));
+    const fills = selectedGames.newReleasesReserves
+      .filter((g) => hasAllRequiredFields(g, required) && !currentTitles.has(g.normalizedTitle))
+      .slice(0, shortfall);
+    if (fills.length > 0) {
+      console.log(`  [ZombieFilter] Filling ${fills.length} newRelease slot(s) from reserves: ${fills.map((g) => g.title).join(', ')}`);
+      selectedGames.newReleases = [...selectedGames.newReleases, ...fills];
+    }
+  }
+
   const { filtered: indies, removedCount: removedIndies } = filterArray(selectedGames.indies, 'indies');
   selectedGames.indies = indies;
 
@@ -938,6 +951,7 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
   const newReleases = newReleasesSelection.adopted;
+  const newReleasesReserves = newReleasesSelection.reserves;
 
   if (newReleasesSelection.rejected.length > 0) {
     console.log('[newReleases] rejected candidates:');
@@ -1033,6 +1047,7 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
 
   return {
     newReleases,
+    newReleasesReserves,
     indies,
     indieReserves,
     featured,

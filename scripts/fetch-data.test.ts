@@ -24,6 +24,7 @@ function makeGame(overrides: Partial<GameData> = {}): GameData {
 function makeSelected(overrides: Partial<SelectedGames> = {}): SelectedGames {
   return {
     newReleases: [],
+    newReleasesReserves: [],
     indies: [],
     indieReserves: [],
     featured: null,

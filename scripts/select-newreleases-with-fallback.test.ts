@@ -85,7 +85,7 @@ describe('hasExistenceEvidence', () => {
 // selectNewReleasesWithFallback — 通常ルート
 // ────────────────────────────────────────────────
 describe('selectNewReleasesWithFallback — 通常ルート', () => {
-  it('ranked=[A,B] どちらも ok → adopted=[A,B]', async () => {
+  it('ranked=[A,B] どちらも ok → adopted=[A,B], reserves=[]', async () => {
     const A = makeGame({ title: 'Game A', normalizedTitle: 'game a' });
     const B = makeGame({ title: 'Game B', normalizedTitle: 'game b' });
     const finishedA = { ...A, developer: 'Pub A', coverImage: 'https://x/a.jpg', sourceUrls: { steam: 'https://s/a' } };
@@ -100,6 +100,7 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted[0].title).toBe('Game A');
     expect(result.adopted[1].title).toBe('Game B');
     expect(result.rejected).toHaveLength(0);
+    expect(result.reserves).toHaveLength(0);
   });
 
   it('A が date-mismatch で reject → B,C から2件採用', async () => {
@@ -213,5 +214,92 @@ describe('selectNewReleasesWithFallback — targetCount の境界値', () => {
     const result = await selectNewReleasesWithFallback(games, 0);
     expect(result.adopted).toHaveLength(0);
     expect(mockFinalize).not.toHaveBeenCalled();
+  });
+});
+
+// ────────────────────────────────────────────────
+// selectNewReleasesWithFallback — reserves
+// ────────────────────────────────────────────────
+describe('selectNewReleasesWithFallback — reserves', () => {
+  it('採用されなかった未試行候補が reserves に入る', async () => {
+    // targetCount=2, maxAttempts=6。A,B が ok → C は未試行 → reserves=[C]
+    const A = makeGame({ title: 'A', normalizedTitle: 'a' });
+    const B = makeGame({ title: 'B', normalizedTitle: 'b' });
+    const C = makeGame({ title: 'C', normalizedTitle: 'c' });
+    const finishedA = { ...A, coverImage: 'c', sourceUrls: { steam: 's' } };
+    const finishedB = { ...B, coverImage: 'c', sourceUrls: { steam: 's' } };
+
+    mockFinalize
+      .mockResolvedValueOnce({ ok: true, game: finishedA })
+      .mockResolvedValueOnce({ ok: true, game: finishedB });
+
+    const result = await selectNewReleasesWithFallback([A, B, C], 2);
+    expect(result.adopted).toHaveLength(2);
+    expect(result.reserves).toHaveLength(1);
+    expect(result.reserves[0].title).toBe('C');
+  });
+
+  it('adopted も rejected もされていないものだけ reserves に入る', async () => {
+    const A = makeGame({ title: 'A', normalizedTitle: 'a' });
+    const B = makeGame({ title: 'B', normalizedTitle: 'b' });
+    const C = makeGame({ title: 'C', normalizedTitle: 'c' });
+    const finishedB = { ...B, coverImage: 'c', sourceUrls: { steam: 's' } };
+
+    mockFinalize
+      .mockResolvedValueOnce({ ok: false, reason: 'still-missing-required' as const, game: A }) // rejected
+      .mockResolvedValueOnce({ ok: true, game: finishedB }); // adopted
+
+    // targetCount=1: B が採用されたら停止。C は未試行 → reserves=[C]
+    const result = await selectNewReleasesWithFallback([A, B, C], 1);
+    expect(result.adopted).toHaveLength(1);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.reserves).toHaveLength(1);
+    expect(result.reserves[0].title).toBe('C');
+  });
+});
+
+// ────────────────────────────────────────────────
+// selectNewReleasesWithFallback — 試行回数上限
+// ────────────────────────────────────────────────
+describe('selectNewReleasesWithFallback — 試行回数上限 (maxAttempts = targetCount * 3)', () => {
+  it('targetCount=2 のとき最大6回試行して停止する', async () => {
+    // 10件候補、全件 reject → 6回で停止し残り4件は reserves に入る
+    const games = Array.from({ length: 10 }, (_, i) =>
+      makeGame({ title: `G${i}`, normalizedTitle: `g${i}` })
+    );
+
+    // 全件 still-missing-required
+    for (let i = 0; i < 10; i++) {
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: games[i],
+      });
+    }
+
+    const result = await selectNewReleasesWithFallback(games, 2);
+    expect(result.adopted).toHaveLength(0);
+    // 最大 2*3=6 回試行
+    expect(mockFinalize).toHaveBeenCalledTimes(6);
+    expect(result.rejected).toHaveLength(6);
+    // 残り4件は reserves に入る
+    expect(result.reserves).toHaveLength(4);
+  });
+
+  it('targetCount=1 のとき最大3回試行して停止する', async () => {
+    const games = Array.from({ length: 5 }, (_, i) =>
+      makeGame({ title: `G${i}`, normalizedTitle: `g${i}` })
+    );
+    for (let i = 0; i < 5; i++) {
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'date-mismatch' as const,
+        game: games[i],
+      });
+    }
+
+    const result = await selectNewReleasesWithFallback(games, 1);
+    expect(mockFinalize).toHaveBeenCalledTimes(3);
+    expect(result.reserves).toHaveLength(2);
   });
 });
