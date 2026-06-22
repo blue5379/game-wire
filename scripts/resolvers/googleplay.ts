@@ -1,38 +1,37 @@
 /**
- * PlayStation Platform Resolver
+ * Google Play Platform Resolver
  *
- * 2経路で PlayStation Store / 公式ページ URL を解決する:
- * 1. IGDB websites に playstation.com 系の URL が含まれる
- * 2. Tavily 検索 "{title}" site:playstation.com/ja-jp → HEAD 200 検証
+ * Tavily 検索 "{title}" site:play.google.com → HEAD 200 検証
+ * IGDB websites に play.google.com が含まれる場合は直接 HEAD 検証する。
  */
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
 import { searchStorePage } from './tavily-search.js';
 
-const PLAYSTATION_URL_PATTERNS = ['playstation.com'];
+const GOOGLEPLAY_URL_PATTERNS = ['play.google.com'];
 
-function isPlayStationUrl(url: string): boolean {
+function isGooglePlayUrl(url: string): boolean {
   const lower = url.toLowerCase();
-  return PLAYSTATION_URL_PATTERNS.some((p) => lower.includes(p));
+  return GOOGLEPLAY_URL_PATTERNS.some((p) => lower.includes(p));
 }
 
-export interface PlayStationResolverInput {
+export interface GooglePlayResolverInput {
   title: string;
   titleJa?: string;
   releaseDate?: string;
   igdbWebsites?: { url: string; category?: number }[];
 }
 
-export interface PlayStationResolverResult {
+export interface GooglePlayResolverResult {
   link: StoreLink | null;
   attempts: { method: string; ok: boolean; reason?: string }[];
 }
 
 /**
- * PlayStation Resolver — 2経路で PS URL を解決する
+ * Google Play Resolver — 2経路で Google Play URL を解決する
  */
-export async function resolvePlayStation(input: PlayStationResolverInput): Promise<PlayStationResolverResult> {
+export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise<GooglePlayResolverResult> {
   const attempts: { method: string; ok: boolean; reason?: string }[] = [];
 
   const queryTitles = [
@@ -40,19 +39,18 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
     ...(input.titleJa ? [input.titleJa] : []),
   ].filter(Boolean);
 
-  // ─── 経路1: IGDB websites（playstation.com 系） ────────────────────────────
+  // ─── 経路1: IGDB websites（play.google.com 系） ────────────────────────────
   if (input.igdbWebsites?.length) {
-    const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url));
-    if (psSite) {
-      const alive = await headOk(psSite.url, 8000);
+    const gpSite = input.igdbWebsites.find((w) => isGooglePlayUrl(w.url));
+    if (gpSite) {
+      const alive = await headOk(gpSite.url, 8000);
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
         return {
           link: {
-            platform: 'playstation',
-            url: psSite.url,
+            platform: 'googleplay',
+            url: gpSite.url,
             resolvedBy: 'igdb-website',
-            // HEAD のみでは名前確認できないため medium とする（将来的に name check を追加予定）
             confidence: 'medium',
           },
           attempts,
@@ -60,14 +58,14 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
       }
       attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
     } else {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no PlayStation URL in IGDB websites' });
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Google Play URL in IGDB websites' });
     }
   } else {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
   // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
-  const candidates = await searchStorePage(queryTitles, 'site:playstation.com/ja-jp', isPlayStationUrl);
+  const candidates = await searchStorePage(queryTitles, 'site:play.google.com', isGooglePlayUrl);
   if (candidates.length > 0) {
     for (const url of candidates) {
       const alive = await headOk(url, 8000);
@@ -75,7 +73,7 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
         attempts.push({ method: 'web-search', ok: true });
         return {
           link: {
-            platform: 'playstation',
+            platform: 'googleplay',
             url,
             resolvedBy: 'web-search',
             confidence: 'medium',
@@ -86,7 +84,7 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
     }
     attempts.push({ method: 'web-search', ok: false, reason: 'all candidates failed HEAD check' });
   } else {
-    attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for PlayStation' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for Google Play' });
   }
 
   return { link: null, attempts };

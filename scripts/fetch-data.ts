@@ -13,7 +13,6 @@ import * as path from 'node:path';
 import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
-import { fetchSteamAppName } from './fetch-steam.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
@@ -24,6 +23,7 @@ import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
 import { hasAllRequiredFields } from './finalize-game-metadata.js';
+import { resolveGameIdentity } from './identity-resolver.js';
 import type {
   SteamData,
   YouTubeData,
@@ -388,7 +388,7 @@ async function aggregateGames(
       continue;
     }
 
-    if (!game.coverImage || game.genres.length === 0 || !game.sourceUrls?.steam) {
+    if (!game.coverImage || game.genres.length === 0) {
       // 第2層: 既知の発売年を渡し、検索結果の同名異作品（年が大きく異なる）を拒絶する
       const expectedYear = extractYear(game.releaseDate);
       const igdbGame = await enrichGameWithIGDB(game.title, { expectedYear });
@@ -435,11 +435,9 @@ async function aggregateGames(
           game.sourceUrls = game.sourceUrls || {};
           game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
         }
-        // IGDBのwebsites(category=13)からSteam URLを補完
-        if (igdbGame.steamUrl && !game.sourceUrls?.steam) {
-          game.sourceUrls = game.sourceUrls || {};
-          game.sourceUrls.steam = igdbGame.steamUrl;
-          // 第3層: Steam appId を保持しておくことで、後段のマージ処理でも強い同一性判定が効く
+        // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+        // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
+        if (igdbGame.steamUrl) {
           const appId = extractSteamAppId(igdbGame.steamUrl);
           if (appId !== undefined && game.steamAppId === undefined) {
             game.steamAppId = appId;
@@ -682,17 +680,15 @@ function deduplicateGames(games: GameData[]): GameData[] {
 }
 
 /**
- * 選定済み6本の Steam URL を Steam Storefront API で検証する
+ * 選定済みゲームのストア URL を Identity Resolver で補完・検証する（設計書 C）
  *
- * Issue #49 対策: IGDB の websites などから採用された Steam URL の appId が
- * 実在するか、また Steam 上の name が IGDB の game.title と十分一致するかを
- * クロスチェックする。失敗した場合は Steam URL を削除し、誤リンクの掲載を防ぐ。
+ * 旧 verifySelectedGamesSteamUrl（削るだけ）を改名・全面書き換え。
+ * Resolver が stores[] を解決し、既存の steam フィールドを Resolver 結果で置き換える。
+ * Resolver でどのプラットフォームも解決できなかった場合のみ「Store 不明」としてそのまま渡す。
  *
- * Steam Top Sellers / Top Played 由来の URL（既に Steam で実在確認済み）は
- * appId と Steam name の整合性が源流で取れているため、ここでは name 一致のみ
- * を緩く確認する。
+ * 解決トレースは data/identity-resolver-trace.json に出力する（観測可能性）。
  */
-async function verifySelectedGamesSteamUrl(
+async function reconcileSelectedGames(
   selectedGames: SelectedGames
 ): Promise<void> {
   const allGames: GameData[] = [
@@ -702,59 +698,74 @@ async function verifySelectedGamesSteamUrl(
     ...(selectedGames.classic ? [selectedGames.classic] : []),
   ];
 
-  for (const game of allGames) {
-    const steamUrl = game.sourceUrls?.steam;
-    if (!steamUrl) continue;
-    const appId = extractSteamAppId(steamUrl);
-    if (appId === undefined) continue;
+  const traceOutput: Record<string, unknown> = {};
 
+  for (const game of allGames) {
+    // 既存の steam フィールドから knownSteamAppId を引き継ぐ
+    const legacySteamAppId =
+      game.steamAppId ??
+      (game.sourceUrls?.steam ? extractSteamAppId(game.sourceUrls.steam) : undefined);
+
+    let resolveResult;
     try {
-      const steamNames = await fetchSteamAppName(appId);
-      if (!steamNames) {
-        console.warn(
-          `  [SteamVerify] appId ${appId} not found on Steam, removing URL: "${game.title}"`
-        );
-        delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) {
-          game.steamAppId = undefined;
-          // Steam CDN フォールバック URL も無効になるためクリア
-          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
-        }
-        continue;
-      }
-      // 英語名・日本語名のいずれか一方でも一致すれば OK とする（Issue #108）。
-      // Steam の name はロケールで切り替わるため、game.title の言語が不明な
-      // 状況で片方だけ比較すると false negative になる。
-      // 英語タイトルゲームは en === ja となるため Set で重複排除する
-      const candidates = Array.from(
-        new Set(
-          [steamNames.en, steamNames.ja].filter(
-            (n): n is string => typeof n === 'string' && n.length > 0
-          )
-        )
-      );
-      const sameName = candidates.some((name) =>
-        isSameGame(
-          { title: game.title, releaseDate: game.releaseDate },
-          { title: name }
-        )
-      );
-      if (!sameName) {
-        const namesShown = candidates.join(' / ');
-        console.warn(
-          `  [SteamVerify] name mismatch for "${game.title}" (appId ${appId} -> "${namesShown}"), removing URL`
-        );
-        delete game.sourceUrls!.steam;
-        if (game.steamAppId === appId) {
-          game.steamAppId = undefined;
-          // Steam CDN フォールバック URL も無効になるためクリア
-          if (game.coverImage?.includes(`/steam/apps/${appId}/`)) game.coverImage = undefined;
-        }
-      }
+      resolveResult = await resolveGameIdentity({
+        title: game.title,
+        titleJa: game.titleJa,
+        igdbSlug: game.igdbSlug,
+        releaseDate: game.releaseDate,
+        igdbWebsites: undefined, // aggregated.json 段階では igdbWebsites は保持していない
+        knownSteamAppId: legacySteamAppId,
+        platforms: game.platforms,
+      });
     } catch (error) {
-      console.warn(`  [SteamVerify] failed for "${game.title}":`, error);
+      console.warn(`  [Reconcile] resolveGameIdentity failed for "${game.title}":`, error);
+      continue;
+    }
+
+    traceOutput[game.title] = resolveResult.trace;
+
+    if (resolveResult.stores.length > 0) {
+      // Resolver 結果で stores[] を上書き
+      game.sourceUrls = game.sourceUrls ?? {};
+      game.sourceUrls.stores = resolveResult.stores;
+
+      // Steam が Resolver で解決された場合: steamAppId / steam フィールドを更新
+      const steamStore = resolveResult.stores.find((s) => s.platform === 'steam');
+      if (steamStore) {
+        // 旧 steam フィールドは Resolver 結果で置き換える（後方互換シム）
+        game.sourceUrls.steam = steamStore.url;
+        const resolvedAppId = extractSteamAppId(steamStore.url);
+        if (resolvedAppId !== undefined) {
+          game.steamAppId = resolvedAppId;
+        }
+        console.log(`  [Reconcile] "${game.title}": Steam resolved → ${steamStore.url} (confidence=${steamStore.confidence})`);
+      } else {
+        // Steam が Resolver で解決されなかった場合:
+        // knownSteamAppId が既知（Steam Top Sellers 由来など信頼できる appId）なら
+        // 一時的な storesearch 失敗の可能性があるため既存 URL を保持する。
+        // appId 不明の場合のみ削除して誤リンクを防ぐ。
+        if (!legacySteamAppId) {
+          const hadSteam = !!game.sourceUrls.steam;
+          if (hadSteam) {
+            console.warn(`  [Reconcile] "${game.title}": Steam URL removed (Resolver could not confirm, no known appId)`);
+            delete game.sourceUrls.steam;
+          }
+        } else {
+          console.log(`  [Reconcile] "${game.title}": Steam storesearch failed but knownAppId=${legacySteamAppId}, keeping existing steam URL`);
+        }
+      }
+    } else {
+      // Resolver で1件も解決できなかった場合:
+      // knownSteamAppId がある場合は storesearch の一時失敗とみなし既存 URL を保持する。
+      // knownSteamAppId もない場合はそもそも steam URL は存在しないはずなので保持しても問題なし。
+      console.warn(`  [Reconcile] "${game.title}": no stores resolved, keeping existing sourceUrls`);
     }
   }
+
+  // トレースを出力
+  const tracePath = path.join(DATA_DIR, 'identity-resolver-trace.json');
+  fs.writeFileSync(tracePath, JSON.stringify(traceOutput, null, 2));
+  console.log(`  Identity resolver trace saved to: ${tracePath}`);
 }
 
 /**
@@ -1086,10 +1097,10 @@ async function main(): Promise<void> {
   console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);
   console.log(`Classic: ${selectedGames.classic?.title || 'None'}`);
 
-  // 選定済みゲームの Steam URL を実在検証（Issue #49 対策）
+  // 選定済みゲームのストア URL を Identity Resolver で補完・検証（Issue #116 対策）
   console.log('');
-  console.log('Verifying Steam URLs for selected games...');
-  await verifySelectedGamesSteamUrl(selectedGames);
+  console.log('Reconciling store URLs for selected games via Identity Resolver...');
+  await reconcileSelectedGames(selectedGames);
 
   // 選定済みゲームに公式日本語URLを付与
   console.log('');
