@@ -1190,11 +1190,13 @@ async function main(): Promise<void> {
     selectedGames = JSON.parse(rawData) as SelectedGames;
     // backward compat: old JSON files predating PR-B may not have indieReserves
     selectedGames.indieReserves ??= [];
+    selectedGames.newReleasesReserves ??= [];
     console.log('Loaded selected games from:', selectedPath);
   } else {
     console.warn('Selected games file not found, using fallback data');
     selectedGames = {
       newReleases: [createFallbackGame('newRelease')],
+      newReleasesReserves: [],
       indies: [], // 選定データなし: 0件で発行
       indieReserves: [],
       featured: null,

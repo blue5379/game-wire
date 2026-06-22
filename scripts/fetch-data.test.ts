@@ -24,6 +24,7 @@ function makeGame(overrides: Partial<GameData> = {}): GameData {
 function makeSelected(overrides: Partial<SelectedGames> = {}): SelectedGames {
   return {
     newReleases: [],
+    newReleasesReserves: [],
     indies: [],
     indieReserves: [],
     featured: null,
@@ -145,6 +146,117 @@ describe('removeZombieGames - Issue #103 zombie ゲーム除去', () => {
 
     // indieReserves は finalize 未済なので触らない
     expect(selected.indieReserves).toHaveLength(1);
+  });
+
+  it('zombie 除去後に newReleasesReserves から不足分を補充する', () => {
+    const zombie = makeGame({
+      title: 'Zombie New',
+      normalizedTitle: 'zombie new',
+      coverImage: 'https://example.com/cover.jpg',
+      // sourceUrls なし → zombie
+    });
+    const survivor = makeGame({
+      title: 'Survivor',
+      normalizedTitle: 'survivor',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1' },
+    });
+    const reserve = makeGame({
+      title: 'Reserve Fill',
+      normalizedTitle: 'reserve fill',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/2' },
+    });
+    const selected = makeSelected({
+      newReleases: [zombie, survivor],
+      newReleasesReserves: [reserve],
+    });
+
+    removeZombieGames(selected);
+
+    expect(selected.newReleases).toHaveLength(2);
+    expect(selected.newReleases.map((g) => g.title)).toContain('Survivor');
+    expect(selected.newReleases.map((g) => g.title)).toContain('Reserve Fill');
+  });
+
+  it('reserves に条件を満たすものがなければ補充しない（cover 欠落の reserve は使わない）', () => {
+    const zombie = makeGame({
+      title: 'Zombie',
+      normalizedTitle: 'zombie',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1' },
+      // coverImage なし → zombie
+    });
+    const badReserve = makeGame({
+      title: 'Bad Reserve',
+      normalizedTitle: 'bad reserve',
+      // coverImage なし → hasAllRequiredFields 不通過
+      sourceUrls: { steam: 'https://store.steampowered.com/app/3' },
+    });
+    const selected = makeSelected({
+      newReleases: [zombie],
+      newReleasesReserves: [badReserve],
+    });
+
+    removeZombieGames(selected);
+
+    expect(selected.newReleases).toHaveLength(0);
+  });
+
+  it('zombie がなければ reserves に手を付けない', () => {
+    const ok = makeGame({
+      title: 'OK Game',
+      normalizedTitle: 'ok game',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1' },
+    });
+    const reserve = makeGame({
+      title: 'Reserve',
+      normalizedTitle: 'reserve',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/2' },
+    });
+    const selected = makeSelected({
+      newReleases: [ok],
+      newReleasesReserves: [reserve],
+    });
+
+    removeZombieGames(selected);
+
+    // zombie なし → reserves は使わず newReleases は1件のまま
+    expect(selected.newReleases).toHaveLength(1);
+    expect(selected.newReleases[0].title).toBe('OK Game');
+  });
+
+  it('reserve が既に newReleases にいるタイトルと重複していれば補充しない', () => {
+    const zombie = makeGame({
+      title: 'Zombie',
+      normalizedTitle: 'zombie',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1' },
+      // coverImage なし
+    });
+    const survivor = makeGame({
+      title: 'Survivor',
+      normalizedTitle: 'survivor',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/2' },
+    });
+    // reserves に survivor と同じ normalizedTitle を持つゲームが入っている
+    const duplicateReserve = makeGame({
+      title: 'Survivor',
+      normalizedTitle: 'survivor',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { official: 'https://example.com' },
+    });
+    const selected = makeSelected({
+      newReleases: [zombie, survivor],
+      newReleasesReserves: [duplicateReserve],
+    });
+
+    removeZombieGames(selected);
+
+    // zombie 除去後 1件、reserve は重複なので補充されず 1件のまま
+    expect(selected.newReleases).toHaveLength(1);
+    expect(selected.newReleases[0].title).toBe('Survivor');
   });
 });
 
