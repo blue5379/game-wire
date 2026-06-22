@@ -22,6 +22,7 @@ import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
+import { selectNewReleasesWithFallback, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
 import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
 import type {
@@ -919,8 +920,8 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     console.log(`  classic cooldown: ${[...classicCooldown].join(', ')}`);
   }
 
-  // 大手企業の新作（最近リリースされた、開発会社がある、スコアが高い）
-  const recentGames = games
+  // 大手企業の新作: 品質ゲート・実存フィルタ適用後にスコア降順で採用+予備差し替え
+  const recentGamesCandidates = games
     .filter((g) => {
       if (!g.releaseDate) return false;
       const releaseDate = new Date(g.releaseDate);
@@ -928,11 +929,28 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
       threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
       return releaseDate > threeMonthsAgo;
     })
-    .filter((g) => g.publisher || g.developer)
+    .filter((g) => !isFanGame(g))
+    .filter((g) => isQualifiedGame(g))
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => hasExistenceEvidence(g))
     .filter((g) => !newReleaseCooldown.has(g.normalizedTitle))
     .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
 
-  const newReleases = recentGames.slice(0, 2);
+  const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
+  const newReleases = newReleasesSelection.adopted;
+
+  if (newReleasesSelection.rejected.length > 0) {
+    console.log('[newReleases] rejected candidates:');
+    for (const r of newReleasesSelection.rejected) {
+      console.log(`  - ${r.title}: ${r.reason}`);
+    }
+  }
+
+  if (newReleases.length === 0) {
+    console.warn('[Warning] newReleases採用0件 — 新作記事は生成されません');
+  } else if (newReleases.length < 2) {
+    console.warn(`[Warning] newReleases採用${newReleases.length}件 — 2件未満で発行します`);
+  }
 
   // インディーゲーム候補（大手スタジオと確定できるものだけ除外）
   // developer=undefined は 'no-developer' で ok:false になるが、候補プールには含める。
