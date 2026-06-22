@@ -1184,11 +1184,6 @@ async function main(): Promise<void> {
   fs.writeFileSync(reportPath, JSON.stringify(gateReport, null, 2));
   console.log(`  Completeness report saved to: ${reportPath}`);
 
-  if (gateMode === 'fail' && gateReport.violations.length > 0) {
-    console.error('  [CompletenessGate] FAIL: violations found, aborting.');
-    process.exit(1);
-  }
-
   // 統合データの構築
   const aggregatedData: AggregatedData = {
     games,
@@ -1209,6 +1204,11 @@ async function main(): Promise<void> {
   const selectedPath = path.join(DATA_DIR, 'selected-games.json');
   fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
   console.log(`Selected games saved to: ${selectedPath}`);
+
+  if (gateMode === 'fail' && gateReport.violations.length > 0) {
+    console.error('  [CompletenessGate] FAIL: violations found, aborting.');
+    process.exit(1);
+  }
 
   // サマリー出力
   console.log('');

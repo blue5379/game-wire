@@ -526,6 +526,39 @@ describe('runCompletenessGate: mode=replace', () => {
 // Resolver trace と R2 の結合テスト
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: usedTitles の stale エントリ修正の回帰テスト
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: 違反ゲームの normalizedTitle が予備候補をブロックしない', () => {
+  it('違反した newRelease と同じ normalizedTitle を持つ予備候補が差し替えに使われる', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    // 違反ゲーム（R1違反）— normalizedTitle='shared-title'
+    const violatingRelease = makeGame({
+      title: 'Shared Title',
+      normalizedTitle: 'shared-title',
+      sourceUrls: { stores: [] }, // R1 違反
+    });
+
+    // 予備候補：正常だが normalizedTitle が違反ゲームと同じ（リマスター版など）
+    const reserveWithSameNorm = makeGame({
+      title: 'Shared Title Remaster',
+      normalizedTitle: 'shared-title', // 修正前は usedTitles に残った 'shared-title' にブロックされた
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/xyz.jpg',
+    });
+
+    const selected = makeSelectedGames({ newReleases: [violatingRelease] });
+    const report = await runCompletenessGate(selected, undefined, [reserveWithSameNorm], 'replace');
+
+    // 修正後：違反ゲームの normalizedTitle が usedTitles から除外されるため予備候補が採用される
+    expect(report.replacedGames).toContain('Shared Title Remaster');
+    expect(selected.newReleases.some((g) => g.title === 'Shared Title Remaster')).toBe(true);
+    expect(selected.newReleases.some((g) => g.title === 'Shared Title')).toBe(false);
+  });
+});
+
 describe('R2: Resolver trace との結合', () => {
   it('S&box: Steam が解決済みだが stores に乗っていない → R2 違反が検知される', async () => {
     mockHeadOk.mockResolvedValue(true);

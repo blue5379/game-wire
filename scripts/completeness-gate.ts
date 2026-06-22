@@ -283,13 +283,20 @@ export async function runCompletenessGate(
 
   // mode=replace: 違反した newReleases/indies を次候補に差し替え
   if (mode === 'replace' && violatingTitles.size > 0) {
+    // 全スロットの使用中タイトルから違反ゲームを除外して dedup セットを構築する。
+    // 違反ゲームは差し替えで除去されるため、その normalizedTitle をブロックしたままにすると
+    // 同じ normalizedTitle を持つ予備候補が不当に弾かれる（レビュー指摘 #2）。
     const usedTitles = new Set([
-      ...selectedGames.newReleases.map((g) => g.normalizedTitle),
-      ...selectedGames.indies.map((g) => g.normalizedTitle),
+      ...selectedGames.newReleases
+        .filter((g) => !violatingTitles.has(g.title))
+        .map((g) => g.normalizedTitle),
+      ...selectedGames.indies
+        .filter((g) => !violatingTitles.has(g.title))
+        .map((g) => g.normalizedTitle),
     ]);
 
     for (const { key, arr } of mutableArrays) {
-      const targetCount = key === 'newReleases' ? 2 : 2;
+      const targetCount = 2;
       const healthy = arr.filter((g) => !violatingTitles.has(g.title));
       const needed = targetCount - healthy.length;
 
