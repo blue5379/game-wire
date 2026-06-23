@@ -79,6 +79,9 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
   const stores: StoreLink[] = [];
   const trace: ResolveOutput['trace'] = {};
 
+  if (!input.platforms?.length) {
+    console.warn(`[identity-resolver] platforms is empty for "${input.title}" — Nintendo/PS/Xbox resolvers will be skipped`);
+  }
   const isNintendo = hasNintendoPlatform(input.platforms);
   const isPlayStation = hasPlayStationPlatform(input.platforms);
   const isXbox = hasXboxPlatform(input.platforms);

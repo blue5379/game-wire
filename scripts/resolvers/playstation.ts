@@ -12,9 +12,18 @@ import { searchStorePage } from './tavily-search.js';
 
 const PLAYSTATION_URL_PATTERNS = ['playstation.com'];
 
+// playstation.com 内でゲームページではないパス
+const PLAYSTATION_NON_GAME_PATH_PATTERNS = ['/news/', '/press/', '/blog/', '/corporate/', '/support/', '/legal/', '/sitemap'];
+
 function isPlayStationUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return PLAYSTATION_URL_PATTERNS.some((p) => lower.includes(p));
+}
+
+function isPlayStationGamePage(url: string): boolean {
+  if (!isPlayStationUrl(url)) return false;
+  const lower = url.toLowerCase();
+  return !PLAYSTATION_NON_GAME_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 
 export interface PlayStationResolverInput {
@@ -43,7 +52,11 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
   // ─── 経路1: IGDB websites（playstation.com 系） ────────────────────────────
   if (input.igdbWebsites?.length) {
     const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url));
-    if (psSite) {
+    if (!psSite) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'no PlayStation URL in IGDB websites' });
+    } else if (!isPlayStationGamePage(psSite.url)) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'PlayStation URL is not a game page (news/press/blog path)' });
+    } else {
       const alive = await headOk(psSite.url, 8000);
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
@@ -59,17 +72,16 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
         };
       }
       attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
-    } else {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no PlayStation URL in IGDB websites' });
     }
   } else {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
   const candidates = await searchStorePage(queryTitles, 'site:playstation.com/ja-jp', isPlayStationUrl);
-  if (candidates.length > 0) {
-    for (const url of candidates) {
+  const gamePageCandidates = candidates.filter(isPlayStationGamePage);
+  if (gamePageCandidates.length > 0) {
+    for (const url of gamePageCandidates) {
       const alive = await headOk(url, 8000);
       if (alive) {
         attempts.push({ method: 'web-search', ok: true });
@@ -84,7 +96,9 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
         };
       }
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all candidates failed HEAD check' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check' });
+  } else if (candidates.length > 0) {
+    attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (news/press/blog)' });
   } else {
     attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for PlayStation' });
   }

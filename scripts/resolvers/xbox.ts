@@ -12,9 +12,18 @@ import { searchStorePage } from './tavily-search.js';
 
 const XBOX_URL_PATTERNS = ['xbox.com', 'microsoft.com/ja-jp/p/', 'microsoft.com/en-us/p/'];
 
+// xbox.com / microsoft.com 内でゲームページではないパス
+const XBOX_NON_GAME_PATH_PATTERNS = ['/news/', '/press/', '/blog/', '/support/', '/legal/', '/corporate/', '/sitemap'];
+
 function isXboxUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return XBOX_URL_PATTERNS.some((p) => lower.includes(p));
+}
+
+function isXboxGamePage(url: string): boolean {
+  if (!isXboxUrl(url)) return false;
+  const lower = url.toLowerCase();
+  return !XBOX_NON_GAME_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 
 export interface XboxResolverInput {
@@ -43,7 +52,11 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
   // ─── 経路1: IGDB websites（xbox.com 系） ────────────────────────────────────
   if (input.igdbWebsites?.length) {
     const xboxSite = input.igdbWebsites.find((w) => isXboxUrl(w.url));
-    if (xboxSite) {
+    if (!xboxSite) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Xbox URL in IGDB websites' });
+    } else if (!isXboxGamePage(xboxSite.url)) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'Xbox URL is not a game page (news/press/blog path)' });
+    } else {
       const alive = await headOk(xboxSite.url, 8000);
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
@@ -58,19 +71,18 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
         };
       }
       attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
-    } else {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Xbox URL in IGDB websites' });
     }
   } else {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
   // ja-JP と en-US の両スコープを試みる（ja-JP ページがない Western タイトルを救済）
   const jaJpCandidates = await searchStorePage(queryTitles, 'site:xbox.com/ja-JP/games', isXboxUrl);
-  const candidates = jaJpCandidates.length > 0
+  const rawCandidates = jaJpCandidates.length > 0
     ? jaJpCandidates
     : await searchStorePage(queryTitles, 'site:xbox.com/en-US/games', isXboxUrl);
+  const candidates = rawCandidates.filter(isXboxGamePage);
   if (candidates.length > 0) {
     for (const url of candidates) {
       const alive = await headOk(url, 8000);
@@ -87,7 +99,9 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
         };
       }
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all candidates failed HEAD check' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check' });
+  } else if (rawCandidates.length > 0) {
+    attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (news/press/blog)' });
   } else {
     attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for Xbox' });
   }
