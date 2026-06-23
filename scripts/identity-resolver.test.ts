@@ -424,3 +424,103 @@ describe('PlayStation IGDB websites 経路', () => {
     expect(psLink?.url).toBe('https://www.playstation.com/ja-jp/games/god-of-war/');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// プラットフォーム条件付き実行のテスト
+// ─────────────────────────────────────────────────────────────────────────────
+describe('プラットフォーム条件付き実行', () => {
+  it('Xbox/PC 専売ゲームに Nintendo/PlayStation resolver が実行されない（platforms に Switch/PS なし）', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([{ id: 1663850, name: 'Replaced', date: '2026-04-14' }]));
+      }
+      if (url.includes('appdetails') && url.includes('1663850')) {
+        return Promise.resolve(makeSteamAppDetailsResponse(1663850, 'Replaced', 'Apr 14, 2026'));
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Replaced',
+      releaseDate: '2026-04-14',
+      platforms: ['Xbox Series X|S', 'PC (Microsoft Windows)', 'Xbox One'],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    const psLink = result.stores.find((s) => s.platform === 'playstation');
+    const steamLink = result.stores.find((s) => s.platform === 'steam');
+
+    // Nintendo と PS は platforms に含まれないため skipped
+    expect(nintendoLink).toBeUndefined();
+    expect(psLink).toBeUndefined();
+    expect(result.trace.nintendo?.attempts[0].method).toBe('skipped');
+    expect(result.trace.playstation?.attempts[0].method).toBe('skipped');
+    // Xbox は platforms に含まれるため実行される（trace に skipped が記録されない）
+    expect(result.trace.xbox?.attempts[0].method).not.toBe('skipped');
+    // Steam は常時実行
+    expect(steamLink).toBeDefined();
+  });
+
+  it('PC/Switch ゲームに PlayStation/Xbox resolver が実行されない', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([{ id: 9999999, name: 'Dark Scrolls', date: '2025-01-01' }]));
+      }
+      if (url.includes('appdetails') && url.includes('9999999')) {
+        return Promise.resolve(makeSteamAppDetailsResponse(9999999, 'Dark Scrolls', 'Jan 1, 2025'));
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Dark Scrolls',
+      releaseDate: '2025-01-01',
+      platforms: ['PC (Microsoft Windows)', 'Nintendo Switch'],
+    });
+
+    const psLink = result.stores.find((s) => s.platform === 'playstation');
+    const xboxLink = result.stores.find((s) => s.platform === 'xbox');
+
+    expect(psLink).toBeUndefined();
+    expect(xboxLink).toBeUndefined();
+    expect(result.trace.playstation?.attempts[0].method).toBe('skipped');
+    expect(result.trace.xbox?.attempts[0].method).toBe('skipped');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Nintendo resolver — ゲームページでない URL のフィルタリング
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Nintendo resolver — 非ゲームページ URL のフィルタリング', () => {
+  it('IGDB websites の Nintendo URL が /ir/ パスなら採用しない', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      // IR PDF への HEAD リクエストは 200 を返す（実際には誤リンクになる）
+      if (url.includes('nintendo.co.jp/ir/')) {
+        return Promise.resolve({ ok: true, status: 200 } as Response);
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Dark Scrolls',
+      releaseDate: '2025-01-01',
+      platforms: ['Nintendo Switch', 'PC (Microsoft Windows)'],
+      igdbWebsites: [
+        { url: 'https://www.nintendo.co.jp/ir/pdf/2021/210607e.pdf', category: 52 },
+      ],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    expect(nintendoLink).toBeUndefined();
+    // 非ゲームページとして reject されている
+    const igdbAttempt = result.trace.nintendo?.attempts.find((a) => a.method === 'igdb-website');
+    expect(igdbAttempt?.ok).toBe(false);
+    expect(igdbAttempt?.reason).toContain('not a game page');
+  });
+});
