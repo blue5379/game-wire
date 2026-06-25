@@ -23,11 +23,13 @@ export async function extractPageTitle(url: string, timeoutMs = 8000): Promise<s
     while (totalBytes < 50 * 1024) {
       const { done, value } = await reader.read();
       if (done) break;
-      text += decoder.decode(value, { stream: !done });
+      text += decoder.decode(value, { stream: true });
       totalBytes += value.length;
       // </head> が見つかれば以降は不要
       if (text.includes('</head>')) break;
     }
+    // 内部バッファに残るマルチバイト境界文字をフラッシュ（日本語タイトル対策）
+    text += decoder.decode();
     reader.cancel().catch(() => {});
 
     // og:title を優先
