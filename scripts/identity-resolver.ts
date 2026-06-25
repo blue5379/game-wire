@@ -38,35 +38,53 @@ export interface ResolveOutput {
   trace: Partial<Record<StorePlatform, PlatformTrace>>;
 }
 
-/**
- * プラットフォーム名リストに mobile 系キーワードが含まれるか判定
- */
-function hasMobilePlatform(platforms?: string[]): boolean {
+function hasPlatformKeyword(platforms: string[] | undefined, keywords: string[]): boolean {
   if (!platforms?.length) return false;
   return platforms.some((p) => {
     const lower = p.toLowerCase();
-    return (
-      lower.includes('ios') ||
-      lower.includes('android') ||
-      lower.includes('mobile') ||
-      lower.includes('iphone') ||
-      lower.includes('ipad')
-    );
+    return keywords.some((kw) => lower.includes(kw));
   });
+}
+
+function hasNintendoPlatform(platforms?: string[]): boolean {
+  return hasPlatformKeyword(platforms, ['nintendo', 'switch']);
+}
+
+function hasPlayStationPlatform(platforms?: string[]): boolean {
+  return hasPlatformKeyword(platforms, ['playstation', 'ps3', 'ps4', 'ps5']);
+}
+
+function hasXboxPlatform(platforms?: string[]): boolean {
+  return hasPlatformKeyword(platforms, ['xbox']);
+}
+
+function hasMobilePlatform(platforms?: string[]): boolean {
+  return hasPlatformKeyword(platforms, ['ios', 'android', 'mobile', 'iphone', 'ipad']);
+}
+
+function skippedResult(reason: string) {
+  return Promise.resolve({ link: null, attempts: [{ method: 'skipped', ok: false, reason }] });
 }
 
 /**
  * ゲームのマルチプラットフォームストア URL を一元解決する
  *
- * 実行ポリシー（設計書より）:
+ * 実行ポリシー:
  * - Steam: platforms に依らず常時実行
- * - Nintendo / PlayStation / Xbox: 常時実行
+ * - Nintendo / PlayStation / Xbox: game.platforms にそのプラットフォームが含まれる場合のみ実行
+ *   （platforms が空・未設定の場合もスキップ）
  * - iOS / Android: platforms に "iOS" / "Android" / "mobile" 系が含まれる場合のみ実行
  */
 export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveOutput> {
   const stores: StoreLink[] = [];
   const trace: ResolveOutput['trace'] = {};
 
+  if (!input.platforms?.length) {
+    console.warn(`[identity-resolver] platforms is empty for "${input.title}" — Nintendo/PS/Xbox resolvers will be skipped`);
+  }
+  const isNintendo = hasNintendoPlatform(input.platforms);
+  const isPlayStation = hasPlayStationPlatform(input.platforms);
+  const isXbox = hasXboxPlatform(input.platforms);
   const isMobile = hasMobilePlatform(input.platforms);
 
   const resolverCommon = {
@@ -76,7 +94,6 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
     igdbWebsites: input.igdbWebsites,
   };
 
-  // Steam / Nintendo / PlayStation / Xbox は常時並列実行
   const [steamResult, nintendoResult, psResult, xboxResult] = await Promise.all([
     resolveSteam({
       title: input.title,
@@ -86,9 +103,9 @@ export async function resolveGameIdentity(input: ResolveInput): Promise<ResolveO
       igdbWebsites: input.igdbWebsites,
       knownSteamAppId: input.knownSteamAppId,
     }),
-    resolveNintendo(resolverCommon),
-    resolvePlayStation(resolverCommon),
-    resolveXbox(resolverCommon),
+    isNintendo ? resolveNintendo(resolverCommon) : skippedResult('not a Nintendo platform game'),
+    isPlayStation ? resolvePlayStation(resolverCommon) : skippedResult('not a PlayStation platform game'),
+    isXbox ? resolveXbox(resolverCommon) : skippedResult('not an Xbox platform game'),
   ]);
 
   trace.steam = { attempts: steamResult.attempts };

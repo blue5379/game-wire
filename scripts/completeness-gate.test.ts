@@ -18,6 +18,7 @@ vi.mock('./url-health.js', () => ({
 import { headOk } from './url-health.js';
 
 import {
+  checkR0,
   checkR1,
   checkR2,
   checkR2b,
@@ -184,6 +185,44 @@ describe('traceHasConfidentResult', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// R0: プラットフォームデータ欠損チェック
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('R0: プラットフォームデータ欠損チェック', () => {
+  it('platforms が空配列 → R0 違反', () => {
+    const game = makeGame({ platforms: [] });
+    const v = checkR0(game);
+    expect(v).not.toBeNull();
+    expect(v?.ruleId).toBe('R0');
+  });
+
+  it('platforms が undefined → R0 違反', () => {
+    const game = makeGame({ platforms: undefined as unknown as string[] });
+    const v = checkR0(game);
+    expect(v).not.toBeNull();
+    expect(v?.ruleId).toBe('R0');
+  });
+
+  it('platforms に値がある → 違反なし', () => {
+    const game = makeGame({ platforms: ['PC'] });
+    expect(checkR0(game)).toBeNull();
+  });
+
+  it('R0 違反は hasMutableViolations に影響しない（warn-only）', async () => {
+    mockHeadOk.mockResolvedValue(true);
+    const game = makeGame({
+      title: 'Platformless Game',
+      platforms: [],
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+    });
+    const selected = makeSelectedGames({ newReleases: [game] });
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+    expect(report.violations.some((v) => v.ruleId === 'R0')).toBe(true);
+    expect(report.hasMutableViolations).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // R1: ストアリンク最低1件
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -317,6 +356,17 @@ describe('R2b: 他プラットフォーム取りこぼし検知', () => {
     const violations = checkR2b(game, trace);
     expect(violations.filter((v) => v.detail.includes('Nintendo'))).toHaveLength(0);
     expect(violations.filter((v) => v.detail.includes('Xbox'))).toHaveLength(0);
+  });
+
+  it('platforms に "PS4" のみ（"playstation" を含まない）でも R2b 対象になる', () => {
+    const game = makeGame({
+      title: 'Some PS4 Game',
+      platforms: ['PS4'],
+      sourceUrls: { stores: [] },
+    });
+    const trace = makeTrace('Some PS4 Game', 'playstation', [{ method: 'igdb-website', ok: true }]);
+    const violations = checkR2b(game, trace);
+    expect(violations.some((v) => v.detail.includes('PlayStation'))).toBe(true);
   });
 
   it('PS+Switch マルチ対応ゲームで両方の trace が ok=true → Nintendo と PS 両方の R2b 違反', () => {

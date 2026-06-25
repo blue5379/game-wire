@@ -12,9 +12,18 @@ import { searchStorePage } from './tavily-search.js';
 
 const NINTENDO_URL_PATTERNS = ['nintendo.com', 'nintendo.co.jp'];
 
+// nintendo.co.jp 内でゲームページではないパス
+const NINTENDO_NON_GAME_PATH_PATTERNS = ['/ir/', '/news/', '/press/', '/pdf/', '/csr/', '/investors/', '/corporate/'];
+
 function isNintendoUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return NINTENDO_URL_PATTERNS.some((p) => lower.includes(p));
+}
+
+function isNintendoGamePage(url: string): boolean {
+  if (!isNintendoUrl(url)) return false;
+  const lower = url.toLowerCase();
+  return !NINTENDO_NON_GAME_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 
 export interface NintendoResolverInput {
@@ -43,7 +52,11 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
   // ─── 経路1: IGDB websites（nintendo.com / nintendo.co.jp 系） ─────────────
   if (input.igdbWebsites?.length) {
     const nintendoSite = input.igdbWebsites.find((w) => isNintendoUrl(w.url));
-    if (nintendoSite) {
+    if (!nintendoSite) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Nintendo URL in IGDB websites' });
+    } else if (!isNintendoGamePage(nintendoSite.url)) {
+      attempts.push({ method: 'igdb-website', ok: false, reason: 'Nintendo URL is not a game page (IR/news/press/pdf path)' });
+    } else {
       const alive = await headOk(nintendoSite.url, 8000);
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
@@ -59,17 +72,16 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
         };
       }
       attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
-    } else {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Nintendo URL in IGDB websites' });
     }
   } else {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
   const candidates = await searchStorePage(queryTitles, 'site:nintendo.co.jp', isNintendoUrl);
-  if (candidates.length > 0) {
-    for (const url of candidates) {
+  const gamePageCandidates = candidates.filter(isNintendoGamePage);
+  if (gamePageCandidates.length > 0) {
+    for (const url of gamePageCandidates) {
       const alive = await headOk(url, 8000);
       if (alive) {
         attempts.push({ method: 'web-search', ok: true });
@@ -84,7 +96,9 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
         };
       }
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all candidates failed HEAD check' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check' });
+  } else if (candidates.length > 0) {
+    attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (IR/news/press/pdf)' });
   } else {
     attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for Nintendo' });
   }
