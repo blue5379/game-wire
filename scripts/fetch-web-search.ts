@@ -303,20 +303,25 @@ const OFFICIAL_PAGE_MAX_LENGTH = 3000;
  * SteamストアページおよびOfficialページの内容をTavily extractで取得する。
  * 取得失敗時はスキップして警告ログのみ（ビルド継続）。
  *
- * officialUrlSource が 'igdb-fallback' の場合は品質保証がないためスキップ。
+ * Issue #117: 'igdb-fallback' ソースは廃止された（pickOfficialUrlFromWebsites が
+ * category=1 限定になり、機械フォールバックを行わなくなった）。
+ * generated-articles.json 等のキャッシュ互換で過去の値が来ても採用しないよう、
+ * 'tavily' | 'igdb-official' のいずれかでない場合は extract をスキップする。
  */
 export async function fetchOfficialPageContents(params: {
   steamUrl?: string;
   officialUrl?: string;
-  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback';
+  officialUrlSource?: string;
 }): Promise<{ steamContent?: string; officialContent?: string; failures: number }> {
   const { steamUrl, officialUrl, officialUrlSource } = params;
+  const isTrustedOfficialSource =
+    officialUrlSource === 'tavily' || officialUrlSource === 'igdb-official';
 
   const urlsToFetch: { url: string; key: 'steam' | 'official' }[] = [];
   if (steamUrl) {
     urlsToFetch.push({ url: steamUrl, key: 'steam' });
   }
-  if (officialUrl && officialUrlSource !== 'igdb-fallback') {
+  if (officialUrl && isTrustedOfficialSource) {
     urlsToFetch.push({ url: officialUrl, key: 'official' });
   }
 

@@ -57,7 +57,7 @@ export interface IGDBGame {
   ratingCount?: number;
   steamUrl?: string;
   officialUrl?: string; // IGDB websites から推定した公式サイトURL
-  officialUrlSource?: 'igdb-official' | 'igdb-fallback'; // officialUrl の由来
+  officialUrlSource?: 'igdb-official'; // officialUrl の由来。category=1 タグ付きのみ採用（Issue #117）
   websites?: { url: string; category: number }[]; // IGDB raw websites（Identity Resolver に引き渡すため）
 }
 
@@ -169,7 +169,13 @@ export interface StoreLink {
 export interface SourceUrls {
   /** 公式日本語ページ（既存） */
   official?: string;
-  officialUrlSource?: 'tavily' | 'igdb-official' | 'igdb-fallback';
+  /**
+   * officialUrl の由来。
+   * Issue #117 で 'igdb-fallback'（category=1 タグ無しで機械採用）は廃止。
+   * 既存の generated-articles.json などキャッシュとの互換のため文字列としては読み込み可能だが、
+   * build-issue.ts の最終ゲートで 'tavily' | 'igdb-official' 以外は採用しない。
+   */
+  officialUrlSource?: 'tavily' | 'igdb-official';
   /** プラットフォーム別ストアリンク（複数） */
   stores?: StoreLink[];
   /** 補助リンク（既存、後方互換） */

@@ -44,7 +44,7 @@ const storeLinkSchema = z.object({
 
 const sourceUrlsSchema = z.object({
   official: z.string().optional(),
-  officialUrlSource: z.enum(['tavily', 'igdb-official', 'igdb-fallback']).optional(),
+  officialUrlSource: z.enum(['tavily', 'igdb-official']).optional(),
   stores: z.array(storeLinkSchema).optional(),
   igdb: z.string().optional(),
   metacritic: z.string().optional(),

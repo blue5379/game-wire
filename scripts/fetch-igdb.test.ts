@@ -66,7 +66,7 @@ describe('isRelevantSearchResult', () => {
 });
 
 describe('pickOfficialUrlFromWebsites', () => {
-  it('category=1 のサイトを優先', () => {
+  it('category=1 のサイトを採用', () => {
     expect(
       pickOfficialUrlFromWebsites([
         { url: 'https://en.wikipedia.org/wiki/Foo', category: 3 },
@@ -75,45 +75,39 @@ describe('pickOfficialUrlFromWebsites', () => {
     ).toBe('https://example.com/official');
   });
 
-  it('category 不在時は非SNS・非ストアの最初のURLを採用', () => {
+  it('空配列・undefined は undefined', () => {
+    expect(pickOfficialUrlFromWebsites([])).toBeUndefined();
+    expect(pickOfficialUrlFromWebsites(undefined)).toBeUndefined();
+  });
+
+  // Issue #117: ブロックリスト方式から許可リスト方式（category=1 のみ）へ転換。
+  // 過去のフォールバック（非SNS・非ストアの先頭URLを機械採用）は
+  // 無関係なスタジオサイトを採用してしまう構造的欠陥があったため廃止。
+  it('Issue #117: category=1 が無ければ undefined（非SNS・非ストアURLでもフォールバック採用しない）', () => {
+    // 過去はこの並びで ioi.dk のURLを返していたが、現在は category=1 不在のため undefined。
     expect(
       pickOfficialUrlFromWebsites([
         { url: 'https://x.com/foo' },
         { url: 'https://store.steampowered.com/app/123' },
         { url: 'https://ioi.dk/007firstlightgame' },
       ])
-    ).toBe('https://ioi.dk/007firstlightgame');
+    ).toBeUndefined();
   });
 
-  it('Wikipedia/Wiki/Fandom は採用しない', () => {
+  it('Issue #117: category=1 が無い無関係サイトは採用しない（theminesa.studio パターン回帰防止）', () => {
+    // Dungeon Blitz R の IGDB websites に theminesa.studio が登録されていた事象。
+    // 旧フォールバックでは採用されていたが、新仕様では弾く。
+    expect(
+      pickOfficialUrlFromWebsites([{ url: 'https://theminesa.studio/' }])
+    ).toBeUndefined();
+  });
+
+  it('Issue #117: Wikipedia/Wiki/Fandom は category=1 が無ければ採用しない', () => {
     expect(
       pickOfficialUrlFromWebsites([
         { url: 'https://en.wikipedia.org/wiki/Foo' },
         { url: 'https://foo.fandom.com/wiki/Bar' },
       ])
     ).toBeUndefined();
-  });
-
-  it('全て非公式パターンなら undefined', () => {
-    expect(
-      pickOfficialUrlFromWebsites([
-        { url: 'https://x.com/foo' },
-        { url: 'https://reddit.com/r/foo' },
-      ])
-    ).toBeUndefined();
-  });
-
-  it('空配列・undefined は undefined', () => {
-    expect(pickOfficialUrlFromWebsites([])).toBeUndefined();
-    expect(pickOfficialUrlFromWebsites(undefined)).toBeUndefined();
-  });
-
-  it('Issue #30: category 不在フォールバックは URL の内容を検証しないため無関係サイトを候補にしうる', () => {
-    // SNS・ストア除外パターンに当たらないURLであれば、
-    // ゲームと無関係なサイトでも採用候補として返す。
-    // → 呼び出し側で verifyOfficialUrlContent() を通して mismatch を弾く必要がある（Issue #30 対応）。
-    const unrelatedUrl = 'https://some-unrelated-site.example.com';
-    const url = pickOfficialUrlFromWebsites([{ url: unrelatedUrl }]);
-    expect(url).toBe(unrelatedUrl);
   });
 });
