@@ -77,12 +77,16 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
   }
 
   // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
-  // ja-JP と en-US の両スコープを試みる（ja-JP ページがない Western タイトルを救済）
-  const jaJpCandidates = await searchStorePage(queryTitles, 'site:xbox.com/ja-JP/games', isXboxUrl);
+  // ja-JP を先に試み、ゲームページ候補が得られなければ en-US にフォールバックする。
+  // ja-JP に結果があっても全件 non-game-page の場合は en-US も試みる。
+  const jaJpRaw = await searchStorePage(queryTitles, 'site:xbox.com/ja-JP/games', isXboxUrl);
+  const jaJpCandidates = jaJpRaw.filter(isXboxGamePage);
   const rawCandidates = jaJpCandidates.length > 0
-    ? jaJpCandidates
+    ? jaJpRaw
     : await searchStorePage(queryTitles, 'site:xbox.com/en-US/games', isXboxUrl);
-  const candidates = rawCandidates.filter(isXboxGamePage);
+  const candidates = jaJpCandidates.length > 0
+    ? jaJpCandidates
+    : rawCandidates.filter(isXboxGamePage);
   if (candidates.length > 0) {
     for (const url of candidates) {
       const alive = await headOk(url, 8000);

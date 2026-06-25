@@ -22,7 +22,7 @@ import { headOk } from './url-health.js';
 
 export type GateMode = 'warn' | 'replace' | 'fail';
 
-export type ViolationId = 'R1' | 'R2' | 'R2b' | 'R3' | 'R4';
+export type ViolationId = 'R0' | 'R1' | 'R2' | 'R2b' | 'R3' | 'R4';
 
 export interface GateViolation {
   ruleId: ViolationId;
@@ -67,7 +67,7 @@ export function getGateMode(): GateMode {
 
 const ALLOWED_IMAGE_HOSTS = ['images.igdb.com', 'cdn.cloudflare.steamstatic.com'];
 
-const CONSOLE_PLATFORMS = ['nintendo', 'switch', 'playstation', 'xbox'];
+const CONSOLE_PLATFORMS = ['nintendo', 'switch', 'playstation', 'ps3', 'ps4', 'ps5', 'xbox'];
 
 /**
  * ゲームの platforms 配列にコンソール系が含まれるか
@@ -106,6 +106,22 @@ export function traceHasConfidentResult(
     );
   }
   return true;
+}
+
+/**
+ * R0: プラットフォームデータ欠損チェック
+ * platforms が空の場合、Nintendo/PS/Xbox resolver が全スキップされ completeness が検証不能になる。
+ * warn-only（mode に関わらず fail 対象にしない）。
+ */
+export function checkR0(game: GameData): GateViolation | null {
+  if (!game.platforms?.length) {
+    return {
+      ruleId: 'R0',
+      gameTitle: game.title,
+      detail: 'platforms が空のため Nintendo/PS/Xbox resolver がスキップされ completeness を検証できない',
+    };
+  }
+  return null;
 }
 
 /**
@@ -156,7 +172,7 @@ export function checkR2b(game: GameData, trace: ResolverTrace | undefined): Gate
   // PS 専売ゲームに Nintendo/Xbox の R2b 違反を出さないよう各プラットフォームで絞り込む。
   const platformChecks: { traceKey: string; storeKey: string; label: string; platformKeywords: string[] }[] = [
     { traceKey: 'nintendo', storeKey: 'nintendo', label: 'Nintendo', platformKeywords: ['nintendo', 'switch'] },
-    { traceKey: 'playstation', storeKey: 'playstation', label: 'PlayStation', platformKeywords: ['playstation'] },
+    { traceKey: 'playstation', storeKey: 'playstation', label: 'PlayStation', platformKeywords: ['playstation', 'ps3', 'ps4', 'ps5'] },
     { traceKey: 'xbox', storeKey: 'xbox', label: 'Xbox', platformKeywords: ['xbox'] },
   ];
 
@@ -231,6 +247,10 @@ export async function checkGame(
 ): Promise<GateViolation[]> {
   const violations: GateViolation[] = [];
 
+  // R0 は warn-only — mode=fail でも exit 判定には使わない（hasMutableViolations に含まれない）
+  const r0 = checkR0(game);
+  if (r0) violations.push(r0);
+
   const r1 = checkR1(game);
   if (r1) violations.push(r1);
 
@@ -281,7 +301,10 @@ export async function runCompletenessGate(
       const v = await checkGame(game, trace);
       if (v.length > 0) {
         report.violations.push(...v);
-        violatingTitles.add(game.title);
+        // R0 は warn-only: hasMutableViolations / replace / fail の判定対象にしない
+        if (v.some((vio) => vio.ruleId !== 'R0')) {
+          violatingTitles.add(game.title);
+        }
       }
     }
   }

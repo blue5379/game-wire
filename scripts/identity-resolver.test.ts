@@ -456,8 +456,8 @@ describe('プラットフォーム条件付き実行', () => {
     expect(psLink).toBeUndefined();
     expect(result.trace.nintendo?.attempts[0].method).toBe('skipped');
     expect(result.trace.playstation?.attempts[0].method).toBe('skipped');
-    // Xbox は platforms に含まれるため実行される（trace に skipped が記録されない）
-    expect(result.trace.xbox?.attempts[0].method).not.toBe('skipped');
+    // Xbox は platforms に含まれるため実行される（最初の試みは igdb-website 経路）
+    expect(result.trace.xbox?.attempts[0].method).toBe('igdb-website');
     // Steam は常時実行
     expect(steamLink).toBeDefined();
   });
