@@ -8,7 +8,8 @@
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
-import { searchStorePage } from './tavily-search.js';
+import { searchStorePage, extractPageTitle } from './tavily-search.js';
+import { matchesAnyTitle } from './match.js';
 
 const PLAYSTATION_URL_PATTERNS = ['playstation.com'];
 
@@ -77,26 +78,31 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 + タイトル照合 ──────────
   const candidates = await searchStorePage(queryTitles, 'site:playstation.com/ja-jp', isPlayStationUrl);
   const gamePageCandidates = candidates.filter(isPlayStationGamePage);
   if (gamePageCandidates.length > 0) {
     for (const url of gamePageCandidates) {
       const alive = await headOk(url, 8000);
-      if (alive) {
-        attempts.push({ method: 'web-search', ok: true });
-        return {
-          link: {
-            platform: 'playstation',
-            url,
-            resolvedBy: 'web-search',
-            confidence: 'medium',
-          },
-          attempts,
-        };
+      if (!alive) continue;
+      // タイトル照合（取得失敗は uncertain として採用しない）
+      const pageTitle = await extractPageTitle(url);
+      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate)) {
+        attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
+        continue;
       }
+      attempts.push({ method: 'web-search', ok: true });
+      return {
+        link: {
+          platform: 'playstation',
+          url,
+          resolvedBy: 'web-search',
+          confidence: pageTitle !== null ? 'high' : 'medium',
+        },
+        attempts,
+      };
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check or title mismatch' });
   } else if (candidates.length > 0) {
     attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (news/press/blog)' });
   } else {
