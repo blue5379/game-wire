@@ -5,6 +5,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { normalizeTitle } from './normalize.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -35,19 +36,6 @@ export interface HistoryEntry {
 interface HistoryFile {
   version: number;
   entries: HistoryEntry[];
-}
-
-/**
- * タイトルを正規化（比較用）
- */
-function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[：:]/g, ' ')
-    .replace(/[-–—]/g, ' ')
-    .replace(/[™®©]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 /**

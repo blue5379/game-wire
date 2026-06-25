@@ -41,6 +41,7 @@ import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
+import { normalizeTitle } from './normalize.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -501,18 +502,6 @@ async function generateIndieArticle(
 
 
 /**
- * タイトル照合用の正規化（選定タイトルと候補 GameData の突き合わせに使用）
- */
-function normalizeForMatch(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[™®©]/g, '')
-    .replace(/[：:\-–—]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
  * GameData を prefilter / select 用の候補型に変換する。
  * qualified / fringe / フォールバックの3箇所で同一マッピングを使うためここに集約。
  */
@@ -619,13 +608,13 @@ async function verifyProposedGames(
 /**
  * 候補ゲームリストの重複を除去して返す（フェーズ2: 合流時の重複除去）。
  *
- * normalizeForMatch による正規化タイトル一致で重複を判定し、先頭（aggregated.json 側）を優先する。
+ * normalizeTitle による正規化タイトル一致で重複を判定し、先頭（aggregated.json 側）を優先する。
  */
 function deduplicateGames(games: GameData[]): GameData[] {
   const seen = new Set<string>();
   const result: GameData[] = [];
   for (const g of games) {
-    const key = normalizeForMatch(g.title);
+    const key = normalizeTitle(g.title);
     if (!seen.has(key)) {
       seen.add(key);
       result.push(g);
@@ -758,9 +747,9 @@ export async function generateFeatureArticle(
 
   let prefiltered: GameData[];
   if (prefilteredTitles.length > 0) {
-    const prefilterSet = new Set(prefilteredTitles.map((t) => normalizeForMatch(t)));
+    const prefilterSet = new Set(prefilteredTitles.map((t) => normalizeTitle(t)));
     prefiltered = qualified
-      .filter((g) => prefilterSet.has(normalizeForMatch(g.title)))
+      .filter((g) => prefilterSet.has(normalizeTitle(g.title)))
       .slice(0, FEATURE_CANDIDATE_LIMIT);
     console.log(`  Theme prefilter narrowed candidates to ${prefiltered.length} games`);
   } else {
@@ -806,7 +795,7 @@ export async function generateFeatureArticle(
   for (const title of selectedTitles) {
     const exact = prefiltered.find((g) => g.title === title);
     const matched =
-      exact ?? prefiltered.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
+      exact ?? prefiltered.find((g) => normalizeTitle(g.title) === normalizeTitle(title));
     if (matched) {
       selectedGameData.push(matched);
     } else {
@@ -825,9 +814,9 @@ export async function generateFeatureArticle(
       FEATURE_CANDIDATE_LIMIT
     );
 
-    const fringePrefilterSet = new Set(fringePrefilterTitles.map((t) => normalizeForMatch(t)));
+    const fringePrefilterSet = new Set(fringePrefilterTitles.map((t) => normalizeTitle(t)));
     const fringePrefiltered = fringePrefilterTitles.length > 0
-      ? fringe.filter((g) => fringePrefilterSet.has(normalizeForMatch(g.title)))
+      ? fringe.filter((g) => fringePrefilterSet.has(normalizeTitle(g.title)))
       : fringe.slice(0, FEATURE_CANDIDATE_LIMIT);
 
     // fringe 候補にも Tavily 検索を実施（qualified と同様に Web スニペットを付与）
@@ -871,7 +860,7 @@ export async function generateFeatureArticle(
       const allPool = [...prefiltered, ...fringePrefiltered];
       const exact = allPool.find((g) => g.title === title);
       const matched =
-        exact ?? allPool.find((g) => normalizeForMatch(g.title) === normalizeForMatch(title));
+        exact ?? allPool.find((g) => normalizeTitle(g.title) === normalizeTitle(title));
       if (matched) {
         selectedGameData.push(matched);
       }
@@ -1309,8 +1298,9 @@ async function main(): Promise<void> {
     );
 
     // LLM への提案除外リストにはクールダウン中タイトルも含める
+    // alreadySelectedTitles は生タイトルのため normalizeTitle で正規化してから混ぜる
     const featureExcludeTitles = [
-      ...alreadySelectedTitles,
+      ...alreadySelectedTitles.map(normalizeTitle),
       ...[...featureCooldownTitles],
     ];
 
