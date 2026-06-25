@@ -27,6 +27,7 @@ import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
 import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
+import { normalizeTitle } from './normalize.js';
 import type {
   SteamData,
   YouTubeData,
@@ -39,19 +40,6 @@ import type {
 
 // 出力ディレクトリ
 const DATA_DIR = path.join(process.cwd(), 'data');
-
-/**
- * ゲームタイトルを正規化（比較用）
- */
-function normalizeTitle(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[：:]/g, ' ')
-    .replace(/[-–—]/g, ' ')
-    .replace(/[™®©]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 /**
  * 無効なゲームタイトルかどうかをチェック
