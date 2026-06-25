@@ -497,6 +497,7 @@ export async function searchGameByName(
         : pickOfficialUrlFromWebsites(game.websites)
           ? 'igdb-fallback'
           : undefined,
+      websites: game.websites,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
@@ -544,7 +545,8 @@ async function fetchRecentPopularGames(
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
-             game_localizations.name, game_localizations.region;
+             game_localizations.name, game_localizations.region,
+             websites.url, websites.category;
       where first_release_date > ${threeMonthsAgo} & hypes > 5 & themes != (37);
       sort hypes desc;
       limit 20;
@@ -568,6 +570,7 @@ async function fetchRecentPopularGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
+      websites?: { url: string; category: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -614,6 +617,7 @@ async function fetchRecentPopularGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
+        websites: game.websites,
       };
     });
   } catch (error) {
@@ -636,7 +640,8 @@ async function fetchClassicGames(
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
-             game_localizations.name, game_localizations.region;
+             game_localizations.name, game_localizations.region,
+             websites.url, websites.category;
       where hypes > 100 & themes != (37);
       sort hypes desc;
       limit 30;
@@ -660,6 +665,7 @@ async function fetchClassicGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
+      websites?: { url: string; category: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -706,6 +712,7 @@ async function fetchClassicGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
+        websites: game.websites,
       };
     });
   } catch (error) {
@@ -731,7 +738,8 @@ async function fetchIndieGames(
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
-             game_localizations.name, game_localizations.region;
+             game_localizations.name, game_localizations.region,
+             websites.url, websites.category;
       where first_release_date > ${threeMonthsAgo} & rating_count > 5 & themes != (37);
       sort hypes desc;
       limit 50;
@@ -755,6 +763,7 @@ async function fetchIndieGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
+      websites?: { url: string; category: number }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -801,6 +810,7 @@ async function fetchIndieGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
+        websites: game.websites,
       };
     });
   } catch (error) {

@@ -51,11 +51,16 @@ export async function resolvePlayStation(input: PlayStationResolverInput): Promi
 
   // ─── 経路1: IGDB websites（playstation.com 系） ────────────────────────────
   if (input.igdbWebsites?.length) {
-    const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url));
+    const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url) && isPlayStationGamePage(w.url));
     if (!psSite) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no PlayStation URL in IGDB websites' });
-    } else if (!isPlayStationGamePage(psSite.url)) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'PlayStation URL is not a game page (news/press/blog path)' });
+      const hasPlayStationUrl = input.igdbWebsites.some((w) => isPlayStationUrl(w.url));
+      attempts.push({
+        method: 'igdb-website',
+        ok: false,
+        reason: hasPlayStationUrl
+          ? 'PlayStation URL is not a game page (news/press/blog path)'
+          : 'no PlayStation URL in IGDB websites',
+      });
     } else {
       const alive = await headOk(psSite.url, 8000);
       if (alive) {

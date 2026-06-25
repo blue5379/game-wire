@@ -58,6 +58,7 @@ export interface IGDBGame {
   steamUrl?: string;
   officialUrl?: string; // IGDB websites から推定した公式サイトURL
   officialUrlSource?: 'igdb-official' | 'igdb-fallback'; // officialUrl の由来
+  websites?: { url: string; category: number }[]; // IGDB raw websites（Identity Resolver に引き渡すため）
 }
 
 export interface IGDBData {
@@ -113,6 +114,8 @@ export interface GameData {
   // AI推測情報
   isAiInferred?: boolean; // AIによる推測情報かどうか
   aiInferredFields?: string[]; // AIが推測したフィールド名のリスト
+  /** IGDB websites（Identity Resolver に渡すための中間保持用） */
+  igdbWebsites?: { url: string; category: number }[];
 }
 
 // 統合データ出力
