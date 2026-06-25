@@ -311,6 +311,9 @@ async function aggregateGames(
         game.summary = igdb.summary || game.summary;
         game.igdbRating = igdb.rating ?? game.igdbRating;
         game.igdbRatingCount = igdb.ratingCount ?? game.igdbRatingCount;
+        if (igdb.websites?.length) {
+          game.igdbWebsites = igdb.websites;
+        }
         if (!game.source.includes('igdb')) {
           game.source.push('igdb');
         }
@@ -341,6 +344,7 @@ async function aggregateGames(
         summary: igdb.summary,
         igdbRating: igdb.rating,
         igdbRatingCount: igdb.ratingCount,
+        igdbWebsites: igdb.websites?.length ? igdb.websites : undefined,
         source: ['igdb'],
         sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
       });
@@ -704,7 +708,7 @@ async function reconcileSelectedGames(
         titleJa: game.titleJa,
         igdbSlug: game.igdbSlug,
         releaseDate: game.releaseDate,
-        igdbWebsites: undefined, // aggregated.json 段階では igdbWebsites は保持していない
+        igdbWebsites: game.igdbWebsites,
         knownSteamAppId: legacySteamAppId,
         platforms: game.platforms,
       });

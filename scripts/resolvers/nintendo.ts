@@ -51,11 +51,16 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
 
   // ─── 経路1: IGDB websites（nintendo.com / nintendo.co.jp 系） ─────────────
   if (input.igdbWebsites?.length) {
-    const nintendoSite = input.igdbWebsites.find((w) => isNintendoUrl(w.url));
+    const nintendoSite = input.igdbWebsites.find((w) => isNintendoUrl(w.url) && isNintendoGamePage(w.url));
     if (!nintendoSite) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Nintendo URL in IGDB websites' });
-    } else if (!isNintendoGamePage(nintendoSite.url)) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'Nintendo URL is not a game page (IR/news/press/pdf path)' });
+      const hasNintendoUrl = input.igdbWebsites.some((w) => isNintendoUrl(w.url));
+      attempts.push({
+        method: 'igdb-website',
+        ok: false,
+        reason: hasNintendoUrl
+          ? 'Nintendo URL is not a game page (IR/news/press/pdf path)'
+          : 'no Nintendo URL in IGDB websites',
+      });
     } else {
       const alive = await headOk(nintendoSite.url, 8000);
       if (alive) {

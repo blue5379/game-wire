@@ -51,11 +51,16 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
 
   // ─── 経路1: IGDB websites（xbox.com 系） ────────────────────────────────────
   if (input.igdbWebsites?.length) {
-    const xboxSite = input.igdbWebsites.find((w) => isXboxUrl(w.url));
+    const xboxSite = input.igdbWebsites.find((w) => isXboxUrl(w.url) && isXboxGamePage(w.url));
     if (!xboxSite) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no Xbox URL in IGDB websites' });
-    } else if (!isXboxGamePage(xboxSite.url)) {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'Xbox URL is not a game page (news/press/blog path)' });
+      const hasXboxUrl = input.igdbWebsites.some((w) => isXboxUrl(w.url));
+      attempts.push({
+        method: 'igdb-website',
+        ok: false,
+        reason: hasXboxUrl
+          ? 'Xbox URL is not a game page (news/press/blog path)'
+          : 'no Xbox URL in IGDB websites',
+      });
     } else {
       const alive = await headOk(xboxSite.url, 8000);
       if (alive) {

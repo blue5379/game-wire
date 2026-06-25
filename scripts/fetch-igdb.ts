@@ -497,6 +497,7 @@ export async function searchGameByName(
         : pickOfficialUrlFromWebsites(game.websites)
           ? 'igdb-fallback'
           : undefined,
+      websites: game.websites,
     };
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
