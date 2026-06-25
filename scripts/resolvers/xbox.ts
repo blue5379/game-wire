@@ -8,7 +8,8 @@
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
-import { searchStorePage } from './tavily-search.js';
+import { searchStorePage, extractPageTitle } from './tavily-search.js';
+import { matchesAnyTitle } from './match.js';
 
 const XBOX_URL_PATTERNS = ['xbox.com', 'microsoft.com/ja-jp/p/', 'microsoft.com/en-us/p/'];
 
@@ -81,7 +82,7 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 検証 ──────────────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 + タイトル照合 ──────────
   // ja-JP を先に試み、ゲームページ候補が得られなければ en-US にフォールバックする。
   // ja-JP に結果があっても全件 non-game-page の場合は en-US も試みる。
   const jaJpRaw = await searchStorePage(queryTitles, 'site:xbox.com/ja-JP/games', isXboxUrl);
@@ -95,20 +96,25 @@ export async function resolveXbox(input: XboxResolverInput): Promise<XboxResolve
   if (candidates.length > 0) {
     for (const url of candidates) {
       const alive = await headOk(url, 8000);
-      if (alive) {
-        attempts.push({ method: 'web-search', ok: true });
-        return {
-          link: {
-            platform: 'xbox',
-            url,
-            resolvedBy: 'web-search',
-            confidence: 'medium',
-          },
-          attempts,
-        };
+      if (!alive) continue;
+      // タイトル照合（取得失敗は uncertain として採用しない）
+      const pageTitle = await extractPageTitle(url);
+      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate)) {
+        attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
+        continue;
       }
+      attempts.push({ method: 'web-search', ok: true });
+      return {
+        link: {
+          platform: 'xbox',
+          url,
+          resolvedBy: 'web-search',
+          confidence: pageTitle !== null ? 'high' : 'medium',
+        },
+        attempts,
+      };
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check or title mismatch' });
   } else if (rawCandidates.length > 0) {
     attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (news/press/blog)' });
   } else {
