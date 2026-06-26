@@ -8,7 +8,7 @@
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
-import { searchStorePage, extractPageTitle } from './tavily-search.js';
+import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
 import { matchesAnyTitle } from './match.js';
 
 const NINTENDO_URL_PATTERNS = ['nintendo.com', 'nintendo.co.jp'];
@@ -88,11 +88,14 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
   const gamePageCandidates = candidates.filter(isNintendoGamePage);
   if (gamePageCandidates.length > 0) {
     for (const url of gamePageCandidates) {
-      const alive = await headOk(url, 8000);
-      if (!alive) continue;
-      // タイトル照合（取得失敗は uncertain として採用しない）
-      const pageTitle = await extractPageTitle(url);
-      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate)) {
+      const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
+      if (!alive) {
+        attempts.push({ method: 'web-search', ok: false, reason: `dead url: ${url}` });
+        continue;
+      }
+      // サフィックス除去後に完全一致（シリーズ続編誤マッチ防止）
+      const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
+      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
         attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
         continue;
       }
@@ -107,7 +110,7 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
         attempts,
       };
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed HEAD check or title mismatch' });
+    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed or title mismatch' });
   } else if (candidates.length > 0) {
     attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (IR/news/press/pdf)' });
   } else {

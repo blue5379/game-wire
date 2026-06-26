@@ -113,3 +113,60 @@ describe('matchesAnyTitle', () => {
     ).toBe(false);
   });
 });
+
+describe('isSameGame — strict モード (#131 シリーズ続編誤マッチ防止)', () => {
+  it('strict=true: 完全一致 → true', () => {
+    expect(isSameGame('God of War', 'God of War', undefined, undefined, true)).toBe(true);
+  });
+
+  it('strict=true: 続編タイトルはプレフィックス一致でも false', () => {
+    // God of War → God of War Ragnarök: サフィックス除去後でも余分な単語がある
+    expect(isSameGame('God of War', 'God of War Ragnarök', undefined, undefined, true)).toBe(false);
+  });
+
+  it('strict=true: Splatoon 3 が Splatoon を誤採用しない', () => {
+    expect(isSameGame('Splatoon', 'Splatoon 3', undefined, undefined, true)).toBe(false);
+    expect(isSameGame('Splatoon 3', 'Splatoon', undefined, undefined, true)).toBe(false);
+  });
+
+  it('strict=true: ゼルダ BoW と ToK を区別する', () => {
+    expect(
+      isSameGame(
+        'The Legend of Zelda Breath of the Wild',
+        'The Legend of Zelda Tears of the Kingdom',
+        undefined, undefined, true
+      )
+    ).toBe(false);
+  });
+
+  it('strict=true: 同タイトル・年差 > 2年 → false（Doom 1993 vs Doom 2016）', () => {
+    expect(isSameGame('Doom', 'Doom', '1993-12-10', '2016-05-13', true)).toBe(false);
+  });
+
+  it('strict=true: 同タイトル・年差 2年以内 → true', () => {
+    expect(isSameGame('My Game', 'My Game', '2022-01-01', '2023-06-01', true)).toBe(true);
+  });
+
+  it('strict=true: 年情報が片方だけ undefined → true（タイトル一致のみで判定）', () => {
+    expect(isSameGame('My Game', 'My Game', '2022-01-01', undefined, true)).toBe(true);
+  });
+
+  it('strict=false (デフォルト): 既存のプレフィックス一致は維持される', () => {
+    // DLC パターンはプレフィックス許容を維持
+    expect(isSameGame('Cyberpunk 2077', 'Cyberpunk 2077: Phantom Liberty')).toBe(true);
+  });
+});
+
+describe('matchesAnyTitle — strict モード (#131)', () => {
+  it('strict=true: 続編 URL を正しく弾く', () => {
+    expect(
+      matchesAnyTitle(['God of War'], 'God of War Ragnarök', undefined, undefined, true)
+    ).toBe(false);
+  });
+
+  it('strict=true: 正確なタイトルは通す', () => {
+    expect(
+      matchesAnyTitle(['God of War', 'ゴッド・オブ・ウォー'], 'God of War', undefined, undefined, true)
+    ).toBe(true);
+  });
+});

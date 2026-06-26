@@ -1,9 +1,9 @@
 /**
- * tavily-search.ts の extractPageTitle ユニットテスト
+ * tavily-search.ts の extractPageTitle / fetchAndExtractTitle / stripStoreSuffix ユニットテスト
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { extractPageTitle } from './tavily-search.js';
+import { extractPageTitle, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -133,5 +133,78 @@ describe('extractPageTitle', () => {
     const result = await extractPageTitle('https://example.com/truncated');
     // title 部分は完全に含まれているので抽出できる
     expect(result).toBe('Hello');
+  });
+
+  it("og:title にアポストロフィを含むタイトルが途切れずに取得できる", async () => {
+    // 旧実装: content=["']([^"']+)["'] → "It" で切れていた
+    const html = `<html><head><meta property="og:title" content="It's the Game"/></head></html>`;
+    mockFetch.mockResolvedValue(makeHtmlResponse(html));
+    const result = await extractPageTitle('https://example.com/game');
+    expect(result).toBe("It's the Game");
+  });
+});
+
+describe('fetchAndExtractTitle', () => {
+  it('HTTP 200 かつ og:title があれば alive=true, title=タイトル', async () => {
+    const html = `<html><head><meta property="og:title" content="Elden Ring"/></head></html>`;
+    mockFetch.mockResolvedValue(makeHtmlResponse(html));
+    const result = await fetchAndExtractTitle('https://store.playstation.com/ja-jp/product/xxx');
+    expect(result.alive).toBe(true);
+    expect(result.title).toBe('Elden Ring');
+  });
+
+  it('HTTP 404 なら alive=false', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 404, body: null } as unknown as Response);
+    const result = await fetchAndExtractTitle('https://example.com/not-found');
+    expect(result.alive).toBe(false);
+    expect(result.title).toBeNull();
+  });
+
+  it('HTTP 429 なら alive=false（レート制限をデッドとして扱う）', async () => {
+    mockFetch.mockResolvedValue({ ok: false, status: 429, body: null } as unknown as Response);
+    const result = await fetchAndExtractTitle('https://store.nintendo.co.jp/xxx');
+    expect(result.alive).toBe(false);
+  });
+
+  it('fetch が例外を投げたら alive=false', async () => {
+    mockFetch.mockRejectedValue(new Error('network error'));
+    const result = await fetchAndExtractTitle('https://example.com/error');
+    expect(result.alive).toBe(false);
+  });
+
+  it('body が null なら alive=true, title=null', async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 200, body: null } as unknown as Response);
+    const result = await fetchAndExtractTitle('https://example.com/no-body');
+    expect(result.alive).toBe(true);
+    expect(result.title).toBeNull();
+  });
+});
+
+describe('stripStoreSuffix', () => {
+  it('PlayStation Store サフィックスを除去する', () => {
+    expect(stripStoreSuffix('God of War | PlayStation Store')).toBe('God of War');
+    expect(stripStoreSuffix('Elden Ring | PS Store')).toBe('Elden Ring');
+  });
+
+  it('Nintendo サフィックスを除去する', () => {
+    expect(stripStoreSuffix('Splatoon 3 | Nintendo Switch')).toBe('Splatoon 3');
+    expect(stripStoreSuffix('ゼルダの伝説 | Nintendo eShop')).toBe('ゼルダの伝説');
+  });
+
+  it('Xbox サフィックスを除去する', () => {
+    expect(stripStoreSuffix('Halo Infinite | Xbox')).toBe('Halo Infinite');
+    expect(stripStoreSuffix('Forza Horizon 5 - Microsoft Store')).toBe('Forza Horizon 5');
+  });
+
+  it('サフィックスがない場合はそのまま返す', () => {
+    expect(stripStoreSuffix('God of War')).toBe('God of War');
+  });
+
+  it('サフィックス除去後に正規化を組み合わせると続編を弾ける（#131）', () => {
+    // "God of War Ragnarök | PlayStation Store" → "God of War Ragnarök"
+    // → normalizeTitle → "god of war ragnarok"
+    // → isSameGame("God of War", ..., strict=true) → false
+    const stripped = stripStoreSuffix('God of War Ragnarök | PlayStation Store');
+    expect(stripped).toBe('God of War Ragnarök');
   });
 });
