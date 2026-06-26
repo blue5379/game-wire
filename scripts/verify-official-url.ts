@@ -34,26 +34,37 @@ export interface GameIdentity {
 }
 
 /**
- * HTML からテキストを抽出する（純関数）
- *
- * script/style/noscript ブロックを除去し、タグを落として可視テキストだけを残す。
- * 判定に十分な量だけ取れればよいので厳密なパースはしない。
+ * HTML エンティティをデコードする（純関数）
  */
-export function extractTextFromHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<[^>]+>/g, ' ')
+export function decodeHtmlEntities(s: string): string {
+  return s
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#x27;/gi, "'")
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * HTML からテキストを抽出する（純関数）
+ *
+ * script/style/noscript ブロックを除去し、タグを落として可視テキストだけを残す。
+ * 判定に十分な量だけ取れればよいので厳密なパースはしない。
+ */
+export function extractTextFromHtml(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ')
+      .replace(/<[^>]+>/g, ' ')
+  );
 }
 
 /**
@@ -75,28 +86,17 @@ export interface PageStructure {
  * 抽出できない要素は undefined で返す。
  */
 export function extractPageStructure(html: string, maxChars = 4000): PageStructure {
-  const decode = (s: string): string =>
-    s
-      .replace(/&nbsp;/gi, ' ')
-      .replace(/&amp;/gi, '&')
-      .replace(/&lt;/gi, '<')
-      .replace(/&gt;/gi, '>')
-      .replace(/&quot;/gi, '"')
-      .replace(/&#39;/gi, "'")
-      .replace(/\s+/g, ' ')
-      .trim();
-
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const title = titleMatch ? decode(titleMatch[1]) : undefined;
+  const title = titleMatch ? decodeHtmlEntities(titleMatch[1]) : undefined;
 
-  // og:title は属性順が逆のケース（content が先）にも対応する
+  // og:title: バックリファレンスでアポストロフィを含むタイトルも正しく取得
   const ogTitleMatch =
-    html.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i) ||
-    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]*property=["']og:title["'][^>]*>/i);
-  const ogTitle = ogTitleMatch ? decode(ogTitleMatch[1]) : undefined;
+    html.match(/<meta[^>]+property=["']og:title["'][^>]*content=(['"])(.*?)\1[^>]*>/is) ||
+    html.match(/<meta[^>]*content=(['"])(.*?)\1[^>]*property=["']og:title["'][^>]*>/is);
+  const ogTitle = ogTitleMatch ? decodeHtmlEntities(ogTitleMatch[2]) : undefined;
 
   const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  const h1 = h1Match ? decode(h1Match[1].replace(/<[^>]+>/g, ' ')) : undefined;
+  const h1 = h1Match ? decodeHtmlEntities(h1Match[1].replace(/<[^>]+>/g, ' ')) : undefined;
 
   const bodyText = extractTextFromHtml(html).slice(0, maxChars);
 
@@ -275,7 +275,7 @@ export async function verifyOfficialUrlContent(
   url: string
 ): Promise<UrlVerifyResult> {
   const structure = await fetchPageStructure(url);
-  if (!structure || structure.bodyText.length < 20) {
+  if (!structure) {
     return { verdict: 'uncertain', reason: 'ページ本文を取得できませんでした' };
   }
 
