@@ -248,29 +248,19 @@ function isRelevantSearchResult(query: string, resultName: string): boolean {
 
 /**
  * IGDB websites 配列から公式サイトURLを推定
- * category=1 (Official website) を優先、無ければ非ストア・非SNS の最初のURLを採用
+ *
+ * Issue #117: 「block-list（怪しければ落とす）」から「allow-list（確証された場合のみ採用）」へ転換。
+ * category=1 (Official website) フラグが付いた URL のみ採用する。
+ *
+ * 過去のフォールバック（非SNS・非ストアの先頭URLを機械採用）は無関係なスタジオサイト
+ * （例: Dungeon Blitz R に対する theminesa.studio）を採用してしまう構造的欠陥があったため廃止。
+ * 公式URLが取得できない場合は undefined を返し、Tavily 経路（fetchOfficialJpUrl）に委ねる。
  */
 function pickOfficialUrlFromWebsites(
   websites?: { url: string; category?: number }[]
 ): string | undefined {
   if (!websites?.length) return undefined;
-  const officialByCategory = websites.find((w) => w.category === 1)?.url;
-  if (officialByCategory) return officialByCategory;
-  const nonOfficialPatterns = [
-    'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
-    'youtube.com', 'twitch.tv', 'reddit.com', 'discord.gg', 'discord.com',
-    'bsky.app',
-    'store.steampowered.com', 'steampowered.com',
-    'store.playstation.com', 'store-jp.nintendo.com',
-    'xbox.com/ja-jp/games/store', 'xbox.com/en-us/games/store',
-    'microsoft.com',
-    'gog.com', 'epicgames.com', 'play.google.com',
-    'apps.apple.com', 'itunes.apple.com',
-    'wikipedia.org', 'fandom.com', 'wiki',
-  ];
-  return websites.find(
-    (w) => !nonOfficialPatterns.some((p) => w.url.toLowerCase().includes(p))
-  )?.url;
+  return websites.find((w) => w.category === 1)?.url;
 }
 
 // テスト用にエクスポート
@@ -467,6 +457,8 @@ export async function searchGameByName(
       ? COUNTRY_CODES[developerCountry]
       : undefined;
 
+    const officialUrl = pickOfficialUrlFromWebsites(game.websites);
+
     return {
       id: game.id,
       name: game.name,
@@ -491,12 +483,8 @@ export async function searchGameByName(
       steamUrl: game.websites?.find((w) =>
         w.category === 13 || w.url.includes('store.steampowered.com')
       )?.url,
-      officialUrl: pickOfficialUrlFromWebsites(game.websites),
-      officialUrlSource: game.websites?.find((w) => w.category === 1)
-        ? 'igdb-official'
-        : pickOfficialUrlFromWebsites(game.websites)
-          ? 'igdb-fallback'
-          : undefined,
+      officialUrl,
+      officialUrlSource: officialUrl ? 'igdb-official' : undefined,
       websites: game.websites,
     };
   } catch (error) {

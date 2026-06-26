@@ -18,7 +18,6 @@ import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
-import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
@@ -877,29 +876,15 @@ async function enrichSelectedGamesWithOfficialUrl(
           ? new Date(game.releaseDate).getFullYear()
           : undefined,
       });
+      // Issue #117: igdbFallback.officialUrl は category=1 タグ付き URL のみ
+      // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。
       if (igdbFallback?.officialUrl) {
-        let adoptUrl = true;
-        // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
-        if (igdbFallback.officialUrlSource !== 'igdb-official') {
-          const verification = await verifyOfficialUrlContent(
-            { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
-            igdbFallback.officialUrl
-          );
-          if (verification.verdict === 'mismatch') {
-            console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
-            adoptUrl = false;
-          } else if (verification.verdict === 'uncertain') {
-            console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
-          }
-        }
-        if (adoptUrl) {
-          console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
-          game.sourceUrls = {
-            ...game.sourceUrls,
-            official: igdbFallback.officialUrl,
-            officialUrlSource: igdbFallback.officialUrlSource,
-          };
-        }
+        console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+        game.sourceUrls = {
+          ...game.sourceUrls,
+          official: igdbFallback.officialUrl,
+          officialUrlSource: igdbFallback.officialUrlSource,
+        };
       }
     } catch (error) {
       console.error(`  enrichOfficialUrl failed for "${game.title}":`, error);

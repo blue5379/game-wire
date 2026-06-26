@@ -38,7 +38,6 @@ import {
 } from './fetch-web-search.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
-import { verifyOfficialUrlContent } from './verify-official-url.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { normalizeTitle } from './normalize.js';
@@ -554,20 +553,10 @@ async function verifyProposedGames(
       continue;
     }
 
-    let verifiedOfficialUrl = igdb.officialUrl;
-    // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
-    if (igdb.officialUrl && igdb.officialUrlSource !== 'igdb-official') {
-      const verification = await verifyOfficialUrlContent(
-        { titleEn: igdb.name, titleJa: igdb.titleJa, developer: igdb.developer, publisher: igdb.publisher },
-        igdb.officialUrl
-      );
-      if (verification.verdict === 'mismatch') {
-        console.log(`  [verify] IGDB official URL content mismatch, rejected: ${igdb.officialUrl} (${verification.reason})`);
-        verifiedOfficialUrl = undefined;
-      } else if (verification.verdict === 'uncertain') {
-        console.log(`  [verify] IGDB official URL content unverified (adopting anyway): ${igdb.officialUrl} (${verification.reason})`);
-      }
-    }
+    // Issue #117: IGDB の category=1 タグ付き URL のみを採用する仕様（pickOfficialUrlFromWebsites）に
+    // 変更したため、igdb.officialUrl は IGDB が公式サイトとして明示した URL のみとなる。
+    // 機械フォールバック由来の不一致URLは構造的に発生しないので内容検証は省略する。
+    const verifiedOfficialUrl = igdb.officialUrl;
 
     const gameData: GameData = {
       title: igdb.name,
@@ -901,25 +890,11 @@ export async function generateFeatureArticle(
         const igdbFallback = await enrichGameWithIGDB(game.title, {
           expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
         });
+        // Issue #117: igdbFallback.officialUrl は IGDB の category=1 タグ付き URL のみ
+        // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。
         if (igdbFallback?.officialUrl) {
-          let adoptUrl = true;
-          // category=1 は IGDB が明示した公式サイトタグ。内容検証は不要。
-          if (igdbFallback.officialUrlSource !== 'igdb-official') {
-            const verification = await verifyOfficialUrlContent(
-              { titleEn: game.title, titleJa: game.titleJa, developer: game.developer, publisher: game.publisher },
-              igdbFallback.officialUrl
-            );
-            if (verification.verdict === 'mismatch') {
-              console.log(`    IGDB official URL content mismatch, rejected: ${igdbFallback.officialUrl} (${verification.reason})`);
-              adoptUrl = false;
-            } else if (verification.verdict === 'uncertain') {
-              console.log(`    IGDB official URL content unverified (adopting anyway): ${igdbFallback.officialUrl} (${verification.reason})`);
-            }
-          }
-          if (adoptUrl) {
-            console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
-            officialUrl = igdbFallback.officialUrl;
-          }
+          console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
+          officialUrl = igdbFallback.officialUrl;
         }
       }
     } catch (error) {

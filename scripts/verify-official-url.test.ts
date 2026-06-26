@@ -177,4 +177,78 @@ describe('verifyOfficialUrlContent', () => {
     const result = await verifyOfficialUrlContent(game, 'https://example.com');
     expect(result.verdict).toBe('uncertain');
   });
+
+  // Issue #117 / #113 負例コーパス:
+  // 過去に誤採用された URL を再現し、内容検証層でも回帰検出できるようにする。
+  // 検証の本体は Claude プロンプトの判定ロジックだが、ここでは Bedrock 応答をモックして
+  // 「verifyOfficialUrlContent が verdict を素通しで返す」配線まで保証する。
+  describe('Issue #117 負例コーパス', () => {
+    it('複数プロジェクトを並べたスタジオサイトは mismatch（theminesa.studio パターン）', async () => {
+      const dungeonBlitzRGame: GameIdentity = {
+        titleEn: 'Dungeon Blitz R',
+        developer: 'The Mine SA',
+      };
+      // 当該ゲーム以外の別タイトル名が並列に並ぶスタジオトップ：
+      // ゲーム名は本文に出るが、それは「掲載作品の1つ」にすぎない。
+      stubFetchHtml(
+        '<html><body>' +
+          '<h1>The Mine SA Studio</h1>' +
+          '<section>Our Projects: ' +
+          '<article>Project Aurora — open world RPG</article>' +
+          '<article>Dungeon Blitz R — roguelite dungeon crawler</article>' +
+          '<article>Helix Spire — puzzle platformer</article>' +
+          '<article>Echoes of Tomorrow — narrative adventure</article>' +
+          '</section>' +
+          '</body></html>'
+      );
+      mockInvoke.mockResolvedValue(
+        '{"verdict": "mismatch", "reason": "複数プロジェクトを列挙するスタジオトップで当該ゲーム単独ページではない"}'
+      );
+
+      const result = await verifyOfficialUrlContent(dungeonBlitzRGame, 'https://theminesa.studio/');
+      expect(result.verdict).toBe('mismatch');
+    });
+
+    it('URL文字列がタイトルに類似するだけの無関係サイトは mismatch（inkrealm.jp パターン）', async () => {
+      const realmOfInk: GameIdentity = {
+        titleEn: 'Realm of Ink',
+        developer: 'Leap Studio',
+      };
+      stubFetchHtml(
+        '<html><body>INK REALM 水墨画アートギャラリー 運営 S.KING HOLDINGS</body></html>'
+      );
+      mockInvoke.mockResolvedValue(
+        '{"verdict": "mismatch", "reason": "アートギャラリーでゲームと無関係"}'
+      );
+
+      const result = await verifyOfficialUrlContent(realmOfInk, 'https://inkrealm.jp');
+      expect(result.verdict).toBe('mismatch');
+    });
+
+    it('パブリッシャー配下のゲーム専用ランディングページは match（誤って弾かない）', async () => {
+      const legoBatman: GameIdentity = {
+        titleEn: 'LEGO Batman: Legacy of the Dark Knight',
+        developer: 'TT Games',
+        publisher: 'LEGO',
+      };
+      // 大手パブリッシャーのドメイン配下でも、当該ゲーム単独のランディングなら公式扱い。
+      // 本文に並列の別タイトルは登場しない（ヘッダ等の共通要素のみ）。
+      stubFetchHtml(
+        '<html><body>' +
+          '<h1>LEGO Batman: Legacy of the Dark Knight</h1>' +
+          '<p>2026 年発売予定。Batman の歴代スーツが登場し、Gotham を救う...</p>' +
+          '<section>対応プラットフォーム: PS5 / Xbox / PC / Switch</section>' +
+          '</body></html>'
+      );
+      mockInvoke.mockResolvedValue(
+        '{"verdict": "match", "reason": "当該ゲーム単独の専用ページ"}'
+      );
+
+      const result = await verifyOfficialUrlContent(
+        legoBatman,
+        'https://www.lego.com/ja-jp/games/lego-batman-legacy-dark-knight'
+      );
+      expect(result.verdict).toBe('match');
+    });
+  });
 });

@@ -255,11 +255,21 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
   if (article.sourceUrls) {
     const urlLines: string[] = [];
     if (article.sourceUrls.official) {
-      const alive = await isUrlAlive(article.sourceUrls.official);
-      if (alive) {
-        urlLines.push(`      official: "${article.sourceUrls.official}"`);
+      // Issue #117: 'igdb-fallback'（旧: category=1 タグ無しで機械採用された URL）は
+      // 内容検証をすり抜けて誤採用される構造的リスクを持つため、最終出力でも弾く二重防御。
+      // 値そのものはキャッシュ互換のため受け入れるが、出力には載せない。
+      const source = article.sourceUrls.officialUrlSource as string | undefined;
+      if (source && source !== 'tavily' && source !== 'igdb-official') {
+        console.log(
+          `    [WARN] Official URL source "${source}" is not trusted, skipping: ${article.sourceUrls.official}`
+        );
       } else {
-        console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
+        const alive = await isUrlAlive(article.sourceUrls.official);
+        if (alive) {
+          urlLines.push(`      official: "${article.sourceUrls.official}"`);
+        } else {
+          console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
+        }
       }
     }
     // stores[]: Identity Resolver 解決済みのプラットフォーム別リンク
