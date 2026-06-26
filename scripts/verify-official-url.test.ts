@@ -11,12 +11,32 @@ import {
   parseVerifyResponse,
   verifyOfficialUrlContent,
   hasGameTitleInPageHeaders,
-  countParallelTitlesInBody,
   verifyUrlSystemPrompt,
   MIN_PAGE_TEXT_LENGTH,
   type GameIdentity,
   type PageStructure,
 } from './verify-official-url.js';
+
+/**
+ * テスト専用ヘルパー: 本文中に当該ゲーム以外の「別タイトル」と見なせる固有名詞が
+ * 並列に列挙されている数を返す近似値（回帰検出目的）。
+ * ASCII 大文字始まりの 2語以上フレーズのみ対象（CJK は対象外）。
+ */
+function countParallelTitlesInBody(
+  gameTitle: string,
+  bodyText: string,
+  threshold = 2,
+): number {
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedGameTitle = normalize(gameTitle);
+  const candidates = bodyText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+  const distinct = new Set(
+    candidates
+      .map(normalize)
+      .filter((c) => !normalizedGameTitle.includes(c) && !c.includes(normalizedGameTitle))
+  );
+  return Math.min(distinct.size, threshold + 1);
+}
 
 // Bedrock 呼び出しをモック
 const mockInvoke = vi.fn();
