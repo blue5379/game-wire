@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  decodeHtmlEntities,
   extractTextFromHtml,
   extractPageStructure,
   buildVerifyUserMessage,
@@ -19,6 +20,26 @@ const mockInvoke = vi.fn();
 vi.mock('./bedrock-client.js', () => ({
   invokeClaudeModel: (...args: unknown[]) => mockInvoke(...args),
 }));
+
+describe('decodeHtmlEntities (#137)', () => {
+  it('基本エンティティをデコードする', () => {
+    expect(decodeHtmlEntities('Tom &amp; Jerry')).toBe('Tom & Jerry');
+    expect(decodeHtmlEntities('&lt;tag&gt;')).toBe('<tag>');
+    expect(decodeHtmlEntities('&quot;quote&quot;')).toBe('"quote"');
+  });
+
+  it('アポストロフィ関連エンティティをデコードする（#137 &apos; / &#x27; 追加）', () => {
+    expect(decodeHtmlEntities("It&apos;s the Game")).toBe("It's the Game");
+    expect(decodeHtmlEntities("It&#x27;s the Game")).toBe("It's the Game");
+    expect(decodeHtmlEntities("It&#39;s the Game")).toBe("It's the Game");
+  });
+
+  it('extractTextFromHtml と同じエンティティ処理を行う（重複ゼロを維持）', () => {
+    const html = "<p>It&#39;s &amp; fun</p>";
+    expect(extractTextFromHtml(html)).toBe("It's & fun");
+    expect(decodeHtmlEntities("It&#39;s &amp; fun")).toBe("It's & fun");
+  });
+});
 
 describe('extractTextFromHtml', () => {
   it('タグを除去して可視テキストだけを残す', () => {
@@ -68,6 +89,12 @@ describe('extractPageStructure (Issue #135 P2-3)', () => {
       '<head><meta content="OG Title Here" property="og:title" /></head><body>x</body>';
     const result = extractPageStructure(html);
     expect(result.ogTitle).toBe('OG Title Here');
+  });
+
+  it('#137: og:title にアポストロフィを含むタイトルが途切れずに抽出できる', () => {
+    const html = `<head><meta property="og:title" content="It's the Game"/></head><body>x</body>`;
+    const result = extractPageStructure(html);
+    expect(result.ogTitle).toBe("It's the Game");
   });
 
   it('要素が無ければ undefined（bodyText のみ返る）', () => {
