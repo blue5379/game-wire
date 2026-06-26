@@ -104,15 +104,6 @@ export function extractPageStructure(html: string, maxChars = 4000): PageStructu
 }
 
 /**
- * URL のページ本文テキストを取得する。
- * 失敗時は null（検証不能扱い）。HTML 以外（画像等）も null。
- */
-export async function fetchPageText(url: string, maxChars = 4000): Promise<string | null> {
-  const structure = await fetchPageStructure(url, maxChars);
-  return structure ? structure.bodyText : null;
-}
-
-/**
  * URL のページから構造化情報（タイトル類＋本文）を取得する（Issue #135 P2-3）。
  * 失敗時は null（検証不能扱い）。HTML 以外（画像等）も null。
  */
@@ -264,10 +255,9 @@ export function parseVerifyResponse(raw: string): UrlVerifyResult {
 /**
  * Issue #135 P2-4: 内容検証に十分なページ本文の最小長さ。
  *
- * SVG/SPA など実体テキストがほぼ無いページは検証材料が乏しく、Claude が安易に
- * uncertain を返すと採用継続されて誤URLがすり抜ける。本文がこの閾値を下回る
- * 場合は採用拒否（mismatch ではなく短ページ専用の uncertain を返し、
- * 呼び出し側の挙動を変えるため verdict は 'mismatch' とする）にする。
+ * SVG/SPA など実体テキストがほぼ無いページは検証材料が乏しい。従来は uncertain を
+ * 返して呼び出し側で採用継続していたため、検証不能な短ページが素通りしていた。
+ * 本文がこの閾値を下回る場合は mismatch を返して採用拒否する。
  */
 export const MIN_PAGE_TEXT_LENGTH = 500;
 
