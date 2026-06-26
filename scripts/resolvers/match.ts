@@ -48,21 +48,27 @@ function extractYear(dateStr?: string): number | undefined {
  * 1. 正規化後に完全一致
  * 2. 一方が他方のプレフィックスであり、年差が±2以内（またはどちらかが undefined）
  *
- * @param queryTitle   検索クエリのタイトル（複数可: 英名・日本語名）
+ * @param queryTitle    検索クエリのタイトル（複数可: 英名・日本語名）
  * @param candidateTitle ストア側のタイトル
- * @param queryDate    クエリ側のリリース日（YYYY or YYYY-MM-DD）
- * @param candidateDate ストア側のリリース日
+ * @param queryDate     クエリ側のリリース日（YYYY or YYYY-MM-DD）
+ * @param candidateDate  ストア側のリリース日
+ * @param strict        true のとき完全一致のみ許容（プレフィックス一致を禁止）
  */
 export function isSameGame(
   queryTitle: string,
   candidateTitle: string,
   queryDate?: string,
-  candidateDate?: string
+  candidateDate?: string,
+  strict = false,
 ): boolean {
   const qNorm = normalizeTitle(queryTitle);
   const cNorm = normalizeTitle(candidateTitle);
 
   if (!qNorm || !cNorm) return false;
+
+  if (strict) {
+    return qNorm === cNorm;
+  }
 
   // プレフィックス一致（完全一致を含む）
   const isPrefixMatch = qNorm === cNorm || cNorm.startsWith(qNorm) || qNorm.startsWith(cNorm);
@@ -79,16 +85,18 @@ export function isSameGame(
 /**
  * 複数の候補タイトルリストに対して、いずれかのクエリタイトルが isSameGame を通るか確認
  *
- * @param queryTitles  検索クエリのタイトル群（英名・日本語名など複数を渡せる）
+ * @param queryTitles    検索クエリのタイトル群（英名・日本語名など複数を渡せる）
  * @param candidateTitle ストア側のタイトル
- * @param queryDate    クエリ側のリリース日
- * @param candidateDate ストア側のリリース日
+ * @param queryDate      クエリ側のリリース日
+ * @param candidateDate  ストア側のリリース日
+ * @param strict         true のとき完全一致のみ許容
  */
 export function matchesAnyTitle(
   queryTitles: string[],
   candidateTitle: string,
   queryDate?: string,
-  candidateDate?: string
+  candidateDate?: string,
+  strict = false,
 ): boolean {
-  return queryTitles.some((qt) => isSameGame(qt, candidateTitle, queryDate, candidateDate));
+  return queryTitles.some((qt) => isSameGame(qt, candidateTitle, queryDate, candidateDate, strict));
 }
