@@ -889,6 +889,7 @@ async function enrichSelectedGamesWithOfficialUrl(
           ...game.sourceUrls,
           official: igdbFallback.officialUrl,
           officialUrlSource: igdbFallback.officialUrlSource,
+          officialVerifyReason: undefined,
         };
       }
     } catch (error) {

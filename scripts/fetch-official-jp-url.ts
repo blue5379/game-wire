@@ -340,7 +340,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   for (const game of testGames) {
     const url = await fetchOfficialJpUrl(game);
-    console.log(`${game.titleEn}: ${url ?? '(not found)'}`);
+    console.log(`${game.titleEn}: ${url ? `${url.url} (${url.verifyReason})` : '(not found)'}`);
     console.log('---');
   }
 }

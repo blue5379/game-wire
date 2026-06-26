@@ -707,7 +707,7 @@ export function writeAndCheckReport(
   }
 
   // 公式URL未取得の記事（記録のみ。fail 判定には算入しない）
-  if (report.missingOfficialUrls && report.missingOfficialUrls.length > 0) {
+  if (report.missingOfficialUrls) {
     console.log('');
     console.log('=== Missing Official URLs ===');
     for (const m of report.missingOfficialUrls) {
