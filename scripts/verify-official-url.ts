@@ -139,6 +139,74 @@ export async function fetchPageStructure(
 }
 
 /**
+ * Issue #134: プロンプト判定基準のうち、構造化可能な部分を純関数として切り出す。
+ * これにより、プロンプトから基準が誤って削除された場合に回帰テストが検出できる。
+ */
+
+/**
+ * ページのタイトル類（title / og:title / h1）に指定ゲームタイトルが含まれるかを確認する。
+ *
+ * ページが当該ゲームを「主題として宣言しているか」の強い証拠となる。
+ * 正規化後の部分一致で判定（記号・大文字小文字の差異を吸収）。
+ */
+export function hasGameTitleInPageHeaders(
+  game: GameIdentity,
+  structure: PageStructure
+): boolean {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[™®©]/g, '')
+      .replace(/[:\-–—_]/g, ' ')
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const headers = [structure.title, structure.ogTitle, structure.h1]
+    .filter((h): h is string => typeof h === 'string')
+    .map(normalize);
+
+  const targets = [game.titleEn, game.titleJa]
+    .filter((t): t is string => typeof t === 'string' && t.length > 0)
+    .map(normalize);
+
+  return targets.some((target) => headers.some((header) => header.includes(target)));
+}
+
+/**
+ * 本文中に当該ゲーム以外の「別タイトル」と見なせる固有名詞が並列に列挙されている数を返す。
+ *
+ * Claude のプロンプトで「当該ゲーム以外の別タイトル名が並列に列挙されているか」を
+ * 主な手がかりと指定している。この関数はその指標の近似値を LLM 不要で計算し、
+ * プロンプト変更による回帰を検出するためのテスト補助として使用する。
+ *
+ * カウント対象: body テキスト中の、ゲームタイトルとは異なる CamelCase / 大文字始まりの
+ * 固有名詞連続パターン（2語以上）が何件あるか。誤検知は許容する（回帰検出が目的）。
+ */
+export function countParallelTitlesInBody(
+  gameTitle: string,
+  bodyText: string,
+  threshold = 2,
+): number {
+  const normalize = (s: string) =>
+    s.toLowerCase().replace(/\s+/g, ' ').trim();
+
+  const normalizedGameTitle = normalize(gameTitle);
+
+  // 大文字始まりの 2語以上の固有名詞風フレーズを探す
+  const candidates = bodyText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+
+  // ゲームタイトルと一致しないものだけカウント
+  const distinct = new Set(
+    candidates
+      .map(normalize)
+      .filter((c) => !normalizedGameTitle.includes(c) && !c.includes(normalizedGameTitle))
+  );
+
+  return Math.min(distinct.size, threshold + 1);
+}
+
+/**
  * 内容検証用のシステムプロンプト
  */
 export const verifyUrlSystemPrompt = `あなたはゲームの公式サイトURLを検証するアシスタントです。

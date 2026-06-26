@@ -10,10 +10,33 @@ import {
   buildVerifyUserMessage,
   parseVerifyResponse,
   verifyOfficialUrlContent,
+  hasGameTitleInPageHeaders,
+  verifyUrlSystemPrompt,
   MIN_PAGE_TEXT_LENGTH,
   type GameIdentity,
   type PageStructure,
 } from './verify-official-url.js';
+
+/**
+ * テスト専用ヘルパー: 本文中に当該ゲーム以外の「別タイトル」と見なせる固有名詞が
+ * 並列に列挙されている数を返す近似値（回帰検出目的）。
+ * ASCII 大文字始まりの 2語以上フレーズのみ対象（CJK は対象外）。
+ */
+function countParallelTitlesInBody(
+  gameTitle: string,
+  bodyText: string,
+  threshold = 2,
+): number {
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizedGameTitle = normalize(gameTitle);
+  const candidates = bodyText.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g) ?? [];
+  const distinct = new Set(
+    candidates
+      .map(normalize)
+      .filter((c) => !normalizedGameTitle.includes(c) && !c.includes(normalizedGameTitle))
+  );
+  return Math.min(distinct.size, threshold + 1);
+}
 
 // Bedrock 呼び出しをモック
 const mockInvoke = vi.fn();
@@ -391,5 +414,103 @@ describe('verifyOfficialUrlContent', () => {
       );
       expect(result.verdict).toBe('match');
     });
+  });
+});
+
+// ─── Issue #134: プロンプト判定ロジックの回帰検出テスト ──────────────────────────
+// 以下のテストは Bedrock モックに依存しないため、verifyUrlSystemPrompt の内容が
+// 誤って削除・改変された場合でも回帰を検出できる。
+
+describe('hasGameTitleInPageHeaders (#134 回帰検出)', () => {
+  const game: GameIdentity = { titleEn: 'Realm of Ink', titleJa: 'レルム オブ インク' };
+
+  it('title にゲームタイトルが含まれれば true', () => {
+    const structure: PageStructure = { title: 'Realm of Ink - 4Divinity', bodyText: '' };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(true);
+  });
+
+  it('og:title にゲームタイトルが含まれれば true', () => {
+    const structure: PageStructure = { ogTitle: 'Realm of Ink (Official)', bodyText: '' };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(true);
+  });
+
+  it('h1 にゲームタイトルが含まれれば true', () => {
+    const structure: PageStructure = { h1: 'Realm of Ink', bodyText: '' };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(true);
+  });
+
+  it('日本語タイトルでもヘッダに含まれれば true', () => {
+    const structure: PageStructure = { title: 'レルム オブ インク｜公式サイト', bodyText: '' };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(true);
+  });
+
+  it('スタジオ名だけのヘッダでは false（inkrealm.jp パターン）', () => {
+    const structure: PageStructure = {
+      title: 'INK REALM ART GALLERY',
+      ogTitle: 'INKREALM.JP',
+      h1: 'Ink Realm Gallery',
+      bodyText: '',
+    };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(false);
+  });
+
+  it('ヘッダが全て未取得でも false（例外を投げない）', () => {
+    const structure: PageStructure = { bodyText: 'some body text' };
+    expect(hasGameTitleInPageHeaders(game, structure)).toBe(false);
+  });
+
+  it('スタジオ名だけで複数タイトル列挙のヘッダも false（theminesa.studio パターン）', () => {
+    const dungeonBlitz: GameIdentity = { titleEn: 'Dungeon Blitz R' };
+    const structure: PageStructure = {
+      title: 'The Mine SA Studio — Official Site',
+      h1: 'The Mine SA',
+      bodyText: '',
+    };
+    expect(hasGameTitleInPageHeaders(dungeonBlitz, structure)).toBe(false);
+  });
+});
+
+describe('countParallelTitlesInBody (#134 回帰検出)', () => {
+  it('複数の別タイトルが並列に並ぶ本文では threshold 以上を返す（スタジオトップパターン）', () => {
+    const body =
+      'Our Projects: Project Aurora open world RPG. Dungeon Blitz R roguelite. ' +
+      'Helix Spire puzzle platformer. Echoes of Tomorrow narrative adventure. ' +
+      'Veil of Glass horror. Tidal Pact sailing roguelike.';
+    const count = countParallelTitlesInBody('Dungeon Blitz R', body);
+    expect(count).toBeGreaterThanOrEqual(2);
+  });
+
+  it('ゲーム単独ページの本文では別タイトルが少ない', () => {
+    const body =
+      'Realm of Ink is an action game developed by Leap Studio. ' +
+      'Experience ink-brushed combat against mythical creatures. ' +
+      'Available on PC and PlayStation 5. Purchase now on Steam.';
+    const count = countParallelTitlesInBody('Realm of Ink', body);
+    expect(count).toBeLessThan(2);
+  });
+});
+
+describe('verifyUrlSystemPrompt 内容の回帰検出 (#134)', () => {
+  it('「複数タイトル並列 → mismatch」基準がプロンプトに存在する', () => {
+    expect(verifyUrlSystemPrompt).toContain('当該ゲーム以外の別タイトル名');
+  });
+
+  it('「ゲーム単独を主題」という基準がプロンプトに存在する', () => {
+    expect(verifyUrlSystemPrompt).toContain('当該ゲーム単独を主題');
+  });
+
+  it('「URL文字列だけで match 判定してはならない」旨がプロンプトに存在する', () => {
+    expect(verifyUrlSystemPrompt).toContain('URL文字列がタイトルと似ている');
+  });
+
+  it('「ページタイトル類がゲーム名を主題宣言する強い証拠」旨がプロンプトに存在する', () => {
+    expect(verifyUrlSystemPrompt).toContain('タイトル類');
+    expect(verifyUrlSystemPrompt).toContain('主題としている');
+  });
+
+  it('出力形式として verdict の3値が明記されている', () => {
+    expect(verifyUrlSystemPrompt).toContain('"match"');
+    expect(verifyUrlSystemPrompt).toContain('"mismatch"');
+    expect(verifyUrlSystemPrompt).toContain('"uncertain"');
   });
 });
