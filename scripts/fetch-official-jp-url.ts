@@ -257,9 +257,14 @@ async function selectOfficialJpUrlWithClaude(
   }
 }
 
+export interface FetchOfficialJpUrlResult {
+  url: string;
+  verifyReason: string;
+}
+
 /**
  * ゲームの公式日本語ページURLを取得する
- * @returns URLが見つかった場合はURL文字列、見つからない場合はnull
+ * @returns URL と内容検証の判定根拠。見つからない場合は null
  */
 export async function fetchOfficialJpUrl(params: {
   titleEn: string;
@@ -267,7 +272,7 @@ export async function fetchOfficialJpUrl(params: {
   releaseYear?: string;
   developer?: string;
   publisher?: string;
-}): Promise<string | null> {
+}): Promise<FetchOfficialJpUrlResult | null> {
   const { titleEn, titleJa, releaseYear, developer, publisher } = params;
   console.log(`  Fetching official JP URL: ${titleEn}`);
 
@@ -312,7 +317,7 @@ export async function fetchOfficialJpUrl(params: {
     }
 
     console.log(`    Official JP URL: ${selectedUrl}`);
-    return selectedUrl;
+    return { url: selectedUrl, verifyReason: verification.reason };
   } catch (error) {
     console.error(`  fetchOfficialJpUrl failed for "${titleEn}":`, error);
     return null;
