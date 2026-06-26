@@ -73,12 +73,65 @@ async function searchWithQuery(
 }
 
 /**
+ * Tavily 検索クエリリストを構築する（純関数）。
+ *
+ * Issue #135 P2-1: タイトル衝突への耐性を上げるため、開発元/発売元を含むクエリを
+ * 優先度の高い位置に挿入する。同名タイトル別作品（例: "Atomic Heart" のような
+ * 一般的な語の組合せ）が混入する事故を減らす。
+ *
+ * 既存の「タイトルのみ」のクエリは後段のリトライとして残し、開発元情報が
+ * 不正確だった場合のフォールバックを確保する。
+ */
+export function buildSearchQueries(
+  titleEn: string,
+  titleJa?: string,
+  developer?: string,
+  publisher?: string
+): string[] {
+  const studio = developer || publisher;
+  const queries: string[] = [];
+
+  // 1st: 開発元/発売元を含むクエリ（タイトル衝突に最も強い）
+  if (studio) {
+    queries.push(
+      titleJa
+        ? `"${titleJa}" OR "${titleEn}" "${studio}" 公式サイト`
+        : `"${titleEn}" "${studio}" 公式サイト`
+    );
+  }
+
+  // 2nd: 現行クエリ（完全一致を強制）
+  queries.push(
+    titleJa
+      ? `"${titleJa}" OR "${titleEn}" 公式サイト 日本語`
+      : `"${titleEn}" 公式サイト 日本語`
+  );
+
+  // 3rd: クォートなし日本語タイトル（検索エンジンの柔軟マッチングを活用）
+  if (titleJa) {
+    queries.push(`${titleJa} 公式サイト`);
+  }
+
+  // 4th: 英語タイトルのみ
+  queries.push(`${titleEn} 公式サイト 日本語`);
+
+  // 5th: キーワード簡略化
+  if (titleJa) {
+    queries.push(`${titleJa} 公式`);
+  }
+
+  return queries;
+}
+
+/**
  * Tavily検索でゲームの公式日本語ページ候補を取得
  * 候補が見つからない場合は別クエリでリトライする
  */
 async function searchOfficialJpUrl(
   titleEn: string,
-  titleJa?: string
+  titleJa?: string,
+  developer?: string,
+  publisher?: string
 ): Promise<string[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
@@ -87,19 +140,7 @@ async function searchOfficialJpUrl(
 
   const client = tavily({ apiKey });
 
-  // リトライクエリを優先度順に定義
-  const queries = [
-    // 1st: 現行クエリ（完全一致を強制）
-    titleJa
-      ? `"${titleJa}" OR "${titleEn}" 公式サイト 日本語`
-      : `"${titleEn}" 公式サイト 日本語`,
-    // 2nd: クォートなし日本語タイトル（検索エンジンの柔軟マッチングを活用）
-    ...(titleJa ? [`${titleJa} 公式サイト`] : []),
-    // 3rd: 英語タイトルのみ
-    `${titleEn} 公式サイト 日本語`,
-    // 4th: キーワード簡略化
-    ...(titleJa ? [`${titleJa} 公式`] : []),
-  ];
+  const queries = buildSearchQueries(titleEn, titleJa, developer, publisher);
 
   for (let i = 0; i < queries.length; i++) {
     try {
@@ -117,42 +158,90 @@ async function searchOfficialJpUrl(
 }
 
 /**
+ * Claude 選別の system プロンプト（Issue #135 P2-2 で「ドメイン整合判断」を追加）。
+ *
+ * 開発元/発売元の表記とドメイン名が無関係（例: developer "IO Interactive" に対して
+ * ドメインが個人ブログや別スタジオ）な候補を機械的に除外できないため、
+ * Claude に明示判断させる。ただし、パブリッシャー流通のゲームでは公式日本語サイトが
+ * ローカライザのドメイン（例: spike-chunsoft.co.jp 配下）に置かれることも多いため、
+ * 「dev/pub と一字一句一致」ではなく「開発元・発売元・日本語ローカライザの
+ * いずれかと整合する」程度に緩く判定する。
+ */
+export const selectUrlSystemPrompt = `あなたはゲームの公式サイトURLを判定するアシスタントです。
+与えられたURL候補の中から、ゲームの**公式日本語ページ**のURLを1つだけ返してください。
+
+## 判定基準
+- ゲームの公式サイト（開発会社・パブリッシャー・日本語ローカライザが運営）であること
+- 日本語コンテンツが含まれること（URLに /ja/ .jp ?lang=ja jp. などを含む、またはサイト自体が日本語）
+- SNS・ストア・Wiki・レビューサイト・ファンサイトは除外
+- 確信が持てない場合は null を返す
+
+## ドメイン整合チェック（重要）
+開発元・発売元が指定されている場合、候補URLのドメインがそれらと整合するかを必ず確認すること。
+- 開発元・発売元の社名／略称が含まれるドメイン → 採用候補
+- 日本語ローカライザ（例: spike-chunsoft.co.jp）配下のゲーム個別ページ → 採用候補
+- 開発元・発売元と全く関係ないドメイン（例: 個人ブログ・別スタジオ） → 除外
+- 表記の揺れ（"IO Interactive" → "ioi.dk" など）は許容する。確信が持てなければ null
+
+## 出力形式（必ずJSON形式で返すこと）
+{"url": "https://example.com/ja/"} または {"url": null}`;
+
+/**
+ * 選別用のユーザーメッセージを構築する（純関数）。
+ */
+export function buildSelectUserMessage(params: {
+  titleEn: string;
+  titleJa?: string;
+  releaseYear?: string;
+  developer?: string;
+  publisher?: string;
+  candidates: string[];
+}): string {
+  const { titleEn, titleJa, releaseYear, developer, publisher, candidates } = params;
+  const gameDesc = titleJa ? `${titleEn}（${titleJa}）` : titleEn;
+  const yearDesc = releaseYear ? `（${releaseYear}年発売）` : '';
+
+  const lines: string[] = [];
+  lines.push(`ゲーム: ${gameDesc}${yearDesc}`);
+  if (developer) lines.push(`開発元: ${developer}`);
+  if (publisher) lines.push(`発売元: ${publisher}`);
+  lines.push('');
+  lines.push('URL候補:');
+  lines.push(candidates.map((u, i) => `${i + 1}. ${u}`).join('\n'));
+  lines.push('');
+  lines.push(
+    `上記の候補から、${gameDesc}の公式日本語ページURLを1つ選んでください。`
+  );
+  lines.push(
+    '候補URLのドメインが開発元・発売元・日本語ローカライザのいずれとも整合しない場合は採用しないこと。'
+  );
+  lines.push('該当するURLがない・確信が持てない場合は {"url": null} を返してください。');
+  return lines.join('\n');
+}
+
+/**
  * Claude で候補URLから公式日本語ページを選別
  */
 async function selectOfficialJpUrlWithClaude(
   titleEn: string,
   titleJa: string | undefined,
   releaseYear: string | undefined,
-  candidates: string[]
+  candidates: string[],
+  developer?: string,
+  publisher?: string
 ): Promise<string | null> {
-  const gameDesc = titleJa
-    ? `${titleEn}（${titleJa}）`
-    : titleEn;
-  const yearDesc = releaseYear ? `（${releaseYear}年発売）` : '';
-
-  const systemPrompt = `あなたはゲームの公式サイトURLを判定するアシスタントです。
-与えられたURL候補の中から、ゲームの**公式日本語ページ**のURLを1つだけ返してください。
-
-## 判定基準
-- ゲームの公式サイト（開発会社・パブリッシャーが運営）であること
-- 日本語コンテンツが含まれること（URLに /ja/ .jp ?lang=ja jp. などを含む、またはサイト自体が日本語）
-- SNS・ストア・Wiki・レビューサイト・ファンサイトは除外
-- 確信が持てない場合は null を返す
-
-## 出力形式（必ずJSON形式で返すこと）
-{"url": "https://example.com/ja/"} または {"url": null}`;
-
-  const userMessage = `ゲーム: ${gameDesc}${yearDesc}
-
-URL候補:
-${candidates.map((u, i) => `${i + 1}. ${u}`).join('\n')}
-
-上記の候補から、${gameDesc}の公式日本語ページURLを1つ選んでください。
-該当するURLがない・確信が持てない場合は {"url": null} を返してください。`;
+  const userMessage = buildSelectUserMessage({
+    titleEn,
+    titleJa,
+    releaseYear,
+    developer,
+    publisher,
+    candidates,
+  });
 
   try {
     initializeBedrockClient();
-    const response = await invokeClaudeModel(systemPrompt, userMessage, {
+    const response = await invokeClaudeModel(selectUrlSystemPrompt, userMessage, {
       maxTokens: 256,
       temperature: 0,
     });
@@ -183,20 +272,22 @@ export async function fetchOfficialJpUrl(params: {
   console.log(`  Fetching official JP URL: ${titleEn}`);
 
   try {
-    // Step 1: Tavily で候補URL取得
-    const candidates = await searchOfficialJpUrl(titleEn, titleJa);
+    // Step 1: Tavily で候補URL取得（Issue #135: dev/pub をクエリに含めてタイトル衝突を回避）
+    const candidates = await searchOfficialJpUrl(titleEn, titleJa, developer, publisher);
     if (candidates.length === 0) {
       console.log(`    No candidates found for "${titleEn}"`);
       return null;
     }
     console.log(`    Candidates: ${candidates.length} URLs`);
 
-    // Step 2: Claude で公式日本語ページを選別
+    // Step 2: Claude で公式日本語ページを選別（Issue #135: dev/pub のドメイン整合判断を実施）
     const selectedUrl = await selectOfficialJpUrlWithClaude(
       titleEn,
       titleJa,
       releaseYear,
-      candidates
+      candidates,
+      developer,
+      publisher
     );
 
     if (!selectedUrl) {
