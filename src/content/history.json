@@ -448,6 +448,55 @@
       "category": "feature",
       "issueNumber": 12,
       "publishDate": "2026-06-19"
+    },
+    {
+      "normalizedTitle": "replaced",
+      "title": "Replaced",
+      "category": "newRelease",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "mixtape",
+      "title": "Mixtape",
+      "category": "newRelease",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "djmax respect v v liberty v pack",
+      "title": "DJMAX RESPECT V - V LIBERTY V PACK",
+      "category": "indie",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "空の軌跡 the 1st",
+      "title": "空の軌跡 the 1st",
+      "category": "indie",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "アブズ",
+      "title": "アブズ",
+      "category": "feature",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "dave the diver",
+      "title": "Dave the Diver",
+      "category": "feature",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "raft",
+      "title": "Raft",
+      "category": "feature",
+      "issueNumber": 13,
+      "publishDate": "2026-06-26"
     }
   ]
 }
