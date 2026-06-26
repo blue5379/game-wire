@@ -5,10 +5,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   extractTextFromHtml,
+  extractPageStructure,
   buildVerifyUserMessage,
   parseVerifyResponse,
   verifyOfficialUrlContent,
+  MIN_PAGE_TEXT_LENGTH,
   type GameIdentity,
+  type PageStructure,
 } from './verify-official-url.js';
 
 // Bedrock 呼び出しをモック
@@ -37,6 +40,49 @@ describe('extractTextFromHtml', () => {
   it('連続する空白を1つにまとめる', () => {
     const html = '<p>a</p>\n\n   <p>b</p>';
     expect(extractTextFromHtml(html)).toBe('a b');
+  });
+});
+
+describe('extractPageStructure (Issue #135 P2-3)', () => {
+  it('<title> / og:title / <h1> を分離して抽出する', () => {
+    const html = `
+      <html>
+        <head>
+          <title>Game Title - Studio Name</title>
+          <meta property="og:title" content="Game Title (Official)" />
+        </head>
+        <body>
+          <h1>Game Title</h1>
+          <p>本文テキスト</p>
+        </body>
+      </html>`;
+    const result = extractPageStructure(html);
+    expect(result.title).toBe('Game Title - Studio Name');
+    expect(result.ogTitle).toBe('Game Title (Official)');
+    expect(result.h1).toBe('Game Title');
+    expect(result.bodyText).toContain('本文テキスト');
+  });
+
+  it('og:title の属性順が逆（content が先）でも抽出できる', () => {
+    const html =
+      '<head><meta content="OG Title Here" property="og:title" /></head><body>x</body>';
+    const result = extractPageStructure(html);
+    expect(result.ogTitle).toBe('OG Title Here');
+  });
+
+  it('要素が無ければ undefined（bodyText のみ返る）', () => {
+    const html = '<html><body>本文だけ</body></html>';
+    const result = extractPageStructure(html);
+    expect(result.title).toBeUndefined();
+    expect(result.ogTitle).toBeUndefined();
+    expect(result.h1).toBeUndefined();
+    expect(result.bodyText).toBe('本文だけ');
+  });
+
+  it('h1 内の入れ子タグは除去してテキストだけを返す', () => {
+    const html = '<body><h1><span class="a">Game</span> <i>Title</i></h1>x</body>';
+    const result = extractPageStructure(html);
+    expect(result.h1).toBe('Game Title');
   });
 });
 
@@ -70,6 +116,29 @@ describe('buildVerifyUserMessage', () => {
     expect(msg).toContain('Solo Game');
     expect(msg).not.toContain('開発元:');
     expect(msg).not.toContain('発売元:');
+  });
+
+  it('Issue #135 P2-3: PageStructure を渡すとタイトル類を本文と分離して載せる', () => {
+    const structure: PageStructure = {
+      title: 'Realm of Ink - 4Divinity 公式',
+      ogTitle: 'Realm of Ink (Official)',
+      h1: 'Realm of Ink',
+      bodyText: 'ゲーム紹介文の本文がここに続く',
+    };
+    const msg = buildVerifyUserMessage(game, 'https://example.com', structure);
+    expect(msg).toContain('【ページのタイトル類（ページが主題として宣言しているもの）】');
+    expect(msg).toContain('<title>: Realm of Ink - 4Divinity 公式');
+    expect(msg).toContain('og:title: Realm of Ink (Official)');
+    expect(msg).toContain('<h1>: Realm of Ink');
+    expect(msg).toContain('ゲーム紹介文の本文がここに続く');
+  });
+
+  it('Issue #135 P2-3: PageStructure の欠落要素は "(取得できず)" と表記する', () => {
+    const structure: PageStructure = { bodyText: '本文のみ' };
+    const msg = buildVerifyUserMessage(game, 'https://example.com', structure);
+    expect(msg).toContain('<title>: (取得できず)');
+    expect(msg).toContain('og:title: (取得できず)');
+    expect(msg).toContain('<h1>: (取得できず)');
   });
 });
 
@@ -124,8 +193,18 @@ describe('verifyOfficialUrlContent', () => {
     });
   }
 
+  // 短ページ拒否（P2-4: MIN_PAGE_TEXT_LENGTH=500）を回避するため、フィクスチャ本文は
+  // 最低 500 文字を確保する。実在の公式ページの本文も最低でもこの程度はあるので、より
+  // 現実的な fixture になる。
+  const padToMinLength = (s: string): string =>
+    s + ' ' + '本ゲームの世界観・特徴・遊び方・キャラクター・ストーリー・対応機種・販売情報。'.repeat(20);
+
   it('ページ本文がゲームと一致すれば match を返す', async () => {
-    stubFetchHtml('<html><body>Realm of Ink は Leap Studio が開発した水墨画アクション</body></html>');
+    stubFetchHtml(
+      '<html><body>' +
+        padToMinLength('Realm of Ink は Leap Studio が開発した水墨画アクション。') +
+        '</body></html>'
+    );
     mockInvoke.mockResolvedValue('{"verdict": "match", "reason": "本文にタイトルと開発元あり"}');
 
     const result = await verifyOfficialUrlContent(game, 'https://www.4divinity.com/realmofink');
@@ -137,7 +216,11 @@ describe('verifyOfficialUrlContent', () => {
   });
 
   it('無関係サイト（タイトル類似のみ）は mismatch を返す', async () => {
-    stubFetchHtml('<html><body>INK REALM 水墨画アートギャラリー 運営 S.KING HOLDINGS</body></html>');
+    stubFetchHtml(
+      '<html><body>' +
+        padToMinLength('INK REALM 水墨画アートギャラリー 運営 S.KING HOLDINGS。') +
+        '</body></html>'
+    );
     mockInvoke.mockResolvedValue(
       '{"verdict": "mismatch", "reason": "アートギャラリーでゲームと無関係"}'
     );
@@ -170,8 +253,28 @@ describe('verifyOfficialUrlContent', () => {
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
+  it('Issue #135 P2-4: 本文が極端に短いページ（< 500 文字）は Bedrock を呼ばず mismatch を返す', async () => {
+    // 本文が MIN_PAGE_TEXT_LENGTH を下回るが空ではない（旧コードでは uncertain → 採用継続）
+    const shortBody = 'Game'.repeat(20); // 80 文字程度
+    stubFetchHtml(`<html><body>${shortBody}</body></html>`);
+
+    const result = await verifyOfficialUrlContent(game, 'https://shallow.example.com');
+    expect(result.verdict).toBe('mismatch');
+    expect(result.reason).toContain('短すぎて検証不能');
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('Issue #135 P2-4: MIN_PAGE_TEXT_LENGTH の閾値は妥当な値（>=300, <=1500）', () => {
+    expect(MIN_PAGE_TEXT_LENGTH).toBeGreaterThanOrEqual(300);
+    expect(MIN_PAGE_TEXT_LENGTH).toBeLessThanOrEqual(1500);
+  });
+
   it('Bedrock 呼び出しが失敗しても例外を投げず uncertain を返す', async () => {
-    stubFetchHtml('<html><body>Realm of Ink の十分に長い本文テキストをここに用意する</body></html>');
+    stubFetchHtml(
+      '<html><body>' +
+        padToMinLength('Realm of Ink の十分に長い本文テキストをここに用意する。') +
+        '</body></html>'
+    );
     mockInvoke.mockRejectedValue(new Error('Bedrock error'));
 
     const result = await verifyOfficialUrlContent(game, 'https://example.com');
@@ -194,11 +297,14 @@ describe('verifyOfficialUrlContent', () => {
         '<html><body>' +
           '<h1>The Mine SA Studio</h1>' +
           '<section>Our Projects: ' +
-          '<article>Project Aurora — open world RPG</article>' +
-          '<article>Dungeon Blitz R — roguelite dungeon crawler</article>' +
-          '<article>Helix Spire — puzzle platformer</article>' +
-          '<article>Echoes of Tomorrow — narrative adventure</article>' +
+          '<article>Project Aurora — open world RPG with deep skill systems, branching narrative, and dynamic weather</article>' +
+          '<article>Dungeon Blitz R — roguelite dungeon crawler with procedurally generated levels</article>' +
+          '<article>Helix Spire — puzzle platformer in a vertical city, gravity manipulation core mechanic</article>' +
+          '<article>Echoes of Tomorrow — narrative adventure exploring memory, identity, and time travel</article>' +
+          '<article>Veil of Glass — short atmospheric horror experience set in an abandoned observatory</article>' +
+          '<article>Tidal Pact — multiplayer co-op sailing roguelike</article>' +
           '</section>' +
+          '<footer>Founded 2019. We craft games at the intersection of art and systems.</footer>' +
           '</body></html>'
       );
       mockInvoke.mockResolvedValue(
@@ -215,7 +321,12 @@ describe('verifyOfficialUrlContent', () => {
         developer: 'Leap Studio',
       };
       stubFetchHtml(
-        '<html><body>INK REALM 水墨画アートギャラリー 運営 S.KING HOLDINGS</body></html>'
+        '<html><body>' +
+          padToMinLength(
+            'INK REALM 水墨画アートギャラリー 運営 S.KING HOLDINGS。' +
+              '当ギャラリーは現代水墨画作家の作品を展示・販売しています。'
+          ) +
+          '</body></html>'
       );
       mockInvoke.mockResolvedValue(
         '{"verdict": "mismatch", "reason": "アートギャラリーでゲームと無関係"}'
@@ -236,7 +347,10 @@ describe('verifyOfficialUrlContent', () => {
       stubFetchHtml(
         '<html><body>' +
           '<h1>LEGO Batman: Legacy of the Dark Knight</h1>' +
-          '<p>2026 年発売予定。Batman の歴代スーツが登場し、Gotham を救う...</p>' +
+          padToMinLength(
+            '2026 年発売予定。Batman の歴代スーツが登場し、Gotham を救うアクションアドベンチャー。' +
+              'プレイヤーは数十のキャラクターを切り替えながら街を探索する。'
+          ) +
           '<section>対応プラットフォーム: PS5 / Xbox / PC / Switch</section>' +
           '</body></html>'
       );
