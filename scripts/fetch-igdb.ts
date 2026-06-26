@@ -457,6 +457,8 @@ export async function searchGameByName(
       ? COUNTRY_CODES[developerCountry]
       : undefined;
 
+    const officialUrl = pickOfficialUrlFromWebsites(game.websites);
+
     return {
       id: game.id,
       name: game.name,
@@ -481,10 +483,8 @@ export async function searchGameByName(
       steamUrl: game.websites?.find((w) =>
         w.category === 13 || w.url.includes('store.steampowered.com')
       )?.url,
-      officialUrl: pickOfficialUrlFromWebsites(game.websites),
-      officialUrlSource: pickOfficialUrlFromWebsites(game.websites)
-        ? 'igdb-official'
-        : undefined,
+      officialUrl,
+      officialUrlSource: officialUrl ? 'igdb-official' : undefined,
       websites: game.websites,
     };
   } catch (error) {
