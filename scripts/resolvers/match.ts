@@ -67,7 +67,12 @@ export function isSameGame(
   if (!qNorm || !cNorm) return false;
 
   if (strict) {
-    return qNorm === cNorm;
+    if (qNorm !== cNorm) return false;
+    // 完全一致でも年差チェックは実行する（同タイトル別年代のゲームを区別）
+    const qYearS = extractYear(queryDate);
+    const cYearS = extractYear(candidateDate);
+    if (qYearS === undefined || cYearS === undefined) return true;
+    return Math.abs(qYearS - cYearS) <= 2;
   }
 
   // プレフィックス一致（完全一致を含む）

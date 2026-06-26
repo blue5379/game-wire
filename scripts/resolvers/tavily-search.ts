@@ -29,42 +29,6 @@ export function stripStoreSuffix(title: string): string {
 }
 
 /**
- * URL からページのタイトルを取得する（OGP og:title → <title> の順にフォールバック）。
- * タイムアウトや取得失敗の場合は null を返す（false negative を許容）。
- */
-export async function extractPageTitle(url: string, timeoutMs = 8000): Promise<string | null> {
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; GameWire/1.0)' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return null;
-    // HTML 全体ではなく先頭 50KB だけ読む（<head> が含まれれば十分）
-    const reader = res.body?.getReader();
-    if (!reader) return null;
-    let text = '';
-    let totalBytes = 0;
-    const decoder = new TextDecoder();
-    while (totalBytes < 50 * 1024) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      text += decoder.decode(value, { stream: true });
-      totalBytes += value.length;
-      // </head> が見つかれば以降は不要
-      if (text.includes('</head>')) break;
-    }
-    // 内部バッファに残るマルチバイト境界文字をフラッシュ（日本語タイトル対策）
-    text += decoder.decode();
-    reader.cancel().catch(() => {});
-
-    return extractTitleFromHtml(text);
-  } catch {
-    return null;
-  }
-}
-
-/**
  * HTML テキストから og:title または <title> を抽出する純関数。
  * アポストロフィを含むタイトルに対応するためバックリファレンスを使用。
  */
@@ -83,6 +47,59 @@ function extractTitleFromHtml(text: string): string | null {
 }
 
 /**
+ * URL の先頭 50KB を読み取り HTML テキストを返す共通ヘルパー。
+ * レスポンスの alive 判定と title 抽出の両方で使う。
+ *
+ * @returns ok: false → HTTP エラーまたはネットワーク例外
+ *          ok: true, text: string → 先頭部分の HTML テキスト（最大 50KB）
+ */
+async function fetchHtmlHead(
+  url: string,
+  timeoutMs: number,
+): Promise<{ ok: false } | { ok: true; text: string }> {
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; GameWire/1.0)' },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return { ok: false };
+
+    const reader = res.body?.getReader();
+    if (!reader) return { ok: true, text: '' };
+
+    let text = '';
+    let totalBytes = 0;
+    const decoder = new TextDecoder();
+    while (totalBytes < 50 * 1024) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+      totalBytes += value.length;
+      // </head> が見つかれば以降は不要
+      if (text.includes('</head>')) break;
+    }
+    // 内部バッファに残るマルチバイト境界文字をフラッシュ（日本語タイトル対策）
+    text += decoder.decode();
+    reader.cancel().catch(() => {});
+
+    return { ok: true, text };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
+ * URL からページのタイトルを取得する（OGP og:title → <title> の順にフォールバック）。
+ * タイムアウトや取得失敗の場合は null を返す（false negative を許容）。
+ */
+export async function extractPageTitle(url: string, timeoutMs = 8000): Promise<string | null> {
+  const result = await fetchHtmlHead(url, timeoutMs);
+  if (!result.ok) return null;
+  return extractTitleFromHtml(result.text);
+}
+
+/**
  * URL を GET で取得し、生死確認とタイトル抽出を1リクエストで行う。
  * HEAD + GET の二重リクエスト（Issue #132）を解消する。
  *
@@ -94,34 +111,9 @@ export async function fetchAndExtractTitle(
   url: string,
   timeoutMs = 8000,
 ): Promise<{ alive: boolean; title: string | null }> {
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; GameWire/1.0)' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!res.ok) return { alive: false, title: null };
-
-    const reader = res.body?.getReader();
-    if (!reader) return { alive: true, title: null };
-
-    let text = '';
-    let totalBytes = 0;
-    const decoder = new TextDecoder();
-    while (totalBytes < 50 * 1024) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      text += decoder.decode(value, { stream: true });
-      totalBytes += value.length;
-      if (text.includes('</head>')) break;
-    }
-    text += decoder.decode();
-    reader.cancel().catch(() => {});
-
-    return { alive: true, title: extractTitleFromHtml(text) };
-  } catch {
-    return { alive: false, title: null };
-  }
+  const result = await fetchHtmlHead(url, timeoutMs);
+  if (!result.ok) return { alive: false, title: null };
+  return { alive: true, title: extractTitleFromHtml(result.text) };
 }
 
 /**
