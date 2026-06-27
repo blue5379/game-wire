@@ -87,12 +87,12 @@ const NUMERIC_TO_ALPHA2: Record<number, string> = {
   598: 'PG', 600: 'PY', 604: 'PE', 608: 'PH', 616: 'PL', 620: 'PT', 634: 'QA',
   642: 'RO', 643: 'RU', 646: 'RW', 659: 'KN', 662: 'LC', 670: 'VC', 882: 'WS',
   674: 'SM', 678: 'ST', 682: 'SA', 686: 'SN', 694: 'SL', 703: 'SK', 705: 'SI',
-  706: 'SO', 710: 'ZA', 724: 'ES', 144: 'LK', 729: 'SD', 740: 'SR', 752: 'SE',
+  706: 'SO', 710: 'ZA', 724: 'ES', 729: 'SD', 740: 'SR', 752: 'SE',
   756: 'CH', 760: 'SY', 762: 'TJ', 764: 'TH', 768: 'TG', 776: 'TO', 780: 'TT',
   788: 'TN', 792: 'TR', 795: 'TM', 800: 'UG', 804: 'UA', 784: 'AE', 826: 'GB',
   834: 'TZ', 840: 'US', 858: 'UY', 860: 'UZ', 548: 'VU', 862: 'VE', 704: 'VN',
-  887: 'YE', 894: 'ZM', 716: 'ZW', 8: 'AL', 158: 'TW', 191: 'HR', 499: 'ME',
-  688: 'RS', 807: 'MK', 680: 'SB', 90: 'SB',
+  887: 'YE', 894: 'ZM', 716: 'ZW', 158: 'TW', 499: 'ME',
+  688: 'RS', 807: 'MK', 90: 'SB',
 };
 
 const _displayNames = new Intl.DisplayNames(['ja'], { type: 'region' });
@@ -479,9 +479,7 @@ export async function searchGameByName(
     };
 
     // 国コードを日本語名に変換
-    const developerCountryName = developerCountry
-      ? COUNTRY_CODES[developerCountry]
-      : undefined;
+    const developerCountryName = getCountryName(developerCountry);
 
     const officialUrl = pickOfficialUrlFromWebsites(game.websites);
 
