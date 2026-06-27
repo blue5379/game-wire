@@ -64,37 +64,51 @@ const JAPANESE_TO_ENGLISH_TITLES: Record<string, string> = {
   'パルワールド': 'Palworld',
 };
 
-// IGDB国コード→国名のマッピング（主要な国のみ）
-const COUNTRY_CODES: Record<number, string> = {
-  392: '日本',
-  840: 'アメリカ',
-  826: 'イギリス',
-  124: 'カナダ',
-  276: 'ドイツ',
-  250: 'フランス',
-  380: 'イタリア',
-  724: 'スペイン',
-  752: 'スウェーデン',
-  578: 'ノルウェー',
-  208: 'デンマーク',
-  246: 'フィンランド',
-  528: 'オランダ',
-  56: 'ベルギー',
-  616: 'ポーランド',
-  203: 'チェコ',
-  804: 'ウクライナ',
-  643: 'ロシア',
-  156: '中国',
-  410: '韓国',
-  158: '台湾',
-  344: '香港',
-  36: 'オーストラリア',
-  554: 'ニュージーランド',
-  76: 'ブラジル',
-  484: 'メキシコ',
-  32: 'アルゼンチン',
-  756: 'スイス',
-  40: 'オーストリア',
+// ISO 3166-1 数値コード → alpha-2 コードのマッピング（全195カ国）
+// IGDBはISO 3166-1数値コードを使用するが、Intl.DisplayNamesはalpha-2を受け取るため変換が必要
+const NUMERIC_TO_ALPHA2: Record<number, string> = {
+  4: 'AF', 8: 'AL', 12: 'DZ', 20: 'AD', 24: 'AO', 28: 'AG', 32: 'AR', 36: 'AU',
+  40: 'AT', 44: 'BS', 48: 'BH', 50: 'BD', 52: 'BB', 56: 'BE', 64: 'BT', 68: 'BO',
+  70: 'BA', 72: 'BW', 76: 'BR', 96: 'BN', 100: 'BG', 104: 'MM', 108: 'BI',
+  112: 'BY', 116: 'KH', 120: 'CM', 124: 'CA', 132: 'CV', 140: 'CF', 144: 'LK',
+  148: 'TD', 152: 'CL', 156: 'CN', 170: 'CO', 174: 'KM', 178: 'CG', 180: 'CD',
+  188: 'CR', 191: 'HR', 192: 'CU', 196: 'CY', 203: 'CZ', 204: 'BJ', 208: 'DK',
+  212: 'DM', 214: 'DO', 218: 'EC', 222: 'SV', 226: 'GQ', 231: 'ET', 232: 'ER',
+  233: 'EE', 242: 'FJ', 246: 'FI', 250: 'FR', 266: 'GA', 268: 'GE', 270: 'GM',
+  276: 'DE', 288: 'GH', 292: 'GI', 300: 'GR', 308: 'GD', 320: 'GT', 324: 'GN',
+  328: 'GY', 332: 'HT', 340: 'HN', 344: 'HK', 348: 'HU', 356: 'IN', 360: 'ID',
+  364: 'IR', 368: 'IQ', 372: 'IE', 376: 'IL', 380: 'IT', 384: 'CI', 388: 'JM',
+  392: 'JP', 400: 'JO', 398: 'KZ', 404: 'KE', 408: 'KP', 410: 'KR', 414: 'KW',
+  417: 'KG', 418: 'LA', 422: 'LB', 426: 'LS', 428: 'LV', 430: 'LR', 434: 'LY',
+  438: 'LI', 440: 'LT', 442: 'LU', 450: 'MG', 454: 'MW', 458: 'MY', 462: 'MV',
+  466: 'ML', 470: 'MT', 478: 'MR', 480: 'MU', 484: 'MX', 496: 'MN', 498: 'MD',
+  492: 'MC', 504: 'MA', 508: 'MZ', 516: 'NA', 524: 'NP', 528: 'NL', 554: 'NZ',
+  558: 'NI', 562: 'NE', 566: 'NG', 578: 'NO', 512: 'OM', 586: 'PK', 591: 'PA',
+  598: 'PG', 600: 'PY', 604: 'PE', 608: 'PH', 616: 'PL', 620: 'PT', 634: 'QA',
+  642: 'RO', 643: 'RU', 646: 'RW', 659: 'KN', 662: 'LC', 670: 'VC', 882: 'WS',
+  674: 'SM', 678: 'ST', 682: 'SA', 686: 'SN', 694: 'SL', 703: 'SK', 705: 'SI',
+  706: 'SO', 710: 'ZA', 724: 'ES', 144: 'LK', 729: 'SD', 740: 'SR', 752: 'SE',
+  756: 'CH', 760: 'SY', 762: 'TJ', 764: 'TH', 768: 'TG', 776: 'TO', 780: 'TT',
+  788: 'TN', 792: 'TR', 795: 'TM', 800: 'UG', 804: 'UA', 784: 'AE', 826: 'GB',
+  834: 'TZ', 840: 'US', 858: 'UY', 860: 'UZ', 548: 'VU', 862: 'VE', 704: 'VN',
+  887: 'YE', 894: 'ZM', 716: 'ZW', 8: 'AL', 158: 'TW', 191: 'HR', 499: 'ME',
+  688: 'RS', 807: 'MK', 680: 'SB', 90: 'SB',
+};
+
+const _displayNames = new Intl.DisplayNames(['ja'], { type: 'region' });
+
+// Intl.DisplayNames の正式名称を読みやすい通称に上書きするマッピング
+const DISPLAY_NAME_OVERRIDES: Record<string, string> = {
+  'アメリカ合衆国': 'アメリカ',
+  '大韓民国': '韓国',
+  '朝鮮民主主義人民共和国': '北朝鮮',
+  'ロシア連邦': 'ロシア',
+  'ボリビア多民族国': 'ボリビア',
+  'タンザニア連合共和国': 'タンザニア',
+  'コンゴ民主共和国': 'コンゴ（民主共和国）',
+  'コンゴ共和国': 'コンゴ（共和国）',
+  'ミャンマー（ビルマ）': 'ミャンマー',
+  'バチカン市国': 'バチカン',
 };
 
 /**
@@ -111,7 +125,19 @@ function extractJapaneseLocalization(
  */
 function getCountryName(countryCode: number | undefined): string | undefined {
   if (!countryCode) return undefined;
-  return COUNTRY_CODES[countryCode];
+  const alpha2 = NUMERIC_TO_ALPHA2[countryCode];
+  if (!alpha2) {
+    console.warn(`  [IGDB] Unknown country code: ${countryCode}`);
+    return undefined;
+  }
+  try {
+    const name = _displayNames.of(alpha2);
+    if (!name) return undefined;
+    return DISPLAY_NAME_OVERRIDES[name] ?? name;
+  } catch {
+    console.warn(`  [IGDB] Failed to resolve country name for alpha2: ${alpha2}`);
+    return undefined;
+  }
 }
 
 /**
