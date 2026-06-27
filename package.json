@@ -15,7 +15,7 @@
     "build-issue:dev": "DEV_MODE=true npm run fetch-data && DEV_MODE=true npm run generate && DEV_MODE=true npx tsx scripts/build-issue.ts",
     "generate-image": "npx tsx scripts/generate-feature-image.ts",
     "validate-issue": "npx tsx scripts/validate-existing-issue.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --project scripts/tsconfig.json",
     "test": "npm run typecheck && vitest run scripts"
   },
   "dependencies": {
