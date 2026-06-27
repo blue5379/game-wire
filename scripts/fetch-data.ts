@@ -854,7 +854,7 @@ async function enrichSelectedGamesWithOfficialUrl(
         ? new Date(game.releaseDate).getFullYear().toString()
         : undefined;
 
-      const officialUrl = await fetchOfficialJpUrl({
+      const officialResult = await fetchOfficialJpUrl({
         titleEn: game.title,
         titleJa: game.titleJa,
         releaseYear,
@@ -862,8 +862,13 @@ async function enrichSelectedGamesWithOfficialUrl(
         publisher: game.publisher,
       });
 
-      if (officialUrl) {
-        game.sourceUrls = { ...game.sourceUrls, official: officialUrl, officialUrlSource: 'tavily' };
+      if (officialResult) {
+        game.sourceUrls = {
+          ...game.sourceUrls,
+          official: officialResult.url,
+          officialUrlSource: 'tavily',
+          officialVerifyReason: officialResult.verifyReason,
+        };
         continue;
       }
 
@@ -884,6 +889,7 @@ async function enrichSelectedGamesWithOfficialUrl(
           ...game.sourceUrls,
           official: igdbFallback.officialUrl,
           officialUrlSource: igdbFallback.officialUrlSource,
+          officialVerifyReason: undefined,
         };
       }
     } catch (error) {

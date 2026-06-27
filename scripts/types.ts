@@ -176,6 +176,8 @@ export interface SourceUrls {
    * build-issue.ts の最終ゲートで 'tavily' | 'igdb-official' 以外は採用しない。
    */
   officialUrlSource?: 'tavily' | 'igdb-official';
+  /** 公式URL採用時の内容検証結果（reason）。事後追跡用。Issue #117 P3 */
+  officialVerifyReason?: string;
   /** プラットフォーム別ストアリンク（複数） */
   stores?: StoreLink[];
   /** 補助リンク（既存、後方互換） */

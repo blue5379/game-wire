@@ -55,6 +55,8 @@ export interface ValidationReport {
     skippedArticles: number;
     warnings: ValidationWarning[];
   };
+  /** 公式URL未取得の記事一覧。Issue #117 P3 */
+  missingOfficialUrls?: Array<{ articleTitle: string; category: string; gameTitle: string }>;
 }
 
 const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
@@ -633,6 +635,15 @@ export function validateArticles(
     low: warnings.filter((w) => w.severity === 'low').length,
   };
 
+  // 公式URL未取得の記事を収集（feature 記事は対象外）
+  const missingOfficialUrls = articles
+    .filter((a) => a.category !== 'feature' && !a.sourceUrls?.official)
+    .map((a) => ({
+      articleTitle: a.title,
+      category: a.category,
+      gameTitle: a.game?.title ?? '',
+    }));
+
   return {
     issueNumber,
     generatedAt: new Date().toISOString(),
@@ -641,6 +652,7 @@ export function validateArticles(
     warningsBySeverity,
     warnings,
     webSearchStats,
+    missingOfficialUrls: missingOfficialUrls.length > 0 ? missingOfficialUrls : undefined,
   };
 }
 
@@ -691,6 +703,15 @@ export function writeAndCheckReport(
       console.log(
         `  [${w.severity.toUpperCase()}][${w.type}] (${w.category}) ${w.articleTitle}\n    ${w.message}`
       );
+    }
+  }
+
+  // 公式URL未取得の記事（記録のみ。fail 判定には算入しない）
+  if (report.missingOfficialUrls) {
+    console.log('');
+    console.log('=== Missing Official URLs ===');
+    for (const m of report.missingOfficialUrls) {
+      console.log(`  [${m.category}] ${m.gameTitle} (${m.articleTitle})`);
     }
   }
 

@@ -138,6 +138,17 @@ jobs:
             )' "$REPORT" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # 公式URL未取得の記事（記録のみ。人間レビューへの気付き提供）
+          MISSING_COUNT=$(jq 'if has("missingOfficialUrls") and .missingOfficialUrls != null then (.missingOfficialUrls | length) else 0 end' "$REPORT")
+          if [ "$MISSING_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## ⚠️ 公式URL未取得の記事（${MISSING_COUNT}件）" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "以下の記事は公式URLが取得できませんでした。必要に応じて手動で補完してください。" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.missingOfficialUrls[] | "- **[\(.category)]** \(.gameTitle)"' "$REPORT" >> $GITHUB_STEP_SUMMARY
+          fi
+
           # LLM-as-a-judge による事実性チェック結果（記録のみ。fail 判定には算入しない）
           if [ "$(jq 'has("llmJudge") and .llmJudge != null' "$REPORT")" = "true" ]; then
             JUDGED=$(jq '.llmJudge.judgedArticles' "$REPORT")

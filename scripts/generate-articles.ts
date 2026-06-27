@@ -875,16 +875,26 @@ export async function generateFeatureArticle(
     // verifyProposedGames() で検証済みの URL が既にある場合はそれを初期値とし、
     // Tavily が上書きできれば（日本語URL優先）上書き、できなければそのまま使う。
     let officialUrl: string | undefined = game.sourceUrls?.official;
+    let officialVerifyReason: string | undefined = game.sourceUrls?.officialVerifyReason;
     try {
       const releaseYear = game.releaseDate ? game.releaseDate.slice(0, 4) : undefined;
-      officialUrl =
-        (await fetchOfficialJpUrl({
-          titleEn: game.title,
-          titleJa: game.titleJa,
-          releaseYear,
-          developer: game.developer,
-          publisher: game.publisher,
-        })) ?? officialUrl;
+      const officialResult = await fetchOfficialJpUrl({
+        titleEn: game.title,
+        titleJa: game.titleJa,
+        releaseYear,
+        developer: game.developer,
+        publisher: game.publisher,
+      });
+      if (officialResult) {
+        officialUrl = officialResult.url;
+        officialVerifyReason = officialResult.verifyReason;
+        game.sourceUrls = {
+          ...game.sourceUrls,
+          official: officialUrl,
+          officialUrlSource: 'tavily',
+          officialVerifyReason,
+        };
+      }
 
       if (!officialUrl) {
         const igdbFallback = await enrichGameWithIGDB(game.title, {
