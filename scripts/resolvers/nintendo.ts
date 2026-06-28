@@ -65,7 +65,9 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
       const { alive, title: rawTitle } = await fetchAndExtractTitle(nintendoSite.url);
       if (alive) {
         const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
-        if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
+        if (pageTitle === null) {
+          attempts.push({ method: 'igdb-website', ok: false, reason: 'title extraction failed' });
+        } else if (!matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
           attempts.push({ method: 'igdb-website', ok: false, reason: `title mismatch: page="${pageTitle}"` });
         } else {
           attempts.push({ method: 'igdb-website', ok: true });
@@ -74,7 +76,7 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
               platform: 'nintendo',
               url: nintendoSite.url,
               resolvedBy: 'igdb-website',
-              confidence: pageTitle !== null ? 'high' : 'medium',
+              confidence: 'high',
             },
             attempts,
           };

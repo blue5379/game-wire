@@ -183,9 +183,18 @@ describe('シナリオ4: Switch ゲームが実は Steam にも存在 → 両方
       if (url.includes('appdetails') && url.includes('250760')) {
         return Promise.resolve(makeSteamAppDetailsResponse(250760, 'Shovel Knight: Treasure Trove', 'Jun 26, 2014'));
       }
-      // Nintendo HEAD check
       if (url.includes('nintendo.com')) {
-        return Promise.resolve({ ok: true, status: 200 } as Response);
+        const html = `<html><head><meta property="og:title" content="Shovel Knight"/></head></html>`;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(html));
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
       }
       return Promise.resolve(makeFailedResponse());
     });
