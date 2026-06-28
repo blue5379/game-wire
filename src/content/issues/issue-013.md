@@ -175,7 +175,7 @@ articles:
       ## 📅 発売情報
       
       - **タイトル**: DJMAX RESPECT V - V LIBERTY V PACK
-      - **対応機種**: PlayStation 4
+      - **対応機種**: PlayStation 4、PC (Steam)
       - **発売日**: 発売中（2024年9月25日発売）
       - **開発・発売元**: Neowiz
       
@@ -186,6 +186,7 @@ articles:
       title: "DJMAX RESPECT V - V LIBERTY V PACK"
       platforms:
         - PlayStation 4
+        - PC (Microsoft Windows)
       releaseDate: "2024-09-25"
       developer: "Neowiz"
       publisher: "Neowiz"
@@ -202,6 +203,10 @@ articles:
         - platform: "steam"
           url: "https://store.steampowered.com/app/4744690/"
           resolvedBy: "cache"
+          confidence: "high"
+        - platform: "playstation"
+          url: "https://store.playstation.com/en-us/product/UP1685-CUSA11658_00-MUSICPACK0000015"
+          resolvedBy: "manual"
           confidence: "high"
       igdb: "https://www.igdb.com/games/djmax-respect-v-liberty-pack"
   - title: "話題のインディーゲーム「空の軌跡 the 1st」が注目を集める理由"
