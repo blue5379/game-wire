@@ -168,7 +168,7 @@ articles:
     sourceUrls:
       steam: "https://store.steampowered.com/app/2646460"
       igdb: "https://www.igdb.com/games/soulmask"
-  - title: "ギルティギア ストライヴ』シーズン5発表、ジャムとロボカイ参戦で全4キャラ追加"
+  - title: "『ギルティギア ストライヴ』シーズン5発表、ジャムとロボカイ参戦で全4キャラ追加"
     category: indie
     summary: "『GUILTY GEAR -Strive-』のSeason Pass 5では、シリーズファン待望のJam Kuradoberiが2026年4月9日に参戦し、2027年春まで計4体の追加キャラクターと新ステージが順次配信される。"
     articleBody: |

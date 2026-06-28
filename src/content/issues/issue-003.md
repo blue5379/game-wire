@@ -134,7 +134,7 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sctgdx.jpg"
     sourceUrls:
       igdb: "https://www.igdb.com/games/the-quinfall"
-  - title: "Forza Horizon 6』日本が舞台、550台以上の実車で駆け抜ける新作レーシングゲーム発表"
+  - title: "『Forza Horizon 6』日本が舞台、550台以上の実車で駆け抜ける新作レーシングゲーム発表"
     category: indie
     summary: "「Forza Horizon 6」が日本を舞台に2026年5月19日発売予定。550台以上の実在車両と美しく再現された日本の風景が特徴で、文化コンサルタントを起用し現地調査を実施。日本独自のカーカルチャーを体験できる点が高く評価されている。"
     articleBody: |

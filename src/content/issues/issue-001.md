@@ -4,7 +4,7 @@ publishDate: 2026-04-04
 title: "創刊号 - 2026年春のゲーム最前線"
 description: "Game Wire創刊！今週の注目タイトルから名作まで、AIがキュレーションしたゲーム情報をお届けします。"
 articles:
-  - title: "アイザック』生みの親が贈る猫育成ローグライク『Mewgenics』、breeding×冒険で血統を紡ぐ"
+  - title: "『アイザック』生みの親が贈る猫育成ローグライク『Mewgenics』、breeding×冒険で血統を紡ぐ"
     category: newRelease
     summary: "Edmund McMillenの新作『Mewgenics』が約14年の開発期間を経てリリース。猫を育成・繁殖させ冒険に送り出すターン制ローグライクで、戦略性とカオスが融合した独創的なゲームデザインが高評価を得ている。"
     articleBody: |

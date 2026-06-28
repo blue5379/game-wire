@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { parseTitleResponse } from './bedrock-client.js';
 
 // Bedrock SDK をモックして LLM 応答を制御する。
 // prefilterFeatureCandidatesByTheme の LLM パスを決定論的に検証するため。
@@ -174,5 +175,31 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
     mockSend.mockRejectedValueOnce(new Error('network error'));
     const result = await prefilterFeatureCandidatesByTheme('写真の日特集', candidates, 3);
     expect(result).toEqual([]);
+  });
+});
+
+describe('parseTitleResponse', () => {
+  it('『ゲーム名』を含む通常のタイトルはそのまま返す', () => {
+    expect(parseTitleResponse("近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る")).toBe(
+      "近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る"
+    );
+  });
+
+  it('英語タイトルを『』で囲んだタイトルはそのまま返す', () => {
+    expect(parseTitleResponse("『Subnautica 2』4人Co-op対応で新たな惑星の深海へ、基地建設と謎解きが進化")).toBe(
+      "『Subnautica 2』4人Co-op対応で新たな惑星の深海へ、基地建設と謎解きが進化"
+    );
+  });
+
+  it('前後の空白を除去する', () => {
+    expect(parseTitleResponse("  『ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル  ")).toBe(
+      "『ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル"
+    );
+  });
+
+  it('改行以降を除去する', () => {
+    expect(parseTitleResponse("『Stardew Valley』が描く田舎暮らしRPGの魅力\n余分な行")).toBe(
+      "『Stardew Valley』が描く田舎暮らしRPGの魅力"
+    );
   });
 });

@@ -53,7 +53,7 @@ articles:
         - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/sc11k1u.jpg"
     sourceUrls:
       igdb: "https://www.igdb.com/games/tomodachi-life-living-the-dream"
-  - title: "Atomic Heart』最終DLC「Blood on Crystal」4月16日配信、新敵ポリモーフと狂気のボス戦で物語完結"
+  - title: "『Atomic Heart』最終DLC「Blood on Crystal」4月16日配信、新敵ポリモーフと狂気のボス戦で物語完結"
     category: newRelease
     summary: "ソ連が舞台のFPS『Atomic Heart』の最終章DLC「Blood on Crystal」が発売中。主人公P-3と双子が因縁の敵との最終決戦に挑むシリーズ第一部の完結編で、新敵ポリモーフや強力なボスが待ち受けます。"
     articleBody: |
@@ -161,7 +161,7 @@ articles:
     sourceUrls:
       steam: "https://store.steampowered.com/app/4692360"
       igdb: "https://www.igdb.com/games/company-of-heroes"
-  - title: "ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル、全DLCマップ収録予定"
+  - title: "『ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル、全DLCマップ収録予定"
     category: indie
     summary: "『ARK: Survival Ascended』は恐竜テイムと自由度の高いサバイバルが魅力の人気作を、Unreal Engine 5で次世代機向けにリマスターした作品です。"
     articleBody: |

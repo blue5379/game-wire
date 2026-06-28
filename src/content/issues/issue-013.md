@@ -4,7 +4,7 @@ publishDate: 2026-06-26
 title: "第13号 - 2026年夏のゲーム情報"
 description: "今週も2本の新作情報、2本のインディーゲーム情報をお届け。AIがキュレーションした最新ゲーム情報をチェック！"
 articles:
-  - title: "Replaced』人間の体に閉じ込められたAIが主人公の2.5Dアクションプラットフォーマー"
+  - title: "『Replaced』人間の体に閉じ込められたAIが主人公の2.5Dアクションプラットフォーマー"
     category: newRelease
     summary: "8年の開発期間を経て誕生した『Replaced』は、圧倒的なピクセルアートとシネマティックな演出で描かれる2.5Dプラットフォームアクションゲームです。"
     articleBody: |
