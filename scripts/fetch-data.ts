@@ -732,6 +732,10 @@ async function reconcileSelectedGames(
         if (resolvedAppId !== undefined) {
           game.steamAppId = resolvedAppId;
         }
+        // Steam で解決できた = PC 版が存在する。IGDB のプラットフォームデータが不完全な場合に補完する
+        if (addPcPlatformIfMissing(game.platforms)) {
+          console.log(`  [Reconcile] "${game.title}": added "PC (Microsoft Windows)" to platforms (Steam URL resolved)`);
+        }
         console.log(`  [Reconcile] "${game.title}": Steam resolved → ${steamStore.url} (confidence=${steamStore.confidence})`);
       } else {
         // Steam が Resolver で解決されなかった場合:
@@ -774,6 +778,21 @@ async function reconcileSelectedGames(
  *   enrich が sourceUrls.official をセットする場合があり、zombie 判定の sourceUrl チェックが
  *   それに依存するため、順序を逆転させると official URL しか持たないゲームが誤除去される。
  */
+/**
+ * Steam URL が解決されたとき、platforms に PC (Microsoft Windows) が含まれていなければ追加する。
+ * IGDB のプラットフォームデータが不完全な場合（Issue #144）に補完する。
+ * platforms 配列を in-place で変更する（破壊的操作）。
+ * @returns true: 追加した / false: 既に含まれていた
+ */
+export function addPcPlatformIfMissing(platforms: string[]): boolean {
+  const PC_PLATFORM = 'PC (Microsoft Windows)';
+  if (platforms.some((p) => p.toLowerCase().includes('pc') || p.toLowerCase().includes('windows'))) {
+    return false;
+  }
+  platforms.push(PC_PLATFORM);
+  return true;
+}
+
 export function removeZombieGames(selectedGames: SelectedGames): void {
   // developer: false — RequiredFields で省略不可のため false で明示的に「チェックしない」を表現する
   const required = { cover: true, developer: false, sourceUrl: true };

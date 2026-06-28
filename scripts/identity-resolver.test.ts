@@ -183,9 +183,18 @@ describe('シナリオ4: Switch ゲームが実は Steam にも存在 → 両方
       if (url.includes('appdetails') && url.includes('250760')) {
         return Promise.resolve(makeSteamAppDetailsResponse(250760, 'Shovel Knight: Treasure Trove', 'Jun 26, 2014'));
       }
-      // Nintendo HEAD check
       if (url.includes('nintendo.com')) {
-        return Promise.resolve({ ok: true, status: 200 } as Response);
+        const html = `<html><head><meta property="og:title" content="Shovel Knight"/></head></html>`;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(html));
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
       }
       return Promise.resolve(makeFailedResponse());
     });
@@ -531,9 +540,18 @@ describe('Nintendo resolver — 非ゲームページ URL のフィルタリン�
       if (url.includes('storesearch')) {
         return Promise.resolve(makeSteamSearchResponse([]));
       }
-      // ゲームページ URL への HEAD は 200
       if (url.includes('nintendo.co.jp/switch/game-a/')) {
-        return Promise.resolve({ ok: true, status: 200 } as Response);
+        const html = `<html><head><meta property="og:title" content="Game A"/></head></html>`;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(html));
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
       }
       return Promise.resolve(makeFailedResponse());
     });
@@ -552,6 +570,91 @@ describe('Nintendo resolver — 非ゲームページ URL のフィルタリン�
     expect(nintendoLink).toBeDefined();
     expect(nintendoLink?.url).toBe('https://www.nintendo.co.jp/switch/game-a/');
     expect(nintendoLink?.resolvedBy).toBe('igdb-website');
+    expect(nintendoLink?.confidence).toBe('high');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #144: Nintendo igdb-website 経路のタイトル照合
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Nintendo resolver — igdb-website 経路のタイトル照合', () => {
+  it('IGDB websites の Nintendo URL ページタイトルが別ゲームならリジェクトし web-search にフォールスルーする', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      if (url.includes('nintendo.co.jp/switch/other-game/')) {
+        const html = `<html><head><meta property="og:title" content="Other Game Title"/></head></html>`;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(html));
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'My Game',
+      releaseDate: '2025-01-01',
+      platforms: ['Nintendo Switch'],
+      igdbWebsites: [
+        { url: 'https://www.nintendo.co.jp/switch/other-game/', category: 52 },
+      ],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    expect(nintendoLink).toBeUndefined();
+
+    const igdbAttempt = result.trace.nintendo?.attempts.find((a) => a.method === 'igdb-website');
+    expect(igdbAttempt?.ok).toBe(false);
+    expect(igdbAttempt?.reason).toContain('title mismatch');
+    // web-search にフォールスルーしていることを確認
+    const webSearchAttempt = result.trace.nintendo?.attempts.find((a) => a.method === 'web-search');
+    expect(webSearchAttempt).toBeDefined();
+  });
+
+  it('IGDB websites の Nintendo URL でページタイトルが一致するなら confidence: high で採用する', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      if (url.includes('nintendo.co.jp/switch/my-game/')) {
+        const html = `<html><head><meta property="og:title" content="My Game"/></head></html>`;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode(html));
+              controller.close();
+            },
+          }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'My Game',
+      releaseDate: '2025-01-01',
+      platforms: ['Nintendo Switch'],
+      igdbWebsites: [
+        { url: 'https://www.nintendo.co.jp/switch/my-game/', category: 52 },
+      ],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    expect(nintendoLink).toBeDefined();
+    expect(nintendoLink?.resolvedBy).toBe('igdb-website');
+    expect(nintendoLink?.confidence).toBe('high');
   });
 });
 
