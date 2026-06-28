@@ -357,7 +357,7 @@ Steamレビューでの評判を紹介（100〜150文字）
 - 提供データに無い具体的な情報（数値、固有名詞、人名、副題、ストーリー要素）をタイトルに含めない
 - 概要に書かれていない事実をタイトルで断言しない
 
-出力形式: タイトルのみを1行で出力（鉤括弧やクォートは不要）`,
+出力形式: タイトルのみを1行で出力（『』「」などの鉤括弧・クォートは一切使わない）`,
 };
 
 /**
@@ -1032,14 +1032,39 @@ export function parseArticleResponse(response: string): string {
  * タイトルレスポンスをパース
  */
 export function parseTitleResponse(response: string): string {
-  // 余分な記号を除去
   let title = response.trim();
-
-  // クォートや鉤括弧を除去
-  title = title.replace(/^["'「『]/, '').replace(/["'」』]$/, '');
 
   // 改行以降は除去
   title = title.split('\n')[0];
+
+  // 対応する開き・閉じ括弧のペアを定義
+  const bracketPairs: [string, string][] = [
+    ['"', '"'],
+    ["'", "'"],
+    ['「', '」'],
+    ['『', '』'],
+  ];
+
+  // タイトル全体を括弧で囲んでいる場合のみ除去
+  // 例: `『Replaced』` → `Replaced`
+  for (const [open, close] of bracketPairs) {
+    if (title.startsWith(open) && title.endsWith(close)) {
+      title = title.slice(open.length, title.length - close.length);
+      break;
+    }
+  }
+
+  // LLM が「『ゲーム名』説明文」と返す場合に対応:
+  // 先頭が開き括弧で始まり、対応する閉じ括弧が途中に存在する場合、その対を除去
+  for (const [open, close] of bracketPairs) {
+    if (title.startsWith(open)) {
+      const closeIdx = title.indexOf(close);
+      if (closeIdx !== -1) {
+        title = title.slice(open.length, closeIdx) + title.slice(closeIdx + close.length);
+      }
+      break;
+    }
+  }
 
   return title.trim();
 }

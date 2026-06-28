@@ -318,7 +318,7 @@ articles:
         officialUrl: "https://hazelight.se/games/it-takes-two/"
       - title: "Moving Out"
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co6zwl.jpg"
-  - title: "FF7リメイク』はなぜ伝説となったのか──最新技術で蘇った名作RPGの魅力を徹底解剖"
+  - title: "『FF7リメイク』はなぜ伝説となったのか──最新技術で蘇った名作RPGの魅力を徹底解剖"
     category: classic
     summary: "1997年の名作RPG『ファイナルファンタジーVII』を最新技術で再構築した作品。原作序盤を40〜60時間の圧倒的ボリュームに拡張し、進化したバトルシステムと美麗なビジュアルで新旧ファンを魅了しています。"
     articleBody: |

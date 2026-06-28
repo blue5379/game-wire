@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { parseTitleResponse } from './bedrock-client.js';
 
 // Bedrock SDK をモックして LLM 応答を制御する。
 // prefilterFeatureCandidatesByTheme の LLM パスを決定論的に検証するため。
@@ -174,5 +175,43 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
     mockSend.mockRejectedValueOnce(new Error('network error'));
     const result = await prefilterFeatureCandidatesByTheme('写真の日特集', candidates, 3);
     expect(result).toEqual([]);
+  });
+});
+
+describe('parseTitleResponse', () => {
+  it('通常のタイトルはそのまま返す', () => {
+    expect(parseTitleResponse('Replaced — AIが主人公の2.5Dアクション')).toBe(
+      'Replaced — AIが主人公の2.5Dアクション'
+    );
+  });
+
+  it('『ゲーム名』説明文 — 先頭の『』ペアを除去する（Issue #142 の根本原因）', () => {
+    expect(parseTitleResponse('『Replaced』人間の体に閉じ込められたAIが主人公')).toBe(
+      'Replaced人間の体に閉じ込められたAIが主人公'
+    );
+  });
+
+  it('「ゲーム名」説明文 — 先頭の「」ペアを除去する', () => {
+    expect(parseTitleResponse('「Subnautica 2」4人Co-op対応で新惑星の深海へ')).toBe(
+      'Subnautica 24人Co-op対応で新惑星の深海へ'
+    );
+  });
+
+  it('タイトル全体が『』で囲まれている場合は外す', () => {
+    expect(parseTitleResponse('『Replaced』')).toBe('Replaced');
+  });
+
+  it('タイトル全体が「」で囲まれている場合は外す', () => {
+    expect(parseTitleResponse('「Hollow Knight」')).toBe('Hollow Knight');
+  });
+
+  it('前後の空白を除去する', () => {
+    expect(parseTitleResponse('  ARK: Survival Ascended発売  ')).toBe(
+      'ARK: Survival Ascended発売'
+    );
+  });
+
+  it('改行以降を除去する', () => {
+    expect(parseTitleResponse('Stardew Valley\n余分な行')).toBe('Stardew Valley');
   });
 });
