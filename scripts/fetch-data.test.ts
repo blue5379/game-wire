@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSteamReleaseDate, isQualifiedCompanyName, removeZombieGames } from './fetch-data.js';
+import { parseSteamReleaseDate, isQualifiedCompanyName, removeZombieGames, addPcPlatformIfMissing } from './fetch-data.js';
 import type { SelectedGames, GameData } from './types.js';
 
 // テスト用 GameData ファクトリ（必須フィールドのみ設定）
@@ -326,5 +326,40 @@ describe('isQualifiedCompanyName', () => {
 
   it('空文字は除外する', () => {
     expect(isQualifiedCompanyName('')).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// addPcPlatformIfMissing — Issue #144: Steam 解決時の PC プラットフォーム補完
+// ─────────────────────────────────────────────────────────────────────────────
+describe('addPcPlatformIfMissing — Steam 解決時の PC プラットフォーム補完', () => {
+  it('platforms が PS4 のみの場合に PC (Microsoft Windows) を追加して true を返す', () => {
+    const platforms = ['PlayStation 4'];
+    const result = addPcPlatformIfMissing(platforms);
+    expect(result).toBe(true);
+    expect(platforms).toContain('PC (Microsoft Windows)');
+    expect(platforms).toContain('PlayStation 4');
+  });
+
+  it('platforms に既に PC (Microsoft Windows) が含まれている場合は追加せず false を返す', () => {
+    const platforms = ['PC (Microsoft Windows)', 'Xbox Series X|S'];
+    const result = addPcPlatformIfMissing(platforms);
+    expect(result).toBe(false);
+    const pcCount = platforms.filter((p) => p.toLowerCase().includes('windows')).length;
+    expect(pcCount).toBe(1);
+  });
+
+  it('"windows" を含む別表記がある場合も重複追加しない', () => {
+    const platforms = ['PC (Windows)'];
+    const result = addPcPlatformIfMissing(platforms);
+    expect(result).toBe(false);
+    expect(platforms).toHaveLength(1);
+  });
+
+  it('platforms が空の場合は追加して true を返す', () => {
+    const platforms: string[] = [];
+    const result = addPcPlatformIfMissing(platforms);
+    expect(result).toBe(true);
+    expect(platforms).toEqual(['PC (Microsoft Windows)']);
   });
 });

@@ -63,21 +63,26 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
           : 'no Nintendo URL in IGDB websites',
       });
     } else {
-      const alive = await headOk(nintendoSite.url, 8000);
+      const { alive, title: rawTitle } = await fetchAndExtractTitle(nintendoSite.url);
       if (alive) {
-        attempts.push({ method: 'igdb-website', ok: true });
-        return {
-          link: {
-            platform: 'nintendo',
-            url: nintendoSite.url,
-            resolvedBy: 'igdb-website',
-            // HEAD のみでは名前確認できないため medium とする（将来的に name check を追加予定）
-            confidence: 'medium',
-          },
-          attempts,
-        };
+        const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
+        if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
+          attempts.push({ method: 'igdb-website', ok: false, reason: `title mismatch: page="${pageTitle}"` });
+        } else {
+          attempts.push({ method: 'igdb-website', ok: true });
+          return {
+            link: {
+              platform: 'nintendo',
+              url: nintendoSite.url,
+              resolvedBy: 'igdb-website',
+              confidence: pageTitle !== null ? 'high' : 'medium',
+            },
+            attempts,
+          };
+        }
+      } else {
+        attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
       }
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
     }
   } else {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
