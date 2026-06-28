@@ -170,7 +170,7 @@ export async function resolveByLocale(
   ): Promise<{ link: StoreLink | null; candidateCount: number }> => {
     // 英語スコープ（nintendo.com など）で日本語タイトル検索しても空振りするため、
     // 英語フェーズでは英語タイトルのみに絞って Tavily 呼び出しを抑制する。
-    const titlesForScope = localeLabel === 'en' ? [input.title] : queryTitles;
+    const titlesForScope = localeLabel === 'en' ? [input.title].filter(Boolean) : queryTitles;
     const raw = await searchStorePage(titlesForScope, scope, config.isPlatformUrl);
     const candidates = raw.filter(
       (u) => config.isGamePage(u) && !triedUrls.has(u) && (!requireJapanese || isJapaneseUrl(u)),
