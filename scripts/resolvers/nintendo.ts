@@ -89,9 +89,13 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
   }
 
-  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 + タイトル照合 ──────────
+  // ─── 経路2: Tavily 検索 → ゲームページ検証 → タイトル照合 ──────────────────────
+  // 経路1で既に取得試行済みの URL は除外して二重 GET を防ぐ
+  const igdbTriedUrl = input.igdbWebsites?.find((w) => isNintendoUrl(w.url) && isNintendoGamePage(w.url))?.url;
   const candidates = await searchStorePage(queryTitles, 'site:nintendo.co.jp', isNintendoUrl);
-  const gamePageCandidates = candidates.filter(isNintendoGamePage);
+  const gamePageCandidates = candidates.filter(
+    (url) => isNintendoGamePage(url) && url !== igdbTriedUrl
+  );
   if (gamePageCandidates.length > 0) {
     for (const url of gamePageCandidates) {
       const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
@@ -100,8 +104,13 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
         continue;
       }
       // サフィックス除去後に完全一致（シリーズ続編誤マッチ防止）
+      // タイトル取得失敗（null）は経路1と同様に却下する
       const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
-      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
+      if (pageTitle === null) {
+        attempts.push({ method: 'web-search', ok: false, reason: 'title extraction failed' });
+        continue;
+      }
+      if (!matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
         attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
         continue;
       }
@@ -111,7 +120,7 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
           platform: 'nintendo',
           url,
           resolvedBy: 'web-search',
-          confidence: pageTitle !== null ? 'high' : 'medium',
+          confidence: 'high',
         },
         attempts,
       };

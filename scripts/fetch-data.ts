@@ -780,7 +780,8 @@ async function reconcileSelectedGames(
  */
 /**
  * Steam URL が解決されたとき、platforms に PC (Microsoft Windows) が含まれていなければ追加する。
- * IGDB のプラットフォームデータが不完全な場合（Issue #144）に補完するための純関数。
+ * IGDB のプラットフォームデータが不完全な場合（Issue #144）に補完する。
+ * platforms 配列を in-place で変更する（破壊的操作）。
  * @returns true: 追加した / false: 既に含まれていた
  */
 export function addPcPlatformIfMissing(platforms: string[]): boolean {
