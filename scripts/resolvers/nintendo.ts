@@ -7,7 +7,6 @@
  */
 
 import type { StoreLink } from '../types.js';
-import { headOk } from '../url-health.js';
 import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
 import { matchesAnyTitle } from './match.js';
 
@@ -81,7 +80,7 @@ export async function resolveNintendo(input: NintendoResolverInput): Promise<Nin
           };
         }
       } else {
-        attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
+        attempts.push({ method: 'igdb-website', ok: false, reason: 'GET check failed' });
       }
     }
   } else {
