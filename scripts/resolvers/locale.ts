@@ -20,7 +20,9 @@
  */
 
 import type { StoreLink, StorePlatform } from '../types.js';
-import { searchStorePage } from './tavily-search.js';
+import { headOk } from '../url-health.js';
+import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
+import { matchesAnyTitle } from './match.js';
 
 /** プラットフォーム解決の試行ログ1件 */
 export type ResolveAttempt = { method: string; ok: boolean; reason?: string };
@@ -41,6 +43,37 @@ const JA_LOCALE_PATTERNS = ['.co.jp', 'store-jp.', '/ja-jp', '/ja/', '/jp/'];
 export function isJapaneseUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return JA_LOCALE_PATTERNS.some((p) => lower.includes(p));
+}
+
+/**
+ * IGDB 由来 URL を HEAD のみで死活確認する verifier ファクトリ。
+ * 名前確認ができないため confidence は medium 固定。
+ * PlayStation / Xbox が共有する（IGDB の website は HEAD でしか検証できない）。
+ */
+export function makeHeadVerifier(timeoutMs = 8000): (url: string) => Promise<VerifyOutcome> {
+  return async (url: string) => {
+    const alive = await headOk(url, timeoutMs);
+    return alive ? { ok: true, confidence: 'medium' } : { ok: false, reason: 'HEAD check failed' };
+  };
+}
+
+/**
+ * web-search 由来 URL を GET でタイトル取得して照合する verifier ファクトリ（寛容版）。
+ * - タイトル取得失敗（null）は false negative を許容し medium で採用する
+ * - タイトルが取得できた場合は完全一致を要求し、一致時 high・不一致時は却下
+ * PlayStation / Xbox が共有する。Nintendo は null を却下する厳格版を独自に持つ。
+ */
+export function makeLenientTitleVerifier(input: LocaleResolverInput): (url: string) => Promise<VerifyOutcome> {
+  const queryTitles = [input.title, ...(input.titleJa ? [input.titleJa] : [])].filter(Boolean);
+  return async (url: string) => {
+    const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
+    if (!alive) return { ok: false, reason: `dead url: ${url}` };
+    const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
+    if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
+      return { ok: false, reason: `title mismatch: page="${pageTitle}"` };
+    }
+    return { ok: true, confidence: pageTitle !== null ? 'high' : 'medium' };
+  };
 }
 
 export interface LocaleResolverInput {
@@ -127,39 +160,56 @@ export async function resolveByLocale(
     return null;
   };
 
-  const trySearch = async (scope: string, localeLabel: 'ja' | 'en'): Promise<StoreLink | null> => {
+  // requireJapanese=true（jaフェーズ）のとき、Tavily が site: スコープを無視して
+  // 英語 URL を返しても isJapaneseUrl で弾く（JP優先の保証）。
+  // candidateCount は「ロケール条件を満たすゲームページ候補が何件あったか」。
+  const trySearch = async (
+    scope: string,
+    localeLabel: 'ja' | 'en',
+    requireJapanese: boolean,
+  ): Promise<{ link: StoreLink | null; candidateCount: number }> => {
     const raw = await searchStorePage(queryTitles, scope, config.isPlatformUrl);
-    const candidates = raw.filter((u) => config.isGamePage(u) && !triedUrls.has(u));
+    const candidates = raw.filter(
+      (u) => config.isGamePage(u) && !triedUrls.has(u) && (!requireJapanese || isJapaneseUrl(u)),
+    );
     if (candidates.length === 0) {
       if (raw.length > 0) {
         attempts.push({ method: 'web-search', ok: false, reason: `${localeLabel}: Tavily results were all non-game pages` });
       } else {
         attempts.push({ method: 'web-search', ok: false, reason: `${localeLabel}: no Tavily results` });
       }
-      return null;
+      return { link: null, candidateCount: 0 };
     }
     for (const url of candidates) {
       triedUrls.add(url);
       const outcome = await config.verifySearch(url);
       if (outcome.ok) {
         attempts.push({ method: 'web-search', ok: true });
-        return makeLink(url, 'web-search', outcome.confidence);
+        return { link: makeLink(url, 'web-search', outcome.confidence), candidateCount: candidates.length };
       }
       attempts.push({ method: 'web-search', ok: false, reason: outcome.reason });
     }
-    return null;
+    return { link: null, candidateCount: candidates.length };
   };
 
   // ─── Phase A: 日本語を探す ───────────────────────────────────────────────
   let link = await tryIgdb(igdbJa); // A1: IGDB 日本語ゲームページ
   if (link) return { link, attempts };
-  link = await trySearch(config.jaSearchScope, 'ja'); // A2: 日本語スコープ検索
-  if (link) return { link, attempts };
+  const jaSearch = await trySearch(config.jaSearchScope, 'ja', true); // A2: 日本語スコープ検索
+  if (jaSearch.link) return { link: jaSearch.link, attempts };
 
   // ─── Phase B: 英語にフォールバック ───────────────────────────────────────
   link = await tryIgdb(igdbEn); // B1: IGDB 英語/その他ゲームページ
   if (link) return { link, attempts };
-  link = await trySearch(config.enSearchScope, 'en'); // B2: 英語スコープ検索
+  // B2: 英語スコープ検索。日本語検索でゲームページ候補が見つかった場合はスキップして
+  // 余計な Tavily 呼び出し（レート制限・コスト）を抑える。候補 0 件＝日本語ページが
+  // 存在しないと判断できる場合のみ英語サイトを探しに行く＝「日本語が無ければ英語」を保証する。
+  if (jaSearch.candidateCount === 0) {
+    const enSearch = await trySearch(config.enSearchScope, 'en', false);
+    if (enSearch.link) return { link: enSearch.link, attempts };
+  } else {
+    attempts.push({ method: 'web-search', ok: false, reason: 'en: skipped (Japanese page candidates exist)' });
+  }
   if (link) return { link, attempts };
 
   return { link: null, attempts };
