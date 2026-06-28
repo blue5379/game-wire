@@ -1,15 +1,16 @@
 /**
  * PlayStation Platform Resolver
  *
- * 2経路で PlayStation Store / 公式ページ URL を解決する:
- * 1. IGDB websites に playstation.com 系の URL が含まれる
- * 2. Tavily 検索 "{title}" site:playstation.com/ja-jp → HEAD 200 検証
+ * ロケール共通仕様（Issue #149）に従い、日本語サイト優先で PlayStation Store /
+ * 公式ページ URL を解決する。順序は scripts/resolvers/locale.ts を参照:
+ *   A1. IGDB websites の日本語ゲームページ（playstation.com/ja-jp 等）
+ *   A2. Tavily 検索 site:playstation.com/ja-jp
+ *   B1. IGDB websites の英語ゲームページ（playstation.com/en-us 等）
+ *   B2. Tavily 検索 site:playstation.com/en-us
  */
 
 import type { StoreLink } from '../types.js';
-import { headOk } from '../url-health.js';
-import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
-import { matchesAnyTitle } from './match.js';
+import { resolveByLocale, makeHeadVerifier, makeLenientTitleVerifier, type LocaleResolverInput } from './locale.js';
 
 const PLAYSTATION_URL_PATTERNS = ['playstation.com'];
 
@@ -27,12 +28,7 @@ function isPlayStationGamePage(url: string): boolean {
   return !PLAYSTATION_NON_GAME_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 
-export interface PlayStationResolverInput {
-  title: string;
-  titleJa?: string;
-  releaseDate?: string;
-  igdbWebsites?: { url: string; category?: number }[];
-}
+export interface PlayStationResolverInput extends LocaleResolverInput {}
 
 export interface PlayStationResolverResult {
   link: StoreLink | null;
@@ -40,82 +36,19 @@ export interface PlayStationResolverResult {
 }
 
 /**
- * PlayStation Resolver — 2経路で PS URL を解決する
+ * PlayStation Resolver — 日本語優先で PS URL を解決する
  */
 export async function resolvePlayStation(input: PlayStationResolverInput): Promise<PlayStationResolverResult> {
-  const attempts: { method: string; ok: boolean; reason?: string }[] = [];
-
-  const queryTitles = [
-    input.title,
-    ...(input.titleJa ? [input.titleJa] : []),
-  ].filter(Boolean);
-
-  // ─── 経路1: IGDB websites（playstation.com 系） ────────────────────────────
-  if (input.igdbWebsites?.length) {
-    const psSite = input.igdbWebsites.find((w) => isPlayStationUrl(w.url) && isPlayStationGamePage(w.url));
-    if (!psSite) {
-      const hasPlayStationUrl = input.igdbWebsites.some((w) => isPlayStationUrl(w.url));
-      attempts.push({
-        method: 'igdb-website',
-        ok: false,
-        reason: hasPlayStationUrl
-          ? 'PlayStation URL is not a game page (news/press/blog path)'
-          : 'no PlayStation URL in IGDB websites',
-      });
-    } else {
-      const alive = await headOk(psSite.url, 8000);
-      if (alive) {
-        attempts.push({ method: 'igdb-website', ok: true });
-        return {
-          link: {
-            platform: 'playstation',
-            url: psSite.url,
-            resolvedBy: 'igdb-website',
-            // HEAD のみでは名前確認できないため medium とする（将来的に name check を追加予定）
-            confidence: 'medium',
-          },
-          attempts,
-        };
-      }
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
-    }
-  } else {
-    attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
-  }
-
-  // ─── 経路2: Tavily 検索 → ゲームページ検証 → HEAD 200 + タイトル照合 ──────────
-  const candidates = await searchStorePage(queryTitles, 'site:playstation.com/ja-jp', isPlayStationUrl);
-  const gamePageCandidates = candidates.filter(isPlayStationGamePage);
-  if (gamePageCandidates.length > 0) {
-    for (const url of gamePageCandidates) {
-      const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
-      if (!alive) {
-        attempts.push({ method: 'web-search', ok: false, reason: `dead url: ${url}` });
-        continue;
-      }
-      // サフィックス除去後に完全一致（シリーズ続編誤マッチ防止）
-      const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
-      if (pageTitle !== null && !matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
-        attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
-        continue;
-      }
-      attempts.push({ method: 'web-search', ok: true });
-      return {
-        link: {
-          platform: 'playstation',
-          url,
-          resolvedBy: 'web-search',
-          confidence: pageTitle !== null ? 'high' : 'medium',
-        },
-        attempts,
-      };
-    }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed or title mismatch' });
-  } else if (candidates.length > 0) {
-    attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (news/press/blog)' });
-  } else {
-    attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for PlayStation' });
-  }
-
-  return { link: null, attempts };
+  return resolveByLocale(input, {
+    platform: 'playstation',
+    isPlatformUrl: isPlayStationUrl,
+    isGamePage: isPlayStationGamePage,
+    jaSearchScope: 'site:playstation.com/ja-jp',
+    enSearchScope: 'site:playstation.com/en-us',
+    // IGDB 経路は HEAD のみで名前確認できないため medium（将来的に name check を追加予定）
+    verifyIgdb: makeHeadVerifier(),
+    verifySearch: makeLenientTitleVerifier(input),
+    notGamePageReason: 'PlayStation URL is not a game page (news/press/blog path)',
+    noUrlReason: 'no PlayStation URL in IGDB websites',
+  });
 }

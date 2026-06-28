@@ -1,18 +1,22 @@
 /**
  * Nintendo Platform Resolver
  *
- * 2経路で Nintendo Switch eShop / 公式ゲーム紹介ページ URL を解決する:
- * 1. IGDB websites に nintendo.com / nintendo.co.jp 系の URL が含まれる
- * 2. Tavily 検索 "{title}" site:nintendo.co.jp → HEAD 200 検証
+ * ロケール共通仕様（Issue #149）に従い、日本語サイト優先で Nintendo Switch eShop /
+ * 公式ゲーム紹介ページ URL を解決する。順序は scripts/resolvers/locale.ts を参照:
+ *   A1. IGDB websites の日本語ゲームページ（nintendo.co.jp 等）
+ *   A2. Tavily 検索 site:nintendo.co.jp
+ *   B1. IGDB websites の英語ゲームページ（nintendo.com 等）
+ *   B2. Tavily 検索 site:nintendo.com
  */
 
 import type { StoreLink } from '../types.js';
-import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
+import { fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
 import { matchesAnyTitle } from './match.js';
+import { resolveByLocale, type LocaleResolverInput, type VerifyOutcome } from './locale.js';
 
 const NINTENDO_URL_PATTERNS = ['nintendo.com', 'nintendo.co.jp'];
 
-// nintendo.co.jp 内でゲームページではないパス
+// nintendo 内でゲームページではないパス
 const NINTENDO_NON_GAME_PATH_PATTERNS = ['/ir/', '/news/', '/press/', '/pdf/', '/csr/', '/investors/', '/corporate/'];
 
 function isNintendoUrl(url: string): boolean {
@@ -26,12 +30,7 @@ function isNintendoGamePage(url: string): boolean {
   return !NINTENDO_NON_GAME_PATH_PATTERNS.some((p) => lower.includes(p));
 }
 
-export interface NintendoResolverInput {
-  title: string;
-  titleJa?: string;
-  releaseDate?: string;
-  igdbWebsites?: { url: string; category?: number }[];
-}
+export interface NintendoResolverInput extends LocaleResolverInput {}
 
 export interface NintendoResolverResult {
   link: StoreLink | null;
@@ -39,98 +38,37 @@ export interface NintendoResolverResult {
 }
 
 /**
- * Nintendo Resolver — 2経路で Nintendo URL を解決する
+ * GET でページタイトルを取り、サフィックス除去後に完全一致するか検証する。
+ * タイトル取得失敗（null）は却下する（IGDB 経路・web-search 経路で共通）。
+ */
+function makeTitleVerifier(input: NintendoResolverInput) {
+  const queryTitles = [input.title, ...(input.titleJa ? [input.titleJa] : [])].filter(Boolean);
+  return async (url: string): Promise<VerifyOutcome> => {
+    const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
+    if (!alive) return { ok: false, reason: `GET check failed: ${url}` };
+    const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
+    if (pageTitle === null) return { ok: false, reason: 'title extraction failed' };
+    if (!matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
+      return { ok: false, reason: `title mismatch: page="${pageTitle}"` };
+    }
+    return { ok: true, confidence: 'high' };
+  };
+}
+
+/**
+ * Nintendo Resolver — 日本語優先で Nintendo URL を解決する
  */
 export async function resolveNintendo(input: NintendoResolverInput): Promise<NintendoResolverResult> {
-  const attempts: { method: string; ok: boolean; reason?: string }[] = [];
-
-  const queryTitles = [
-    input.title,
-    ...(input.titleJa ? [input.titleJa] : []),
-  ].filter(Boolean);
-
-  // ─── 経路1: IGDB websites（nintendo.com / nintendo.co.jp 系） ─────────────
-  if (input.igdbWebsites?.length) {
-    const nintendoSite = input.igdbWebsites.find((w) => isNintendoUrl(w.url) && isNintendoGamePage(w.url));
-    if (!nintendoSite) {
-      const hasNintendoUrl = input.igdbWebsites.some((w) => isNintendoUrl(w.url));
-      attempts.push({
-        method: 'igdb-website',
-        ok: false,
-        reason: hasNintendoUrl
-          ? 'Nintendo URL is not a game page (IR/news/press/pdf path)'
-          : 'no Nintendo URL in IGDB websites',
-      });
-    } else {
-      const { alive, title: rawTitle } = await fetchAndExtractTitle(nintendoSite.url);
-      if (alive) {
-        const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
-        if (pageTitle === null) {
-          attempts.push({ method: 'igdb-website', ok: false, reason: 'title extraction failed' });
-        } else if (!matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
-          attempts.push({ method: 'igdb-website', ok: false, reason: `title mismatch: page="${pageTitle}"` });
-        } else {
-          attempts.push({ method: 'igdb-website', ok: true });
-          return {
-            link: {
-              platform: 'nintendo',
-              url: nintendoSite.url,
-              resolvedBy: 'igdb-website',
-              confidence: 'high',
-            },
-            attempts,
-          };
-        }
-      } else {
-        attempts.push({ method: 'igdb-website', ok: false, reason: 'GET check failed' });
-      }
-    }
-  } else {
-    attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
-  }
-
-  // ─── 経路2: Tavily 検索 → ゲームページ検証 → タイトル照合 ──────────────────────
-  // 経路1で既に取得試行済みの URL は除外して二重 GET を防ぐ
-  const igdbTriedUrl = input.igdbWebsites?.find((w) => isNintendoUrl(w.url) && isNintendoGamePage(w.url))?.url;
-  const candidates = await searchStorePage(queryTitles, 'site:nintendo.co.jp', isNintendoUrl);
-  const gamePageCandidates = candidates.filter(
-    (url) => isNintendoGamePage(url) && url !== igdbTriedUrl
-  );
-  if (gamePageCandidates.length > 0) {
-    for (const url of gamePageCandidates) {
-      const { alive, title: rawTitle } = await fetchAndExtractTitle(url);
-      if (!alive) {
-        attempts.push({ method: 'web-search', ok: false, reason: `dead url: ${url}` });
-        continue;
-      }
-      // サフィックス除去後に完全一致（シリーズ続編誤マッチ防止）
-      // タイトル取得失敗（null）は経路1と同様に却下する
-      const pageTitle = rawTitle !== null ? stripStoreSuffix(rawTitle) : null;
-      if (pageTitle === null) {
-        attempts.push({ method: 'web-search', ok: false, reason: 'title extraction failed' });
-        continue;
-      }
-      if (!matchesAnyTitle(queryTitles, pageTitle, input.releaseDate, undefined, true)) {
-        attempts.push({ method: 'web-search', ok: false, reason: `title mismatch: page="${pageTitle}"` });
-        continue;
-      }
-      attempts.push({ method: 'web-search', ok: true });
-      return {
-        link: {
-          platform: 'nintendo',
-          url,
-          resolvedBy: 'web-search',
-          confidence: 'high',
-        },
-        attempts,
-      };
-    }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all game-page candidates failed or title mismatch' });
-  } else if (candidates.length > 0) {
-    attempts.push({ method: 'web-search', ok: false, reason: 'Tavily results were all non-game pages (IR/news/press/pdf)' });
-  } else {
-    attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for Nintendo' });
-  }
-
-  return { link: null, attempts };
+  const verify = makeTitleVerifier(input);
+  return resolveByLocale(input, {
+    platform: 'nintendo',
+    isPlatformUrl: isNintendoUrl,
+    isGamePage: isNintendoGamePage,
+    jaSearchScope: 'site:nintendo.co.jp',
+    enSearchScope: 'site:nintendo.com',
+    verifyIgdb: verify,
+    verifySearch: verify,
+    notGamePageReason: 'Nintendo URL is not a game page (IR/news/press/pdf path)',
+    noUrlReason: 'no Nintendo URL in IGDB websites',
+  });
 }

@@ -1,13 +1,19 @@
 /**
  * App Store (iOS) Platform Resolver
  *
- * iTunes Search API（無料・認証不要）でアプリを検索し、名前突合で確信度を決める。
- * IGDB websites に apps.apple.com が含まれる場合は直接 HEAD 検証する。
+ * ロケール共通仕様（Issue #149）に従い、日本語サイト優先でアプリ URL を解決する:
+ *   A1. IGDB websites の日本語 URL（apps.apple.com/jp/...） → HEAD 検証
+ *   A2. iTunes Search API country=jp → 名前突合
+ *   B1. IGDB websites の英語/その他 URL（apps.apple.com/us/...） → HEAD 検証
+ *
+ * App Store の URL は ./jp/ ./us/ でロケールを表すが数値 ID は共通。日本語ストアページが
+ * 取得できれば優先し、無ければ IGDB の外国語 URL にフォールバックする。
  */
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
 import { matchesAnyTitle } from './match.js';
+import { isJapaneseUrl } from './locale.js';
 
 const APPSTORE_URL_PATTERNS = ['apps.apple.com', 'itunes.apple.com'];
 
@@ -49,32 +55,34 @@ export async function resolveAppStore(input: AppStoreResolverInput): Promise<App
     ...(input.titleJa ? [input.titleJa] : []),
   ].filter(Boolean);
 
-  // ─── 経路1: IGDB websites（apps.apple.com 系） ──────────────────────────────
-  if (input.igdbWebsites?.length) {
-    const appStoreSite = input.igdbWebsites.find((w) => isAppStoreUrl(w.url));
-    if (appStoreSite) {
-      const alive = await headOk(appStoreSite.url, 8000);
-      if (alive) {
-        attempts.push({ method: 'igdb-website', ok: true });
-        return {
-          link: {
-            platform: 'appstore',
-            url: appStoreSite.url,
-            resolvedBy: 'igdb-website',
-            confidence: 'medium',
-          },
-          attempts,
-        };
-      }
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
-    } else {
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'no App Store URL in IGDB websites' });
+  // IGDB websites の App Store URL を日本語/その他ロケールに分割する
+  const appStoreUrls = (input.igdbWebsites ?? []).map((w) => w.url).filter(isAppStoreUrl);
+  const igdbJaUrl = appStoreUrls.find(isJapaneseUrl);
+  const igdbEnUrl = appStoreUrls.find((u) => !isJapaneseUrl(u));
+
+  const verifyIgdbUrl = async (url: string): Promise<StoreLink | null> => {
+    const alive = await headOk(url, 8000);
+    if (alive) {
+      attempts.push({ method: 'igdb-website', ok: true });
+      return { platform: 'appstore', url, resolvedBy: 'igdb-website', confidence: 'medium' };
     }
-  } else {
+    attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
+    return null;
+  };
+
+  if (!input.igdbWebsites?.length) {
     attempts.push({ method: 'igdb-website', ok: false, reason: 'no IGDB websites provided' });
+  } else if (appStoreUrls.length === 0) {
+    attempts.push({ method: 'igdb-website', ok: false, reason: 'no App Store URL in IGDB websites' });
   }
 
-  // ─── 経路2: iTunes Search API ──────────────────────────────────────────────
+  // ─── A1: IGDB websites の日本語 URL ────────────────────────────────────────
+  if (igdbJaUrl) {
+    const link = await verifyIgdbUrl(igdbJaUrl);
+    if (link) return { link, attempts };
+  }
+
+  // ─── A2: iTunes Search API（country=jp） ───────────────────────────────────
   for (const queryTitle of queryTitles) {
     let json: ItunesSearchResult;
     try {
@@ -109,6 +117,12 @@ export async function resolveAppStore(input: AppStoreResolverInput): Promise<App
   }
 
   attempts.push({ method: 'itunes-search', ok: false, reason: 'no matching result in iTunes Search' });
+
+  // ─── B1: IGDB websites の英語/その他ロケール URL（日本語が取得できなかった場合） ──
+  if (igdbEnUrl) {
+    const link = await verifyIgdbUrl(igdbEnUrl);
+    if (link) return { link, attempts };
+  }
 
   return { link: null, attempts };
 }
