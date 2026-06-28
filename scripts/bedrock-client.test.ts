@@ -179,39 +179,27 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
 });
 
 describe('parseTitleResponse', () => {
-  it('通常のタイトルはそのまま返す', () => {
-    expect(parseTitleResponse('Replaced — AIが主人公の2.5Dアクション')).toBe(
-      'Replaced — AIが主人公の2.5Dアクション'
+  it('『ゲーム名』を含む通常のタイトルはそのまま返す', () => {
+    expect(parseTitleResponse("近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る")).toBe(
+      "近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る"
     );
   });
 
-  it('『ゲーム名』説明文 — 先頭の『』ペアを除去する（Issue #142 の根本原因）', () => {
-    expect(parseTitleResponse('『Replaced』人間の体に閉じ込められたAIが主人公')).toBe(
-      'Replaced人間の体に閉じ込められたAIが主人公'
+  it('英語タイトルを『』で囲んだタイトルはそのまま返す', () => {
+    expect(parseTitleResponse("『Subnautica 2』4人Co-op対応で新たな惑星の深海へ、基地建設と謎解きが進化")).toBe(
+      "『Subnautica 2』4人Co-op対応で新たな惑星の深海へ、基地建設と謎解きが進化"
     );
-  });
-
-  it('「ゲーム名」説明文 — 先頭の「」ペアを除去する', () => {
-    expect(parseTitleResponse('「Subnautica 2」4人Co-op対応で新惑星の深海へ')).toBe(
-      'Subnautica 24人Co-op対応で新惑星の深海へ'
-    );
-  });
-
-  it('タイトル全体が『』で囲まれている場合は外す', () => {
-    expect(parseTitleResponse('『Replaced』')).toBe('Replaced');
-  });
-
-  it('タイトル全体が「」で囲まれている場合は外す', () => {
-    expect(parseTitleResponse('「Hollow Knight」')).toBe('Hollow Knight');
   });
 
   it('前後の空白を除去する', () => {
-    expect(parseTitleResponse('  ARK: Survival Ascended発売  ')).toBe(
-      'ARK: Survival Ascended発売'
+    expect(parseTitleResponse("  『ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル  ")).toBe(
+      "『ARK: Survival Ascended』UE5で生まれ変わる恐竜サバイバル"
     );
   });
 
   it('改行以降を除去する', () => {
-    expect(parseTitleResponse('Stardew Valley\n余分な行')).toBe('Stardew Valley');
+    expect(parseTitleResponse("『Stardew Valley』が描く田舎暮らしRPGの魅力\n余分な行")).toBe(
+      "『Stardew Valley』が描く田舎暮らしRPGの魅力"
+    );
   });
 });

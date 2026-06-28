@@ -346,9 +346,12 @@ Steamレビューでの評判を紹介（100〜150文字）
 
 必須ルール（必ず守ること）:
 - 記事タイトルには必ず正式ゲームタイトル（「タイトル（日本語）」があれば日本語名、なければ英語名）を含めること
-  - 例: ゲームタイトルが "Hollow Knight" なら、記事タイトルに「Hollow Knight」を含める
-  - 例: 日本語タイトルが「ホロウナイト」なら、記事タイトルに「ホロウナイト」を含める
+  - 例: ゲームタイトルが "Hollow Knight" なら、記事タイトルに『Hollow Knight』を含める
+  - 例: 日本語タイトルが「ホロウナイト」なら、記事タイトルに『ホロウナイト』を含める
   - ゲームが他作品（アニメ・映画等）のスピンオフ・ファンゲームであっても、そのゲーム自身の正式タイトルを必ず含めること
+- ゲームタイトル部分は必ず『』（二重鉤括弧）で囲むこと
+  - 例: 「近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る」
+  - 例: 「祖父の農場から始まる第二の人生──『Stardew Valley』が描く田舎暮らしRPGの魅力」
 
 ハルシネーション防止のルール（必ず守ること）:
 - 提供されたゲームタイトル（英語/日本語）を勝手に短縮・翻訳・改変・並べ替えしない
@@ -357,7 +360,7 @@ Steamレビューでの評判を紹介（100〜150文字）
 - 提供データに無い具体的な情報（数値、固有名詞、人名、副題、ストーリー要素）をタイトルに含めない
 - 概要に書かれていない事実をタイトルで断言しない
 
-出力形式: タイトルのみを1行で出力（『』「」などの鉤括弧・クォートは一切使わない）`,
+出力形式: タイトルのみを1行で出力`,
 };
 
 /**
@@ -1032,41 +1035,7 @@ export function parseArticleResponse(response: string): string {
  * タイトルレスポンスをパース
  */
 export function parseTitleResponse(response: string): string {
-  let title = response.trim();
-
-  // 改行以降は除去
-  title = title.split('\n')[0];
-
-  // 対応する開き・閉じ括弧のペアを定義
-  const bracketPairs: [string, string][] = [
-    ['"', '"'],
-    ["'", "'"],
-    ['「', '」'],
-    ['『', '』'],
-  ];
-
-  // タイトル全体を括弧で囲んでいる場合のみ除去
-  // 例: `『Replaced』` → `Replaced`
-  for (const [open, close] of bracketPairs) {
-    if (title.startsWith(open) && title.endsWith(close)) {
-      title = title.slice(open.length, title.length - close.length);
-      break;
-    }
-  }
-
-  // LLM が「『ゲーム名』説明文」と返す場合に対応:
-  // 先頭が開き括弧で始まり、対応する閉じ括弧が途中に存在する場合、その対を除去
-  for (const [open, close] of bracketPairs) {
-    if (title.startsWith(open)) {
-      const closeIdx = title.indexOf(close);
-      if (closeIdx !== -1) {
-        title = title.slice(open.length, closeIdx) + title.slice(closeIdx + close.length);
-      }
-      break;
-    }
-  }
-
-  return title.trim();
+  return response.trim().split('\n')[0].trim();
 }
 
 /**
