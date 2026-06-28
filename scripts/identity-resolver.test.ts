@@ -659,6 +659,112 @@ describe('Nintendo resolver — igdb-website 経路のタイトル照合', () =>
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Issue #149: 日本語サイト優先 / 英語フォールバック（ロケール共通仕様）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Issue #149: ストアリンクは日本語サイトを優先する', () => {
+  // GET でページタイトルを返す共通モック生成（og:title）
+  function htmlResponse(title: string) {
+    const html = `<html><head><meta property="og:title" content="${title}"/></head></html>`;
+    return {
+      ok: true,
+      status: 200,
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(html));
+          controller.close();
+        },
+      }),
+    } as unknown as Response;
+  }
+
+  it('IGDB に英語 URL（nintendo.com/us）と日本語 URL（nintendo.co.jp）が両方あるとき日本語を採用する', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      // 日英どちらのページも同一タイトルを返す（照合は通る）
+      if (url.includes('nintendo.co.jp/switch/mixtape/') || url.includes('nintendo.com/us/store/products/mixtape-switch-2/')) {
+        return Promise.resolve(htmlResponse('Mixtape'));
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Mixtape',
+      releaseDate: '2025-08-01',
+      platforms: ['Nintendo Switch'],
+      igdbWebsites: [
+        // 英語 URL を先頭に置いても日本語が優先されることを確認する
+        { url: 'https://www.nintendo.com/us/store/products/mixtape-switch-2/', category: 52 },
+        { url: 'https://www.nintendo.co.jp/switch/mixtape/', category: 52 },
+      ],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    expect(nintendoLink).toBeDefined();
+    expect(nintendoLink?.url).toBe('https://www.nintendo.co.jp/switch/mixtape/');
+    expect(nintendoLink?.resolvedBy).toBe('igdb-website');
+  });
+
+  it('IGDB に英語 URL（nintendo.com/us）しか無く日本語サイトが見つからない場合は英語にフォールバックする', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      if (url.includes('nintendo.com/us/store/products/mixtape-switch-2/')) {
+        return Promise.resolve(htmlResponse('Mixtape'));
+      }
+      // 日本語サイトは存在しない（TAVILY も未設定なので検索もヒットしない）
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Mixtape',
+      releaseDate: '2025-08-01',
+      platforms: ['Nintendo Switch'],
+      igdbWebsites: [
+        { url: 'https://www.nintendo.com/us/store/products/mixtape-switch-2/', category: 52 },
+      ],
+    });
+
+    const nintendoLink = result.stores.find((s) => s.platform === 'nintendo');
+    expect(nintendoLink).toBeDefined();
+    expect(nintendoLink?.url).toBe('https://www.nintendo.com/us/store/products/mixtape-switch-2/');
+    expect(nintendoLink?.resolvedBy).toBe('igdb-website');
+  });
+
+  it('PlayStation も英語 URL（/en-us）より日本語 URL（/ja-jp）を優先する', async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('storesearch')) {
+        return Promise.resolve(makeSteamSearchResponse([]));
+      }
+      // PlayStation の IGDB 経路は HEAD のみ（200 を返す）
+      if (url.includes('playstation.com')) {
+        return Promise.resolve({ ok: true, status: 200 } as Response);
+      }
+      return Promise.resolve(makeFailedResponse());
+    });
+
+    const result = await resolveGameIdentity({
+      title: 'Some Game',
+      releaseDate: '2025-01-01',
+      platforms: ['PlayStation 5'],
+      igdbWebsites: [
+        { url: 'https://www.playstation.com/en-us/games/some-game/', category: 45 },
+        { url: 'https://www.playstation.com/ja-jp/games/some-game/', category: 45 },
+      ],
+    });
+
+    const psLink = result.stores.find((s) => s.platform === 'playstation');
+    expect(psLink).toBeDefined();
+    expect(psLink?.url).toBe('https://www.playstation.com/ja-jp/games/some-game/');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Issue #126: web-search 経路のタイトル照合
 // ─────────────────────────────────────────────────────────────────────────────
 describe('web-search 経路 — タイトル照合によるミスマッチ除外', () => {
