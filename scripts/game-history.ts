@@ -110,6 +110,7 @@ export function getCooldownTitles(
   const cooldownSet = new Set<string>();
 
   for (const entry of history.entries) {
+    if (entry.category !== category) continue;
     const publishDate = new Date(entry.publishDate);
     const elapsed = currentDate.getTime() - publishDate.getTime();
 
