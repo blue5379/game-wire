@@ -104,13 +104,36 @@ export function extractPageStructure(html: string, maxChars = 4000): PageStructu
 }
 
 /**
+ * ページ取得結果の判別可能ユニオン（Issue #159）。
+ *
+ * - PageStructure: 本文取得に成功しヘッダ・本文が取れた
+ * - 'not-found': サーバが 404/410 を返した = URL が「存在しない」明確なシグナル
+ * - null: 検証不能（5xx / ネットワークエラー / タイムアウト / 非HTML / 403 等）
+ *
+ * 'not-found' と null を分けるのは、404 の URL を uncertain として採用してしまう
+ * 従来挙動（CI Run #28684965542 のゴエモン事例）を防ぐため。5xx や 403 は一時的
+ * 障害・Bot ブロックの可能性があるので従来どおり null（採用継続の余地を残す）。
+ */
+export type FetchPageResult = PageStructure | 'not-found' | null;
+
+/**
+ * 「URL が明確に存在しない」ことを示す HTTP ステータス。
+ * 401/403（認証壁・Bot ブロック）や 429（レート制限）は URL 自体は存在しうるので含めない。
+ */
+const NOT_FOUND_STATUS_CODES = new Set([404, 410]);
+
+/**
  * URL のページから構造化情報（タイトル類＋本文）を取得する（Issue #135 P2-3）。
- * 失敗時は null（検証不能扱い）。HTML 以外（画像等）も null。
+ *
+ * 戻り値は FetchPageResult:
+ * - PageStructure: 200 で HTML が取れた
+ * - 'not-found': 404/410（URL が存在しない）
+ * - null: それ以外の失敗（5xx / 403 / タイムアウト / ネットワーク / 非HTML）
  */
 export async function fetchPageStructure(
   url: string,
   maxChars = 4000
-): Promise<PageStructure | null> {
+): Promise<FetchPageResult> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -127,6 +150,7 @@ export async function fetchPageStructure(
     });
     clearTimeout(timeoutId);
 
+    if (NOT_FOUND_STATUS_CODES.has(response.status)) return 'not-found';
     if (!response.ok) return null;
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('html')) return null;
@@ -343,6 +367,11 @@ export async function verifyOfficialUrlContent(
   url: string
 ): Promise<UrlVerifyResult> {
   const structure = await fetchPageStructure(url);
+  // 404/410: URL が存在しない明確なシグナル → mismatch で採用拒否（Issue #159）
+  if (structure === 'not-found') {
+    return { verdict: 'mismatch', reason: 'URL が到達不能（HTTP 404/410）' };
+  }
+  // それ以外の取得失敗（5xx / 403 / タイムアウト / 非HTML）は従来どおり uncertain
   if (!structure) {
     return { verdict: 'uncertain', reason: 'ページ本文を取得できませんでした' };
   }
