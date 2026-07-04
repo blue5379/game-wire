@@ -430,6 +430,16 @@ describe('R4: カバー画像ホスト許可リスト', () => {
     expect(checkR4(game)).toBeNull();
   });
 
+  it('shared.akamai.steamstatic.com → 違反なし', () => {
+    const game = makeGame({ coverImage: 'https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/3652140/header.jpg' });
+    expect(checkR4(game)).toBeNull();
+  });
+
+  it('その他の steamstatic.com サブドメイン → 違反なし', () => {
+    const game = makeGame({ coverImage: 'https://cdn.akamai.steamstatic.com/steam/apps/123/header.jpg' });
+    expect(checkR4(game)).toBeNull();
+  });
+
   it('許可リスト外のホスト → R4 違反', () => {
     const game = makeGame({ coverImage: 'https://malicious-cdn.example.com/image.jpg' });
     const v = checkR4(game);
