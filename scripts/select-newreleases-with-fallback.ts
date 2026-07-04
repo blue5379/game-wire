@@ -1,4 +1,5 @@
 import { finalizeGameMetadata } from './finalize-game-metadata.js';
+import { isLargeStudio } from './indie-classifier.js';
 import type { GameData } from './types.js';
 
 export interface NewReleasesSelectionResult {
@@ -8,8 +9,8 @@ export interface NewReleasesSelectionResult {
   reserves: GameData[];
 }
 
-/** developer は Resolver（後段）に委譲。cover と sourceUrl のみ選定時ゲートとする。 */
-const NEW_RELEASE_REQUIRED = { cover: true, developer: false, sourceUrl: true } as const;
+/** 大手スタジオゲートを通過したゲームが前提。cover・developer・sourceUrl をすべて必須とする。 */
+const NEW_RELEASE_REQUIRED = { cover: true, developer: true, sourceUrl: true } as const;
 
 /** API 呼び出し上限（targetCount × 3）。IGDB/Steam Storefront のクォータ保護。 */
 const MAX_ATTEMPTS_MULTIPLIER = 3;
@@ -61,7 +62,22 @@ export async function selectNewReleasesWithFallback(
     }
 
     if (finalizeResult.ok) {
-      adopted.push(finalizeResult.game);
+      // finalize 後に developer が確定した状態で大手スタジオ判定を行う
+      const studioResult = isLargeStudio(finalizeResult.game.developer);
+      if (!studioResult.hit) {
+        console.log(
+          JSON.stringify({
+            scope: 'select-newreleases-with-fallback',
+            title: candidate.title,
+            step: 'large-studio-gate',
+            reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}")`,
+          })
+        );
+        rejected.push({ title: candidate.title, reason: 'not-large-studio' });
+        continue;
+      }
+      // canonical 名を developer フィールドに書き戻す
+      adopted.push({ ...finalizeResult.game, developer: studioResult.matched });
       continue;
     }
 

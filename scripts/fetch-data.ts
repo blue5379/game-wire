@@ -1173,7 +1173,10 @@ async function main(): Promise<void> {
     ...selectedGames.newReleasesReserves,
     ...selectedGames.indieReserves,
   ];
-  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode);
+  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode, {
+    newReleases: selectedGames.newReleasesReserves,
+    indies: selectedGames.indieReserves,
+  });
   console.log(
     `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
     `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}`

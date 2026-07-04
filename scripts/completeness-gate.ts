@@ -304,15 +304,17 @@ export async function checkGame(
  *
  * @param selectedGames 選定済みゲーム（removeZombieGames 後）
  * @param trace identity-resolver-trace.json の内容（undefined 可）
- * @param reserveGames 差し替え候補（mode=replace の場合に使用）
+ * @param reserveGames 差し替え候補（mode=replace の場合に使用）。reservesByKey が指定されたスロットはそちらが優先される
  * @param mode 動作モード
+ * @param reservesByKey スロット別予備候補。指定されたキーは reserveGames の代わりにこちらを使う
  * @returns GateReport
  */
 export async function runCompletenessGate(
   selectedGames: SelectedGames,
   trace: ResolverTrace | undefined,
   reserveGames: GameData[],
-  mode: GateMode
+  mode: GateMode,
+  reservesByKey?: Partial<Record<'newReleases' | 'indies', GameData[]>>
 ): Promise<GateReport> {
   const report: GateReport = {
     mode,
@@ -408,7 +410,8 @@ export async function runCompletenessGate(
       }
 
       const fills: GameData[] = [];
-      for (const candidate of reserveGames) {
+      const candidatePool = reservesByKey?.[key] ?? reserveGames;
+      for (const candidate of candidatePool) {
         if (fills.length >= needed) break;
         if (usedTitles.has(candidate.normalizedTitle)) continue;
         if (replaceableTitles.has(candidate.title)) continue;

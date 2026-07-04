@@ -88,8 +88,8 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
   it('ranked=[A,B] どちらも ok → adopted=[A,B], reserves=[]', async () => {
     const A = makeGame({ title: 'Game A', normalizedTitle: 'game a' });
     const B = makeGame({ title: 'Game B', normalizedTitle: 'game b' });
-    const finishedA = { ...A, developer: 'Pub A', coverImage: 'https://x/a.jpg', sourceUrls: { steam: 'https://s/a' } };
-    const finishedB = { ...B, developer: 'Pub B', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
+    const finishedA = { ...A, developer: 'Nintendo', coverImage: 'https://x/a.jpg', sourceUrls: { steam: 'https://s/a' } };
+    const finishedB = { ...B, developer: 'Capcom', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
 
     mockFinalize
       .mockResolvedValueOnce({ ok: true, game: finishedA })
@@ -107,8 +107,8 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     const A = makeGame({ title: 'A', normalizedTitle: 'a' });
     const B = makeGame({ title: 'B', normalizedTitle: 'b' });
     const C = makeGame({ title: 'C', normalizedTitle: 'c' });
-    const finishedB = { ...B, developer: 'Pub B', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
-    const finishedC = { ...C, developer: 'Pub C', coverImage: 'https://x/c.jpg', sourceUrls: { steam: 'https://s/c' } };
+    const finishedB = { ...B, developer: 'Capcom', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
+    const finishedC = { ...C, developer: 'Sega', coverImage: 'https://x/c.jpg', sourceUrls: { steam: 'https://s/c' } };
 
     mockFinalize
       .mockResolvedValueOnce({ ok: false, reason: 'date-mismatch' as const, game: A })
@@ -146,7 +146,7 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
 
   it('candidate1件でtarget=2 → 1件採用', async () => {
     const A = makeGame({ title: 'Solo', normalizedTitle: 'solo' });
-    const finished = { ...A, developer: 'Dev', coverImage: 'https://x/a.jpg', sourceUrls: { steam: 'https://s/a' } };
+    const finished = { ...A, developer: 'Capcom', coverImage: 'https://x/a.jpg', sourceUrls: { steam: 'https://s/a' } };
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
 
     const result = await selectNewReleasesWithFallback([A], 2);
@@ -176,7 +176,7 @@ describe('selectNewReleasesWithFallback — 例外処理', () => {
   it('finalizeGameMetadata が例外を throw → finalize-error として rejected に追加し次候補へ', async () => {
     const A = makeGame({ title: 'Error Game', normalizedTitle: 'error game' });
     const B = makeGame({ title: 'OK Game', normalizedTitle: 'ok game' });
-    const finishedB = { ...B, developer: 'Dev', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
+    const finishedB = { ...B, developer: 'Nintendo', coverImage: 'https://x/b.jpg', sourceUrls: { steam: 'https://s/b' } };
 
     mockFinalize
       .mockRejectedValueOnce(new Error('network timeout'))
@@ -200,7 +200,7 @@ describe('selectNewReleasesWithFallback — targetCount の境界値', () => {
       makeGame({ title: 'X', normalizedTitle: 'x' }),
       makeGame({ title: 'Y', normalizedTitle: 'y' }),
     ];
-    const finishedX = { ...games[0], developer: 'Dev', coverImage: 'c', sourceUrls: { steam: 's' } };
+    const finishedX = { ...games[0], developer: 'Capcom', coverImage: 'c', sourceUrls: { steam: 's' } };
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedX });
 
     const result = await selectNewReleasesWithFallback(games, 1);
@@ -226,8 +226,8 @@ describe('selectNewReleasesWithFallback — reserves', () => {
     const A = makeGame({ title: 'A', normalizedTitle: 'a' });
     const B = makeGame({ title: 'B', normalizedTitle: 'b' });
     const C = makeGame({ title: 'C', normalizedTitle: 'c' });
-    const finishedA = { ...A, coverImage: 'c', sourceUrls: { steam: 's' } };
-    const finishedB = { ...B, coverImage: 'c', sourceUrls: { steam: 's' } };
+    const finishedA = { ...A, developer: 'Nintendo', coverImage: 'c', sourceUrls: { steam: 's' } };
+    const finishedB = { ...B, developer: 'Capcom', coverImage: 'c', sourceUrls: { steam: 's' } };
 
     mockFinalize
       .mockResolvedValueOnce({ ok: true, game: finishedA })
@@ -243,7 +243,7 @@ describe('selectNewReleasesWithFallback — reserves', () => {
     const A = makeGame({ title: 'A', normalizedTitle: 'a' });
     const B = makeGame({ title: 'B', normalizedTitle: 'b' });
     const C = makeGame({ title: 'C', normalizedTitle: 'c' });
-    const finishedB = { ...B, coverImage: 'c', sourceUrls: { steam: 's' } };
+    const finishedB = { ...B, developer: 'Nintendo', coverImage: 'c', sourceUrls: { steam: 's' } };
 
     mockFinalize
       .mockResolvedValueOnce({ ok: false, reason: 'still-missing-required' as const, game: A }) // rejected
