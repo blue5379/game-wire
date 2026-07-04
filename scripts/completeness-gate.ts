@@ -11,10 +11,14 @@
  * R3: 公式 URL 到達性（official が HTTP 200 以外）
  * R4: カバー画像ホスト許可リスト（images.igdb.com / steamstatic.com サブドメイン以外）
  *
- * 動作モード（環境変数 COMPLETENESS_GATE）:
- * - "warn"（DEV_MODE 既定）: validation-dev/completeness-report.json に記録のみ
- * - "replace": 違反した newReleases/indies は次候補に差し替え
- * - "fail"（PR-6 本番既定）: hasMutableViolations=true 時に呼び出し側が process.exit(1)
+ * 動作は 2 軸で決まる:
+ * 1. mode（環境変数 COMPLETENESS_GATE）: 違反が残ったときの号全体の扱い
+ *    - "warn"（DEV_MODE 既定）: 違反があっても発行。レポート記録のみ
+ *    - "replace": 差し替え適格な違反は差し替え、残った違反は許容して発行
+ *    - "fail"（本番既定）: 差し替え適格な違反は差し替え、差し替え不能な違反が残れば呼び出し側で process.exit(1)
+ * 2. RULE_REPLACEABLE（ルール属性）: そのルールの違反はゲーム差し替えで解消できるか
+ *    - true（R1/R3/R4）: 別のゲームなら解決見込み。ゲーム固有のデータ欠落・到達性の問題
+ *    - false（R2/R2b）: 差し替えても再発しうる。内部整合性のバグを疑うシグナル
  */
 
 import type { GameData, SelectedGames, StoreLink } from './types.js';
@@ -23,6 +27,22 @@ import { headOk } from './url-health.js';
 export type GateMode = 'warn' | 'replace' | 'fail';
 
 export type ViolationId = 'R0' | 'R1' | 'R2' | 'R2b' | 'R3' | 'R4';
+
+/**
+ * ルール別の「差し替えで解消できるか」属性。
+ * true: 別ゲームなら解決見込みがある → replace / fail モードで差し替えを試みる
+ * false: 差し替えても再発しうる内部バグシグナル → 差し替えず fail 判定に残す
+ *
+ * R0 は warn-only（hasMutableViolations に含まれない）ため、この属性は判定に使わない。
+ */
+export const RULE_REPLACEABLE: Record<ViolationId, boolean> = {
+  R0: false,
+  R1: true,
+  R2: false,
+  R2b: false,
+  R3: true,
+  R4: true,
+};
 
 export interface GateViolation {
   ruleId: ViolationId;
@@ -35,10 +55,18 @@ export interface GateReport {
   violations: GateViolation[];
   replacedGames: string[];
   /**
-   * newReleases / indies に違反があるか（featured/classic の warn-only 違反は含まない）。
-   * mode=fail の exit 判定は呼び出し側がこのフラグを使う。
+   * 差し替え前の状態で newReleases / indies に mutable violation（R0 以外）があったか。
+   * レポート・観測用。fail 判定には unresolvedMutableViolations を使う。
    */
   hasMutableViolations: boolean;
+  /**
+   * 差し替え後もなお newReleases / indies に mutable violation が残っているか。
+   * 以下のいずれかで true になる:
+   * - replaceable=false のルール違反があった（差し替え対象外）
+   * - replaceable=true の違反はあったが reserves 枯渇でスロットを埋められなかった
+   * mode=fail の exit 判定は呼び出し側がこのフラグを使う。
+   */
+  unresolvedMutableViolations: boolean;
 }
 
 /**
@@ -286,7 +314,13 @@ export async function runCompletenessGate(
   reserveGames: GameData[],
   mode: GateMode
 ): Promise<GateReport> {
-  const report: GateReport = { mode, violations: [], replacedGames: [], hasMutableViolations: false };
+  const report: GateReport = {
+    mode,
+    violations: [],
+    replacedGames: [],
+    hasMutableViolations: false,
+    unresolvedMutableViolations: false,
+  };
 
   // 対象: newReleases + indies（featured / classic は差し替えが複雑なため warn のみ）
   const mutableArrays: { key: 'newReleases' | 'indies'; arr: GameData[] }[] = [
@@ -297,16 +331,21 @@ export async function runCompletenessGate(
   // featured / classic は violations 記録のみ（差し替えしない）
   const singletons: (GameData | null)[] = [selectedGames.featured, selectedGames.classic];
 
-  // newReleases / indies の各ゲームを検証
-  const violatingTitles = new Set<string>();
+  /**
+   * ゲームごとの違反を溜め込む。差し替え可否は「そのゲームの違反すべてが replaceable=true」であるかで判定する。
+   * 1件でも replaceable=false があれば、差し替えても再発する疑いがあるので差し替え対象にしない。
+   */
+  const gameViolations = new Map<string, GateViolation[]>();
+
   for (const { arr } of mutableArrays) {
     for (const game of arr) {
       const v = await checkGame(game, trace);
       if (v.length > 0) {
         report.violations.push(...v);
-        // R0 は warn-only: hasMutableViolations / replace / fail の判定対象にしない
-        if (v.some((vio) => vio.ruleId !== 'R0')) {
-          violatingTitles.add(game.title);
+        // R0 は warn-only なので mutable 判定に含めない
+        const mutable = v.filter((vio) => vio.ruleId !== 'R0');
+        if (mutable.length > 0) {
+          gameViolations.set(game.title, mutable);
         }
       }
     }
@@ -319,31 +358,52 @@ export async function runCompletenessGate(
     report.violations.push(...v);
   }
 
-  // hasMutableViolations: newReleases/indies の違反がある場合のみ true
-  // featured/classic の warn-only 違反は含まない（設計書: featured/classic は差し替えが複雑なため）
-  report.hasMutableViolations = violatingTitles.size > 0;
+  report.hasMutableViolations = gameViolations.size > 0;
 
-  // mode=replace: 違反した newReleases/indies を次候補に差し替え
-  if (mode === 'replace' && violatingTitles.size > 0) {
-    // 全スロットの使用中タイトルから違反ゲームを除外して dedup セットを構築する。
-    // 違反ゲームは差し替えで除去されるため、その normalizedTitle をブロックしたままにすると
+  // 差し替え対象タイトル（replaceable=true の違反のみを持つゲーム）と、
+  // 差し替え不能タイトル（replaceable=false の違反を1件でも含むゲーム）に分ける。
+  const replaceableTitles = new Set<string>();
+  const unreplaceableTitles = new Set<string>();
+  for (const [title, violations] of gameViolations) {
+    const allReplaceable = violations.every((vio) => RULE_REPLACEABLE[vio.ruleId]);
+    if (allReplaceable) {
+      replaceableTitles.add(title);
+    } else {
+      unreplaceableTitles.add(title);
+    }
+  }
+
+  // 差し替えを実行するのは mode=replace または mode=fail の時のみ（warn は現状のまま維持）
+  const shouldReplace = (mode === 'replace' || mode === 'fail') && replaceableTitles.size > 0;
+
+  /**
+   * 差し替えを試みた key ごとに、必要枠を埋められたか記録する。
+   * ここで拾いたいのは「Gate による除去のせいで足りなくなった」ケースのみで、
+   * 元々コンテンツが不足していた場合（Gate 以前の問題）は扱わない。
+   */
+  const replacementShortfall = new Set<'newReleases' | 'indies'>();
+
+  if (shouldReplace) {
+    // 全スロットの使用中タイトルから差し替え対象を除外して dedup セットを構築する。
+    // 差し替え対象は取り除かれるため、その normalizedTitle をブロックしたままにすると
     // 同じ normalizedTitle を持つ予備候補が不当に弾かれる（レビュー指摘 #2）。
     const usedTitles = new Set([
       ...selectedGames.newReleases
-        .filter((g) => !violatingTitles.has(g.title))
+        .filter((g) => !replaceableTitles.has(g.title))
         .map((g) => g.normalizedTitle),
       ...selectedGames.indies
-        .filter((g) => !violatingTitles.has(g.title))
+        .filter((g) => !replaceableTitles.has(g.title))
         .map((g) => g.normalizedTitle),
     ]);
 
     for (const { key, arr } of mutableArrays) {
-      const targetCount = 2;
-      const healthy = arr.filter((g) => !violatingTitles.has(g.title));
-      const needed = targetCount - healthy.length;
+      // このスロットに含まれる差し替え対象ゲーム数（= 埋め直しが必要な枠数）
+      const needed = arr.filter((g) => replaceableTitles.has(g.title)).length;
+      // unreplaceable な違反ゲームは配列に残す（fail 対象として次段で検知される）
+      const kept = arr.filter((g) => !replaceableTitles.has(g.title));
 
       if (needed <= 0) {
-        selectedGames[key] = healthy;
+        selectedGames[key] = kept;
         continue;
       }
 
@@ -351,7 +411,8 @@ export async function runCompletenessGate(
       for (const candidate of reserveGames) {
         if (fills.length >= needed) break;
         if (usedTitles.has(candidate.normalizedTitle)) continue;
-        if (violatingTitles.has(candidate.title)) continue;
+        if (replaceableTitles.has(candidate.title)) continue;
+        if (unreplaceableTitles.has(candidate.title)) continue;
         // 候補も Gate で検証
         const cv = await checkGame(candidate, trace);
         if (cv.length === 0) {
@@ -361,15 +422,22 @@ export async function runCompletenessGate(
         }
       }
 
-      selectedGames[key] = [...healthy, ...fills];
+      selectedGames[key] = [...kept, ...fills];
 
       if (fills.length < needed) {
         console.warn(
-          `  [CompletenessGate] ${key}: ${needed} 枠が必要だが ${fills.length} 件しか補充できなかった`
+          `  [CompletenessGate] ${key}: ${needed} 枠を差し替える必要があったが ${fills.length} 件しか補充できなかった`
         );
+        replacementShortfall.add(key);
       }
     }
   }
+
+  // 差し替え後の未解消違反を判定する
+  // - unreplaceable な違反ゲーム（R2/R2b 系）は selectedGames に残っているので fail 対象
+  // - replaceable な違反でも reserves 枯渇でスロットが埋まらなかった場合は号のコンテンツが不足 → fail 対象
+  report.unresolvedMutableViolations =
+    unreplaceableTitles.size > 0 || replacementShortfall.size > 0;
 
   return report;
 }

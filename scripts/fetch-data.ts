@@ -1159,11 +1159,17 @@ async function main(): Promise<void> {
     ...selectedGames.indieReserves,
   ];
   const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode);
-  console.log(`  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, replaced=${gateReport.replacedGames.length}`);
+  console.log(
+    `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
+    `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}`
+  );
   if (gateReport.violations.length > 0) {
     for (const v of gateReport.violations) {
       console.warn(`  [CompletenessGate] ${v.ruleId} "${v.gameTitle}": ${v.detail}`);
     }
+  }
+  if (gateReport.replacedGames.length > 0) {
+    console.log(`  [CompletenessGate] Replaced games: ${gateReport.replacedGames.join(', ')}`);
   }
 
   // Gate レポートを出力
@@ -1197,8 +1203,8 @@ async function main(): Promise<void> {
   fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
   console.log(`Selected games saved to: ${selectedPath}`);
 
-  if (gateMode === 'fail' && gateReport.hasMutableViolations) {
-    console.error('  [CompletenessGate] FAIL: mutable violations found, aborting.');
+  if (gateMode === 'fail' && gateReport.unresolvedMutableViolations) {
+    console.error('  [CompletenessGate] FAIL: unresolved mutable violations remain after replacement, aborting.');
     process.exit(1);
   }
 
