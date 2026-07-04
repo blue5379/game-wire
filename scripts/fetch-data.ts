@@ -18,7 +18,7 @@ import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
-import { isIndieGame, isLargeStudio } from './indie-classifier.js';
+import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
 import { selectNewReleasesWithFallback, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
@@ -957,14 +957,6 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => hasExistenceEvidence(g))
     .filter((g) => !newReleaseCooldown.has(g.normalizedTitle))
-    // 大手スタジオ（直営・子会社）と確定できるゲームのみを新作紹介枠に採用する
-    .filter((g) => {
-      const result = isLargeStudio(g.developer);
-      if (!result.hit) {
-        console.log(`    [newReleases] ${g.title}: large-studio ゲートで除外 (developer="${g.developer ?? 'undefined'}")`);
-      }
-      return result.hit;
-    })
     .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
 
   console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
@@ -1181,7 +1173,10 @@ async function main(): Promise<void> {
     ...selectedGames.newReleasesReserves,
     ...selectedGames.indieReserves,
   ];
-  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode);
+  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode, {
+    newReleases: selectedGames.newReleasesReserves,
+    indies: selectedGames.indieReserves,
+  });
   console.log(
     `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
     `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}`
