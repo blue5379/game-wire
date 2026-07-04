@@ -577,7 +577,16 @@ export async function searchGameBySteamAppId(
 
     if (games.length === 0) return null;
 
-    return mapRawGameToIGDBGame(games[0]);
+    const result = mapRawGameToIGDBGame(games[0]);
+    // appId 逆引きで確定した結果は、その appId が同一性の根拠。
+    // IGDB の websites テーブルに Steam リンクが登録されていない場合でも、
+    // 逆引きに使った appId から steamUrl を補完しておく。これにより下流の
+    // enrichGameFromIgdb で sameByAppId が成立し、Steam名と IGDB名の表記ゆれで
+    // 正しい結果が捨てられるのを防ぐ（Issue #166 コードレビュー指摘）。
+    if (!result.steamUrl) {
+      result.steamUrl = `https://store.steampowered.com/app/${uid}`;
+    }
+    return result;
   } catch (error) {
     console.error(`Failed to reverse-lookup game by Steam appId "${appId}":`, error);
     return null;

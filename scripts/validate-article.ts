@@ -15,7 +15,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
-import { parseSteamReleaseDate } from './steam-utils.js';
+import { normalizeCompanyName } from './steam-utils.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -556,7 +556,10 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
 
 // game メタと Steam 実体の発売年乖離の許容幅（年）。
 // 早期アクセス→正式版・地域別リリースのズレを吸収しつつ、同名異作品（通常10年以上離れる）は弾く。
-const GAME_SOURCE_YEAR_TOLERANCE = 2;
+// fetch-data.ts の SAME_GAME_YEAR_TOLERANCE（集約時の同一性判定）と同値に揃える。
+// 揃えないと、集約段で「同一ゲーム」として通したメタを出力段で別ゲーム扱いして
+// build を落とす false positive が起きうる（Issue #166 コードレビュー指摘）。
+const GAME_SOURCE_YEAR_TOLERANCE = 3;
 
 // Steam Storefront API 呼び出し間のディレイ（ミリ秒）。レート制限対策。
 const STOREFRONT_REQUEST_DELAY_MS = 300;
@@ -578,13 +581,6 @@ function extractSteamAppIdFromArticle(article: GeneratedArticle): number | undef
     }
   }
   return undefined;
-}
-
-/**
- * 会社名を比較用に正規化（記号・空白・大小文字を吸収）。isSameSteamApp の norm 相当。
- */
-function normalizeCompanyName(name: string): string {
-  return name.toLowerCase().replace(/[\s　™®©:;'",.\-_!?()[\]【】「」『』]/g, '');
 }
 
 /**
@@ -649,12 +645,13 @@ export async function validateGameSourceConsistency(
     return warnings;
   }
 
-  // 発売年の乖離チェック（両方判明・coming_soon でない場合のみ）
+  // 発売年の乖離チェック（両方判明・coming_soon でない場合のみ）。
+  // coming_soon（未発売・発売日未確定）の場合は Steam 側の年を信頼せず照合をスキップする
+  // （raw 文字列に年が含まれても fallback で拾わない。Issue #166 コードレビュー指摘）。
   const gameYear = extractYearFromDate(game.releaseDate);
-  const steamDateStr = data.release_date?.coming_soon
+  const steamYear = data.release_date?.coming_soon
     ? undefined
-    : parseSteamReleaseDate(data.release_date?.date);
-  const steamYear = extractYearFromDate(steamDateStr) ?? extractYearFromDate(data.release_date?.date);
+    : extractYearFromDate(data.release_date?.date);
   if (
     gameYear !== undefined &&
     steamYear !== undefined &&
@@ -673,18 +670,26 @@ export async function validateGameSourceConsistency(
     });
   }
 
-  // 開発元の一致チェック（両方判明している場合のみ）
-  const steamDeveloper = data.developers?.[0];
-  if (game.developer && steamDeveloper) {
+  // 開発元の一致チェック（両方判明している場合のみ）。
+  // Steam は共同開発を複数 developer で返すため、いずれか1社と部分一致すれば整合とみなす
+  // （developers[0] だけを見ると co-development で false positive が出る。Issue #166 コードレビュー指摘）。
+  const steamDevelopers = (data.developers ?? []).filter(
+    (d): d is string => typeof d === 'string' && d.trim().length > 0
+  );
+  if (game.developer && steamDevelopers.length > 0) {
     const normGame = normalizeCompanyName(game.developer);
-    const normSteam = normalizeCompanyName(steamDeveloper);
     // 双方が空でなく、部分一致すらしない場合のみ mismatch とみなす（表記ゆれは吸収）
     const overlaps =
       normGame.length > 0 &&
-      normSteam.length > 0 &&
-      (normGame === normSteam ||
-        normGame.includes(normSteam) ||
-        normSteam.includes(normGame));
+      steamDevelopers.some((sd) => {
+        const normSteam = normalizeCompanyName(sd);
+        return (
+          normSteam.length > 0 &&
+          (normGame === normSteam ||
+            normGame.includes(normSteam) ||
+            normSteam.includes(normGame))
+        );
+      });
     if (!overlaps) {
       warnings.push({
         articleTitle: article.title,
@@ -693,8 +698,8 @@ export async function validateGameSourceConsistency(
         type: 'game-source-mismatch',
         message:
           `記事の game メタの開発元（"${game.developer}"）と、Steam(appId=${appId})の実体の開発元` +
-          `（"${steamDeveloper}"）が全く一致しません。同名異作品のメタデータが混入している可能性があります。`,
-        evidence: `game=${game.developer} / steam=${steamDeveloper}`,
+          `（"${steamDevelopers.join(', ')}"）が全く一致しません。同名異作品のメタデータが混入している可能性があります。`,
+        evidence: `game=${game.developer} / steam=${steamDevelopers.join(', ')}`,
       });
     }
   }

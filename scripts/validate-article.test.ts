@@ -726,6 +726,54 @@ describe('validateGameSourceConsistency', () => {
     expect(devWarn?.severity).toBe('high');
   });
 
+  it('共同開発: Steam の developers に複数社ありいずれかが一致すれば警告しない', async () => {
+    const article = makeArticle({
+      title: '新作『Elden Ring』',
+      category: 'newRelease',
+      game: {
+        title: 'Elden Ring',
+        genre: ['RPG'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2022-02-25',
+        developer: 'FromSoftware',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1245620' },
+    });
+    // Steam は共同開発を複数返す（先頭は別会社）
+    mockStorefront('1245620', {
+      name: 'ELDEN RING',
+      release_date: { coming_soon: false, date: '2022年2月25日' },
+      developers: ['Bandai Namco Studios', 'FromSoftware'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings.filter((w) => /開発/.test(w.message))).toHaveLength(0);
+  });
+
+  it('coming_soon（未発売）の Steam 側発売年は照合しない（false positive 防止）', async () => {
+    const article = makeArticle({
+      title: '発売予定『Future Game』',
+      category: 'newRelease',
+      game: {
+        title: 'Future Game',
+        genre: ['Action'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2020-01-01', // 古い暫定日
+        developer: 'Some Studio',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/5555555' },
+    });
+    // coming_soon=true で raw に年が含まれても照合しない
+    mockStorefront('5555555', {
+      name: 'Future Game',
+      release_date: { coming_soon: true, date: '2027' },
+      developers: ['Some Studio'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings.filter((w) => w.type === 'game-source-mismatch')).toHaveLength(0);
+  });
+
   it('API 失敗時は警告を出さない（fail-open）', async () => {
     const article = makeArticle({
       title: '『Baz』',

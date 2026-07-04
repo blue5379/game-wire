@@ -224,6 +224,37 @@ describe('searchGameBySteamAppId', () => {
     expect(result?.steamUrl).toBe('https://store.steampowered.com/app/1087090');
   });
 
+  it('IGDB に Steam website が無くても、逆引きに使った appId で steamUrl を補完する', async () => {
+    // 表記ゆれケース: IGDB 正式名が Steam 名と異なり、かつ websites に Steam リンクが無い。
+    // 逆引きで確定した appId を steamUrl に補完することで、下流の appId 整合判定を成立させる。
+    mockIgdbResponse([
+      {
+        id: 777,
+        name: 'Canonical Different Name',
+        slug: 'canonical-different-name',
+        websites: [{ url: 'https://example.com/official', category: 1 }],
+      },
+    ]);
+
+    const result = await searchGameBySteamAppId(1087090, 'client-id', 'token');
+
+    expect(result?.steamUrl).toBe('https://store.steampowered.com/app/1087090');
+  });
+
+  it('IGDB に Steam website がある場合はそれを優先する（補完で上書きしない）', async () => {
+    mockIgdbResponse([
+      {
+        id: 888,
+        name: 'Game',
+        slug: 'game',
+        websites: [{ url: 'https://store.steampowered.com/app/1245620', category: 13 }],
+      },
+    ]);
+
+    const result = await searchGameBySteamAppId(1245620, 'client-id', 'token');
+    expect(result?.steamUrl).toBe('https://store.steampowered.com/app/1245620');
+  });
+
   it('appId 逆引きが0件なら null を返す', async () => {
     mockIgdbResponse([]);
     const result = await searchGameBySteamAppId(1087090, 'client-id', 'token');
