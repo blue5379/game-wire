@@ -29,6 +29,7 @@ import {
   getGateMode,
   hasConsolePlatform,
   traceHasConfidentResult,
+  RULE_REPLACEABLE,
 } from './completeness-gate.js';
 
 const mockHeadOk = vi.mocked(headOk);
@@ -735,5 +736,181 @@ describe('R2: Resolver trace との結合', () => {
     const violations = await checkGame(sbox, trace);
     expect(violations.some((v) => v.ruleId === 'R2')).toBe(true);
     expect(violations.find((v) => v.ruleId === 'R2')?.gameTitle).toBe('S&box');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RULE_REPLACEABLE: ルール属性の定義（差し替え適格性）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('RULE_REPLACEABLE: ルール属性', () => {
+  it('R1 は replaceable=true（ゲーム固有の情報欠落）', () => {
+    expect(RULE_REPLACEABLE.R1).toBe(true);
+  });
+
+  it('R3 は replaceable=true（公式 URL 到達性はゲーム固有）', () => {
+    expect(RULE_REPLACEABLE.R3).toBe(true);
+  });
+
+  it('R4 は replaceable=true（画像ホストはゲーム固有）', () => {
+    expect(RULE_REPLACEABLE.R4).toBe(true);
+  });
+
+  it('R2 は replaceable=false（Resolver とデータの内部不整合＝バグ疑い）', () => {
+    expect(RULE_REPLACEABLE.R2).toBe(false);
+  });
+
+  it('R2b は replaceable=false（同上）', () => {
+    expect(RULE_REPLACEABLE.R2b).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: 2軸挙動（mode × replaceable）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => {
+  it('R1 違反（replaceable=true）でも reserves があれば差し替えて unresolved=false', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    // Dungeon Blitz R 的なゲーム: IGDB のみでヒットし stores も official も無し
+    const igdbOnlyGame = makeGame({
+      title: 'Dungeon Blitz R',
+      normalizedTitle: 'dungeon-blitz-r',
+      sourceUrls: { stores: [] }, // R1 違反
+    });
+    const healthyPartner = makeGame({
+      title: 'Healthy Partner',
+      normalizedTitle: 'healthy-partner',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const reserveGame = makeGame({
+      title: 'Reserve Game',
+      normalizedTitle: 'reserve-game',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+
+    const selected = makeSelectedGames({ newReleases: [igdbOnlyGame, healthyPartner] });
+    const report = await runCompletenessGate(selected, undefined, [reserveGame], 'fail');
+
+    // 差し替えが発生し、未解消違反は残らない → exit 判定で fail しない
+    expect(report.hasMutableViolations).toBe(true);
+    expect(report.replacedGames).toContain('Reserve Game');
+    expect(report.unresolvedMutableViolations).toBe(false);
+    expect(selected.newReleases.some((g) => g.title === 'Dungeon Blitz R')).toBe(false);
+    expect(selected.newReleases.some((g) => g.title === 'Reserve Game')).toBe(true);
+  });
+
+  it('R1 違反があり reserves も枯渇していると unresolved=true（コンテンツ不足）', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const violatingGame = makeGame({
+      title: 'Zombie Game',
+      normalizedTitle: 'zombie-game',
+      sourceUrls: { stores: [] },
+    });
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    // 差し替え候補がなく 2 枠を埋められない → 呼び出し側で exit(1) される
+    expect(report.replacedGames).toHaveLength(0);
+    expect(report.unresolvedMutableViolations).toBe(true);
+  });
+
+  it('R2 違反（replaceable=false）は mode=fail で差し替えず即 unresolved=true', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const r2Game = makeGame({
+      title: 'S&box',
+      normalizedTitle: 's-and-box',
+      sourceUrls: { stores: [] }, // stores に Steam なし
+    });
+    const healthyPartner = makeGame({
+      title: 'Healthy Partner',
+      normalizedTitle: 'healthy-partner',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    // R2 の trace あり: Resolver は Steam を解決している
+    const trace: ResolverTrace = {
+      'S&box': { steam: { attempts: [{ method: 'storesearch', ok: true }] } },
+    };
+    // reserves を用意しても R2 は差し替え対象にならないことを確認する
+    const reserveGame = makeGame({
+      title: 'Reserve Game',
+      normalizedTitle: 'reserve-game',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+
+    const selected = makeSelectedGames({ newReleases: [r2Game, healthyPartner] });
+    const report = await runCompletenessGate(selected, trace, [reserveGame], 'fail');
+
+    // R2 は差し替えられず、内部バグシグナルとして即 fail 判定に倒れる
+    expect(report.violations.some((v) => v.ruleId === 'R2')).toBe(true);
+    expect(report.replacedGames).toHaveLength(0);
+    expect(report.unresolvedMutableViolations).toBe(true);
+    // R2 違反ゲームは差し替えられずに残る（呼び出し側で exit するため）
+    expect(selected.newReleases.some((g) => g.title === 'S&box')).toBe(true);
+  });
+
+  it('同一ゲームに R1（replaceable=true）と R2（replaceable=false）が同居 → 差し替えず unresolved=true', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    // stores が空 → R1 違反、かつ Resolver が Steam を解決している → R2 違反も発生
+    const mixed = makeGame({
+      title: 'Mixed Violation',
+      normalizedTitle: 'mixed-violation',
+      sourceUrls: { stores: [] },
+    });
+    const trace: ResolverTrace = {
+      'Mixed Violation': { steam: { attempts: [{ method: 'storesearch', ok: true }] } },
+    };
+    const healthyPartner = makeGame({
+      title: 'Healthy Partner',
+      normalizedTitle: 'healthy-partner',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const reserveGame = makeGame({
+      title: 'Reserve Game',
+      normalizedTitle: 'reserve-game',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+
+    const selected = makeSelectedGames({ newReleases: [mixed, healthyPartner] });
+    const report = await runCompletenessGate(selected, trace, [reserveGame], 'fail');
+
+    // R2 が混じっているので差し替え対象にならず、ゲームは残る
+    expect(report.replacedGames).toHaveLength(0);
+    expect(report.unresolvedMutableViolations).toBe(true);
+    expect(selected.newReleases.some((g) => g.title === 'Mixed Violation')).toBe(true);
+  });
+
+  it('違反なしなら unresolved=false（差し替えなし・fail しない）', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const healthy1 = makeGame({
+      title: 'Healthy 1',
+      normalizedTitle: 'healthy-1',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const healthy2 = makeGame({
+      title: 'Healthy 2',
+      normalizedTitle: 'healthy-2',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+    const selected = makeSelectedGames({ newReleases: [healthy1, healthy2] });
+
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    expect(report.hasMutableViolations).toBe(false);
+    expect(report.unresolvedMutableViolations).toBe(false);
+    expect(report.replacedGames).toHaveLength(0);
   });
 });
