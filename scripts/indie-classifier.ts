@@ -39,6 +39,32 @@ const LARGE_DEVELOPERS: ReadonlyArray<DeveloperEntry> = [
   { canonical: 'Activision', aliases: ['activision', 'activision blizzard'] },
   { canonical: 'Mojang', aliases: ['mojang', 'mojang studios', 'mojang ab'] },
   { canonical: 'ZeniMax', aliases: ['zenimax', 'zenimax media'] },
+  // 独立系 AA/AAA スタジオ
+  { canonical: 'IO Interactive', aliases: ['io interactive', 'ioi', 'io interactive a/s'] },
+  { canonical: 'Remedy Entertainment', aliases: ['remedy entertainment', 'remedy'] },
+  { canonical: 'Larian Studios', aliases: ['larian studios', 'larian'] },
+  { canonical: 'Warhorse Studios', aliases: ['warhorse studios', 'warhorse'] },
+  { canonical: '4A Games', aliases: ['4a games', '4a'] },
+  { canonical: 'Techland', aliases: ['techland'] },
+  { canonical: 'Asobo Studio', aliases: ['asobo studio', 'asobo'] },
+  { canonical: 'People Can Fly', aliases: ['people can fly', 'pcf'] },
+  { canonical: 'Bloober Team', aliases: ['bloober team', 'bloober'] },
+  { canonical: 'Bohemia Interactive', aliases: ['bohemia interactive', 'bohemia'] },
+  { canonical: 'Rebellion', aliases: ['rebellion', 'rebellion developments'] },
+  { canonical: 'Frontier Developments', aliases: ['frontier developments', 'frontier'] },
+  { canonical: 'Saber Interactive', aliases: ['saber interactive', 'saber'] },
+  { canonical: 'Behaviour Interactive', aliases: ['behaviour interactive', 'behavior interactive', 'behaviour', 'behavior'] },
+  { canonical: 'Crystal Dynamics', aliases: ['crystal dynamics'] },
+  { canonical: 'Eidos-Montréal', aliases: ['eidos-montréal', 'eidos montreal', 'eidos-montreal', 'eidos'] },
+  { canonical: 'Pearl Abyss', aliases: ['pearl abyss', 'パールアビス'] },
+  { canonical: 'SHIFT UP', aliases: ['shift up', 'シフトアップ'] },
+  { canonical: 'CyberConnect2', aliases: ['cyberconnect2', 'cyberconnect 2', 'cc2', 'サイバーコネクトツー'] },
+  { canonical: 'Cygames', aliases: ['cygames', 'サイゲームス'] },
+  { canonical: 'Nihon Falcom', aliases: ['nihon falcom', 'falcom', '日本ファルコム', 'ファルコム'] },
+  { canonical: 'Marvelous', aliases: ['marvelous', 'マーベラス'] },
+  { canonical: 'Kojima Productions', aliases: ['kojima productions', 'kojipro', 'コジマプロダクション', 'コジプロ'] },
+  { canonical: 'PlatinumGames', aliases: ['platinumgames', 'platinum games', 'プラチナゲームズ'] },
+  { canonical: 'KRAFTON', aliases: ['krafton', 'krafton inc', 'クラフトン'] },
 ];
 
 // 大手の子会社・専属スタジオ
@@ -106,6 +132,11 @@ const MAJOR_PUBLISHER_SUBSIDIARIES: ReadonlyArray<DeveloperEntry> = [
   { canonical: 'Relic Entertainment', aliases: ['relic entertainment'] },
   { canonical: 'Amplitude Studios', aliases: ['amplitude studios'] },
   { canonical: 'Two Point Studios', aliases: ['two point studios'] },
+  // NetEase
+  { canonical: 'Quantic Dream', aliases: ['quantic dream'] },
+  // KRAFTON
+  { canonical: 'PUBG Studios', aliases: ['pubg studios', 'pubg corporation', 'pubg corp'] },
+  { canonical: 'Unknown Worlds Entertainment', aliases: ['unknown worlds entertainment', 'unknown worlds'] },
 ];
 
 export function normalizeDeveloperName(name: string): string {

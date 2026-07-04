@@ -224,6 +224,103 @@ describe('isLargeStudio', () => {
   it('Ubisoft Nadeo is large', () => {
     expect(isLargeStudio('Ubisoft Nadeo')).toMatchObject({ hit: true, list: 'large' });
   });
+
+  // Issue #167 修正: 新規追加スタジオの確認
+  it('IO Interactive is large', () => {
+    expect(isLargeStudio('IO Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Remedy Entertainment is large', () => {
+    expect(isLargeStudio('Remedy Entertainment')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Larian Studios is large', () => {
+    expect(isLargeStudio('Larian Studios')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Warhorse Studios is large', () => {
+    expect(isLargeStudio('Warhorse Studios')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('4A Games is large', () => {
+    expect(isLargeStudio('4A Games')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Techland is large', () => {
+    expect(isLargeStudio('Techland')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Asobo Studio is large', () => {
+    expect(isLargeStudio('Asobo Studio')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('People Can Fly is large', () => {
+    expect(isLargeStudio('People Can Fly')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Bloober Team is large', () => {
+    expect(isLargeStudio('Bloober Team')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Bohemia Interactive is large', () => {
+    expect(isLargeStudio('Bohemia Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Saber Interactive is large', () => {
+    expect(isLargeStudio('Saber Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Behaviour Interactive is large', () => {
+    expect(isLargeStudio('Behaviour Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Behavior Interactive (US spelling) is large', () => {
+    expect(isLargeStudio('Behavior Interactive')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Crystal Dynamics is large', () => {
+    expect(isLargeStudio('Crystal Dynamics')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Eidos-Montréal is large', () => {
+    expect(isLargeStudio('Eidos-Montréal')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Eidos Montreal (without accent) is large', () => {
+    expect(isLargeStudio('Eidos Montreal')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Pearl Abyss is large', () => {
+    expect(isLargeStudio('Pearl Abyss')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('SHIFT UP is large', () => {
+    expect(isLargeStudio('SHIFT UP')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('CyberConnect2 is large', () => {
+    expect(isLargeStudio('CyberConnect2')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Kojima Productions is large', () => {
+    expect(isLargeStudio('Kojima Productions')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('PlatinumGames is large', () => {
+    expect(isLargeStudio('PlatinumGames')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('KRAFTON is large', () => {
+    expect(isLargeStudio('KRAFTON')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Quantic Dream is subsidiary (NetEase)', () => {
+    expect(isLargeStudio('Quantic Dream')).toMatchObject({ hit: true, list: 'subsidiary' });
+  });
+
+  it('Unknown Worlds Entertainment is subsidiary (KRAFTON)', () => {
+    expect(isLargeStudio('Unknown Worlds Entertainment')).toMatchObject({ hit: true, list: 'subsidiary' });
+  });
 });
 
 describe('isIndieGame', () => {
@@ -297,16 +394,16 @@ describe('isIndieGame', () => {
     expect(isIndieGame(game)).toEqual({ ok: true });
   });
 
-  // Death Stranding - developer が独立（Kojima Productions）
-  it('Death Stranding (Kojima Productions) is indie by spec', () => {
+  // Death Stranding - Kojima Productions は大手枠（仕様変更）
+  it('Death Stranding (Kojima Productions) is NOT indie', () => {
     const game = makeGame({ title: 'Death Stranding', developer: 'Kojima Productions' });
-    expect(isIndieGame(game)).toEqual({ ok: true });
+    expect(isIndieGame(game)).toMatchObject({ ok: false });
   });
 
-  // Bayonetta 3 - PlatinumGames は独立スタジオ、仕様上はインディーとして通す
-  it('Bayonetta 3 (PlatinumGames) passes as indie per spec (spillover acceptable)', () => {
+  // Bayonetta 3 - PlatinumGames は大手枠（仕様変更）
+  it('Bayonetta 3 (PlatinumGames) is NOT indie', () => {
     const game = makeGame({ title: 'Bayonetta 3', developer: 'PlatinumGames' });
-    expect(isIndieGame(game)).toEqual({ ok: true });
+    expect(isIndieGame(game)).toMatchObject({ ok: false });
   });
 
   // 大手判定の追加ケース
