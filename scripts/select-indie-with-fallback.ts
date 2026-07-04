@@ -11,6 +11,7 @@
  */
 
 import { finalizeGameMetadata, hasAllRequiredFields } from './finalize-game-metadata.js';
+import { isLargeStudio } from './indie-classifier.js';
 import type { GameData } from './types.js';
 
 /** 話題性ルートの閾値 */
@@ -115,6 +116,19 @@ export async function selectIndieGamesWithFallback(
     }
 
     if (finalizeResult.ok) {
+      // finalize 後に IGDB が developer を補完した場合、大手スタジオが混入しないよう再チェック
+      if (isLargeStudio(finalizeResult.game.developer).hit) {
+        console.log(
+          JSON.stringify({
+            scope: 'select-indie-with-fallback',
+            title: finalizeResult.game.title,
+            step: 'large-studio-gate',
+            reason: `not-indie after finalize (developer="${finalizeResult.game.developer ?? ''}")`,
+          })
+        );
+        rejected.push({ title: candidate.title, reason: 'not-large-studio' });
+        continue;
+      }
       adopted.push(finalizeResult.game);
       continue;
     }
