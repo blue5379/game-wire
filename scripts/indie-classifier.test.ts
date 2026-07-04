@@ -321,6 +321,34 @@ describe('isLargeStudio', () => {
   it('Unknown Worlds Entertainment is subsidiary (KRAFTON)', () => {
     expect(isLargeStudio('Unknown Worlds Entertainment')).toMatchObject({ hit: true, list: 'subsidiary' });
   });
+
+  // 短縮エイリアスのポジティブテスト（タイポ検知）
+  it('IOI (IO Interactive alias) is large', () => {
+    expect(isLargeStudio('IOI')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('PCF (People Can Fly alias) is large', () => {
+    expect(isLargeStudio('PCF')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('CC2 (CyberConnect2 alias) is large', () => {
+    expect(isLargeStudio('CC2')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('4A (4A Games alias) is large', () => {
+    expect(isLargeStudio('4A')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  // Eidos 単独誤爆ネガティブテスト（旧 Eidos Interactive ブランドが誤分類されないこと）
+  it('Eidos Interactive (旧ブランド) is not large — eidos 単独エイリアスは削除済み', () => {
+    expect(isLargeStudio('Eidos Interactive')).toEqual({ hit: false });
+  });
+
+  // NFD エンコードでも Eidos-Montréal にマッチすること
+  it('Eidos-Montréal NFD encoding still matches (NFC normalization)', () => {
+    const nfd = 'Eidos-Montréal'; // é を NFD で表現
+    expect(isLargeStudio(nfd)).toMatchObject({ hit: true, list: 'large' });
+  });
 });
 
 describe('isIndieGame', () => {

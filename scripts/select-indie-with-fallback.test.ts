@@ -329,6 +329,57 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(result.rejected).toHaveLength(0);
   });
 
+  // Issue #167: finalize 後に IGDB が大手スタジオ名を補完した場合の混入防止
+  it('finalize 後に developer が Kojima Productions になったゲームは rejected になる', async () => {
+    const candidate = makeGame({ title: 'Death Stranding', normalizedTitle: 'death stranding' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Kojima Productions',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1190460' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-large-studio');
+  });
+
+  it('finalize 後に developer が PlatinumGames になったゲームは rejected になる', async () => {
+    const candidate = makeGame({ title: 'Bayonetta 3', normalizedTitle: 'bayonetta 3' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'PlatinumGames',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1133390' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-large-studio');
+  });
+
+  it('finalize 後に developer が小規模スタジオならそのまま採用される', async () => {
+    const candidate = makeGame({ title: 'Hollow Knight', normalizedTitle: 'hollow knight' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Team Cherry',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/367520' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(1);
+    expect(result.adopted[0].developer).toBe('Team Cherry');
+  });
+
   // finalizeGameMetadata の呼び出し回数が採用した候補数と一致すること
   it('finalizeGameMetadata は各候補に対して 1 回だけ呼ばれる', async () => {
     const games = [

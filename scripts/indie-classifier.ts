@@ -55,7 +55,7 @@ const LARGE_DEVELOPERS: ReadonlyArray<DeveloperEntry> = [
   { canonical: 'Saber Interactive', aliases: ['saber interactive', 'saber'] },
   { canonical: 'Behaviour Interactive', aliases: ['behaviour interactive', 'behavior interactive', 'behaviour', 'behavior'] },
   { canonical: 'Crystal Dynamics', aliases: ['crystal dynamics'] },
-  { canonical: 'Eidos-Montréal', aliases: ['eidos-montréal', 'eidos montreal', 'eidos-montreal', 'eidos'] },
+  { canonical: 'Eidos-Montréal', aliases: ['eidos-montréal', 'eidos montreal', 'eidos-montreal'] },
   { canonical: 'Pearl Abyss', aliases: ['pearl abyss', 'パールアビス'] },
   { canonical: 'SHIFT UP', aliases: ['shift up', 'シフトアップ'] },
   { canonical: 'CyberConnect2', aliases: ['cyberconnect2', 'cyberconnect 2', 'cc2', 'サイバーコネクトツー'] },
@@ -137,10 +137,12 @@ const MAJOR_PUBLISHER_SUBSIDIARIES: ReadonlyArray<DeveloperEntry> = [
   // KRAFTON
   { canonical: 'PUBG Studios', aliases: ['pubg studios', 'pubg corporation', 'pubg corp'] },
   { canonical: 'Unknown Worlds Entertainment', aliases: ['unknown worlds entertainment', 'unknown worlds'] },
+  // ← KRAFTON 傘下エントリここまで
 ];
 
 export function normalizeDeveloperName(name: string): string {
   return name
+    .normalize('NFC')
     .replace(/[™®©]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
