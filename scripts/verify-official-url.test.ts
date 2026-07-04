@@ -279,15 +279,62 @@ describe('verifyOfficialUrlContent', () => {
     expect(result.verdict).toBe('mismatch');
   });
 
-  it('ページ本文を取得できない場合は Bedrock を呼ばず uncertain を返す', async () => {
+  it('HTTP 5xx（一時的障害）は Bedrock を呼ばず uncertain を返す', async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,
+      status: 503,
       headers: { get: () => 'text/html' },
       text: async () => '',
     });
 
     const result = await verifyOfficialUrlContent(game, 'https://dead.example.com');
     expect(result.verdict).toBe('uncertain');
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('HTTP 403（Bot ブロックの可能性）は Bedrock を呼ばず uncertain を返す', async () => {
+    // Cloudflare 等の Bot 対策で 403 を返す正規サイトを誤って弾かないため uncertain のまま
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 403,
+      headers: { get: () => 'text/html' },
+      text: async () => '',
+    });
+
+    const result = await verifyOfficialUrlContent(game, 'https://cf-protected.example.com');
+    expect(result.verdict).toBe('uncertain');
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('Issue #159: HTTP 404 は「URL が存在しない」明確なシグナルとして mismatch を返す', async () => {
+    // CI Run #28684965542 で /20260702g（404 のニュース記事URL）が
+    // uncertain として採用されてしまった事象の再発防止。
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: { get: () => 'text/html' },
+      text: async () => '',
+    });
+
+    const result = await verifyOfficialUrlContent(
+      game,
+      'https://www.konami.com/games/corporate/ja/news/topics/20260702g'
+    );
+    expect(result.verdict).toBe('mismatch');
+    expect(result.reason).toContain('404');
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('Issue #159: HTTP 410 も「URL が存在しない」として mismatch を返す', async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 410,
+      headers: { get: () => 'text/html' },
+      text: async () => '',
+    });
+
+    const result = await verifyOfficialUrlContent(game, 'https://retired.example.com');
+    expect(result.verdict).toBe('mismatch');
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
