@@ -289,8 +289,116 @@ function pickOfficialUrlFromWebsites(
   return websites.find((w) => w.category === 1)?.url;
 }
 
+/**
+ * IGDB games エンドポイントの生レスポンス（メタデータ取得に使う共通フィールド一式）
+ */
+interface IGDBRawGame {
+  id: number;
+  name: string;
+  slug: string;
+  summary?: string;
+  genres?: { name: string }[];
+  platforms?: { name: string }[];
+  first_release_date?: number;
+  involved_companies?: {
+    company: { name: string; country?: number };
+    developer: boolean;
+    publisher: boolean;
+  }[];
+  cover?: { url: string };
+  screenshots?: { url: string }[];
+  rating?: number;
+  rating_count?: number;
+  game_localizations?: { name: string; region?: number }[];
+  websites?: { url: string; category?: number }[];
+}
+
+// searchGameByName / searchGameBySteamAppId 共通で使う fields 一覧
+const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
+       first_release_date, involved_companies.company.name,
+       involved_companies.developer, involved_companies.publisher,
+       cover.url, screenshots.url, rating, rating_count,
+       involved_companies.company.country,
+       game_localizations.name, game_localizations.region,
+       websites.url, websites.category`;
+
+/**
+ * IGDB games の生レスポンスを IGDBGame に変換する共通ロジック
+ *
+ * 名前検索（searchGameByName）と appId 逆引き（searchGameBySteamAppId）で
+ * 同一の変換（involved_companies 抽出・画像URL整形・国名変換・steamUrl/officialUrl 抽出）を使う。
+ */
+function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
+  // 開発会社と販売会社、国情報を抽出
+  let developer: string | undefined;
+  let publisher: string | undefined;
+  let developerCountry: number | undefined;
+
+  if (game.involved_companies) {
+    for (const ic of game.involved_companies) {
+      if (ic.developer && !developer) {
+        developer = ic.company.name;
+        developerCountry = ic.company.country;
+      }
+      if (ic.publisher && !publisher) {
+        publisher = ic.company.name;
+      }
+    }
+  }
+
+  // 画像URLを高解像度に変換
+  const formatImageUrl = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    // t_thumb を t_cover_big に変換
+    return url.replace('t_thumb', 't_cover_big').replace('//', 'https://');
+  };
+
+  const formatScreenshotUrl = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    return url.replace('t_thumb', 't_screenshot_big').replace('//', 'https://');
+  };
+
+  // 国コードを日本語名に変換
+  const developerCountryName = getCountryName(developerCountry);
+
+  const officialUrl = pickOfficialUrlFromWebsites(game.websites);
+
+  return {
+    id: game.id,
+    name: game.name,
+    titleJa: extractJapaneseLocalization(game.game_localizations),
+    slug: game.slug,
+    summary: game.summary,
+    genres: game.genres?.map((g) => g.name),
+    platforms: game.platforms?.map((p) => p.name),
+    releaseDate: game.first_release_date
+      ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
+      : undefined,
+    developer,
+    publisher,
+    developerCountry: developerCountryName,
+    coverUrl: formatImageUrl(game.cover?.url),
+    screenshotUrls: game.screenshots
+      ?.map((s) => formatScreenshotUrl(s.url))
+      .filter((url): url is string => url !== undefined),
+    rating: game.rating,
+    ratingCount: game.rating_count,
+    // category=13がSteamだが返却されないことがあるため、URLパターンでも判定
+    steamUrl: game.websites?.find(
+      (w) => w.category === 13 || w.url.includes('store.steampowered.com')
+    )?.url,
+    officialUrl,
+    officialUrlSource: officialUrl ? 'igdb-official' : undefined,
+    websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
+  };
+}
+
 // テスト用にエクスポート
-export const __test = { isRelevantSearchResult, pickOfficialUrlFromWebsites };
+export const __test = {
+  isRelevantSearchResult,
+  pickOfficialUrlFromWebsites,
+  mapRawGameToIGDBGame,
+};
 
 /**
  * Twitch OAuth2 アクセストークンを取得
@@ -387,36 +495,9 @@ export async function searchGameByName(
     // ゲーム検索
     const query = `
       search "${searchName.replace(/"/g, '\\"')}";
-      fields name, slug, summary, genres.name, platforms.name,
-             first_release_date, involved_companies.company.name,
-             involved_companies.developer, involved_companies.publisher,
-             cover.url, screenshots.url, rating, rating_count,
-             involved_companies.company.country,
-             game_localizations.name, game_localizations.region,
-             websites.url, websites.category;
+      fields ${IGDB_GAME_FIELDS};
       limit 1;
     `;
-
-    interface IGDBRawGame {
-      id: number;
-      name: string;
-      slug: string;
-      summary?: string;
-      genres?: { name: string }[];
-      platforms?: { name: string }[];
-      first_release_date?: number;
-      involved_companies?: {
-        company: { name: string; country?: number };
-        developer: boolean;
-        publisher: boolean;
-      }[];
-      cover?: { url: string };
-      screenshots?: { url: string }[];
-      rating?: number;
-      rating_count?: number;
-      game_localizations?: { name: string; region?: number }[];
-      websites?: { url: string; category: number }[];
-    }
 
     const games = await igdbRequest<IGDBRawGame>(
       'games',
@@ -447,72 +528,58 @@ export async function searchGameByName(
       }
     }
 
-    // 開発会社と販売会社、国情報を抽出
-    let developer: string | undefined;
-    let publisher: string | undefined;
-    let developerCountry: number | undefined;
-
-    if (game.involved_companies) {
-      for (const ic of game.involved_companies) {
-        if (ic.developer && !developer) {
-          developer = ic.company.name;
-          developerCountry = ic.company.country;
-        }
-        if (ic.publisher && !publisher) {
-          publisher = ic.company.name;
-        }
-      }
-    }
-
-    // 画像URLを高解像度に変換
-    const formatImageUrl = (url?: string): string | undefined => {
-      if (!url) return undefined;
-      // t_thumb を t_cover_big に変換
-      return url.replace('t_thumb', 't_cover_big').replace('//', 'https://');
-    };
-
-    const formatScreenshotUrl = (url?: string): string | undefined => {
-      if (!url) return undefined;
-      return url
-        .replace('t_thumb', 't_screenshot_big')
-        .replace('//', 'https://');
-    };
-
-    // 国コードを日本語名に変換
-    const developerCountryName = getCountryName(developerCountry);
-
-    const officialUrl = pickOfficialUrlFromWebsites(game.websites);
-
-    return {
-      id: game.id,
-      name: game.name,
-      titleJa: extractJapaneseLocalization(game.game_localizations),
-      slug: game.slug,
-      summary: game.summary,
-      genres: game.genres?.map((g) => g.name),
-      platforms: game.platforms?.map((p) => p.name),
-      releaseDate: game.first_release_date
-        ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
-        : undefined,
-      developer,
-      publisher,
-      developerCountry: developerCountryName,
-      coverUrl: formatImageUrl(game.cover?.url),
-      screenshotUrls: game.screenshots
-        ?.map((s) => formatScreenshotUrl(s.url))
-        .filter((url): url is string => url !== undefined),
-      rating: game.rating,
-      ratingCount: game.rating_count,
-      // category=13がSteamだが返却されないことがあるため、URLパターンでも判定
-      steamUrl: game.websites?.find((w) =>
-        w.category === 13 || w.url.includes('store.steampowered.com')
-      )?.url,
-      officialUrl,
-      officialUrlSource: officialUrl ? 'igdb-official' : undefined,
-      websites: game.websites,
-    };
+    return mapRawGameToIGDBGame(game);
   } catch (error) {
     console.error(`Failed to search game "${name}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Steam appId で IGDB を逆引きしてメタデータを取得（Issue #166 ①）
+ *
+ * 安定した外部ID（Steam appId）は「名前の類似」より強い同一性シグナルであるため、
+ * appId が判明しているゲームはこの逆引きを第一級の手段とする。同名異作品が
+ * 名前検索で混入する問題（Issue #166: Brick Game）を原理的に防ぐ。
+ *
+ * 実装メモ（実機確認済み）:
+ * - IGDB v4 では external_games の `category` フィルタは deprecated で機能しない。
+ *   Steam を示すには `external_game_source = 1` を使う（実機で疎通確認済み）。
+ * - games エンドポイントに external_games ネストフィルタをかけ、逆引きとメタ取得を
+ *   1リクエストで済ませる（IGDB 呼び出し回数を純増させないため）。
+ * - appId 一致は名前より強いシグナルなので、名前一致チェック（isRelevantSearchResult）も
+ *   年ゲート（SEARCH_YEAR_TOLERANCE）も適用しない（表記ゆれで正しい結果を捨てないため）。
+ * - 見つからなければ null を返す（呼び出し元は名前検索へフォールバック）。
+ */
+export async function searchGameBySteamAppId(
+  appId: number,
+  clientId: string,
+  accessToken: string
+): Promise<IGDBGame | null> {
+  try {
+    // クエリ文字列に埋め込む前に明示的に文字列化（一貫性・インジェクション対策）
+    const uid = String(appId).replace(/[^0-9]/g, '');
+    if (uid.length === 0) return null;
+
+    // Steam を示す external_game_source=1 で逆引き（category は deprecated のため不使用）
+    const query = `
+      fields ${IGDB_GAME_FIELDS};
+      where external_games.external_game_source = 1 & external_games.uid = "${uid}";
+      limit 1;
+    `;
+
+    const games = await igdbRequest<IGDBRawGame>(
+      'games',
+      query,
+      clientId,
+      accessToken
+    );
+
+    if (games.length === 0) return null;
+
+    return mapRawGameToIGDBGame(games[0]);
+  } catch (error) {
+    console.error(`Failed to reverse-lookup game by Steam appId "${appId}":`, error);
     return null;
   }
 }
@@ -890,10 +957,14 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
   }
 }
 
-// エクスポート: 外部から名前検索を呼び出すための関数
+// エクスポート: 外部から IGDB メタ取得を呼び出すための関数
+//
+// Issue #166: steamAppId があれば appId 逆引きを第一級手段として優先する。
+// 逆引きがヒットしなければ従来の名前検索へフォールバックする（IGDB 呼び出し回数は
+// 逆引きヒット時 1 回、フォールバック時のみ 2 回で、常に名前検索と逆引きを両方は呼ばない）。
 export async function enrichGameWithIGDB(
   gameName: string,
-  options?: { expectedYear?: number }
+  options?: { expectedYear?: number; steamAppId?: number }
 ): Promise<IGDBGame | null> {
   const clientId = process.env.IGDB_CLIENT_ID;
   const clientSecret = process.env.IGDB_CLIENT_SECRET;
@@ -904,6 +975,18 @@ export async function enrichGameWithIGDB(
 
   try {
     const accessToken = await getAccessToken(clientId, clientSecret);
+
+    // appId 逆引きを優先（安定した外部IDによる同一性解決）
+    if (options?.steamAppId !== undefined) {
+      const byAppId = await searchGameBySteamAppId(
+        options.steamAppId,
+        clientId,
+        accessToken
+      );
+      if (byAppId) return byAppId;
+      // ヒットしなければ名前検索へフォールバック
+    }
+
     return await searchGameByName(gameName, clientId, accessToken, options);
   } catch (error) {
     console.error(`Failed to enrich game "${gameName}":`, error);

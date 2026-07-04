@@ -4,7 +4,7 @@
  * issue-008 のハルシネーション事案を再現するテストケースを含む。
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   validateTitleConsistency,
   validateBodyTitleConsistency,
@@ -13,6 +13,7 @@ import {
   validateNumericClaims,
   validateFeatureNumericClaims,
   validateArticles,
+  validateGameSourceConsistency,
   buildFixInstruction,
 } from './validate-article.js';
 import type { ValidationWarning } from './validate-article.js';
@@ -633,5 +634,158 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('Switch');
     expect(out).toContain('40万人');
     expect(out).toContain('山田');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validateGameSourceConsistency — Issue #166 ③: game メタと Steam 実体の内的整合性
+// ─────────────────────────────────────────────────────────────────────────────
+describe('validateGameSourceConsistency', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockStorefront(appId: string, data: unknown): void {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ [appId]: { success: true, data } }),
+    }) as unknown as typeof fetch;
+  }
+
+  it('Brick Game 事案: game.releaseDate=1989 なのに Steam(1087090)=2026 → high 警告', async () => {
+    const article = makeArticle({
+      title: '懐かしの携帯型液晶ゲーム機『Brick Game』',
+      category: 'indie',
+      game: {
+        title: 'Brick Game',
+        genre: ['Puzzle', 'Racing', 'Arcade'],
+        platforms: ['Handheld Electronic LCD'],
+        releaseDate: '1989-12-31',
+        developer: 'Shenzhen Xinfeilong Electronic Factory',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockStorefront('1087090', {
+      name: 'Brick Game',
+      release_date: { coming_soon: false, date: '2026年7月4日' },
+      developers: ['Daniel Shimmyo'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+
+    const yearWarn = warnings.find((w) => w.type === 'game-source-mismatch');
+    expect(yearWarn).toBeDefined();
+    expect(yearWarn?.severity).toBe('high');
+  });
+
+  it('整合ケース: game.releaseDate=2026 と Steam=2026 → 警告なし', async () => {
+    const article = makeArticle({
+      title: '新作『Foo』登場',
+      category: 'newRelease',
+      game: {
+        title: 'Foo',
+        genre: ['Action'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-07-04',
+        developer: 'Daniel Shimmyo',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockStorefront('1087090', {
+      name: 'Foo',
+      release_date: { coming_soon: false, date: '2026年7月4日' },
+      developers: ['Daniel Shimmyo'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('developer が全く一致しない場合も high 警告（発売年は一致していても）', async () => {
+    const article = makeArticle({
+      title: '新作『Bar』登場',
+      category: 'newRelease',
+      game: {
+        title: 'Bar',
+        genre: ['Action'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-01-01',
+        developer: 'Shenzhen Xinfeilong Electronic Factory',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/2222222' },
+    });
+    mockStorefront('2222222', {
+      name: 'Bar',
+      release_date: { coming_soon: false, date: '2026年1月1日' },
+      developers: ['Daniel Shimmyo'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+    const devWarn = warnings.find((w) => w.type === 'game-source-mismatch' && /開発/.test(w.message));
+    expect(devWarn).toBeDefined();
+    expect(devWarn?.severity).toBe('high');
+  });
+
+  it('API 失敗時は警告を出さない（fail-open）', async () => {
+    const article = makeArticle({
+      title: '『Baz』',
+      category: 'indie',
+      game: {
+        title: 'Baz',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-01-01',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/3333333' },
+    });
+    global.fetch = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('Steam URL が無い記事は検証対象外（警告なし・API も呼ばない）', async () => {
+    const article = makeArticle({
+      title: '『Qux』',
+      category: 'classic',
+      game: { title: 'Qux', genre: [], platforms: [], releaseDate: '2000-01-01' },
+      sourceUrls: { official: 'https://example.com' },
+    });
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('Steam URL は stores[] からも抽出できる', async () => {
+    const article = makeArticle({
+      title: '『Old』',
+      category: 'indie',
+      game: {
+        title: 'Old',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-12-31',
+      },
+      sourceUrls: {
+        stores: [
+          {
+            platform: 'steam',
+            url: 'https://store.steampowered.com/app/4444444',
+            resolvedBy: 'igdb-website',
+            confidence: 'high',
+          },
+        ],
+      },
+    });
+    mockStorefront('4444444', {
+      name: 'Old',
+      release_date: { coming_soon: false, date: '2026年3月1日' },
+    });
+
+    const warnings = await validateGameSourceConsistency(article);
+    expect(warnings.some((w) => w.type === 'game-source-mismatch')).toBe(true);
   });
 });

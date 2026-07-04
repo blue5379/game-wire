@@ -47,6 +47,8 @@ export async function finalizeGameMetadata(
     try {
       const igdb = await enrichGameWithIGDB(game.title, {
         expectedYear: extractYear(game.releaseDate),
+        // Issue #166: steamAppId があれば appId 逆引きを優先
+        steamAppId: game.steamAppId,
       });
       if (igdb) {
         // 既存値を上書きしない（?? 演算子で空欄のみ補完）
