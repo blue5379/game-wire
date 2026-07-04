@@ -9,7 +9,7 @@
  * R2: Steam 実在取りこぼし検知（Resolver が confidence>=medium で Steam URL を返したのに stores[] に Steam が乗っていない）
  * R2b: 他プラットフォーム取りこぼし検知（platforms に Switch/PS/Xbox が含まれるのに confidence=high で URL が取れたのに乗っていない）
  * R3: 公式 URL 到達性（official が HTTP 200 以外）
- * R4: カバー画像ホスト許可リスト（images.igdb.com / cdn.cloudflare.steamstatic.com 以外）
+ * R4: カバー画像ホスト許可リスト（images.igdb.com / steamstatic.com サブドメイン以外）
  *
  * 動作モード（環境変数 COMPLETENESS_GATE）:
  * - "warn"（DEV_MODE 既定）: validation-dev/completeness-report.json に記録のみ
@@ -67,8 +67,7 @@ export function getGateMode(): GateMode {
 
 const ALLOWED_IMAGE_HOSTS = [
   'images.igdb.com',
-  'cdn.cloudflare.steamstatic.com',
-  'shared.akamai.steamstatic.com',
+  'steamstatic.com', // cdn.cloudflare.*, shared.akamai.* など Steam CDN サブドメイン全般を許可
 ];
 
 const CONSOLE_PLATFORMS = ['nintendo', 'switch', 'playstation', 'ps3', 'ps4', 'ps5', 'xbox'];
