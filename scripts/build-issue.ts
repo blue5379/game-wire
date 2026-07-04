@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry } from './game-history.js';
-import { validateArticles, writeAndCheckReport } from './validate-article.js';
+import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
 import { judgeArticles } from './judge-article.js';
 
 // 開発モード判定
@@ -536,6 +536,29 @@ async function main(): Promise<void> {
 
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
   const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats);
+
+  // Issue #166 ③: game メタと Steam 実体の内的整合性チェック（発行直前・非同期・fail-open）。
+  // 同名異作品のメタ混入（記事本文は新作・game ブロックは旧作）を検出して high 警告を立てる。
+  // 既存の high 閾値判定（writeAndCheckReport）でそのまま build fail 運用に乗る。
+  try {
+    const sourceWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
+    if (sourceWarnings.length > 0) {
+      report.warnings.push(...sourceWarnings);
+      report.totalWarnings = report.warnings.length;
+      for (const w of sourceWarnings) {
+        report.warningsBySeverity[w.severity]++;
+      }
+    }
+  } catch (err) {
+    // fail-open: 検証自体が失敗しても build は落とさない
+    console.warn(
+      JSON.stringify({
+        scope: 'build-issue',
+        step: 'game-source-consistency',
+        reason: String(err),
+      })
+    );
+  }
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。

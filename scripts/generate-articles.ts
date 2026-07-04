@@ -900,6 +900,7 @@ export async function generateFeatureArticle(
       if (!officialUrl) {
         const igdbFallback = await enrichGameWithIGDB(game.title, {
           expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
+          steamAppId: game.steamAppId,
         });
         // Issue #117: igdbFallback.officialUrl は IGDB の category=1 タグ付き URL のみ
         // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。

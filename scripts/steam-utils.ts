@@ -18,6 +18,14 @@ export function parseSteamReleaseDate(raw?: string): string | undefined {
 }
 
 /**
+ * 会社名・ゲーム名を比較用に正規化する（記号・空白・大小文字を吸収）。
+ * isSameSteamApp（fetch-steam.ts）と validate-article.ts の開発元照合で共用する。
+ */
+export function normalizeCompanyName(s: string): string {
+  return s.toLowerCase().replace(/[\s　™®©:;'",.\-_!?()[\]【】「」『』]/g, '');
+}
+
+/**
  * Steam Storefront の developers/publishers の文字列が、
  * 開発者/発行者として表示すべき正式名称か判定する品質ガード。
  *

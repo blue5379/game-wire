@@ -5,8 +5,18 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseSteamReleaseDate, isQualifiedCompanyName, removeZombieGames, addPcPlatformIfMissing } from './fetch-data.js';
-import type { SelectedGames, GameData } from './types.js';
+import { parseSteamReleaseDate, isQualifiedCompanyName, removeZombieGames, addPcPlatformIfMissing, enrichGameFromIgdb } from './fetch-data.js';
+import type { SelectedGames, GameData, IGDBGame } from './types.js';
+
+// テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
+function makeIgdbGame(overrides: Partial<IGDBGame> = {}): IGDBGame {
+  return {
+    id: 1,
+    name: 'Test Game',
+    slug: 'test-game',
+    ...overrides,
+  };
+}
 
 // テスト用 GameData ファクトリ（必須フィールドのみ設定）
 function makeGame(overrides: Partial<GameData> = {}): GameData {
@@ -361,5 +371,138 @@ describe('addPcPlatformIfMissing — Steam 解決時の PC プラットフォー
     const result = addPcPlatformIfMissing(platforms);
     expect(result).toBe(true);
     expect(platforms).toEqual(['PC (Microsoft Windows)']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// enrichGameFromIgdb — Issue #166 ②: appId 不一致の IGDB でメタを上書きしないガード
+// ─────────────────────────────────────────────────────────────────────────────
+describe('enrichGameFromIgdb — appId 整合性ガード', () => {
+  it('Brick Game: appId=1087090・releaseDate 無しの候補に、別 appId の旧作 IGDB が来たら上書きしない', () => {
+    // Steam 側の新作 Brick Game（appId=1087090, 発売日不明）
+    const game = makeGame({
+      title: 'Brick Game',
+      normalizedTitle: 'brick game',
+      steamAppId: 1087090,
+      platforms: ['PC'],
+      genres: [],
+      // releaseDate なし（SteamGame は発売日を持たない）
+    });
+    // IGDB が返した旧作 Brick Game（1989年・別 appId を steamUrl に持つ）
+    const igdbGame = makeIgdbGame({
+      name: 'Brick Game',
+      releaseDate: '1989-12-31',
+      genres: ['Puzzle', 'Racing', 'Arcade'],
+      developer: 'Shenzhen Xinfeilong Electronic Factory',
+      steamUrl: 'https://store.steampowered.com/app/9999999',
+      coverUrl: 'https://images.igdb.com/co4ahd.jpg',
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(false);
+    // Steam 由来の値が旧作メタで汚染されていないこと
+    expect(game.releaseDate).toBeUndefined();
+    expect(game.genres).toEqual([]);
+    expect(game.developer).toBeUndefined();
+    expect(game.coverImage).toBeUndefined();
+  });
+
+  it('appId 一致の正しい IGDB 結果は従来どおり全フィールド上書きする（回帰防止）', () => {
+    const game = makeGame({
+      title: 'Elden Ring',
+      normalizedTitle: 'elden ring',
+      steamAppId: 1245620,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Elden Ring',
+      slug: 'elden-ring',
+      releaseDate: '2022-02-25',
+      genres: ['Role-playing (RPG)'],
+      platforms: ['PC (Microsoft Windows)'],
+      developer: 'FromSoftware',
+      publisher: 'Bandai Namco',
+      coverUrl: 'https://images.igdb.com/elden.jpg',
+      steamUrl: 'https://store.steampowered.com/app/1245620',
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.releaseDate).toBe('2022-02-25');
+    expect(game.genres).toEqual(['Role-playing (RPG)']);
+    expect(game.developer).toBe('FromSoftware');
+    expect(game.coverImage).toBe('https://images.igdb.com/elden.jpg');
+    expect(game.igdbSlug).toBe('elden-ring');
+  });
+
+  it('appId 逆引きで得た steamUrl 無しの IGDB 結果は許容して上書きする（appId 経路の整合は保証済み）', () => {
+    // appId 逆引きヒットだが IGDB 側に Steam website が登録されていないケース。
+    // title は一致するので isSameGame も通り、上書きされる。
+    const game = makeGame({
+      title: 'Some Indie',
+      normalizedTitle: 'some indie',
+      steamAppId: 555,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Some Indie',
+      slug: 'some-indie',
+      genres: ['Indie'],
+      developer: 'Solo Dev',
+      // steamUrl なし
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.genres).toEqual(['Indie']);
+    expect(game.developer).toBe('Solo Dev');
+  });
+
+  it('appId が両方 undefined でも title+年が一致すれば従来どおり上書きする（名前検索フォールバック経路）', () => {
+    const game = makeGame({
+      title: 'Nameless Classic',
+      normalizedTitle: 'nameless classic',
+      releaseDate: '2010-05-01',
+      platforms: [],
+      genres: [],
+      // steamAppId なし
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Nameless Classic',
+      slug: 'nameless-classic',
+      releaseDate: '2010-05-01',
+      genres: ['Adventure'],
+      // steamUrl なし
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.genres).toEqual(['Adventure']);
+  });
+
+  it('appId 無し・title/年が食い違う名前検索結果は上書き拒否（Issue #50 の既存ガード維持）', () => {
+    const game = makeGame({
+      title: 'Foo',
+      normalizedTitle: 'foo',
+      releaseDate: '2024-01-01',
+      platforms: [],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Completely Different Bar',
+      releaseDate: '1999-01-01',
+      genres: ['Sports'],
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(false);
+    expect(game.genres).toEqual([]);
   });
 });

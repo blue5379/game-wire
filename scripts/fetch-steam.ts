@@ -4,6 +4,7 @@
  */
 
 import type { SteamGame, SteamData, FetchResult } from './types.js';
+import { normalizeCompanyName } from './steam-utils.js';
 
 const STEAM_STORE_API = 'https://store.steampowered.com/api';
 const STEAM_CHARTS_API = 'https://api.steampowered.com/ISteamChartsService/GetMostPlayedGames/v1';
@@ -121,10 +122,8 @@ const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
  * 取得しているため実害は小さい（同一 API 内では言語が揃う）。
  */
 export function isSameSteamApp(itemName: string, appDataName: string): boolean {
-  const norm = (s: string) =>
-    s.toLowerCase().replace(/[\s　™®©:;'",.\-_!?()[\]【】「」『』]/g, '');
-  const a = norm(itemName);
-  const b = norm(appDataName);
+  const a = normalizeCompanyName(itemName);
+  const b = normalizeCompanyName(appDataName);
   if (!a || !b) return true; // 片方空なら検証保留
   if (a === b) return true;
   if (a.startsWith(b) || b.startsWith(a)) return true;

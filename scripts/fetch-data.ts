@@ -33,6 +33,7 @@ import type {
   IGDBData,
   MetacriticData,
   GameData,
+  IGDBGame,
   AggregatedData,
   SelectedGames,
 } from './types.js';
@@ -152,6 +153,88 @@ function isSameGame(
   const y2 = extractYear(g2.releaseDate);
   if (y1 !== undefined && y2 !== undefined) {
     if (Math.abs(y1 - y2) > SAME_GAME_YEAR_TOLERANCE) return false;
+  }
+  return true;
+}
+
+/**
+ * IGDB 結果を GameData に反映する（同一性ガード付き）。Issue #50 / Issue #166。
+ *
+ * 上書きの「可否」だけをここでガードし、上書き演算子（`||` = falsy を IGDB 値で補完）の
+ * セマンティクスは従来どおり保つ。共有関数（isSameGame/titleMatches）は変更しない。
+ *
+ * 同一性判定の多層防御:
+ * 1. appId 一致（IGDB steamUrl の appId と game.steamAppId が一致）→ 無条件で同一（最強シグナル）。
+ * 2. Issue #166: game.steamAppId があるのに IGDB steamUrl の appId が「存在して不一致」→
+ *    別ゲーム混入とみなして上書き拒否。
+ *    （IGDB 側が steamUrl を持たないケースは、appId 逆引きで得た結果なら整合が保証されるため許容。
+ *      名前検索フォールバック由来でも下記 3 の title+年ガードで担保する。）
+ * 3. それ以外は従来どおり isSameGame（title + 発売年）で判定。mismatch なら上書き拒否。
+ *
+ * @returns true = 上書き適用、false = 同一性ガードで拒否（呼び出し元は enrich 失敗扱い）
+ */
+export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean {
+  const igdbAppId = extractSteamAppId(igdbGame.steamUrl);
+  const sameByAppId =
+    igdbAppId !== undefined &&
+    game.steamAppId !== undefined &&
+    game.steamAppId === igdbAppId;
+
+  if (!sameByAppId) {
+    // Issue #166: appId という強シグナルがあり、かつ IGDB 側 appId が判明していて
+    // 不一致なら別ゲーム。title が同名でも（Brick Game 新作 vs 旧作）ここで弾く。
+    if (
+      game.steamAppId !== undefined &&
+      igdbAppId !== undefined &&
+      igdbAppId !== game.steamAppId
+    ) {
+      console.warn(
+        `  IGDB enrich rejected (appId mismatch): "${game.title}" steam=${game.steamAppId} vs igdb=${igdbAppId}`
+      );
+      return false;
+    }
+
+    // 第4層（Issue #50）: title / 発売年が大きく食い違う場合は上書きを拒否する。
+    const sameByTitleYear = isSameGame(
+      { title: game.title, releaseDate: game.releaseDate },
+      { title: igdbGame.name, releaseDate: igdbGame.releaseDate }
+    );
+    if (!sameByTitleYear) {
+      console.warn(
+        `  IGDB enrich rejected (identity mismatch): "${game.title}" vs "${igdbGame.name}"`
+      );
+      return false;
+    }
+  }
+
+  game.titleJa = igdbGame.titleJa || game.titleJa;
+  game.igdbSlug = igdbGame.slug || game.igdbSlug;
+  game.genres = igdbGame.genres || game.genres;
+  game.platforms = igdbGame.platforms || game.platforms;
+  game.releaseDate = igdbGame.releaseDate || game.releaseDate;
+  game.developer = igdbGame.developer || game.developer;
+  game.publisher = igdbGame.publisher || game.publisher;
+  game.developerCountry = igdbGame.developerCountry || game.developerCountry;
+  game.coverImage = igdbGame.coverUrl || game.coverImage;
+  game.screenshots = igdbGame.screenshotUrls || game.screenshots;
+  game.summary = igdbGame.summary || game.summary;
+  game.igdbRating = igdbGame.rating ?? game.igdbRating;
+  game.igdbRatingCount = igdbGame.ratingCount ?? game.igdbRatingCount;
+  if (!game.source.includes('igdb')) {
+    game.source.push('igdb');
+  }
+  // IGDB URLを追加
+  if (igdbGame.slug) {
+    game.sourceUrls = game.sourceUrls || {};
+    game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
+  }
+  // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+  // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
+  if (igdbGame.steamUrl) {
+    const appId = extractSteamAppId(igdbGame.steamUrl);
+    if (appId !== undefined && game.steamAppId === undefined) {
+      game.steamAppId = appId;
+    }
   }
   return true;
 }
@@ -385,58 +468,14 @@ async function aggregateGames(
     if (!game.coverImage || game.genres.length === 0) {
       // 第2層: 既知の発売年を渡し、検索結果の同名異作品（年が大きく異なる）を拒絶する
       const expectedYear = extractYear(game.releaseDate);
-      const igdbGame = await enrichGameWithIGDB(game.title, { expectedYear });
+      // Issue #166: steamAppId があれば appId 逆引きを優先して同名異作品の混入を防ぐ
+      const igdbGame = await enrichGameWithIGDB(game.title, {
+        expectedYear,
+        steamAppId: game.steamAppId,
+      });
       if (igdbGame) {
-        // 第4層: enrich後の整合性チェック（Issue #50対策）
-        // searchGameByName の単語マッチが甘い経路で別ゲームが返るケースを最後に弾く。
-        // appId が一致するなら無条件に同一とみなす（強い同一性）。
-        // それ以外で title / 発売年が大きく食い違う場合は上書きを拒否し、enrich失敗扱いにする。
-        const igdbAppId = extractSteamAppId(igdbGame.steamUrl);
-        const sameByAppId =
-          igdbAppId !== undefined &&
-          game.steamAppId !== undefined &&
-          game.steamAppId === igdbAppId;
-        if (!sameByAppId) {
-          const sameByTitleYear = isSameGame(
-            { title: game.title, releaseDate: game.releaseDate },
-            { title: igdbGame.name, releaseDate: igdbGame.releaseDate }
-          );
-          if (!sameByTitleYear) {
-            console.warn(
-              `  IGDB enrich rejected (identity mismatch): "${game.title}" vs "${igdbGame.name}"`
-            );
-            continue;
-          }
-        }
-        game.titleJa = igdbGame.titleJa || game.titleJa;
-        game.igdbSlug = igdbGame.slug || game.igdbSlug;
-        game.genres = igdbGame.genres || game.genres;
-        game.platforms = igdbGame.platforms || game.platforms;
-        game.releaseDate = igdbGame.releaseDate || game.releaseDate;
-        game.developer = igdbGame.developer || game.developer;
-        game.publisher = igdbGame.publisher || game.publisher;
-        game.developerCountry = igdbGame.developerCountry || game.developerCountry;
-        game.coverImage = igdbGame.coverUrl || game.coverImage;
-        game.screenshots = igdbGame.screenshotUrls || game.screenshots;
-        game.summary = igdbGame.summary || game.summary;
-        game.igdbRating = igdbGame.rating ?? game.igdbRating;
-        game.igdbRatingCount = igdbGame.ratingCount ?? game.igdbRatingCount;
-        if (!game.source.includes('igdb')) {
-          game.source.push('igdb');
-        }
-        // IGDB URLを追加
-        if (igdbGame.slug) {
-          game.sourceUrls = game.sourceUrls || {};
-          game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
-        }
-        // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
-        // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
-        if (igdbGame.steamUrl) {
-          const appId = extractSteamAppId(igdbGame.steamUrl);
-          if (appId !== undefined && game.steamAppId === undefined) {
-            game.steamAppId = appId;
-          }
-        }
+        const applied = enrichGameFromIgdb(game, igdbGame);
+        if (!applied) continue;
         enrichedCount++;
         // レート制限対策
         if (enrichedCount % 5 === 0) {
@@ -899,6 +938,7 @@ async function enrichSelectedGamesWithOfficialUrl(
         expectedYear: game.releaseDate
           ? new Date(game.releaseDate).getFullYear()
           : undefined,
+        steamAppId: game.steamAppId,
       });
       // Issue #117: igdbFallback.officialUrl は category=1 タグ付き URL のみ
       // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。

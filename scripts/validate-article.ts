@@ -15,6 +15,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
+import { normalizeCompanyName } from './steam-utils.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -550,6 +551,180 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
     }
   }
 
+  return warnings;
+}
+
+// game メタと Steam 実体の発売年乖離の許容幅（年）。
+// 早期アクセス→正式版・地域別リリースのズレを吸収しつつ、同名異作品（通常10年以上離れる）は弾く。
+// fetch-data.ts の SAME_GAME_YEAR_TOLERANCE（集約時の同一性判定）と同値に揃える。
+// 揃えないと、集約段で「同一ゲーム」として通したメタを出力段で別ゲーム扱いして
+// build を落とす false positive が起きうる（Issue #166 コードレビュー指摘）。
+const GAME_SOURCE_YEAR_TOLERANCE = 3;
+
+// Steam Storefront API 呼び出し間のディレイ（ミリ秒）。レート制限対策。
+const STOREFRONT_REQUEST_DELAY_MS = 300;
+
+/**
+ * 記事から Steam appId を抽出する（sourceUrls.steam / stores[] の steam を対象）
+ */
+function extractSteamAppIdFromArticle(article: GeneratedArticle): number | undefined {
+  const candidates: (string | undefined)[] = [
+    article.sourceUrls?.steam,
+    article.sourceUrls?.stores?.find((s) => s.platform === 'steam')?.url,
+  ];
+  for (const url of candidates) {
+    if (!url) continue;
+    const m = url.match(/store\.steampowered\.com\/app\/(\d+)/);
+    if (m) {
+      const id = parseInt(m[1], 10);
+      if (Number.isFinite(id)) return id;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 発売日文字列から年（YYYY）を抽出
+ */
+function extractYearFromDate(date?: string): number | undefined {
+  if (!date) return undefined;
+  const m = date.match(/(\d{4})/);
+  if (!m) return undefined;
+  const y = parseInt(m[1], 10);
+  return Number.isFinite(y) ? y : undefined;
+}
+
+/**
+ * Issue #166 ③: 記事の `game` ブロックと Steam URL が指す実体の内的整合性を検証する（保険）。
+ *
+ * Steam appId を持つ記事（newRelease / indie）について、Steam Storefront API から
+ * 実体の name / release_date / developers を取得し、記事の game メタと突き合わせる。
+ * 発売年が大きく乖離、または開発元が全く一致しない場合は high 警告を出す。
+ *
+ * 設計方針:
+ * - **非同期・別関数**として実装し、build-issue の発行直前チェックだけに組み込む
+ *   （同期 validateArticle の呼び出し元・再生成ループの同期性を壊さないため）。
+ * - **fail-open**: Storefront API 不達・失敗時は警告を出さない（誤って build を落とさない）。
+ *   「矛盾を検出できたときだけ」high を立てる。
+ */
+export async function validateGameSourceConsistency(
+  article: GeneratedArticle
+): Promise<ValidationWarning[]> {
+  const warnings: ValidationWarning[] = [];
+
+  // feature 記事は game ブロックを持たないため対象外
+  if (article.category === 'feature') return warnings;
+  const game = article.game;
+  if (!game) return warnings;
+
+  const appId = extractSteamAppIdFromArticle(article);
+  if (appId === undefined) return warnings;
+
+  // Steam Storefront API から実体を取得（失敗時は fail-open）
+  let data: { name?: string; release_date?: { date?: string; coming_soon?: boolean }; developers?: string[] } | undefined;
+  try {
+    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=japanese`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = (await res.json()) as Record<string, { success?: boolean; data?: typeof data }>;
+    const entry = json[String(appId)];
+    if (!entry?.success || !entry.data) {
+      // 実体が取れない（appId 無効等）→ 検証保留（fail-open）
+      return warnings;
+    }
+    data = entry.data;
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        scope: 'validate-game-source-consistency',
+        title: article.title,
+        step: 'storefront-api',
+        reason: String(err),
+      })
+    );
+    return warnings;
+  }
+
+  // 発売年の乖離チェック（両方判明・coming_soon でない場合のみ）。
+  // coming_soon（未発売・発売日未確定）の場合は Steam 側の年を信頼せず照合をスキップする
+  // （raw 文字列に年が含まれても fallback で拾わない。Issue #166 コードレビュー指摘）。
+  const gameYear = extractYearFromDate(game.releaseDate);
+  const steamYear = data.release_date?.coming_soon
+    ? undefined
+    : extractYearFromDate(data.release_date?.date);
+  if (
+    gameYear !== undefined &&
+    steamYear !== undefined &&
+    Math.abs(gameYear - steamYear) > GAME_SOURCE_YEAR_TOLERANCE
+  ) {
+    warnings.push({
+      articleTitle: article.title,
+      category: article.category,
+      severity: 'high',
+      type: 'game-source-mismatch',
+      message:
+        `記事の game メタの発売年（${gameYear}）と、Steam(appId=${appId})の実体の発売年（${steamYear}）が` +
+        `${GAME_SOURCE_YEAR_TOLERANCE}年を超えて乖離しています。` +
+        `同名異作品のメタデータが混入している可能性があります。`,
+      evidence: `game=${game.releaseDate ?? '不明'} / steam=${data.release_date?.date ?? '不明'}`,
+    });
+  }
+
+  // 開発元の一致チェック（両方判明している場合のみ）。
+  // Steam は共同開発を複数 developer で返すため、いずれか1社と部分一致すれば整合とみなす
+  // （developers[0] だけを見ると co-development で false positive が出る。Issue #166 コードレビュー指摘）。
+  const steamDevelopers = (data.developers ?? []).filter(
+    (d): d is string => typeof d === 'string' && d.trim().length > 0
+  );
+  if (game.developer && steamDevelopers.length > 0) {
+    const normGame = normalizeCompanyName(game.developer);
+    // 双方が空でなく、部分一致すらしない場合のみ mismatch とみなす（表記ゆれは吸収）
+    const overlaps =
+      normGame.length > 0 &&
+      steamDevelopers.some((sd) => {
+        const normSteam = normalizeCompanyName(sd);
+        return (
+          normSteam.length > 0 &&
+          (normGame === normSteam ||
+            normGame.includes(normSteam) ||
+            normSteam.includes(normGame))
+        );
+      });
+    if (!overlaps) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity: 'high',
+        type: 'game-source-mismatch',
+        message:
+          `記事の game メタの開発元（"${game.developer}"）と、Steam(appId=${appId})の実体の開発元` +
+          `（"${steamDevelopers.join(', ')}"）が全く一致しません。同名異作品のメタデータが混入している可能性があります。`,
+        evidence: `game=${game.developer} / steam=${steamDevelopers.join(', ')}`,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * 複数記事について game メタと Steam 実体の整合性を検証する（③のバッチ実行）。
+ * Storefront API のレート制限対策として、記事間に一定のディレイを入れる。
+ */
+export async function validateGameSourceConsistencyForArticles(
+  articles: GeneratedArticle[]
+): Promise<ValidationWarning[]> {
+  const warnings: ValidationWarning[] = [];
+  let first = true;
+  for (const article of articles) {
+    // Steam appId を持たない記事は API を呼ばないのでディレイ不要
+    if (extractSteamAppIdFromArticle(article) === undefined) continue;
+    if (!first) {
+      await new Promise((r) => setTimeout(r, STOREFRONT_REQUEST_DELAY_MS));
+    }
+    first = false;
+    warnings.push(...(await validateGameSourceConsistency(article)));
+  }
   return warnings;
 }
 
