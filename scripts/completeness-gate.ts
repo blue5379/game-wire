@@ -65,7 +65,11 @@ export function getGateMode(): GateMode {
   return process.env.DEV_MODE === 'true' ? 'warn' : 'fail';
 }
 
-const ALLOWED_IMAGE_HOSTS = ['images.igdb.com', 'cdn.cloudflare.steamstatic.com'];
+const ALLOWED_IMAGE_HOSTS = [
+  'images.igdb.com',
+  'cdn.cloudflare.steamstatic.com',
+  'shared.akamai.steamstatic.com',
+];
 
 const CONSOLE_PLATFORMS = ['nintendo', 'switch', 'playstation', 'ps3', 'ps4', 'ps5', 'xbox'];
 
