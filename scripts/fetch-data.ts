@@ -939,13 +939,18 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
   }
 
   // 大手企業の新作: 品質ゲート・実存フィルタ適用後にスコア降順で採用+予備差し替え
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+  const noReleaseDate = games.filter((g) => !g.releaseDate);
+  if (noReleaseDate.length > 0) {
+    console.log(`  [newReleases] releaseDate なし (${noReleaseDate.length}件): ${noReleaseDate.map((g) => g.title).join(', ')}`);
+  }
+
   const recentGamesCandidates = games
     .filter((g) => {
       if (!g.releaseDate) return false;
-      const releaseDate = new Date(g.releaseDate);
-      const threeMonthsAgo = new Date();
-      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-      return releaseDate > threeMonthsAgo;
+      return new Date(g.releaseDate) > threeMonthsAgo;
     })
     .filter((g) => !isFanGame(g))
     .filter((g) => isQualifiedGame(g))
@@ -953,6 +958,11 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     .filter((g) => hasExistenceEvidence(g))
     .filter((g) => !newReleaseCooldown.has(g.normalizedTitle))
     .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+
+  console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
+  for (const g of recentGamesCandidates) {
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'})`);
+  }
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
   const newReleases = newReleasesSelection.adopted;
@@ -988,6 +998,11 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     .filter((g) => !indieCooldown.has(g.normalizedTitle))
     .filter((g) => !newReleases.some((nr) => nr.title === g.title))
     .sort((a, b) => indieScore(b) - indieScore(a));
+
+  console.log(`  [indie] candidates after filter: ${indieRanked.length}件`);
+  for (const g of indieRanked.slice(0, 10)) {
+    console.log(`    - ${g.title} (score=${indieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
+  }
 
   // youtubePopularity 降順リスト（話題性 percentile 計算用）
   const youtubePopularitySorted = [...indieRanked].sort(
