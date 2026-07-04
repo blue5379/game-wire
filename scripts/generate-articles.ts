@@ -352,7 +352,8 @@ async function generateNewReleaseArticle(
     })
   );
 
-  const title = await generateTitle('大手企業の新作', game.title, game.summary, undefined, game.titleJa);
+  const newReleaseCategoryLabel = game.developer ? `${game.developer}の新作` : '注目新作';
+  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa);
   const summary = await generateSummary(content);
 
   return {

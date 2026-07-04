@@ -8,8 +8,8 @@ export interface NewReleasesSelectionResult {
   reserves: GameData[];
 }
 
-/** developer は Resolver（後段）に委譲。cover と sourceUrl のみ選定時ゲートとする。 */
-const NEW_RELEASE_REQUIRED = { cover: true, developer: false, sourceUrl: true } as const;
+/** 大手スタジオゲートを通過したゲームが前提。cover・developer・sourceUrl をすべて必須とする。 */
+const NEW_RELEASE_REQUIRED = { cover: true, developer: true, sourceUrl: true } as const;
 
 /** API 呼び出し上限（targetCount × 3）。IGDB/Steam Storefront のクォータ保護。 */
 const MAX_ATTEMPTS_MULTIPLIER = 3;
