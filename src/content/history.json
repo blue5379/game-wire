@@ -497,6 +497,76 @@
       "category": "feature",
       "issueNumber": 13,
       "publishDate": "2026-06-26"
+    },
+    {
+      "normalizedTitle": "007 first light",
+      "title": "007 First Light",
+      "category": "newRelease",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "forza horizon 6",
+      "title": "Forza Horizon 6",
+      "category": "newRelease",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "ark tides of fortune",
+      "title": "ARK Tides of Fortune",
+      "category": "indie",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "ark dragontopia",
+      "title": "ARK: Dragontopia",
+      "category": "indie",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "subnautica 2",
+      "title": "Subnautica 2",
+      "category": "classic",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "空の軌跡 the 1st",
+      "title": "空の軌跡 the 1st",
+      "category": "feature",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "star citizen",
+      "title": "Star Citizen",
+      "category": "feature",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "ノーマンズスカイ",
+      "title": "ノーマンズスカイ",
+      "category": "feature",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "アウター・ワイルズ",
+      "title": "アウター・ワイルズ",
+      "category": "feature",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "sky 星を紡ぐ子どもたち",
+      "title": "Sky: 星を紡ぐ子どもたち",
+      "category": "feature",
+      "issueNumber": 14,
+      "publishDate": "2026-07-04"
     }
   ]
 }
