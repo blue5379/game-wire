@@ -375,6 +375,15 @@ async function aggregateGames(
       ) {
         continue;
       }
+      // Issue #166 再発対応: sameByTitleYear のみで一致する場合（appId 確証なし）に
+      // game 側が steamAppId を持っているなら IGDB 結果を appId 未確証として棄却する。
+      // sameByAppId (steamUrl 一致) の場合は正当なので通過させる。
+      if (!sameByAppId && sameByTitleYear && game.steamAppId !== undefined) {
+        console.warn(
+          `  [WARN] aggregateGames: IGDB enrich rejected (appId not confirmed via steamUrl): "${igdb.name}" → "${game.title}" steam=${game.steamAppId} igdb-steam=${igdbSteamAppId ?? 'none'}`
+        );
+        continue;
+      }
       if (sameByAppId || sameByTitleYear) {
         // IGDB データで補完
         game.title = igdb.name; // 正式名称に更新

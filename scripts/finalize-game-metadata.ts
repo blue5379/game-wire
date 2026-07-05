@@ -54,8 +54,9 @@ export async function finalizeGameMetadata(
         // Issue #166 再発対応: Steam appId アンカーを持つ候補で、IGDB 結果の appId を
         // 確証できない（Steam URL 未登録 or 不一致）場合は補完を保留する。
         // searchGameBySteamAppId で確定した結果は steamUrl に appId が補完されるため通過する。
+        // store.steampowered.com アンカー付き regex（fetch-data.ts の extractSteamAppId と同一仕様）
         const igdbSteamAppId = igdb.steamUrl
-          ? (igdb.steamUrl.match(/\/app\/(\d+)/)?.[1] ? parseInt(igdb.steamUrl.match(/\/app\/(\d+)/)![1], 10) : undefined)
+          ? (() => { const m = igdb.steamUrl!.match(/store\.steampowered\.com\/app\/(\d+)/); return m ? parseInt(m[1], 10) : undefined; })()
           : undefined;
         const igdbConfirmed =
           game.steamAppId === undefined ||

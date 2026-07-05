@@ -487,14 +487,19 @@ async function main(): Promise<void> {
   // fail-open: Storefront API 失敗時は誤 exit を防ぐため警告のみにとどめる。
   console.log('');
   console.log('Checking game-source consistency (pre-write)...');
+  // タイトル → 元の ValidationWarning を保持することで、後段レポートでカテゴリ・evidence を正確に記録する
+  const sourceMismatchWarnings = new Map<string, import('./validate-article.js').ValidationWarning>();
   const sourceMismatchTitles = new Set<string>();
   try {
     const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
     const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
     if (mismatchWarnings.length > 0) {
-      // 影響記事タイトルを収集（重複を除く）
+      // 影響記事タイトルを収集（重複を除く）— 元の warning オブジェクトも保持
       for (const w of mismatchWarnings) {
         sourceMismatchTitles.add(w.articleTitle);
+        if (!sourceMismatchWarnings.has(w.articleTitle)) {
+          sourceMismatchWarnings.set(w.articleTitle, w);
+        }
       }
       console.error('');
       console.error('❌ game-source-mismatch detected (別ゲームのメタ混入):');
@@ -603,18 +608,15 @@ async function main(): Promise<void> {
   const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats);
 
   // game-source-mismatch を事後レポートにも記録する（pre-write で検出した内容の再確認・記録）
-  if (sourceMismatchTitles.size > 0) {
-    for (const title of sourceMismatchTitles) {
+  if (sourceMismatchWarnings.size > 0) {
+    for (const [, w] of sourceMismatchWarnings) {
       report.warnings.push({
-        articleTitle: title,
-        category: 'indie',
-        severity: 'high',
-        type: 'game-source-mismatch',
-        message: `この記事は game-source-mismatch のため hidden: true に設定されました。別ゲームのメタデータ混入が検出されました。`,
+        ...w,
+        message: `[hidden: true に設定済み] ${w.message}`,
       });
     }
     report.totalWarnings = report.warnings.length;
-    report.warningsBySeverity.high += sourceMismatchTitles.size;
+    report.warningsBySeverity.high += sourceMismatchWarnings.size;
   }
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
