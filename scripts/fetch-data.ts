@@ -165,11 +165,14 @@ function isSameGame(
  *
  * 同一性判定の多層防御:
  * 1. appId 一致（IGDB steamUrl の appId と game.steamAppId が一致）→ 無条件で同一（最強シグナル）。
- * 2. Issue #166: game.steamAppId があるのに IGDB steamUrl の appId が「存在して不一致」→
- *    別ゲーム混入とみなして上書き拒否。
- *    （IGDB 側が steamUrl を持たないケースは、appId 逆引きで得た結果なら整合が保証されるため許容。
- *      名前検索フォールバック由来でも下記 3 の title+年ガードで担保する。）
- * 3. それ以外は従来どおり isSameGame（title + 発売年）で判定。mismatch なら上書き拒否。
+ * 2. Issue #166 再発対応: game.steamAppId という強アンカーを持つのに、この IGDB 結果を
+ *    その appId で確証できない場合（appId 不一致 or Steam URL 未登録で照合不能）は上書きを保留。
+ *    旧実装は「IGDB appId が存在して不一致」しか弾かなかった。同名旧作が Steam URL を持たない
+ *    ケース（Brick Game 1989）は igdbAppId=undefined のままガードをすり抜けていた（Vol.14 再発）。
+ *    searchGameBySteamAppId で確定した結果は steamUrl に appId が補完されるため sameByAppId=true
+ *    となりここには掛からない。名前検索フォールバック由来の結果だけが掛かる。
+ * 3. game.steamAppId が無い候補（IGDB 由来・特集の LLM 提案等）は従来どおり
+ *    isSameGame（title + 発売年）で判定。mismatch なら上書き拒否。
  *
  * @returns true = 上書き適用、false = 同一性ガードで拒否（呼び出し元は enrich 失敗扱い）
  */
@@ -181,15 +184,11 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
     game.steamAppId === igdbAppId;
 
   if (!sameByAppId) {
-    // Issue #166: appId という強シグナルがあり、かつ IGDB 側 appId が判明していて
-    // 不一致なら別ゲーム。title が同名でも（Brick Game 新作 vs 旧作）ここで弾く。
-    if (
-      game.steamAppId !== undefined &&
-      igdbAppId !== undefined &&
-      igdbAppId !== game.steamAppId
-    ) {
+    // Issue #166 再発対応: Steam appId というアンカーがあるのに、IGDB 結果をその appId で
+    // 確証できない場合は上書きを保留する（appId 不一致 / Steam URL 未登録どちらも）。
+    if (game.steamAppId !== undefined) {
       console.warn(
-        `  IGDB enrich rejected (appId mismatch): "${game.title}" steam=${game.steamAppId} vs igdb=${igdbAppId}`
+        `  IGDB enrich rejected (appId not confirmed): "${game.title}" steam=${game.steamAppId} igdb-steam=${igdbAppId ?? 'none'}`
       );
       return false;
     }
@@ -374,6 +373,15 @@ async function aggregateGames(
         game.steamAppId !== undefined &&
         game.steamAppId !== igdbSteamAppId
       ) {
+        continue;
+      }
+      // Issue #166 再発対応: sameByTitleYear のみで一致する場合（appId 確証なし）に
+      // game 側が steamAppId を持っているなら IGDB 結果を appId 未確証として棄却する。
+      // sameByAppId (steamUrl 一致) の場合は正当なので通過させる。
+      if (!sameByAppId && sameByTitleYear && game.steamAppId !== undefined) {
+        console.warn(
+          `  [WARN] aggregateGames: IGDB enrich rejected (appId not confirmed via steamUrl): "${igdb.name}" → "${game.title}" steam=${game.steamAppId} igdb-steam=${igdbSteamAppId ?? 'none'}`
+        );
         continue;
       }
       if (sameByAppId || sameByTitleYear) {

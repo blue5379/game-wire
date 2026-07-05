@@ -66,10 +66,12 @@ describe('finalizeGameMetadata - date mismatch', () => {
       developer: 'Indie Dev',
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
+    // steamUrl を追加して appId 確証ガードを通過させる（12345 と一致）
     mockEnrich.mockResolvedValue({
       id: 1, name: 'Test Game', slug: 'test-game',
       releaseDate: '2026-04-11',
       coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/test.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
     } as any);
     const result = await finalizeGameMetadata(game, REQUIRED_ALL);
     expect(result.ok).toBe(false);
@@ -102,9 +104,11 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
     const igdbCoverUrl = 'https://images.igdb.com/igdb/image/upload/t_cover_big/co1234.jpg';
+    // steamUrl を追加して appId 確証ガードを通過させる（12345 と一致）
     mockEnrich.mockResolvedValue({
       id: 1, name: 'Test Game', slug: 'test-game',
       coverUrl: igdbCoverUrl,
+      steamUrl: 'https://store.steampowered.com/app/12345',
     } as any);
     mockHeadOk.mockResolvedValue(true);
     mockGetOrientation.mockResolvedValue('portrait');
@@ -268,17 +272,19 @@ describe('finalizeGameMetadata - coverImage priority chain', () => {
 });
 
 describe('finalizeGameMetadata - IGDB field completion', () => {
-  it('IGDB match → developer, publisher補完', async () => {
+  it('IGDB match → developer, publisher補完（steamUrl で appId 確証済み）', async () => {
     const game = makeGame({
       steamAppId: 12345,
       coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
+    // steamUrl を追加して appId 確証ガードを通過させる（12345 と一致）
     mockEnrich.mockResolvedValue({
       id: 1, name: 'Test Game', slug: 'test-game',
       developer: 'Completed Dev',
       publisher: 'Completed Pub',
       coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
     } as any);
     mockHeadOk.mockResolvedValue(true);
     mockGetOrientation.mockResolvedValue('portrait');
@@ -291,6 +297,36 @@ describe('finalizeGameMetadata - IGDB field completion', () => {
     }
   });
 
+  it('Issue #166 再発: steamAppId あり・IGDB steamUrl なし → 旧作メタは混入しない', async () => {
+    // Brick Game 再発ケースの finalize 段での再現テスト。
+    // searchGameBySteamAppId で確定した IGDB 結果なら steamUrl が補完される。
+    // 名前検索フォールバック経由の結果（steamUrl なし）は保留する。
+    const game = makeGame({
+      steamAppId: 1087090,
+      // coverImage なし・developer なし → IGDB に補完を期待する状況
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    // 旧作 Brick Game のような同名異作品（Steam URL なし）
+    mockEnrich.mockResolvedValue({
+      id: 106202, name: 'Brick Game', slug: 'brick-game',
+      releaseDate: '1989-12-31',
+      developer: 'Shenzhen Xinfeilong Electronic Factory',
+      coverUrl: 'https://images.igdb.com/co4ahd.jpg',
+      // steamUrl なし → 名前検索フォールバック由来
+    } as any);
+    // Steam CDN は alive（library_600x900 で正常カバーが取れる想定）
+    mockHeadOk.mockResolvedValue(true);
+    mockGetOrientation.mockResolvedValue('portrait');
+
+    const result = await finalizeGameMetadata(game, { cover: true, developer: true, sourceUrl: true });
+    // IGDB 旧作の開発元・発売日・IGDBスラグが混入していないこと（主眼）
+    expect(result.game.developer).toBeUndefined();
+    expect(result.game.releaseDate).toBeUndefined();
+    expect(result.game.igdbSlug).toBeUndefined();
+    // 旧作の IGDB カバー画像（co4ahd.jpg）は使われず、Steam CDN が使われること
+    expect(result.game.coverImage).not.toContain('co4ahd');
+  });
+
   it('existing developer is NOT overwritten by IGDB', async () => {
     const game = makeGame({
       developer: 'Original Dev',
@@ -298,10 +334,12 @@ describe('finalizeGameMetadata - IGDB field completion', () => {
       coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     });
+    // steamUrl を追加して appId 確証ガードを通過させる
     mockEnrich.mockResolvedValue({
       id: 1, name: 'Test Game', slug: 'test-game',
       developer: 'IGDB Dev',
       coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
     } as any);
 
     const result = await finalizeGameMetadata(game, REQUIRED_ALL);

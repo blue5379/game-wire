@@ -135,8 +135,12 @@ export function isCriticallyIncompleteArticle(article: GeneratedArticle): boolea
 
 /**
  * 記事データをYAML frontmatter用にフォーマット
+ * @param sourceMismatchTitles game-source-mismatch で検出された記事タイトルの集合（hidden 扱いにする）
  */
-async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<string> {
+async function formatArticleForFrontmatter(
+  article: GeneratedArticle,
+  sourceMismatchTitles: Set<string> = new Set()
+): Promise<string> {
   const lines: string[] = [];
 
   lines.push(`  - title: "${escapeYamlString(article.title)}"`);
@@ -145,6 +149,11 @@ async function formatArticleForFrontmatter(article: GeneratedArticle): Promise<s
   if (isCriticallyIncompleteArticle(article)) {
     console.warn(
       `  [WARN] Article "${article.title}" is critically incomplete (no cover/developer/publisher/releaseDate); marking as hidden.`
+    );
+    lines.push(`    hidden: true`);
+  } else if (sourceMismatchTitles.has(article.title)) {
+    console.warn(
+      `  [WARN] Article "${article.title}" has game-source-mismatch (別ゲームのメタ混入); marking as hidden.`
     );
     lines.push(`    hidden: true`);
   }
@@ -325,7 +334,8 @@ function escapeYamlString(str: string): string {
 async function generateMarkdownContent(
   issueNumber: number,
   publishDate: Date,
-  articles: GeneratedArticle[]
+  articles: GeneratedArticle[],
+  sourceMismatchTitles: Set<string> = new Set()
 ): Promise<string> {
   const title = generateIssueTitle(issueNumber, publishDate);
   const description = generateIssueDescription(issueNumber, articles);
@@ -345,7 +355,7 @@ async function generateMarkdownContent(
   } else {
     frontmatter.push('articles:');
     for (const article of articles) {
-      frontmatter.push(await formatArticleForFrontmatter(article));
+      frontmatter.push(await formatArticleForFrontmatter(article, sourceMismatchTitles));
     }
   }
 
@@ -469,14 +479,69 @@ async function main(): Promise<void> {
     console.log('Created issues directory:', ISSUES_DIR);
   }
 
-  // メインの号ファイルを生成
+  // Issue #166 再発対応: game-source-mismatch チェックを .md 書き込みの前に実行する。
+  // 同名異作品のメタ混入（記事本文は新作・game ブロックは旧作）を検出して下記の方針で制御:
+  //   - 検出記事が 1 件: その記事だけ hidden: true で発行（号は出る）
+  //   - 検出記事が 2 件以上: 号ごと発行停止（exit 1）
+  //   - 落とした候補は必ずログ＋レポートに記録
+  // fail-open: Storefront API 失敗時は誤 exit を防ぐため警告のみにとどめる。
+  console.log('');
+  console.log('Checking game-source consistency (pre-write)...');
+  // タイトル → 元の ValidationWarning を保持することで、後段レポートでカテゴリ・evidence を正確に記録する
+  const sourceMismatchWarnings = new Map<string, import('./validate-article.js').ValidationWarning>();
+  const sourceMismatchTitles = new Set<string>();
+  try {
+    const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
+    const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
+    if (mismatchWarnings.length > 0) {
+      // 影響記事タイトルを収集（重複を除く）— 元の warning オブジェクトも保持
+      for (const w of mismatchWarnings) {
+        sourceMismatchTitles.add(w.articleTitle);
+        if (!sourceMismatchWarnings.has(w.articleTitle)) {
+          sourceMismatchWarnings.set(w.articleTitle, w);
+        }
+      }
+      console.error('');
+      console.error('❌ game-source-mismatch detected (別ゲームのメタ混入):');
+      for (const title of sourceMismatchTitles) {
+        console.error(`  - "${title}"`);
+      }
+
+      if (sourceMismatchTitles.size >= 2) {
+        // 2 記事以上 → 号ごと発行停止
+        console.error('');
+        console.error(
+          `🛑 ${sourceMismatchTitles.size} articles have game-source-mismatch. Aborting issue publication to prevent corrupted content from being published.`
+        );
+        process.exit(1);
+      } else {
+        // 1 記事のみ → hidden 扱いで続行
+        console.warn('');
+        console.warn(
+          `⚠️  1 article has game-source-mismatch and will be marked hidden. Issue will be published without it.`
+        );
+      }
+    }
+  } catch (err) {
+    // fail-open: Storefront API 不達など検証自体の失敗は号を止めない
+    console.warn(
+      JSON.stringify({
+        scope: 'build-issue',
+        step: 'pre-write-source-check',
+        reason: String(err),
+      })
+    );
+  }
+
+  // メインの号ファイルを生成（game-source-mismatch 記事は hidden: true が付く）
   const issueFileName = `issue-${String(issueNumber).padStart(3, '0')}.md`;
   const issuePath = path.join(ISSUES_DIR, issueFileName);
 
   const markdownContent = await generateMarkdownContent(
     issueNumber,
     publishDate,
-    generatedIssue.articles
+    generatedIssue.articles,
+    sourceMismatchTitles
   );
 
   fs.writeFileSync(issuePath, markdownContent);
@@ -488,10 +553,14 @@ async function main(): Promise<void> {
   console.log(`Issue number: ${issueNumber}`);
   console.log(`Publish date: ${format(publishDate, 'yyyy年M月d日', { locale: ja })}`);
   console.log(`Total articles: ${generatedIssue.articles.length}`);
+  if (sourceMismatchTitles.size > 0) {
+    console.log(`  ⚠️  Hidden (game-source-mismatch): ${sourceMismatchTitles.size}`);
+  }
   console.log('');
   console.log('Articles:');
   for (const article of generatedIssue.articles) {
-    console.log(`  - [${categoryToJapanese(article.category)}] ${article.title}`);
+    const hidden = sourceMismatchTitles.has(article.title) ? ' [HIDDEN: source-mismatch]' : '';
+    console.log(`  - [${categoryToJapanese(article.category)}] ${article.title}${hidden}`);
   }
   console.log('');
   console.log(`Output: ${issuePath}`);
@@ -500,11 +569,12 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Updating game history...');
   const publishDateStr = format(publishDate, 'yyyy-MM-dd');
-  // hidden 記事は読者の目に触れないため、クールダウン対象から除外して
-  // 翌週以降に再選定されるようにする（Issue #94）
+  // hidden 記事（criticallyIncomplete / game-source-mismatch）は読者の目に触れないため、
+  // クールダウン対象から除外して翌週以降に再選定されるようにする（Issue #94）
   const historyEntries = generatedIssue.articles
     .filter((a) => a.category !== 'feature' && a.game?.title)
     .filter((a) => !isCriticallyIncompleteArticle(a))
+    .filter((a) => !sourceMismatchTitles.has(a.title))
     .map((a) =>
       createHistoryEntry(
         a.game!.title,
@@ -537,27 +607,16 @@ async function main(): Promise<void> {
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
   const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats);
 
-  // Issue #166 ③: game メタと Steam 実体の内的整合性チェック（発行直前・非同期・fail-open）。
-  // 同名異作品のメタ混入（記事本文は新作・game ブロックは旧作）を検出して high 警告を立てる。
-  // 既存の high 閾値判定（writeAndCheckReport）でそのまま build fail 運用に乗る。
-  try {
-    const sourceWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
-    if (sourceWarnings.length > 0) {
-      report.warnings.push(...sourceWarnings);
-      report.totalWarnings = report.warnings.length;
-      for (const w of sourceWarnings) {
-        report.warningsBySeverity[w.severity]++;
-      }
+  // game-source-mismatch を事後レポートにも記録する（pre-write で検出した内容の再確認・記録）
+  if (sourceMismatchWarnings.size > 0) {
+    for (const [, w] of sourceMismatchWarnings) {
+      report.warnings.push({
+        ...w,
+        message: `[hidden: true に設定済み] ${w.message}`,
+      });
     }
-  } catch (err) {
-    // fail-open: 検証自体が失敗しても build は落とさない
-    console.warn(
-      JSON.stringify({
-        scope: 'build-issue',
-        step: 'game-source-consistency',
-        reason: String(err),
-      })
-    );
+    report.totalWarnings = report.warnings.length;
+    report.warningsBySeverity.high += sourceMismatchWarnings.size;
   }
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
