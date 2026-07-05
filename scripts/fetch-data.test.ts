@@ -375,20 +375,47 @@ describe('addPcPlatformIfMissing — Steam 解決時の PC プラットフォー
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// enrichGameFromIgdb — Issue #166 ②: appId 不一致の IGDB でメタを上書きしないガード
+// enrichGameFromIgdb — Issue #166 再発対応: appId アンカーを持つ候補は appId 確証必須
 // ─────────────────────────────────────────────────────────────────────────────
 describe('enrichGameFromIgdb — appId 整合性ガード', () => {
-  it('Brick Game: appId=1087090・releaseDate 無しの候補に、別 appId の旧作 IGDB が来たら上書きしない', () => {
-    // Steam 側の新作 Brick Game（appId=1087090, 発売日不明）
+  it('Brick Game 再発ケース: appId=1087090・releaseDate 無しの候補に旧作（Steam URL 無し）が来たら上書きしない', () => {
+    // Vol.14 再発の実際のケース: 新作 Brick Game（appId=1087090, IGDB 未登録）の
+    // 名前検索フォールバックが旧作（1989, Steam URL 無し）を返した。
+    // 旧実装は igdbAppId=undefined のため appId 不一致ガードをスルーしていた。
     const game = makeGame({
       title: 'Brick Game',
       normalizedTitle: 'brick game',
       steamAppId: 1087090,
       platforms: ['PC'],
       genres: [],
-      // releaseDate なし（SteamGame は発売日を持たない）
+      // releaseDate なし（Steam 候補は発売日を持たない）
     });
-    // IGDB が返した旧作 Brick Game（1989年・別 appId を steamUrl に持つ）
+    const igdbGame = makeIgdbGame({
+      name: 'Brick Game',
+      releaseDate: '1989-12-31',
+      genres: ['Puzzle', 'Racing', 'Arcade'],
+      developer: 'Shenzhen Xinfeilong Electronic Factory',
+      // steamUrl なし（旧作は IGDB に Steam URL 未登録）
+      coverUrl: 'https://images.igdb.com/co4ahd.jpg',
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(false);
+    expect(game.releaseDate).toBeUndefined();
+    expect(game.genres).toEqual([]);
+    expect(game.developer).toBeUndefined();
+    expect(game.coverImage).toBeUndefined();
+  });
+
+  it('Brick Game: 別 appId を持つ旧作 IGDB が来ても上書きしない（明示的 appId 不一致）', () => {
+    const game = makeGame({
+      title: 'Brick Game',
+      normalizedTitle: 'brick game',
+      steamAppId: 1087090,
+      platforms: ['PC'],
+      genres: [],
+    });
     const igdbGame = makeIgdbGame({
       name: 'Brick Game',
       releaseDate: '1989-12-31',
@@ -401,7 +428,6 @@ describe('enrichGameFromIgdb — appId 整合性ガード', () => {
     const applied = enrichGameFromIgdb(game, igdbGame);
 
     expect(applied).toBe(false);
-    // Steam 由来の値が旧作メタで汚染されていないこと
     expect(game.releaseDate).toBeUndefined();
     expect(game.genres).toEqual([]);
     expect(game.developer).toBeUndefined();
@@ -438,9 +464,9 @@ describe('enrichGameFromIgdb — appId 整合性ガード', () => {
     expect(game.igdbSlug).toBe('elden-ring');
   });
 
-  it('appId 逆引きで得た steamUrl 無しの IGDB 結果は許容して上書きする（appId 経路の整合は保証済み）', () => {
-    // appId 逆引きヒットだが IGDB 側に Steam website が登録されていないケース。
-    // title は一致するので isSameGame も通り、上書きされる。
+  it('steamAppId を持つ候補には IGDB 側 steamUrl なしの結果も拒否する（appId 確証必須）', () => {
+    // searchGameBySteamAppId で確定した結果なら steamUrl が補完されるので sameByAppId=true になる。
+    // ここは名前検索フォールバック経路（steamUrl 無し）が来た場合のテスト。
     const game = makeGame({
       title: 'Some Indie',
       normalizedTitle: 'some indie',
@@ -453,14 +479,15 @@ describe('enrichGameFromIgdb — appId 整合性ガード', () => {
       slug: 'some-indie',
       genres: ['Indie'],
       developer: 'Solo Dev',
-      // steamUrl なし
+      // steamUrl なし → 名前検索フォールバック経路
     });
 
     const applied = enrichGameFromIgdb(game, igdbGame);
 
-    expect(applied).toBe(true);
-    expect(game.genres).toEqual(['Indie']);
-    expect(game.developer).toBe('Solo Dev');
+    // steamAppId があるが IGDB の steamUrl で確証できないため拒否
+    expect(applied).toBe(false);
+    expect(game.genres).toEqual([]);
+    expect(game.developer).toBeUndefined();
   });
 
   it('appId が両方 undefined でも title+年が一致すれば従来どおり上書きする（名前検索フォールバック経路）', () => {

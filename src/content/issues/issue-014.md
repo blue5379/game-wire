@@ -151,11 +151,11 @@ articles:
           resolvedBy: "igdb-website"
           confidence: "medium"
       igdb: "https://www.igdb.com/games/forza-horizon-6"
-  - title: "懐かしの携帯ゲーム機『Brick Game』、途上国で愛された多機能LCDゲームの魅力"
+  - title: "1970年代アーケードへのラブレター『Brick Game』、GameTank 8ビット向けブロック崩しがSteamに登場"
     category: indie
-    summary: "1989年発売の携帯型液晶ゲーム機「Brick Game」が、GameTank 8ビットコンソール向けブロック崩しゲームとして復活しました。"
+    summary: "Daniel Shimmyoが開発したブロック崩しゲーム「Brick Game」がSteamでリリースされました。1970年代の初期ビデオゲームへのオマージュとして制作され、GameTank 8ビットコンソール向けの本作はエミュレーター内蔵で現代のPCでも快適にプレイできます。"
     articleBody: |
-      1989年に発売された携帯型液晶ゲーム機「Brick Game」が、GameTank 8ビットコンソール向けに開発されたブロック崩しゲームとして現代によみがえりました。1970年代の初期ビデオゲームへのラブレターとして制作された本作は、エミュレーター内蔵で現代のプラットフォームでも快適にプレイできます。
+      1970年代の初期ビデオゲームへのラブレターとして制作された「Brick Game」がSteamに登場しました。開発者のDaniel Shimmyoが手がける本作は、もともとGameTank 8ビットコンソール向けに開発されたクラシックなブロック崩しゲームで、エミュレーターを内蔵することで現代のプラットフォームでも快適にプレイできる設計となっています。
       
       ## ✨ ゲームの魅力
       
@@ -165,7 +165,7 @@ articles:
       
       ## 🎨 開発ストーリー
       
-      本作はShenzhen Xinfeilong Electronic Factoryが開発し、Super Mouseから発売されました。オリジナルのBrick Gameは、テトリスやブロック崩し、ポン、バトルシティなどのアーケードゲームを液晶画面に移植した携帯型ゲーム機シリーズで、安価な代替品として発展途上国を中心に広く普及しました。
+      本作を手がけたのはソロ開発者のDaniel Shimmyoです。GameTank向けのゲーム開発を通じて積み上げてきた技術を活かし、当時の空気感を損なわずに現代へ届けることにこだわりました。シンプルさの中に職人的な完成度を詰め込んだ一作です。
       
       ## 👥 こんな人におすすめ
       
@@ -175,10 +175,9 @@ articles:
       
       ## 📅 発売情報
       
-      - **発売日**: 発売中
-      - **対応機種**: Handheld Electronic LCD
-      - **開発**: Shenzhen Xinfeilong Electronic Factory
-      - **発売元**: Super Mouse
+      - **発売日**: 2026年7月4日
+      - **対応機種**: PC (Windows / Mac)
+      - **開発・発売元**: Daniel Shimmyo
       
       ## 🎯 Creator's Eye
       
@@ -186,22 +185,22 @@ articles:
     game:
       title: "Brick Game"
       genre:
-        - Puzzle
-        - Racing
-        - Arcade
+        - Casual
+        - Indie
       platforms:
-        - Handheld Electronic LCD
-      releaseDate: "1989-12-31"
-      developer: "Shenzhen Xinfeilong Electronic Factory"
-      publisher: "Super Mouse"
-      developerCountry: "中国"
-      coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co4ahd.jpg"
+        - PC (Microsoft Windows)
+        - Mac
+      releaseDate: "2026-07-04"
+      developer: "Daniel Shimmyo"
+      publisher: "Daniel Shimmyo"
+      coverImage: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1087090/35fbc4b392b4d98c47ad8b1ca5c6594df849b7f5/header.jpg?t=1783166885"
+      coverImageOrientation: landscape
       screenshots:
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scee73.jpg"
-        - "https://images.igdb.com/igdb/image/upload/t_screenshot_big/scee74.jpg"
+        - "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1087090/305eb4af6084b75442c3ba7772fa9fad6231136c/ss_305eb4af6084b75442c3ba7772fa9fad6231136c.1920x1080.jpg?t=1783166885"
+        - "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1087090/6b66f6e68549f49b2da1757894ff4d587bad4c5b/ss_6b66f6e68549f49b2da1757894ff4d587bad4c5b.1920x1080.jpg?t=1783166885"
+        - "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1087090/7704378f525d27fc51d048a08f21b9c6ae0f3262/ss_7704378f525d27fc51d048a08f21b9c6ae0f3262.1920x1080.jpg?t=1783166885"
     sourceUrls:
       steam: "https://store.steampowered.com/app/1087090"
-      igdb: "https://www.igdb.com/games/brick-game"
   - title: "『ARK Tides of Fortune』新たな海洋サバイバルの冒険が話題のインディーゲームに登場"
     category: indie
     summary: "恐竜サバイバルゲーム「ARK」の拡張コンテンツ「ARK Tides of Fortune」が発売中です。恐竜を船に乗せて航海する海洋冒険に特化し、物理演算ベースの船舶システムや海洋生物、武器などの新要素を追加しました。"

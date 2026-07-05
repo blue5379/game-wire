@@ -51,64 +51,85 @@ export async function finalizeGameMetadata(
         steamAppId: game.steamAppId,
       });
       if (igdb) {
-        // 既存値を上書きしない（?? 演算子で空欄のみ補完）
-        game.developer = game.developer ?? igdb.developer;
-        game.publisher = game.publisher ?? igdb.publisher;
-        game.releaseDate = game.releaseDate ?? igdb.releaseDate;
-        game.genres = game.genres.length > 0 ? game.genres : (igdb.genres ?? game.genres);
-        game.platforms = game.platforms.length > 0 ? game.platforms : (igdb.platforms ?? game.platforms);
-        game.developerCountry = game.developerCountry ?? igdb.developerCountry;
-        game.summary = game.summary ?? igdb.summary;
-        game.igdbRating = game.igdbRating ?? igdb.rating;
-        game.igdbRatingCount = game.igdbRatingCount ?? igdb.ratingCount;
-        if (igdb.slug) {
-          game.igdbSlug = game.igdbSlug ?? igdb.slug;
-          game.sourceUrls = game.sourceUrls ?? {};
-          game.sourceUrls.igdb =
-            game.sourceUrls.igdb ?? `https://www.igdb.com/games/${igdb.slug}`;
-        }
-        // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
-        // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
-        if (igdb.steamUrl) {
-          const appId = igdb.steamUrl.match(/\/app\/(\d+)/)?.[1];
-          if (appId && game.steamAppId === undefined) {
-            game.steamAppId = parseInt(appId, 10);
-          }
-        }
+        // Issue #166 再発対応: Steam appId アンカーを持つ候補で、IGDB 結果の appId を
+        // 確証できない（Steam URL 未登録 or 不一致）場合は補完を保留する。
+        // searchGameBySteamAppId で確定した結果は steamUrl に appId が補完されるため通過する。
+        const igdbSteamAppId = igdb.steamUrl
+          ? (igdb.steamUrl.match(/\/app\/(\d+)/)?.[1] ? parseInt(igdb.steamUrl.match(/\/app\/(\d+)/)![1], 10) : undefined)
+          : undefined;
+        const igdbConfirmed =
+          game.steamAppId === undefined ||
+          (igdbSteamAppId !== undefined && igdbSteamAppId === game.steamAppId);
 
-        // IGDB の発売日との ±90 日チェック（両方判明している場合のみ）
-        if (igdb.releaseDate && inputGame.releaseDate) {
-          const diff = dateDiffDays(inputGame.releaseDate, igdb.releaseDate);
-          if (diff !== null && Math.abs(diff) > DATE_MISMATCH_DAYS) {
-            console.warn(
-              JSON.stringify({
-                scope: 'finalize-game-metadata',
-                title: game.title,
-                step: 'date-mismatch',
-                reason: `steam=${inputGame.releaseDate} igdb=${igdb.releaseDate} diff=${diff}days`,
-              })
-            );
-            return { ok: false, reason: 'date-mismatch', game };
+        if (!igdbConfirmed) {
+          console.warn(
+            JSON.stringify({
+              scope: 'finalize-game-metadata',
+              title: game.title,
+              step: 'igdb-appid-not-confirmed',
+              reason: `steam=${game.steamAppId} igdb-steam=${igdbSteamAppId ?? 'none'} — skipping IGDB overwrite`,
+            })
+          );
+        } else {
+          // 既存値を上書きしない（?? 演算子で空欄のみ補完）
+          game.developer = game.developer ?? igdb.developer;
+          game.publisher = game.publisher ?? igdb.publisher;
+          game.releaseDate = game.releaseDate ?? igdb.releaseDate;
+          game.genres = game.genres.length > 0 ? game.genres : (igdb.genres ?? game.genres);
+          game.platforms = game.platforms.length > 0 ? game.platforms : (igdb.platforms ?? game.platforms);
+          game.developerCountry = game.developerCountry ?? igdb.developerCountry;
+          game.summary = game.summary ?? igdb.summary;
+          game.igdbRating = game.igdbRating ?? igdb.rating;
+          game.igdbRatingCount = game.igdbRatingCount ?? igdb.ratingCount;
+          if (igdb.slug) {
+            game.igdbSlug = game.igdbSlug ?? igdb.slug;
+            game.sourceUrls = game.sourceUrls ?? {};
+            game.sourceUrls.igdb =
+              game.sourceUrls.igdb ?? `https://www.igdb.com/games/${igdb.slug}`;
           }
-        }
+          // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+          // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
+          if (igdb.steamUrl) {
+            const appId = igdb.steamUrl.match(/\/app\/(\d+)/)?.[1];
+            if (appId && game.steamAppId === undefined) {
+              game.steamAppId = parseInt(appId, 10);
+            }
+          }
 
-        // coverImage 候補: IGDB t_cover_big（HEAD 200 検証）
-        if (!game.coverImage && igdb.coverUrl) {
-          const alive = await headOk(igdb.coverUrl).catch((err) => {
-            console.warn(
-              JSON.stringify({
-                scope: 'finalize-game-metadata',
-                title: game.title,
-                step: 'igdb-cover-head',
-                reason: String(err),
-              })
-            );
-            return false;
-          });
-          if (alive) {
-            const orientation = await getImageOrientation(igdb.coverUrl).catch(() => null);
-            game.coverImage = igdb.coverUrl;
-            game.coverImageOrientation = orientation ?? 'portrait';
+          // IGDB の発売日との ±90 日チェック（両方判明している場合のみ）
+          if (igdb.releaseDate && inputGame.releaseDate) {
+            const diff = dateDiffDays(inputGame.releaseDate, igdb.releaseDate);
+            if (diff !== null && Math.abs(diff) > DATE_MISMATCH_DAYS) {
+              console.warn(
+                JSON.stringify({
+                  scope: 'finalize-game-metadata',
+                  title: game.title,
+                  step: 'date-mismatch',
+                  reason: `steam=${inputGame.releaseDate} igdb=${igdb.releaseDate} diff=${diff}days`,
+                })
+              );
+              return { ok: false, reason: 'date-mismatch', game };
+            }
+          }
+
+          // coverImage 候補: IGDB t_cover_big（HEAD 200 検証）
+          if (!game.coverImage && igdb.coverUrl) {
+            const alive = await headOk(igdb.coverUrl).catch((err) => {
+              console.warn(
+                JSON.stringify({
+                  scope: 'finalize-game-metadata',
+                  title: game.title,
+                  step: 'igdb-cover-head',
+                  reason: String(err),
+                })
+              );
+              return false;
+            });
+            if (alive) {
+              const orientation = await getImageOrientation(igdb.coverUrl).catch(() => null);
+              game.coverImage = igdb.coverUrl;
+              game.coverImageOrientation = orientation ?? 'portrait';
+            }
           }
         }
       }
