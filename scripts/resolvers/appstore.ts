@@ -12,7 +12,7 @@
 
 import type { StoreLink } from '../types.js';
 import { headOk } from '../url-health.js';
-import { matchesAnyTitle } from './match.js';
+import { matchesAnyTitle } from '../game-identity.js';
 import { isJapaneseUrl } from './locale.js';
 
 const APPSTORE_URL_PATTERNS = ['apps.apple.com', 'itunes.apple.com'];

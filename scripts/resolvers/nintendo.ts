@@ -11,7 +11,7 @@
 
 import type { StoreLink } from '../types.js';
 import { fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
-import { matchesAnyTitle } from './match.js';
+import { matchesAnyTitle } from '../game-identity.js';
 import { resolveByLocale, type LocaleResolverInput, type VerifyOutcome } from './locale.js';
 
 const NINTENDO_URL_PATTERNS = ['nintendo.com', 'nintendo.co.jp'];

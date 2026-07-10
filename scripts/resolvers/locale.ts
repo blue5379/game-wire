@@ -22,7 +22,7 @@
 import type { StoreLink, StorePlatform } from '../types.js';
 import { headOk } from '../url-health.js';
 import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
-import { matchesAnyTitle } from './match.js';
+import { matchesAnyTitle } from '../game-identity.js';
 
 /** プラットフォーム解決の試行ログ1件 */
 export type ResolveAttempt = { method: string; ok: boolean; reason?: string };
