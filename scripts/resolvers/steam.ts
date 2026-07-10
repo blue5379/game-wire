@@ -8,7 +8,7 @@
  */
 
 import type { StoreLink } from '../types.js';
-import { matchesAnyTitle } from './match.js';
+import { matchesAnyTitle } from '../game-identity.js';
 
 /** Steam Store Search の単一アイテム */
 interface SteamSearchItem {

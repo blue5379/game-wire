@@ -16,6 +16,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
 import { normalizeCompanyName } from './steam-utils.js';
+import { MATCH_PROFILES, extractYearFromDate } from './game-identity.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -556,10 +557,10 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
 
 // game メタと Steam 実体の発売年乖離の許容幅（年）。
 // 早期アクセス→正式版・地域別リリースのズレを吸収しつつ、同名異作品（通常10年以上離れる）は弾く。
-// fetch-data.ts の SAME_GAME_YEAR_TOLERANCE（集約時の同一性判定）と同値に揃える。
+// 集約時の同一性判定（game-identity.ts の aggregation プロファイル）と同じ値を参照する。
 // 揃えないと、集約段で「同一ゲーム」として通したメタを出力段で別ゲーム扱いして
 // build を落とす false positive が起きうる（Issue #166 コードレビュー指摘）。
-const GAME_SOURCE_YEAR_TOLERANCE = 3;
+const GAME_SOURCE_YEAR_TOLERANCE = MATCH_PROFILES.aggregation.yearTolerance;
 
 // Steam Storefront API 呼び出し間のディレイ（ミリ秒）。レート制限対策。
 const STOREFRONT_REQUEST_DELAY_MS = 300;
@@ -581,17 +582,6 @@ function extractSteamAppIdFromArticle(article: GeneratedArticle): number | undef
     }
   }
   return undefined;
-}
-
-/**
- * 発売日文字列から年（YYYY）を抽出
- */
-function extractYearFromDate(date?: string): number | undefined {
-  if (!date) return undefined;
-  const m = date.match(/(\d{4})/);
-  if (!m) return undefined;
-  const y = parseInt(m[1], 10);
-  return Number.isFinite(y) ? y : undefined;
 }
 
 /**
