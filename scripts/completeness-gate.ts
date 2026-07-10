@@ -10,6 +10,9 @@
  * R2b: 他プラットフォーム取りこぼし検知（platforms に Switch/PS/Xbox が含まれるのに confidence=high で URL が取れたのに乗っていない）
  * R3: 公式 URL 到達性（official が HTTP 200 以外）
  * R4: カバー画像ホスト許可リスト（images.igdb.com / steamstatic.com サブドメイン以外）
+ * R5: 識別子整合（steamAppId が指す Steam 実体のタイトル/発売年が game メタと同一ゲームを指さない）
+ *     — Issue #166「別ゲームのメタ混入」を生成前に機械検出する。生成後の
+ *       validateGameSourceConsistency（build-issue）の前倒し版。
  *
  * 動作は 2 軸で決まる:
  * 1. mode（環境変数 COMPLETENESS_GATE）: 違反が残ったときの号全体の扱い
@@ -23,10 +26,11 @@
 
 import type { GameData, SelectedGames, StoreLink } from './types.js';
 import { headOk } from './url-health.js';
+import { explainGameIdentity, extractYearFromDate } from './game-identity.js';
 
 export type GateMode = 'warn' | 'replace' | 'fail';
 
-export type ViolationId = 'R0' | 'R1' | 'R2' | 'R2b' | 'R3' | 'R4';
+export type ViolationId = 'R0' | 'R1' | 'R2' | 'R2b' | 'R3' | 'R4' | 'R5';
 
 /**
  * ルール別の「差し替えで解消できるか」属性。
@@ -42,6 +46,9 @@ export const RULE_REPLACEABLE: Record<ViolationId, boolean> = {
   R2b: false,
   R3: true,
   R4: true,
+  // R5（別ゲームのメタ混入）は差し替えで解消できる: そのゲーム枠を別ゲームに丸ごと
+  // 入れ替えれば混入したメタも一緒に外れ、号は正しい実体で成立する。
+  R5: true,
 };
 
 export interface GateViolation {
@@ -269,12 +276,93 @@ export function checkR4(game: GameData): GateViolation | null {
   return null;
 }
 
+// R5: Steam Storefront API 呼び出しのタイムアウト（ミリ秒）
+const R5_STOREFRONT_TIMEOUT_MS = 10000;
+
 /**
- * 1ゲームに対してすべてのルールを検証する（R3 は非同期）
+ * steamAppId が指す Steam 実体を appdetails API から取得する（R5 用）。
+ * 取得できない場合（API 不達・appId 無効等）は undefined を返し、呼び出し側は fail-open する。
+ *
+ * テストからは fetchImpl を差し替えて実ネットワークなしで検証する。
+ */
+export async function fetchSteamEntity(
+  appId: number,
+  fetchImpl: typeof fetch = fetch
+): Promise<{ name?: string; releaseDate?: string } | undefined> {
+  try {
+    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=japanese`;
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(R5_STOREFRONT_TIMEOUT_MS) });
+    if (!res.ok) return undefined;
+    const json = (await res.json()) as Record<
+      string,
+      { success?: boolean; data?: { name?: string; release_date?: { date?: string; coming_soon?: boolean } } }
+    >;
+    const entry = json[String(appId)];
+    if (!entry?.success || !entry.data) return undefined;
+    // 未発売（coming_soon）は発売日を信頼しない（validateGameSourceConsistency と同方針）
+    const releaseDate = entry.data.release_date?.coming_soon
+      ? undefined
+      : entry.data.release_date?.date;
+    return { name: entry.data.name, releaseDate };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * R5: 識別子整合チェック（Issue #166「別ゲームのメタ混入」の生成前ブロック）。
+ *
+ * steamAppId が指す Steam 実体のタイトル/発売年を取得し、game メタ（title/titleJa/releaseDate）が
+ * その実体と同一ゲームを指すかを explainGameIdentity（aggregation プロファイル）で照合する。
+ * 別ゲームと判定されたら R5 違反。
+ *
+ * 重要: 照合では steamAppId を渡さない。game と実体は同じ appId を持つため渡すと
+ * explainGameIdentity が step1 で自明に一致（自己参照）してしまう。ここで検証したいのは
+ * 「その appId が指す実体のタイトルが、混入した game メタと食い違っていないか」なので
+ * title + releaseDate のみで照合する。
+ *
+ * fail-open: steamAppId が無い / Storefront 実体が取れない場合は違反を出さない
+ * （誤って号を落とさない。検出できたときだけ違反にする）。
+ */
+export async function checkR5(
+  game: GameData,
+  fetchImpl: typeof fetch = fetch
+): Promise<GateViolation | null> {
+  if (game.steamAppId === undefined) return null;
+
+  const entity = await fetchSteamEntity(game.steamAppId, fetchImpl);
+  if (!entity?.name) return null; // fail-open（実体タイトルが取れなければ照合しない）
+
+  const verdict = explainGameIdentity(
+    { title: game.title, titleJa: game.titleJa, releaseDate: game.releaseDate },
+    { title: entity.name, releaseDate: entity.releaseDate },
+    'aggregation'
+  );
+
+  if (!verdict.same) {
+    const gameYear = extractYearFromDate(game.releaseDate);
+    const steamYear = extractYearFromDate(entity.releaseDate);
+    return {
+      ruleId: 'R5',
+      gameTitle: game.title,
+      detail:
+        `steamAppId=${game.steamAppId} が指す Steam 実体「${entity.name}」が game メタ「${game.title}」と` +
+        `別ゲームと判定されました（${verdict.reason}）。別作品のメタデータが混入している可能性があります。` +
+        ` game=${game.releaseDate ?? '年不明'}(${gameYear ?? '?'}) / steam=${entity.releaseDate ?? '年不明'}(${steamYear ?? '?'})`,
+    };
+  }
+  return null;
+}
+
+/**
+ * 1ゲームに対してすべてのルールを検証する（R3 / R5 は非同期・ネットワークあり）
+ *
+ * @param fetchImpl R5 の Steam Storefront 呼び出しに使う fetch。テストで差し替える。
  */
 export async function checkGame(
   game: GameData,
-  trace: ResolverTrace | undefined
+  trace: ResolverTrace | undefined,
+  fetchImpl: typeof fetch = fetch
 ): Promise<GateViolation[]> {
   const violations: GateViolation[] = [];
 
@@ -296,6 +384,9 @@ export async function checkGame(
   const r4 = checkR4(game);
   if (r4) violations.push(r4);
 
+  const r5 = await checkR5(game, fetchImpl);
+  if (r5) violations.push(r5);
+
   return violations;
 }
 
@@ -307,6 +398,7 @@ export async function checkGame(
  * @param reserveGames 差し替え候補（mode=replace の場合に使用）。reservesByKey が指定されたスロットはそちらが優先される
  * @param mode 動作モード
  * @param reservesByKey スロット別予備候補。指定されたキーは reserveGames の代わりにこちらを使う
+ * @param fetchImpl R5 の Steam Storefront 呼び出しに使う fetch（テストで差し替える）
  * @returns GateReport
  */
 export async function runCompletenessGate(
@@ -314,7 +406,8 @@ export async function runCompletenessGate(
   trace: ResolverTrace | undefined,
   reserveGames: GameData[],
   mode: GateMode,
-  reservesByKey?: Partial<Record<'newReleases' | 'indies', GameData[]>>
+  reservesByKey?: Partial<Record<'newReleases' | 'indies', GameData[]>>,
+  fetchImpl: typeof fetch = fetch
 ): Promise<GateReport> {
   const report: GateReport = {
     mode,
@@ -341,7 +434,7 @@ export async function runCompletenessGate(
 
   for (const { arr } of mutableArrays) {
     for (const game of arr) {
-      const v = await checkGame(game, trace);
+      const v = await checkGame(game, trace, fetchImpl);
       if (v.length > 0) {
         report.violations.push(...v);
         // R0 は warn-only なので mutable 判定に含めない
@@ -356,7 +449,7 @@ export async function runCompletenessGate(
   // featured / classic の違反も記録（差し替えなし・fail 判定対象外）
   for (const game of singletons) {
     if (!game) continue;
-    const v = await checkGame(game, trace);
+    const v = await checkGame(game, trace, fetchImpl);
     report.violations.push(...v);
   }
 
@@ -417,7 +510,7 @@ export async function runCompletenessGate(
         if (replaceableTitles.has(candidate.title)) continue;
         if (unreplaceableTitles.has(candidate.title)) continue;
         // 候補も Gate で検証
-        const cv = await checkGame(candidate, trace);
+        const cv = await checkGame(candidate, trace, fetchImpl);
         if (cv.length === 0) {
           fills.push(candidate);
           usedTitles.add(candidate.normalizedTitle);
