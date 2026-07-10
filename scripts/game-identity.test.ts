@@ -297,10 +297,33 @@ describe('explainGameIdentity — 強シグナル判定', () => {
     expect(verdict).toEqual({ same: true, reason: 'steam-app-id' });
   });
 
-  it('titleJa クロス照合: 日本語名が一致すれば同一', () => {
+  it('titleJa は照合に使わない（title のみで判定）', () => {
+    // titleJa をクロス照合すると loose の部分一致で別作品が誤マージされるため使わない。
+    // 英名が食い違えば、titleJa が一致していても title-mismatch になる。
     const a: GameIdentitySignals = { title: 'MECCHA CHAMELEON', titleJa: 'めっちゃカメレオン' };
     const b: GameIdentitySignals = { title: 'めっちゃカメレオン' };
-    expect(isSameGameIdentity(a, b, 'aggregation')).toBe(true);
+    expect(explainGameIdentity(a, b, 'aggregation')).toEqual({
+      same: false,
+      reason: 'title-mismatch',
+    });
+  });
+
+  it('titleJa の部分一致で別作品を誤マージしない（回帰: 日本語シリーズ名）', () => {
+    // loose の部分一致（5文字以上の包含）は日本語シリーズ名で誤爆しやすい。
+    // titleJa を照合に使わないことで、英名が別なら別作品として扱われる。
+    const persona5 = { title: 'Persona 5', titleJa: 'ペルソナ5' };
+    const royal = { title: 'Persona 5 Royal', titleJa: 'ペルソナ5 ザ・ロイヤル' };
+    // title（英名）はプレフィックス一致するが、これは aggregation でも許容される正当な挙動。
+    // ここで検証したいのは「titleJa の包含だけでは同一にならない」点。
+    const ffDiffEn = explainGameIdentity(
+      { title: 'Final Fantasy VII', titleJa: 'ファイナルファンタジー' },
+      { title: 'Crisis Core', titleJa: 'ファイナルファンタジー7リメイク' },
+      'aggregation'
+    );
+    // 英名が全く異なるので titleJa が部分一致しても別作品
+    expect(ffDiffEn).toEqual({ same: false, reason: 'title-mismatch' });
+    // 参考: 英名一致のケースは従来どおり同一（titleJa の有無に依存しない）
+    expect(isSameGameIdentity(persona5, royal, 'aggregation')).toBe(true);
   });
 
   it('タイトル不一致 → title-mismatch', () => {

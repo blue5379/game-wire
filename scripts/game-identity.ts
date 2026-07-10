@@ -176,6 +176,11 @@ export function titlesMatch(a: string, b: string, mode: TitleMatchMode): boolean
  */
 export interface GameIdentitySignals {
   title: string;
+  /**
+   * 日本語タイトル。現状 explainGameIdentity のタイトル照合には使わない
+   * （loose の部分一致で日本語シリーズ名が誤マージするため。§ explainGameIdentity 参照）。
+   * 呼び出し側が渡しても無害。将来 exact 限定で照合を足す場合の受け皿として保持する。
+   */
   titleJa?: string;
   releaseDate?: string;
   steamAppId?: number;
@@ -204,7 +209,7 @@ export interface IdentityVerdict {
  * 2. igdbSlug が両側で判明し一致 → 同一と確定。
  *    不一致は確定材料にしない（IGDB には同一ゲームの重複エントリが存在しうるため、
  *    タイトル照合へフォールスルーする）
- * 3. タイトル照合（title / titleJa のクロス積のいずれかがモード基準で一致）
+ * 3. タイトル照合（title をモード基準で照合。titleJa は使わない）
  * 4. 年照合（両側で年が判明している場合のみ、プロファイルの許容差で判定）
  *
  * 注意: 「片側だけが steamAppId を持つ」ケースの扱いは用途依存のポリシー
@@ -230,11 +235,13 @@ export function explainGameIdentity(
 
   const { titleMode, yearTolerance } = MATCH_PROFILES[profile];
 
-  // 3. タイトル照合（title / titleJa のクロス積）
-  const titlesA = [a.title, a.titleJa].filter((t): t is string => Boolean(t));
-  const titlesB = [b.title, b.titleJa].filter((t): t is string => Boolean(t));
-  const titleOk = titlesA.some((ta) => titlesB.some((tb) => titlesMatch(ta, tb, titleMode)));
-  if (!titleOk) {
+  // 3. タイトル照合（title のみ）
+  // titleJa はクロス照合しない: loose モードの部分一致（5文字以上の包含）だと
+  // 「ペルソナ5」と「ペルソナ5 ザ・ロイヤル」のような別作品が同一判定されるため
+  // （日本語シリーズ名は共通接頭辞が長く、別作品が誤マージされる）。
+  // 複数タイトルの突合が必要な resolver 側は matchesAnyTitle で queryTitles に
+  // 英名・日本語名を並べて title として渡す設計であり、この経路では titleJa を使わない。
+  if (!titlesMatch(a.title, b.title, titleMode)) {
     return { same: false, reason: 'title-mismatch' };
   }
 
