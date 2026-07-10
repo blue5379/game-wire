@@ -25,6 +25,7 @@ import {
   checkR3,
   checkR4,
   checkR5,
+  fetchSteamEntity,
   checkGame,
   runCompletenessGate,
   getGateMode,
@@ -576,6 +577,49 @@ describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
 
   it('R5 は replaceable=true（差し替えで解消可能）', () => {
     expect(RULE_REPLACEABLE.R5).toBe(true);
+  });
+
+  it('fetchSteamEntity は l=english で取得する（日本語ローカライズ名による誤検知を防ぐ）', async () => {
+    // Steam name を l=japanese で取ると "サイバーパンク2077" 等の日本語名が返り、
+    // 英語主体の game.title と title-mismatch して正規ゲームを誤検知する（コードレビュー実測）。
+    // fetchSteamEntity が l=english を要求することを URL で固定する。
+    let capturedUrl = '';
+    const fetchImpl = (async (input: string | URL | Request) => {
+      capturedUrl = String(input);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ '1091500': { success: true, data: { name: 'Cyberpunk 2077', release_date: { date: '9 Dec, 2020' } } } }),
+      } as Response;
+    }) as typeof fetch;
+
+    const entity = await fetchSteamEntity(1091500, fetchImpl);
+    expect(capturedUrl).toContain('l=english');
+    expect(capturedUrl).not.toContain('l=japanese');
+    expect(entity?.name).toBe('Cyberpunk 2077');
+  });
+
+  it('store プロファイル: game.title が Steam 正式名のプレフィックスなら誤検知しない', async () => {
+    // 「The Witcher 3」（game 短縮名）vs Steam 正式名「The Witcher 3: Wild Hunt」。
+    // prefix 一致で救済され、正規ゲームを混入扱いしない（exact だと FP になるケース）。
+    const game = makeGame({
+      title: 'The Witcher 3',
+      steamAppId: 292030,
+      releaseDate: '2015-05-18',
+    });
+    const fetchImpl = makeSteamFetch({ 292030: { name: 'The Witcher 3: Wild Hunt', date: '18 May, 2015' } });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('store プロファイル: 年差 ±2 以内は同一とみなす（早期アクセス→正式版のズレ吸収）', async () => {
+    const game = makeGame({
+      title: 'Some Early Access Game',
+      steamAppId: 555000,
+      releaseDate: '2023-06-01',
+    });
+    // タイトル一致・年差2年（早期アクセス→正式版） → 違反なし
+    const fetchImpl = makeSteamFetch({ 555000: { name: 'Some Early Access Game', date: '1 Jun, 2025' } });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
   });
 });
 
