@@ -24,6 +24,8 @@ import {
   checkR2b,
   checkR3,
   checkR4,
+  checkR5,
+  fetchSteamEntity,
   checkGame,
   runCompletenessGate,
   getGateMode,
@@ -80,6 +82,41 @@ function makeTrace(
       [platform]: { attempts },
     },
   };
+}
+
+/**
+ * R5 用の Steam appdetails fetch モック。
+ * appId → 実体（name / release_date）のマップを渡すと、その形の appdetails レスポンスを返す。
+ * マップに無い appId は success:false を返す（fail-open 経路の検証用）。
+ * failNetwork=true のときは fetch 自体を reject させる。
+ */
+function makeSteamFetch(
+  entities: Record<number, { name: string; date?: string; coming_soon?: boolean }>,
+  opts: { failNetwork?: boolean; notOk?: boolean } = {}
+): typeof fetch {
+  return (async (input: string | URL | Request) => {
+    if (opts.failNetwork) throw new Error('network down');
+    const url = String(input);
+    const m = url.match(/appids=(\d+)/);
+    const appId = m ? parseInt(m[1], 10) : NaN;
+    const entity = entities[appId];
+    const body = entity
+      ? {
+          [String(appId)]: {
+            success: true,
+            data: {
+              name: entity.name,
+              release_date: { date: entity.date, coming_soon: entity.coming_soon ?? false },
+            },
+          },
+        }
+      : { [String(appId)]: { success: false } };
+    return {
+      ok: !opts.notOk,
+      status: opts.notOk ? 500 : 200,
+      json: async () => body,
+    } as Response;
+  }) as typeof fetch;
 }
 
 beforeEach(() => {
@@ -459,6 +496,130 @@ describe('R4: カバー画像ホスト許可リスト', () => {
     const v = checkR4(game);
     expect(v).not.toBeNull();
     expect(v?.ruleId).toBe('R4');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R5: 識別子整合（別ゲームのメタ混入検出）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
+  it('steamAppId が指す実体と game メタが同一 → 違反なし', async () => {
+    const game = makeGame({
+      title: 'Elden Ring',
+      steamAppId: 1245620,
+      releaseDate: '2022-02-25',
+    });
+    const fetchImpl = makeSteamFetch({ 1245620: { name: 'ELDEN RING', date: '25 Feb, 2022' } });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('#166 再現: Doom 1993 のメタに Doom 2016 の appId が混入 → R5 違反', async () => {
+    // known-cases #46/#166 パターン: 同名異作品。game メタは 1993 年の Doom だが
+    // steamAppId=2280 は Doom(2016)。発売年が 23 年差で別作品。
+    const game = makeGame({
+      title: 'Doom',
+      steamAppId: 2280,
+      releaseDate: '1993-12-10',
+    });
+    const fetchImpl = makeSteamFetch({ 2280: { name: 'DOOM', date: '13 May, 2016' } });
+    const v = await checkR5(game, fetchImpl);
+    expect(v).not.toBeNull();
+    expect(v?.ruleId).toBe('R5');
+    expect(v?.detail).toContain('2280');
+    expect(v?.detail).toContain('year-mismatch');
+  });
+
+  it('タイトルが全く別物 → R5 違反', async () => {
+    const game = makeGame({
+      title: 'Stardew Valley',
+      steamAppId: 413150,
+      releaseDate: '2016-02-26',
+    });
+    // appId が指す実体は全然違うタイトル（混入）
+    const fetchImpl = makeSteamFetch({ 413150: { name: 'Cyberpunk 2077', date: '10 Dec, 2020' } });
+    const v = await checkR5(game, fetchImpl);
+    expect(v).not.toBeNull();
+    expect(v?.ruleId).toBe('R5');
+  });
+
+  it('steamAppId が無い → チェックせず違反なし（fail-open）', async () => {
+    const game = makeGame({ title: 'No Steam Game', steamAppId: undefined });
+    // fetch は呼ばれないはず。呼ばれたら network down で例外になる構成
+    const fetchImpl = makeSteamFetch({}, { failNetwork: true });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('Storefront API が実体を返せない（appId 無効）→ fail-open で違反なし', async () => {
+    const game = makeGame({ title: 'Some Game', steamAppId: 999999, releaseDate: '2020-01-01' });
+    const fetchImpl = makeSteamFetch({}); // 999999 はマップに無い → success:false
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('Storefront API がネットワークエラー → fail-open で違反なし', async () => {
+    const game = makeGame({ title: 'Some Game', steamAppId: 12345, releaseDate: '2020-01-01' });
+    const fetchImpl = makeSteamFetch({}, { failNetwork: true });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('Steam 実体が coming_soon（未発売）→ 発売年は照合せずタイトル一致で通す', async () => {
+    // coming_soon の場合 Steam 側の年を信頼しない。タイトルが一致すれば違反なし。
+    const game = makeGame({
+      title: 'Hollow Knight Silksong',
+      steamAppId: 1030300,
+      releaseDate: '2020-01-01', // 仮の game 側の年（Steam は coming_soon で年を出さない）
+    });
+    const fetchImpl = makeSteamFetch({
+      1030300: { name: 'Hollow Knight: Silksong', date: 'Coming soon', coming_soon: true },
+    });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('R5 は replaceable=true（差し替えで解消可能）', () => {
+    expect(RULE_REPLACEABLE.R5).toBe(true);
+  });
+
+  it('fetchSteamEntity は l=english で取得する（日本語ローカライズ名による誤検知を防ぐ）', async () => {
+    // Steam name を l=japanese で取ると "サイバーパンク2077" 等の日本語名が返り、
+    // 英語主体の game.title と title-mismatch して正規ゲームを誤検知する（コードレビュー実測）。
+    // fetchSteamEntity が l=english を要求することを URL で固定する。
+    let capturedUrl = '';
+    const fetchImpl = (async (input: string | URL | Request) => {
+      capturedUrl = String(input);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ '1091500': { success: true, data: { name: 'Cyberpunk 2077', release_date: { date: '9 Dec, 2020' } } } }),
+      } as Response;
+    }) as typeof fetch;
+
+    const entity = await fetchSteamEntity(1091500, fetchImpl);
+    expect(capturedUrl).toContain('l=english');
+    expect(capturedUrl).not.toContain('l=japanese');
+    expect(entity?.name).toBe('Cyberpunk 2077');
+  });
+
+  it('store プロファイル: game.title が Steam 正式名のプレフィックスなら誤検知しない', async () => {
+    // 「The Witcher 3」（game 短縮名）vs Steam 正式名「The Witcher 3: Wild Hunt」。
+    // prefix 一致で救済され、正規ゲームを混入扱いしない（exact だと FP になるケース）。
+    const game = makeGame({
+      title: 'The Witcher 3',
+      steamAppId: 292030,
+      releaseDate: '2015-05-18',
+    });
+    const fetchImpl = makeSteamFetch({ 292030: { name: 'The Witcher 3: Wild Hunt', date: '18 May, 2015' } });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
+  });
+
+  it('store プロファイル: 年差 ±2 以内は同一とみなす（早期アクセス→正式版のズレ吸収）', async () => {
+    const game = makeGame({
+      title: 'Some Early Access Game',
+      steamAppId: 555000,
+      releaseDate: '2023-06-01',
+    });
+    // タイトル一致・年差2年（早期アクセス→正式版） → 違反なし
+    const fetchImpl = makeSteamFetch({ 555000: { name: 'Some Early Access Game', date: '1 Jun, 2025' } });
+    expect(await checkR5(game, fetchImpl)).toBeNull();
   });
 });
 
@@ -912,5 +1073,58 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
     expect(report.hasMutableViolations).toBe(false);
     expect(report.unresolvedMutableViolations).toBe(false);
     expect(report.replacedGames).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: R5（別ゲームのメタ混入）の差し替え統合
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: R5 メタ混入ゲームの差し替え', () => {
+  it('#166 型: 混入ゲーム（R5違反）を予備候補に差し替え、unresolved=false', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    // game メタは Doom(1993) だが steamAppId=2280 は Doom(2016) の実体（別作品混入）
+    const corrupted = makeGame({
+      title: 'Doom',
+      normalizedTitle: 'doom',
+      steamAppId: 2280,
+      releaseDate: '1993-12-10',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const healthyPartner = makeGame({
+      title: 'Healthy Partner',
+      normalizedTitle: 'healthy-partner',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+    // 予備候補は steamAppId を持たない → R5 の fetch 対象外（fail-open で通過）
+    const reserveGame = makeGame({
+      title: 'Reserve Game',
+      normalizedTitle: 'reserve-game',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/c.jpg',
+    });
+
+    // appId=2280 は Doom(2016) を返す → game メタ(1993)と 23 年差で R5 違反
+    const fetchImpl = makeSteamFetch({ 2280: { name: 'DOOM', date: '13 May, 2016' } });
+
+    const selected = makeSelectedGames({ newReleases: [corrupted, healthyPartner] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [reserveGame],
+      'fail',
+      undefined,
+      fetchImpl
+    );
+
+    // R5 違反が検出され、混入ゲームは差し替えられる
+    expect(report.violations.some((v) => v.ruleId === 'R5')).toBe(true);
+    expect(report.replacedGames).toContain('Reserve Game');
+    expect(report.unresolvedMutableViolations).toBe(false);
+    expect(selected.newReleases.some((g) => g.title === 'Doom')).toBe(false);
+    expect(selected.newReleases.some((g) => g.title === 'Reserve Game')).toBe(true);
   });
 });
