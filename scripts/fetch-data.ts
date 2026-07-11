@@ -1168,7 +1168,8 @@ async function main(): Promise<void> {
   );
   console.log(
     `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
-    `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}`
+    `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}, ` +
+    `shortfall=${gateReport.replacementShortfall.length > 0 ? gateReport.replacementShortfall.join('/') : 'none'}`
   );
   if (gateReport.violations.length > 0) {
     for (const v of gateReport.violations) {

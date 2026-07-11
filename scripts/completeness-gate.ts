@@ -75,12 +75,20 @@ export interface GateReport {
   hasMutableViolations: boolean;
   /**
    * 差し替え後もなお newReleases / indies に mutable violation が残っているか。
-   * 以下のいずれかで true になる:
-   * - replaceable=false のルール違反があった（差し替え対象外）
-   * - replaceable=true の違反はあったが reserves 枯渇でスロットを埋められなかった
+   * replaceable=false のルール違反（差し替え対象外＝内部バグシグナル）があった場合に true。
    * mode=fail の exit 判定は呼び出し側がこのフラグを使う。
+   *
+   * 補充不能（reserves 枯渇・スロットゲート不通過）はここに含めない:
+   * 違反ゲーム自体は除去済みでコンテンツ破壊は残っておらず、
+   * 「少ない記事数で発行」する方が号全体を止めるより被害が小さい（Issue #179 設計原則）。
+   * 補充不能は replacementShortfall に記録される。
    */
   unresolvedMutableViolations: boolean;
+  /**
+   * 差し替えが必要だったが reserves 枯渇・スロットゲート不通過で枠を埋められなかったスロット。
+   * fail 対象にはせず、警告・レポートで可視化して少ない記事数で発行する。
+   */
+  replacementShortfall: ('newReleases' | 'indies')[];
   /**
    * R5 の照合結果が uncertain（同一とも別作品とも断定できない）だったゲームの記録。
    * 破壊的アクションは取らないが、CI サマリ・レポートで evidence を可視化する。
@@ -429,6 +437,7 @@ export async function runCompletenessGate(
     replacedGames: [],
     hasMutableViolations: false,
     unresolvedMutableViolations: false,
+    replacementShortfall: [],
     uncertainIdentity: [],
   };
 
@@ -564,18 +573,22 @@ export async function runCompletenessGate(
 
       if (fills.length < needed) {
         console.warn(
-          `  [CompletenessGate] ${key}: ${needed} 枠を差し替える必要があったが ${fills.length} 件しか補充できなかった`
+          `  [CompletenessGate] ${key}: ${needed} 枠を差し替える必要があったが ${fills.length} 件しか補充できなかった` +
+          `（適格な候補が枯渇。少ない記事数で発行する）`
         );
         replacementShortfall.add(key);
       }
     }
   }
 
-  // 差し替え後の未解消違反を判定する
+  report.replacementShortfall = [...replacementShortfall];
+
+  // 差し替え後の未解消違反を判定する。
   // - unreplaceable な違反ゲーム（R2/R2b 系）は selectedGames に残っているので fail 対象
-  // - replaceable な違反でも reserves 枯渇でスロットが埋まらなかった場合は号のコンテンツが不足 → fail 対象
-  report.unresolvedMutableViolations =
-    unreplaceableTitles.size > 0 || replacementShortfall.size > 0;
+  // - 補充不能（shortfall）は fail 対象にしない: 違反ゲームは除去済みで破壊は残っておらず、
+  //   「枠を埋めるために不適格なゲームを載せる」ことも「号全体を止める」こともせず、
+  //   少ない記事数で発行する（Issue #179 の設計原則。選定時の「2件未満で発行」と同じ扱い）
+  report.unresolvedMutableViolations = unreplaceableTitles.size > 0;
 
   return report;
 }

@@ -355,10 +355,13 @@ export function matchGameToSteamEntity(
       entityTitles.some((et) => {
         const normGt = normalizeTitleForEntityMatch(gt);
         const normEt = normalizeTitleForEntityMatch(et);
+        if (!normGt || !normEt) return false;
+        // 完全一致は長さ不問で認める（"FEZ"・"月姫" 等の短タイトルを disagree に落とさない）
+        if (normGt === normEt) return true;
         // 3文字以下の正規化タイトルは prefix 一致を行わない（"God" が "God of War" に一致する FN 防止）
-        if (!normGt || normGt.length <= 3 || !normEt || normEt.length <= 3) return false;
+        if (normGt.length <= 3 || normEt.length <= 3) return false;
         // store プロファイルの prefix 一致（DLC・エディション違いを許容）
-        return normGt === normEt || normGt.startsWith(normEt) || normEt.startsWith(normGt);
+        return normGt.startsWith(normEt) || normEt.startsWith(normGt);
       })
     );
     titleAxis = anyMatch ? 'agree' : 'disagree';

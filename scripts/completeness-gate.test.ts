@@ -980,7 +980,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
     expect(selected.newReleases.some((g) => g.title === 'Reserve Game')).toBe(true);
   });
 
-  it('R1 違反があり reserves も枯渇していると unresolved=true（コンテンツ不足）', async () => {
+  it('R1 違反があり reserves も枯渇 → shortfall 記録のみで unresolved=false（少ない記事数で発行）', async () => {
     mockHeadOk.mockResolvedValue(true);
 
     const violatingGame = makeGame({
@@ -991,9 +991,12 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
     const selected = makeSelectedGames({ newReleases: [violatingGame] });
     const report = await runCompletenessGate(selected, undefined, [], 'fail');
 
-    // 差し替え候補がなく 2 枠を埋められない → 呼び出し側で exit(1) される
+    // Issue #179: 違反ゲームは除去済みで破壊は残っていないため、補充不能でも号は止めない。
+    // shortfall として記録し、少ない記事数で発行する（枠を埋めるための不適格採用もしない）。
     expect(report.replacedGames).toHaveLength(0);
-    expect(report.unresolvedMutableViolations).toBe(true);
+    expect(selected.newReleases).toHaveLength(0);
+    expect(report.replacementShortfall).toContain('newReleases');
+    expect(report.unresolvedMutableViolations).toBe(false);
   });
 
   it('R2 違反（replaceable=false）は mode=fail で差し替えず即 unresolved=true', async () => {
@@ -1089,6 +1092,84 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
     expect(report.hasMutableViolations).toBe(false);
     expect(report.unresolvedMutableViolations).toBe(false);
     expect(report.replacedGames).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: slotGates（差し替え候補の選定品質ゲート、Issue #179 FP-3 対策）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: slotGates による差し替え候補の検証', () => {
+  it('スロットゲート不通過の候補は補充されず shortfall になる（Project Trash 型の大手枠混入防止）', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const violatingGame = makeGame({
+      title: 'Zombie Game',
+      normalizedTitle: 'zombie-game',
+      sourceUrls: { stores: [] }, // R1 違反（replaceable）
+    });
+    // Gate ルール（R0-R5）上は健全だが、選定基準（large-studio 等）を満たさない予備候補
+    const notQualified = makeGame({
+      title: 'Project Trash',
+      normalizedTitle: 'project-trash',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+
+    const slotGate = vi.fn().mockResolvedValue(null); // vet 不通過
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [notQualified] },
+      { newReleases: slotGate }
+    );
+
+    expect(slotGate).toHaveBeenCalledTimes(1);
+    // 不適格な候補で枠を埋めない
+    expect(report.replacedGames).toHaveLength(0);
+    expect(selected.newReleases.some((g) => g.title === 'Project Trash')).toBe(false);
+    // shortfall は記録するが号は止めない（少ない記事数で発行）
+    expect(report.replacementShortfall).toContain('newReleases');
+    expect(report.unresolvedMutableViolations).toBe(false);
+  });
+
+  it('スロットゲート通過の候補は vet 済み GameData（canonical developer 等）で補充される', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    const violatingGame = makeGame({
+      title: 'Zombie Game',
+      normalizedTitle: 'zombie-game',
+      sourceUrls: { stores: [] }, // R1 違反（replaceable）
+    });
+    const qualified = makeGame({
+      title: 'Qualified Reserve',
+      normalizedTitle: 'qualified-reserve',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/b.jpg',
+    });
+
+    // vet は finalize 済み（canonical developer 書き戻し等）の GameData を返す
+    const slotGate = vi.fn(async (g: GameData) => ({ ...g, developer: 'Canonical Studio' }));
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [qualified] },
+      { newReleases: slotGate }
+    );
+
+    expect(report.replacedGames).toContain('Qualified Reserve');
+    // 採用されるのは slotGate が返した vet 済みオブジェクトであること
+    expect(selected.newReleases.find((g) => g.title === 'Qualified Reserve')?.developer).toBe(
+      'Canonical Studio'
+    );
+    expect(report.replacementShortfall).toHaveLength(0);
+    expect(report.unresolvedMutableViolations).toBe(false);
   });
 });
 
