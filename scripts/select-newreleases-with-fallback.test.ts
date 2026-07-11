@@ -167,6 +167,62 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected[0].reason).toBe('not-adopted');
   });
+
+  // Issue #180: developer が大手でなくても publisher が大手なら通過（受託開発の大手 IP タイトル）
+  it('developer が小規模スタジオでも publisher が Bandai Namco（Echoes of Aincrad）なら通過し developer は受託スタジオ名のまま保持する', async () => {
+    const A = makeGame({ title: 'Echoes of Aincrad', normalizedTitle: 'echoes of aincrad' });
+    const finished = {
+      ...A,
+      developer: 'Game Studio Inc.',
+      publisher: 'Bandai Namco Entertainment Inc.',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+    const result = await selectNewReleasesWithFallback([A], 1);
+    expect(result.adopted).toHaveLength(1);
+    // Steam の developers[] には受託スタジオが載る（実測: Echoes of Aincrad は
+    // developers=["Game Studio Inc."]）ため、publisher 名で上書きせず事実どおりの開発元を保持する
+    expect(result.adopted[0].developer).toBe('Game Studio Inc.');
+    expect(result.adopted[0].publisher).toBe('Bandai Namco Entertainment Inc.');
+  });
+
+  // Issue #180: developer が大手なら canonical 名を使う（既存挙動の維持）
+  it('developer が Nintendo（canonical）→ 通過し developer が canonical 名になる', async () => {
+    const A = makeGame({ title: 'Mario Game', normalizedTitle: 'mario game' });
+    const finished = {
+      ...A,
+      developer: 'nintendo',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+    const result = await selectNewReleasesWithFallback([A], 1);
+    expect(result.adopted).toHaveLength(1);
+    expect(result.adopted[0].developer).toBe('Nintendo EPD');
+  });
+
+  // Issue #180: developer が小規模スタジオで publisher も小規模 → rejected
+  it('developer も publisher も大手でない → rejected', async () => {
+    const A = makeGame({ title: 'Indie Game', normalizedTitle: 'indie game' });
+    const finished = {
+      ...A,
+      developer: 'Small Studio',
+      publisher: 'Small Publisher',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/99' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+    const result = await selectNewReleasesWithFallback([A], 1);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+  });
 });
 
 // ────────────────────────────────────────────────

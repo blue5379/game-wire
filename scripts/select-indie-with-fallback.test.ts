@@ -364,6 +364,53 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
+  // Issue #180: publisher が大手の場合は indie 枠から除外（話題性ルート）
+  it('話題性ルートで developer 欠落 + publisher が Nintendo → rejected になる', async () => {
+    const candidate = makeGame({
+      title: 'Nintendo Contracted Game',
+      normalizedTitle: 'nintendo contracted game',
+      steamRawDeveloper: 'some_account',
+      steamRecommendations: 9000,
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/888888' },
+    });
+    const gameAfterFinalize = {
+      ...candidate,
+      publisher: 'Nintendo',
+      // developer still undefined after finalize
+    };
+
+    mockFinalize.mockResolvedValueOnce({
+      ok: false,
+      reason: 'still-missing-required' as const,
+      game: gameAfterFinalize,
+    });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-adopted');
+  });
+
+  // Issue #180: publisher が大手の場合は indie 枠から除外（通常ルート）
+  it('finalize 後に publisher が Bandai Namco（Echoes of Aincrad 相当）→ rejected になる', async () => {
+    const candidate = makeGame({ title: 'Echoes of Aincrad', normalizedTitle: 'echoes of aincrad' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Game Studio Inc.',  // 受託開発スタジオ（大手リストに載っていない）
+      publisher: 'Bandai Namco Entertainment Inc.',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-adopted');
+  });
+
   it('finalize 後に developer が小規模スタジオならそのまま採用される', async () => {
     const candidate = makeGame({ title: 'Hollow Knight', normalizedTitle: 'hollow knight' });
     const finishedGame = {

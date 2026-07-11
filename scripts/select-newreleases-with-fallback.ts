@@ -54,20 +54,30 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
 
   if (!finalizeResult.ok) return null;
 
-  const studioResult = isLargeStudio(finalizeResult.game.developer);
-  if (!studioResult.hit) {
+  // developer または publisher のいずれかが大手なら通過とみなす。
+  // 受託開発の大手 IP タイトル（developer=受託スタジオ、publisher=大手）をカバーする。
+  const devResult = isLargeStudio(finalizeResult.game.developer);
+  const pubResult = isLargeStudio(finalizeResult.game.publisher);
+  if (!devResult.hit && !pubResult.hit) {
     console.log(
       JSON.stringify({
         scope: 'vet-new-release-candidate',
         title: game.title,
         step: 'large-studio-gate',
-        reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}")`,
+        reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}", publisher="${finalizeResult.game.publisher ?? ''}")`,
       })
     );
     return null;
   }
 
-  return { ...finalizeResult.game, developer: studioResult.matched };
+  // developer が大手なら canonical 名で上書き（同一企業の表記ゆれ吸収。既存挙動）。
+  // publisher のみ大手（受託開発）の場合、developer は finalize 結果のまま保持する。
+  // Steam の developers[] には受託スタジオ名が載る（実測: Echoes of Aincrad は
+  // developers=["Game Studio Inc."] / publishers=["Bandai Namco Entertainment Inc."]）ため、
+  // publisher 名で上書きすると記事の開発元表記が事実と異なり、
+  // validateGameSourceConsistency の developer 照合とも不一致になる。
+  const finalDeveloper = devResult.hit ? devResult.matched : finalizeResult.game.developer;
+  return { ...finalizeResult.game, developer: finalDeveloper };
 }
 
 /**

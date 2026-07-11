@@ -112,14 +112,17 @@ export async function vetIndieCandidate(
   }
 
   if (finalizeResult.ok) {
-    // finalize 後に IGDB が developer を補完した場合、大手スタジオが混入しないよう再チェック
-    if (isLargeStudio(finalizeResult.game.developer).hit) {
+    // developer または publisher のいずれかが大手なら indie 枠から除外する。
+    // publisher のみ大手（受託開発）のケースをカバーするため両方チェックする。
+    const devHit = isLargeStudio(finalizeResult.game.developer).hit;
+    const pubHit = isLargeStudio(finalizeResult.game.publisher).hit;
+    if (devHit || pubHit) {
       console.log(
         JSON.stringify({
           scope: 'vet-indie-candidate',
           title: finalizeResult.game.title,
           step: 'large-studio-gate',
-          reason: `not-indie after finalize (developer="${finalizeResult.game.developer ?? ''}")`,
+          reason: `not-indie after finalize (developer="${finalizeResult.game.developer ?? ''}", publisher="${finalizeResult.game.publisher ?? ''}")`,
         })
       );
       return null;
@@ -133,6 +136,18 @@ export async function vetIndieCandidate(
     isOnlyDeveloperMissing(finalizeResult.game) &&
     meetsPopularityThreshold(game, context.youtubePopularitySorted)
   ) {
+    // developer が欠落していても publisher が大手なら個人開発ラベルで採用しない。
+    if (isLargeStudio(finalizeResult.game.publisher).hit) {
+      console.log(
+        JSON.stringify({
+          scope: 'vet-indie-candidate',
+          title: finalizeResult.game.title,
+          step: 'large-studio-gate',
+          reason: `not-indie via popularity route (publisher="${finalizeResult.game.publisher ?? ''}")`,
+        })
+      );
+      return null;
+    }
     const rawName = finalizeResult.game.steamRawDeveloper ?? 'unknown';
     const adoptedGame: GameData = {
       ...finalizeResult.game,
