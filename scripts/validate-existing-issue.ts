@@ -154,7 +154,8 @@ async function main(): Promise<void> {
   console.log('');
 
   const articles = frontmatter.articles.map(toGeneratedArticle);
-  const report = validateArticles(articles, frontmatter.issueNumber);
+  const publishDateFromFrontmatter = frontmatter.publishDate ? new Date(frontmatter.publishDate) : undefined;
+  const report = validateArticles(articles, frontmatter.issueNumber, undefined, publishDateFromFrontmatter);
 
   // レポートを一時ディレクトリに出力（CIには影響させない）
   const tmpDir = path.join(process.cwd(), 'data', 'validation-manual');

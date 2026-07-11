@@ -605,7 +605,7 @@ async function main(): Promise<void> {
   }
 
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
-  const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats);
+  const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats, publishDate);
 
   // game-source-mismatch を事後レポートにも記録する（pre-write で検出した内容の再確認・記録）
   if (sourceMismatchWarnings.size > 0) {

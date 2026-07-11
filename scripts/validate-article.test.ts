@@ -14,6 +14,7 @@ import {
   validateFeatureNumericClaims,
   validateArticles,
   validateGameSourceConsistency,
+  validateReleasedTitleExpression,
   buildFixInstruction,
 } from './validate-article.js';
 import type { ValidationWarning } from './validate-article.js';
@@ -835,5 +836,108 @@ describe('validateGameSourceConsistency', () => {
 
     const warnings = await validateGameSourceConsistency(article);
     expect(warnings.some((w) => w.type === 'game-source-mismatch')).toBe(true);
+  });
+});
+
+describe('validateReleasedTitleExpression', () => {
+  const publishDate = new Date('2026-07-10');
+
+  it('発売済みタイトルの見出しに「発表」が含まれる場合に medium 警告を出す（Issue #181 再現）', () => {
+    const article = makeArticle({
+      title: "Trashbubu Studio新作『Project Trash』発表、注目のインディー開発スタジオが放つ次回作",
+      category: 'newRelease',
+      game: {
+        title: 'Project Trash',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-07-10',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('released-title-expression');
+    expect(warnings[0].severity).toBe('medium');
+  });
+
+  it('発売済みタイトルの見出しに「次回作」が含まれる場合に medium 警告を出す', () => {
+    const article = makeArticle({
+      title: "名スタジオ待望の次回作『Awesome Game』近日登場",
+      category: 'indie',
+      game: {
+        title: 'Awesome Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-07-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('released-title-expression');
+  });
+
+  it('発売済みタイトルの見出しが適切な表現なら警告しない', () => {
+    const article = makeArticle({
+      title: "Trashbubu Studioの新作『Project Trash』発売中、独自メカニクスが光るアクションADV",
+      category: 'newRelease',
+      game: {
+        title: 'Project Trash',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-07-10',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売予定タイトルの見出しに「発表」があっても警告しない', () => {
+    const article = makeArticle({
+      title: "大型タイトル『Future Game』正式発表、2027年発売予定",
+      category: 'newRelease',
+      game: {
+        title: 'Future Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2027-01-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('publishDate が渡されない場合はチェックをスキップする', () => {
+    const article = makeArticle({
+      title: "新作『Project Trash』発表",
+      category: 'newRelease',
+      game: {
+        title: 'Project Trash',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-07-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, undefined);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('feature 記事は対象外', () => {
+    const article = makeArticle({
+      title: '今週の特集記事：話題の新作発表まとめ',
+      category: 'feature',
+      game: {
+        title: 'Feature Game',
+        genre: [],
+        platforms: [],
+        releaseDate: '2026-07-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
   });
 });

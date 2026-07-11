@@ -719,9 +719,52 @@ export async function validateGameSourceConsistencyForArticles(
 }
 
 /**
+ * 発売済みタイトルの記事見出しに未発売表現が使われていないかを検証
+ *
+ * releaseDate <= publishDate（発売済み）の newRelease/indie 記事のタイトルに
+ * 「発表|次回作|近日|もうすぐ|予告」等の未発売ニュアンスが含まれる場合に medium 警告を出す。
+ * publishDate が渡されていない場合は検証をスキップする（後方互換）。
+ */
+export function validateReleasedTitleExpression(
+  article: GeneratedArticle,
+  publishDate?: Date
+): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'newRelease' && article.category !== 'indie') return warnings;
+  if (!publishDate) return warnings;
+
+  const releaseDate = article.game?.releaseDate;
+  if (!releaseDate) return warnings;
+
+  const releaseTime = new Date(releaseDate).getTime();
+  if (isNaN(releaseTime)) return warnings;
+
+  // 発売予定の場合はチェック不要
+  if (releaseTime > publishDate.getTime()) return warnings;
+
+  const UNRELEASED_PATTERNS = /発表|次回作|近日|もうすぐ|予告|待望の新作|リリース予定|発売予定/;
+  if (!UNRELEASED_PATTERNS.test(article.title)) return warnings;
+
+  const matched = article.title.match(UNRELEASED_PATTERNS);
+  warnings.push({
+    articleTitle: article.title,
+    category: article.category,
+    severity: 'medium',
+    type: 'released-title-expression',
+    message:
+      `発売済みタイトル（releaseDate=${releaseDate}）の記事見出しに未発売ニュアンスの表現「${matched?.[0]}」が含まれています。` +
+      `「発売中」「登場」等の発売済み表現に修正してください。`,
+    evidence: article.title,
+  });
+
+  return warnings;
+}
+
+/**
  * 1つの記事に対して全バリデーションを実行
  */
-export function validateArticle(article: GeneratedArticle): ValidationWarning[] {
+export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
   return [
     ...validateTitleConsistency(article),
     ...validateBodyTitleConsistency(article),
@@ -731,6 +774,7 @@ export function validateArticle(article: GeneratedArticle): ValidationWarning[] 
     ...validateFeaturePlatformConsistency(article),
     ...validateFeaturePersonAttribution(article),
     ...validateFeatureNumericClaims(article),
+    ...validateReleasedTitleExpression(article, publishDate),
   ];
 }
 
@@ -787,11 +831,12 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
 export function validateArticles(
   articles: GeneratedArticle[],
   issueNumber: number,
-  webSearchStats?: { searchFailures: number; pageContentFailures: number }
+  webSearchStats?: { searchFailures: number; pageContentFailures: number },
+  publishDate?: Date
 ): ValidationReport {
   const warnings: ValidationWarning[] = [];
   for (const article of articles) {
-    warnings.push(...validateArticle(article));
+    warnings.push(...validateArticle(article, publishDate));
   }
 
   const warningsBySeverity: Record<Severity, number> = {
@@ -925,12 +970,13 @@ async function mainCli(): Promise<void> {
   }
 
   const rawData = fs.readFileSync(articlesPath, 'utf-8');
-  const generatedIssue = JSON.parse(rawData) as { articles: GeneratedArticle[] };
+  const generatedIssue = JSON.parse(rawData) as { articles: GeneratedArticle[]; publishDate?: string };
 
   // issueNumber は引数または環境変数から取得（無ければ 0）
   const issueNumber = parseInt(process.env.ISSUE_NUMBER || '0', 10);
+  const publishDate = generatedIssue.publishDate ? new Date(generatedIssue.publishDate) : undefined;
 
-  const report = validateArticles(generatedIssue.articles, issueNumber);
+  const report = validateArticles(generatedIssue.articles, issueNumber, undefined, publishDate);
   const outputDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
   const passed = writeAndCheckReport(report, outputDir);
 
