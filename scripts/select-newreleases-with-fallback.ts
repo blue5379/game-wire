@@ -70,13 +70,13 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
     return null;
   }
 
-  // developer が大手なら canonical 名で上書き。
-  // publisher のみ大手（受託開発）なら publisher の canonical 名を developer に使う。
-  // contractor 名をそのまま残すと validateGameSourceConsistency が Steam の developers[] と
-  // 一致せず false game-source-mismatch を発火させるため。
-  const finalDeveloper = devResult.hit
-    ? devResult.matched
-    : pubResult.hit ? pubResult.matched : finalizeResult.game.developer;
+  // developer が大手なら canonical 名で上書き（同一企業の表記ゆれ吸収。既存挙動）。
+  // publisher のみ大手（受託開発）の場合、developer は finalize 結果のまま保持する。
+  // Steam の developers[] には受託スタジオ名が載る（実測: Echoes of Aincrad は
+  // developers=["Game Studio Inc."] / publishers=["Bandai Namco Entertainment Inc."]）ため、
+  // publisher 名で上書きすると記事の開発元表記が事実と異なり、
+  // validateGameSourceConsistency の developer 照合とも不一致になる。
+  const finalDeveloper = devResult.hit ? devResult.matched : finalizeResult.game.developer;
   return { ...finalizeResult.game, developer: finalDeveloper };
 }
 

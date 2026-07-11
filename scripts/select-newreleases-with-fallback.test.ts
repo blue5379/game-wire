@@ -169,7 +169,7 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
   });
 
   // Issue #180: developer が大手でなくても publisher が大手なら通過（受託開発の大手 IP タイトル）
-  it('developer が小規模スタジオでも publisher が Bandai Namco（Echoes of Aincrad）なら通過し developer に canonical publisher 名を使う', async () => {
+  it('developer が小規模スタジオでも publisher が Bandai Namco（Echoes of Aincrad）なら通過し developer は受託スタジオ名のまま保持する', async () => {
     const A = makeGame({ title: 'Echoes of Aincrad', normalizedTitle: 'echoes of aincrad' });
     const finished = {
       ...A,
@@ -183,8 +183,10 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
 
     const result = await selectNewReleasesWithFallback([A], 1);
     expect(result.adopted).toHaveLength(1);
-    // validateGameSourceConsistency が Steam の developers[] と一致するよう canonical 名を使う
-    expect(result.adopted[0].developer).toBe('Bandai Namco Entertainment');
+    // Steam の developers[] には受託スタジオが載る（実測: Echoes of Aincrad は
+    // developers=["Game Studio Inc."]）ため、publisher 名で上書きせず事実どおりの開発元を保持する
+    expect(result.adopted[0].developer).toBe('Game Studio Inc.');
+    expect(result.adopted[0].publisher).toBe('Bandai Namco Entertainment Inc.');
   });
 
   // Issue #180: developer が大手なら canonical 名を使う（既存挙動の維持）
