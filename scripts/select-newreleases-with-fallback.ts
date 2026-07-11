@@ -70,10 +70,13 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
     return null;
   }
 
-  // developer が大手なら canonical 名で上書き、受託開発なら developer をそのままにする。
+  // developer が大手なら canonical 名で上書き。
+  // publisher のみ大手（受託開発）なら publisher の canonical 名を developer に使う。
+  // contractor 名をそのまま残すと validateGameSourceConsistency が Steam の developers[] と
+  // 一致せず false game-source-mismatch を発火させるため。
   const finalDeveloper = devResult.hit
     ? devResult.matched
-    : finalizeResult.game.developer;
+    : pubResult.hit ? pubResult.matched : finalizeResult.game.developer;
   return { ...finalizeResult.game, developer: finalDeveloper };
 }
 

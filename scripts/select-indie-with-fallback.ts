@@ -136,6 +136,18 @@ export async function vetIndieCandidate(
     isOnlyDeveloperMissing(finalizeResult.game) &&
     meetsPopularityThreshold(game, context.youtubePopularitySorted)
   ) {
+    // developer が欠落していても publisher が大手なら個人開発ラベルで採用しない。
+    if (isLargeStudio(finalizeResult.game.publisher).hit) {
+      console.log(
+        JSON.stringify({
+          scope: 'vet-indie-candidate',
+          title: finalizeResult.game.title,
+          step: 'large-studio-gate',
+          reason: `not-indie via popularity route (publisher="${finalizeResult.game.publisher ?? ''}")`,
+        })
+      );
+      return null;
+    }
     const rawName = finalizeResult.game.steamRawDeveloper ?? 'unknown';
     const adoptedGame: GameData = {
       ...finalizeResult.game,
