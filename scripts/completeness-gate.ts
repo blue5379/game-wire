@@ -535,7 +535,7 @@ export async function runCompletenessGate(
       const fills: GameData[] = [];
       const candidatePool = reservesByKey?.[key] ?? reserveGames;
       const slotGate = slotGates?.[key];
-      // 試行上限: needed × 3（選定側 MAX_ATTEMPTS_MULTIPLIER と同値でクォータを保護）
+      // 試行上限: needed × 3（差し替え補充時の IGDB/Steam Storefront クォータ保護）
       const maxAttempts = needed * 3;
       let attempts = 0;
       for (const rawCandidate of candidatePool) {

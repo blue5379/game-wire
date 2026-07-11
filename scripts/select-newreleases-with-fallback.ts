@@ -12,9 +12,6 @@ export interface NewReleasesSelectionResult {
 /** 大手スタジオゲートを通過したゲームが前提。cover・developer・sourceUrl をすべて必須とする。 */
 const NEW_RELEASE_REQUIRED = { cover: true, developer: true, sourceUrl: true } as const;
 
-/** API 呼び出し上限（targetCount × 3）。IGDB/Steam Storefront のクォータ保護。 */
-const MAX_ATTEMPTS_MULTIPLIER = 3;
-
 /**
  * ゲームが「実存の根拠」を持つか判定する。
  * Steam ランキング由来 / IGDB 評価数 / YouTube 人気度のいずれかを満たせば通過。
@@ -88,15 +85,18 @@ export async function selectNewReleasesWithFallback(
   ranked: GameData[],
   targetCount: number
 ): Promise<NewReleasesSelectionResult> {
-  const maxAttempts = targetCount * MAX_ATTEMPTS_MULTIPLIER;
   const queue = [...ranked];
   const adopted: GameData[] = [];
   const rejected: Array<{ title: string; reason: string }> = [];
-  let attempts = 0;
 
-  while (adopted.length < targetCount && queue.length > 0 && attempts < maxAttempts) {
+  // targetCount 件採用するか候補が尽きるまで評価する。
+  // 以前は maxAttempts = targetCount × 3 で試行を打ち切っていたが、上位に非大手候補が
+  // 数件並ぶだけで大手候補（後方）に到達できず、枠が埋まらない問題があった（Issue #189）。
+  // finalizeGameMetadata 内の API 呼び出しは各候補で IGDB 最大1回＋Storefront 最大1回に
+  // 制限済みのため、全候補を評価してもクォータ影響は候補数に比例するだけで限定的。
+  // indie 側（select-indie-with-fallback.ts）と同じく候補が尽きるまで評価する挙動に揃える。
+  while (adopted.length < targetCount && queue.length > 0) {
     const candidate = queue.shift()!;
-    attempts++;
 
     const vetted = await vetNewReleaseCandidate(candidate);
     if (vetted) {

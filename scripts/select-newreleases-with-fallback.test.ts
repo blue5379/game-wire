@@ -278,7 +278,7 @@ describe('selectNewReleasesWithFallback — targetCount の境界値', () => {
 // ────────────────────────────────────────────────
 describe('selectNewReleasesWithFallback — reserves', () => {
   it('採用されなかった未試行候補が reserves に入る', async () => {
-    // targetCount=2, maxAttempts=6。A,B が ok → C は未試行 → reserves=[C]
+    // targetCount=2。A,B が ok → 2件採用で停止 → C は未試行 → reserves=[C]
     const A = makeGame({ title: 'A', normalizedTitle: 'a' });
     const B = makeGame({ title: 'B', normalizedTitle: 'b' });
     const C = makeGame({ title: 'C', normalizedTitle: 'c' });
@@ -315,16 +315,44 @@ describe('selectNewReleasesWithFallback — reserves', () => {
 });
 
 // ────────────────────────────────────────────────
-// selectNewReleasesWithFallback — 試行回数上限
+// selectNewReleasesWithFallback — 候補が尽きるまで評価（Issue #189）
 // ────────────────────────────────────────────────
-describe('selectNewReleasesWithFallback — 試行回数上限 (maxAttempts = targetCount * 3)', () => {
-  it('targetCount=2 のとき最大6回試行して停止する', async () => {
-    // 10件候補、全件 reject → 6回で停止し残り4件は reserves に入る
-    const games = Array.from({ length: 10 }, (_, i) =>
+describe('selectNewReleasesWithFallback — 候補が尽きるまで評価 (Issue #189)', () => {
+  it('上位に非大手が並び大手が後方にあっても、候補が尽きるまで評価して到達する', async () => {
+    // Vol.15 の再現: 上位6件が全て reject、7件目に採用可能な大手候補。
+    // 旧仕様（maxAttempts = targetCount*3 = 6）では7件目に到達できず枠が埋まらなかった。
+    // targetCount=2 だが採用可能は1件のみなので、ループは全7件を評価する。
+    const games = Array.from({ length: 7 }, (_, i) =>
       makeGame({ title: `G${i}`, normalizedTitle: `g${i}` })
     );
 
-    // 全件 still-missing-required
+    // 0〜5番目（6件）は non-large-studio 等で reject
+    for (let i = 0; i < 6; i++) {
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: games[i],
+      });
+    }
+    // 6番目（7件目）に採用可能な大手候補
+    mockFinalize.mockResolvedValueOnce({
+      ok: true,
+      game: { ...games[6], developer: 'Nintendo', coverImage: 'c', sourceUrls: { steam: 's' } },
+    });
+
+    const result = await selectNewReleasesWithFallback(games, 2);
+    // 7件目まで到達して採用される（旧仕様では6回で打ち切られ到達不能だった）
+    expect(mockFinalize).toHaveBeenCalledTimes(7);
+    expect(result.adopted).toHaveLength(1);
+    expect(result.adopted[0].title).toBe('G6');
+    expect(result.rejected).toHaveLength(6);
+    expect(result.reserves).toHaveLength(0);
+  });
+
+  it('全件 reject でも候補を最後まで評価し、reserves は空になる', async () => {
+    const games = Array.from({ length: 10 }, (_, i) =>
+      makeGame({ title: `G${i}`, normalizedTitle: `g${i}` })
+    );
     for (let i = 0; i < 10; i++) {
       mockFinalize.mockResolvedValueOnce({
         ok: false,
@@ -335,27 +363,32 @@ describe('selectNewReleasesWithFallback — 試行回数上限 (maxAttempts = ta
 
     const result = await selectNewReleasesWithFallback(games, 2);
     expect(result.adopted).toHaveLength(0);
-    // 最大 2*3=6 回試行
-    expect(mockFinalize).toHaveBeenCalledTimes(6);
-    expect(result.rejected).toHaveLength(6);
-    // 残り4件は reserves に入る
-    expect(result.reserves).toHaveLength(4);
+    // 打ち切りなく全10件を評価
+    expect(mockFinalize).toHaveBeenCalledTimes(10);
+    expect(result.rejected).toHaveLength(10);
+    // 未評価候補は残らない
+    expect(result.reserves).toHaveLength(0);
   });
 
-  it('targetCount=1 のとき最大3回試行して停止する', async () => {
+  it('targetCount 件採用したら残りは評価せず reserves に残す', async () => {
     const games = Array.from({ length: 5 }, (_, i) =>
       makeGame({ title: `G${i}`, normalizedTitle: `g${i}` })
     );
-    for (let i = 0; i < 5; i++) {
-      mockFinalize.mockResolvedValueOnce({
-        ok: false,
-        reason: 'date-mismatch' as const,
-        game: games[i],
+    // 先頭2件が採用可能
+    mockFinalize
+      .mockResolvedValueOnce({
+        ok: true,
+        game: { ...games[0], developer: 'Nintendo', coverImage: 'c', sourceUrls: { steam: 's' } },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        game: { ...games[1], developer: 'Capcom', coverImage: 'c', sourceUrls: { steam: 's' } },
       });
-    }
 
-    const result = await selectNewReleasesWithFallback(games, 1);
-    expect(mockFinalize).toHaveBeenCalledTimes(3);
-    expect(result.reserves).toHaveLength(2);
+    const result = await selectNewReleasesWithFallback(games, 2);
+    expect(result.adopted).toHaveLength(2);
+    // 2件採用した時点で停止、残り3件は未評価
+    expect(mockFinalize).toHaveBeenCalledTimes(2);
+    expect(result.reserves).toHaveLength(3);
   });
 });
