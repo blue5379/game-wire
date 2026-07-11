@@ -4,7 +4,7 @@
  * issue-008 のハルシネーション事案を再現するテストケースを含む。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   validateTitleConsistency,
   validateBodyTitleConsistency,
@@ -18,6 +18,7 @@ import {
 } from './validate-article.js';
 import type { ValidationWarning } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
+import { clearSteamEntityCache } from './steam-entity.js';
 
 function makeArticle(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
   return {
@@ -638,21 +639,105 @@ describe('buildFixInstruction', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// validateGameSourceConsistency — Issue #166 ③: game メタと Steam 実体の内的整合性
+// validateGameSourceConsistency — Issue #166 ③ / #179 PR-3: 多軸照合
 // ─────────────────────────────────────────────────────────────────────────────
 describe('validateGameSourceConsistency', () => {
+  beforeEach(() => {
+    // fetchSteamEntity はモジュール内キャッシュを持つため、テスト間で必ずクリアする
+    clearSteamEntityCache();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  function mockStorefront(appId: string, data: unknown): void {
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ [appId]: { success: true, data } }),
+  /**
+   * l=english / l=japanese の2リクエストに応答する Storefront モック。
+   * en / ja に null を渡すとその言語のリクエストは失敗（ok=false）にする。
+   */
+  function makeBilingualFetch(
+    appId: string,
+    en: unknown | null,
+    ja: unknown | null = en
+  ): typeof fetch {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const data = url.includes('l=japanese') ? ja : en;
+      if (data === null) return { ok: false } as Response;
+      return {
+        ok: true,
+        json: async () => ({ [appId]: { success: true, data } }),
+      } as unknown as Response;
     }) as unknown as typeof fetch;
   }
 
-  it('Brick Game 事案: game.releaseDate=1989 なのに Steam(1087090)=2026 → high 警告', async () => {
+  it('vol.15 FP-2 再発防止: RE Requiem — 部門名 vs 法人名の developer 単軸不一致では警告を出さない', async () => {
+    const article = makeArticle({
+      title: '『Resident Evil Requiem』シリーズ最新作が登場',
+      category: 'newRelease',
+      game: {
+        title: 'Resident Evil Requiem',
+        titleJa: 'Biohazard: Requiem',
+        genre: ['Survival Horror'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-02-27',
+        developer: 'Capcom Development Division 1',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/3764200' },
+    });
+    const fetchImpl = makeBilingualFetch(
+      '3764200',
+      {
+        name: 'Resident Evil Requiem',
+        release_date: { coming_soon: false, date: '26 Feb, 2026' },
+        developers: ['CAPCOM Co., Ltd.'],
+      },
+      {
+        name: 'BIOHAZARD requiem',
+        release_date: { coming_soon: false, date: '2026年2月26日' },
+        developers: ['CAPCOM Co., Ltd.'],
+      }
+    );
+
+    // 旧実装は developer 単軸不一致で high → hidden 化していた（vol.15 障害）。
+    // タイトル・年が一致（same）なら警告を出さない。
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('別作品混入（title+year 両軸不一致）→ high game-source-mismatch（evidence 3軸付き）', async () => {
+    const article = makeArticle({
+      title: '新作『Project Trash』登場',
+      category: 'newRelease',
+      game: {
+        title: 'Project Trash',
+        genre: ['Action'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-07-10',
+        developer: 'Trashbubu Studio',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/271590' },
+    });
+    const fetchImpl = makeBilingualFetch('271590', {
+      name: 'Grand Theft Auto V',
+      release_date: { coming_soon: false, date: '13 Apr, 2015' },
+      developers: ['Rockstar North'],
+    });
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    const mismatch = warnings.find((w) => w.type === 'game-source-mismatch');
+    expect(mismatch).toBeDefined();
+    expect(mismatch?.severity).toBe('high');
+    // 破壊的アクションのログ・レポートには evidence 3 軸を必ず含める（Issue #179 受け入れ基準）
+    expect(mismatch?.message).toMatch(/title=disagree/);
+    expect(mismatch?.message).toMatch(/year=disagree/);
+    expect(mismatch?.evidence).toBeDefined();
+  });
+
+  it('Brick Game 事案（同名・年乖離）: 判定表 行2 により uncertain（medium）— hidden にはしない', async () => {
+    // 旧実装では high mismatch → hidden だったが、同名年違いは
+    // 原作年/移植年ズレ（リマスター等）と区別できないため破壊しない（Issue #179 行2 の設計判断）。
+    // medium の game-source-uncertain としてレポートに evidence を残す。
     const article = makeArticle({
       title: '懐かしの携帯型液晶ゲーム機『Brick Game』',
       category: 'indie',
@@ -665,20 +750,21 @@ describe('validateGameSourceConsistency', () => {
       },
       sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
     });
-    mockStorefront('1087090', {
+    const fetchImpl = makeBilingualFetch('1087090', {
       name: 'Brick Game',
       release_date: { coming_soon: false, date: '2026年7月4日' },
       developers: ['Daniel Shimmyo'],
     });
 
-    const warnings = await validateGameSourceConsistency(article);
-
-    const yearWarn = warnings.find((w) => w.type === 'game-source-mismatch');
-    expect(yearWarn).toBeDefined();
-    expect(yearWarn?.severity).toBe('high');
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings.filter((w) => w.type === 'game-source-mismatch')).toHaveLength(0);
+    const uncertain = warnings.find((w) => w.type === 'game-source-uncertain');
+    expect(uncertain).toBeDefined();
+    expect(uncertain?.severity).toBe('medium');
+    expect(uncertain?.message).toMatch(/year=disagree/);
   });
 
-  it('整合ケース: game.releaseDate=2026 と Steam=2026 → 警告なし', async () => {
+  it('整合ケース: title・releaseDate とも一致 → 警告なし', async () => {
     const article = makeArticle({
       title: '新作『Foo』登場',
       category: 'newRelease',
@@ -691,17 +777,17 @@ describe('validateGameSourceConsistency', () => {
       },
       sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
     });
-    mockStorefront('1087090', {
+    const fetchImpl = makeBilingualFetch('1087090', {
       name: 'Foo',
       release_date: { coming_soon: false, date: '2026年7月4日' },
       developers: ['Daniel Shimmyo'],
     });
 
-    const warnings = await validateGameSourceConsistency(article);
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
     expect(warnings).toHaveLength(0);
   });
 
-  it('developer が全く一致しない場合も high 警告（発売年は一致していても）', async () => {
+  it('developer 不一致でも title+year が一致すれば警告なし（受託開発・部門名ゆれの FP 防止）', async () => {
     const article = makeArticle({
       title: '新作『Bar』登場',
       category: 'newRelease',
@@ -714,19 +800,19 @@ describe('validateGameSourceConsistency', () => {
       },
       sourceUrls: { steam: 'https://store.steampowered.com/app/2222222' },
     });
-    mockStorefront('2222222', {
+    const fetchImpl = makeBilingualFetch('2222222', {
       name: 'Bar',
       release_date: { coming_soon: false, date: '2026年1月1日' },
       developers: ['Daniel Shimmyo'],
     });
 
-    const warnings = await validateGameSourceConsistency(article);
-    const devWarn = warnings.find((w) => w.type === 'game-source-mismatch' && /開発/.test(w.message));
-    expect(devWarn).toBeDefined();
-    expect(devWarn?.severity).toBe('high');
+    // 旧実装は developer 単軸不一致で high を出していたが、
+    // company は弱シグナルであり title+year の一致（same）が優先される。
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(0);
   });
 
-  it('共同開発: Steam の developers に複数社ありいずれかが一致すれば警告しない', async () => {
+  it('共同開発: Steam の developers に複数社ありいずれかが一致しても same → 警告なし', async () => {
     const article = makeArticle({
       title: '新作『Elden Ring』',
       category: 'newRelease',
@@ -739,18 +825,17 @@ describe('validateGameSourceConsistency', () => {
       },
       sourceUrls: { steam: 'https://store.steampowered.com/app/1245620' },
     });
-    // Steam は共同開発を複数返す（先頭は別会社）
-    mockStorefront('1245620', {
+    const fetchImpl = makeBilingualFetch('1245620', {
       name: 'ELDEN RING',
       release_date: { coming_soon: false, date: '2022年2月25日' },
       developers: ['Bandai Namco Studios', 'FromSoftware'],
     });
 
-    const warnings = await validateGameSourceConsistency(article);
-    expect(warnings.filter((w) => /開発/.test(w.message))).toHaveLength(0);
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(0);
   });
 
-  it('coming_soon（未発売）の Steam 側発売年は照合しない（false positive 防止）', async () => {
+  it('coming_soon（未発売）の Steam 側発売年は照合しない（year=unknown → same。false positive 防止）', async () => {
     const article = makeArticle({
       title: '発売予定『Future Game』',
       category: 'newRelease',
@@ -764,14 +849,45 @@ describe('validateGameSourceConsistency', () => {
       sourceUrls: { steam: 'https://store.steampowered.com/app/5555555' },
     });
     // coming_soon=true で raw に年が含まれても照合しない
-    mockStorefront('5555555', {
+    const fetchImpl = makeBilingualFetch('5555555', {
       name: 'Future Game',
       release_date: { coming_soon: true, date: '2027' },
       developers: ['Some Studio'],
     });
 
-    const warnings = await validateGameSourceConsistency(article);
-    expect(warnings.filter((w) => w.type === 'game-source-mismatch')).toHaveLength(0);
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('日本語名しか一致しない場合も title=agree（vol.15 FP-1 と同型の二言語照合）', async () => {
+    const article = makeArticle({
+      title: '『アサシン クリード ブラック フラッグ RE:シンクロ』登場',
+      category: 'newRelease',
+      game: {
+        title: 'アサシン クリード ブラック フラッグ RE:シンクロ',
+        genre: ['Action'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-07-09',
+        developer: 'Ubisoft',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/3751950' },
+    });
+    const fetchImpl = makeBilingualFetch(
+      '3751950',
+      {
+        name: "Assassin's Creed Black Flag Resynced",
+        release_date: { coming_soon: false, date: 'Jul 9, 2026' },
+        developers: ['Ubisoft'],
+      },
+      {
+        name: 'アサシン クリード ブラック フラッグ RE:シンクロ',
+        release_date: { coming_soon: false, date: '2026年7月9日' },
+        developers: ['Ubisoft'],
+      }
+    );
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(0);
   });
 
   it('API 失敗時は警告を出さない（fail-open）', async () => {
@@ -786,9 +902,9 @@ describe('validateGameSourceConsistency', () => {
       },
       sourceUrls: { steam: 'https://store.steampowered.com/app/3333333' },
     });
-    global.fetch = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
 
-    const warnings = await validateGameSourceConsistency(article);
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
     expect(warnings).toHaveLength(0);
   });
 
@@ -800,19 +916,18 @@ describe('validateGameSourceConsistency', () => {
       sourceUrls: { official: 'https://example.com' },
     });
     const fetchMock = vi.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
 
-    const warnings = await validateGameSourceConsistency(article);
+    const warnings = await validateGameSourceConsistency(article, fetchMock as unknown as typeof fetch);
     expect(warnings).toHaveLength(0);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('Steam URL は stores[] からも抽出できる', async () => {
+  it('Steam URL は stores[] からも抽出できる（同名年乖離 → uncertain が出ることで確認）', async () => {
     const article = makeArticle({
       title: '『Old』',
       category: 'indie',
       game: {
-        title: 'Old',
+        title: 'Old Game Title',
         genre: [],
         platforms: [],
         releaseDate: '1989-12-31',
@@ -828,12 +943,12 @@ describe('validateGameSourceConsistency', () => {
         ],
       },
     });
-    mockStorefront('4444444', {
-      name: 'Old',
+    const fetchImpl = makeBilingualFetch('4444444', {
+      name: 'Old Game Title',
       release_date: { coming_soon: false, date: '2026年3月1日' },
     });
 
-    const warnings = await validateGameSourceConsistency(article);
-    expect(warnings.some((w) => w.type === 'game-source-mismatch')).toBe(true);
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings.some((w) => w.type === 'game-source-uncertain')).toBe(true);
   });
 });
