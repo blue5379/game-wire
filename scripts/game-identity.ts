@@ -19,6 +19,8 @@
  */
 
 import { normalizeTitle as normalizeTitleForKey } from './normalize.js';
+import type { SteamEntity } from './steam-entity.js';
+import { companyNamesOverlap } from './steam-utils.js';
 
 /**
  * タイトルを突合用に正規化する（旧 resolvers/match.ts の normalizeTitle）
@@ -275,6 +277,159 @@ export function isSameGameIdentity(
  */
 export function isIdentityConfirmedByAppId(verdict: IdentityVerdict): boolean {
   return verdict.same && verdict.reason === 'steam-app-id';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Steam 実体との照合（Issue #179 PR-1）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * normalizeTitleForMatch に加え NFKC 正規化（全角/半角ゆれ吸収）を行う、
+ * Steam 実体照合専用の正規化関数。
+ *
+ * 既存の normalizeTitleForMatch は resolver 経路で共用されているため変更しない。
+ * ここでは追加ラッパーとして定義する（Issue #179 設計書の指示）。
+ */
+function normalizeTitleForEntityMatch(s: string): string {
+  return normalizeTitleForMatch(s.normalize('NFKC'));
+}
+
+/** 各軸の一致判定結果 */
+export type AxisVerdict = 'agree' | 'disagree' | 'unknown';
+
+/**
+ * matchGameToSteamEntity の返り値。
+ * 独立した3軸の照合結果から「same / different / uncertain」を判定する。
+ */
+export interface EntityMatchResult {
+  /**
+   * same: 同一ゲームと判断（破壊的アクションを取らない）
+   * different: 別作品と判断（破壊的アクション適格）
+   * uncertain: 判断できない（fail-open = 破壊しない）
+   */
+  verdict: 'same' | 'different' | 'uncertain';
+  evidence: { title: AxisVerdict; year: AxisVerdict; company: AxisVerdict };
+  /** ログ・レポート用の人間可読な判定根拠 */
+  detail: string;
+}
+
+/**
+ * ゲームメタと Steam 実体を3軸（title / year / company）で照合し、
+ * 同一性の verdict を返す（Issue #179 PR-1）。
+ *
+ * 判定表（5行で全ケースを尽くす）:
+ * 1. title=agree, year=agree|unknown, company=任意 → same
+ * 2. title=agree, year=disagree, company=任意   → uncertain（同名異作品の可能性あり。原作年/移植年ズレも）
+ * 3. title=disagree, year=disagree, company=任意 → different（強軸2つ不一致）
+ * 4. title=disagree, year=unknown, company=disagree → different
+ * 5. 上記以外すべて                              → uncertain
+ *
+ * 設計方針（フェイル・オープン）:
+ * FP（正規コンテンツの破壊）の被害 > FN（別作品の混入）の被害。
+ * unknown は常に非破壊側（uncertain）に倒す。
+ *
+ * title 軸で titleJa を使う安全性:
+ * PR-A（#173）で titleJa クロス照合をやめたのは loose（部分一致）での誤マージ防止が理由。
+ * ここは prefix 照合かつ「その appId が指す実体との突合」なので誤マージリスクの構造が異なる。
+ */
+export function matchGameToSteamEntity(
+  game: {
+    title: string;
+    titleJa?: string;
+    releaseDate?: string;
+    developer?: string;
+    publisher?: string;
+  },
+  entity: SteamEntity
+): EntityMatchResult {
+  // ── title 軸 ──────────────────────────────────────────────────────────────
+  // game 側 [title, titleJa] × entity 側 [nameEn, nameJa] の全組合せを store プロファイルで照合
+  const gameTitles = [game.title, game.titleJa].filter((t): t is string => Boolean(t));
+  const entityTitles = [entity.nameEn, entity.nameJa].filter((t): t is string => Boolean(t));
+
+  let titleAxis: AxisVerdict;
+  if (entityTitles.length === 0) {
+    titleAxis = 'unknown';
+  } else {
+    const anyMatch = gameTitles.some((gt) =>
+      entityTitles.some((et) => {
+        const normGt = normalizeTitleForEntityMatch(gt);
+        const normEt = normalizeTitleForEntityMatch(et);
+        // 3文字未満の正規化タイトルは prefix 一致を行わない（"Go" が "God of War" に一致する FN 防止）
+        if (!normGt || normGt.length < 3 || !normEt || normEt.length < 3) return false;
+        // store プロファイルの prefix 一致（DLC・エディション違いを許容）
+        return normGt === normEt || normGt.startsWith(normEt) || normEt.startsWith(normGt);
+      })
+    );
+    titleAxis = anyMatch ? 'agree' : 'disagree';
+  }
+
+  // ── year 軸 ──────────────────────────────────────────────────────────────
+  const gameYear = extractYearFromDate(game.releaseDate);
+  const entityYear = extractYearFromDate(entity.releaseDate);
+  let yearAxis: AxisVerdict;
+  if (gameYear === undefined || entityYear === undefined) {
+    yearAxis = 'unknown';
+  } else {
+    // store プロファイルの年差±2（同名異作品は一般に10年以上離れる）
+    yearAxis = Math.abs(gameYear - entityYear) <= 2 ? 'agree' : 'disagree';
+  }
+
+  // ── company 軸（弱シグナル）────────────────────────────────────────────
+  const gameCompanies = [game.developer, game.publisher].filter((c): c is string => Boolean(c));
+  const entityCompanies = [...entity.developers, ...entity.publishers];
+  let companyAxis: AxisVerdict;
+  if (gameCompanies.length === 0 || entityCompanies.length === 0) {
+    companyAxis = 'unknown';
+  } else {
+    // true/false/undefined を独立して追跡する。
+    // undefined は「判定不能（汎用名など）」であり false（別会社）を上書きしてはならない。
+    // true を見つけたら即 agree で確定。
+    // undefined が1件でもあり true が無ければ unknown（fail-open）。
+    // すべて false なら disagree。
+    let seenTrue = false;
+    let seenUndefined = false;
+    outer: for (const gc of gameCompanies) {
+      for (const ec of entityCompanies) {
+        const result = companyNamesOverlap(gc, ec);
+        if (result === true) { seenTrue = true; break outer; }
+        if (result === undefined) { seenUndefined = true; }
+      }
+    }
+    companyAxis = seenTrue ? 'agree' : seenUndefined ? 'unknown' : 'disagree';
+  }
+
+  // ── 判定表 ───────────────────────────────────────────────────────────────
+  const evidence = { title: titleAxis, year: yearAxis, company: companyAxis };
+  const evidenceStr = `title=${titleAxis} year=${yearAxis} company=${companyAxis}`;
+
+  let verdict: EntityMatchResult['verdict'];
+
+  if (titleAxis === 'agree' && yearAxis !== 'disagree') {
+    // 行1: title agree, year agree|unknown → same
+    verdict = 'same';
+  } else if (titleAxis === 'agree' && yearAxis === 'disagree') {
+    // 行2: title agree, year disagree → uncertain（同名異年：原作/移植年ズレの可能性）
+    verdict = 'uncertain';
+  } else if (titleAxis === 'disagree' && yearAxis === 'disagree') {
+    // 行3: title disagree + year disagree → different（強軸2つ不一致）
+    verdict = 'different';
+  } else if (titleAxis === 'disagree' && yearAxis === 'unknown' && companyAxis === 'disagree') {
+    // 行4: title disagree + year unknown + company disagree → different
+    verdict = 'different';
+  } else {
+    // 行5: 上記以外すべて → uncertain（fail-open）
+    verdict = 'uncertain';
+  }
+
+  const detail =
+    `game=[title="${game.title}"${game.titleJa ? ` titleJa="${game.titleJa}"` : ''} year=${gameYear ?? '?'}` +
+    `${game.developer ? ` dev="${game.developer}"` : ''}] ` +
+    `entity=[nameEn="${entity.nameEn ?? ''}" nameJa="${entity.nameJa ?? ''}" year=${entityYear ?? '?'}` +
+    `${entity.developers.length ? ` devs="${entity.developers.join(', ')}"` : ''}] ` +
+    `evidence=(${evidenceStr}) → ${verdict}`;
+
+  return { verdict, evidence, detail };
 }
 
 /**
