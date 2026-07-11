@@ -547,9 +547,13 @@ export async function runCompletenessGate(
           candidate = vetted;
         }
 
-        // 候補も Gate で検証
+        // 候補も Gate で検証。R0 は warn-only なので採用判定から除外する（初回スキャンと同じ方針）。
         const cv = await checkGame(candidate, trace, fetchImpl);
-        if (cv.violations.length === 0) {
+        const cvMutable = cv.violations.filter((vio) => vio.ruleId !== 'R0');
+        if (cv.uncertainIdentity.length > 0) {
+          report.uncertainIdentity!.push(...cv.uncertainIdentity);
+        }
+        if (cvMutable.length === 0) {
           fills.push(candidate);
           usedTitles.add(candidate.normalizedTitle);
           report.replacedGames.push(candidate.title);

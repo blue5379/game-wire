@@ -355,8 +355,8 @@ export function matchGameToSteamEntity(
       entityTitles.some((et) => {
         const normGt = normalizeTitleForEntityMatch(gt);
         const normEt = normalizeTitleForEntityMatch(et);
-        // 3文字未満の正規化タイトルは prefix 一致を行わない（"Go" が "God of War" に一致する FN 防止）
-        if (!normGt || normGt.length < 3 || !normEt || normEt.length < 3) return false;
+        // 3文字以下の正規化タイトルは prefix 一致を行わない（"God" が "God of War" に一致する FN 防止）
+        if (!normGt || normGt.length <= 3 || !normEt || normEt.length <= 3) return false;
         // store プロファイルの prefix 一致（DLC・エディション違いを許容）
         return normGt === normEt || normGt.startsWith(normEt) || normEt.startsWith(normGt);
       })

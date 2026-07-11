@@ -71,8 +71,7 @@ export async function fetchSteamEntity(
     fetchAppDetails(appId, 'japanese', fetchImpl),
   ]);
 
-  // 両方失敗 → fail-open。一時的なネットワーク障害で永続キャッシュされることを避けるため、
-  // 失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
+  // 両方失敗 → fail-open。失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
   if (!enData && !jaData) {
     return undefined;
   }
@@ -95,7 +94,12 @@ export async function fetchSteamEntity(
     publishers: (base.publishers ?? []).filter((p): p is string => typeof p === 'string' && p.trim().length > 0),
   };
 
-  cache.set(appId, entity);
+  // 片言語失敗（nameEn/nameJa が undefined）の場合はキャッシュしない。
+  // 一時的なネットワーク障害による部分的な結果が固定されると、
+  // 日本語 title のゲームが title 軸で常に disagree になる可能性があるため。
+  if (entity.nameEn !== undefined && entity.nameJa !== undefined) {
+    cache.set(appId, entity);
+  }
   return entity;
 }
 

@@ -1156,8 +1156,14 @@ async function main(): Promise<void> {
     },
     {
       newReleases: vetNewReleaseCandidate,
-      // インディーの vetting は youtubePopularitySorted を必要とするためクロージャで渡す
-      indies: (g) => vetIndieCandidate(g, { youtubePopularitySorted: selectedGames.indieReserves }),
+      // インディーの vetting は youtubePopularitySorted を必要とするためクロージャで渡す。
+      // indieReserves は indieRanked 順（スコア降順）であり youtubePopularity 降順ではないため、
+      // percentile 計算用にここでソートして渡す。
+      indies: (g) => vetIndieCandidate(g, {
+        youtubePopularitySorted: [...selectedGames.indieReserves].sort(
+          (a, b) => (b.youtubePopularity ?? 0) - (a.youtubePopularity ?? 0)
+        ),
+      }),
     }
   );
   console.log(
