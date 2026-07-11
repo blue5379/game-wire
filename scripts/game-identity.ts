@@ -355,7 +355,8 @@ export function matchGameToSteamEntity(
       entityTitles.some((et) => {
         const normGt = normalizeTitleForEntityMatch(gt);
         const normEt = normalizeTitleForEntityMatch(et);
-        if (!normGt || !normEt) return false;
+        // 3文字未満の正規化タイトルは prefix 一致を行わない（"Go" が "God of War" に一致する FN 防止）
+        if (!normGt || normGt.length < 3 || !normEt || normEt.length < 3) return false;
         // store プロファイルの prefix 一致（DLC・エディション違いを許容）
         return normGt === normEt || normGt.startsWith(normEt) || normEt.startsWith(normGt);
       })
@@ -381,25 +382,21 @@ export function matchGameToSteamEntity(
   if (gameCompanies.length === 0 || entityCompanies.length === 0) {
     companyAxis = 'unknown';
   } else {
-    let anyOverlap: boolean | undefined = false;
+    // true/false/undefined を独立して追跡する。
+    // undefined は「判定不能（汎用名など）」であり false（別会社）を上書きしてはならない。
+    // true を見つけたら即 agree で確定。
+    // undefined が1件でもあり true が無ければ unknown（fail-open）。
+    // すべて false なら disagree。
+    let seenTrue = false;
+    let seenUndefined = false;
     outer: for (const gc of gameCompanies) {
       for (const ec of entityCompanies) {
         const result = companyNamesOverlap(gc, ec);
-        if (result === undefined) {
-          anyOverlap = undefined; // 判定不能が1件でもあれば unknown に倒す
-          continue;
-        }
-        if (result) {
-          anyOverlap = true;
-          break outer;
-        }
+        if (result === true) { seenTrue = true; break outer; }
+        if (result === undefined) { seenUndefined = true; }
       }
     }
-    if (anyOverlap === undefined) {
-      companyAxis = 'unknown';
-    } else {
-      companyAxis = anyOverlap ? 'agree' : 'disagree';
-    }
+    companyAxis = seenTrue ? 'agree' : seenUndefined ? 'unknown' : 'disagree';
   }
 
   // ── 判定表 ───────────────────────────────────────────────────────────────

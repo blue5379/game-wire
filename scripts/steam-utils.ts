@@ -96,8 +96,8 @@ export function companyNamesOverlap(a: string, b: string): boolean | undefined {
   const joinA = tokA.join('');
   const joinB = tokB.join('');
 
-  // 連結文字列の相互包含
-  if (joinA.includes(joinB) || joinB.includes(joinA)) return true;
+  // 連結文字列の相互包含（3文字未満の短い連結は単一短略称の偶然一致を避けるため除外）
+  if (joinA.length >= 3 && joinB.length >= 3 && (joinA.includes(joinB) || joinB.includes(joinA))) return true;
 
   // 共通トークン（長さ3以上 or CJK2以上）が1つ以上
   const setB = new Set(tokB);

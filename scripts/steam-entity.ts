@@ -71,17 +71,20 @@ export async function fetchSteamEntity(
     fetchAppDetails(appId, 'japanese', fetchImpl),
   ]);
 
-  // 両方失敗 → fail-open（undefined をキャッシュして再試行しない）
+  // 両方失敗 → fail-open。一時的なネットワーク障害で永続キャッシュされることを避けるため、
+  // 失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
   if (!enData && !jaData) {
-    cache.set(appId, undefined);
     return undefined;
   }
 
   // developers / publishers は英語版を優先（日本語版は名前が同じ場合が多いが念のため）
   const base = enData ?? jaData!;
 
-  // coming_soon のとき発売日を undefined にする（照合しない）
-  const releaseDate = base.release_date?.coming_soon ? undefined : base.release_date?.date;
+  // どちらかの言語データで coming_soon=true なら発売日は信頼しない（照合しない）。
+  // 英語版のみで判断すると、英語が coming_soon=true でも日本語版が具体日を持つケースで
+  // 誤って yearAxis=unknown に倒す可能性があるため、両方確認する。
+  const comingSoon = (enData?.release_date?.coming_soon ?? false) || (jaData?.release_date?.coming_soon ?? false);
+  const releaseDate = comingSoon ? undefined : base.release_date?.date;
 
   const entity: SteamEntity = {
     appId,

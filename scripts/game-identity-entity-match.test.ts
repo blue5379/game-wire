@@ -52,7 +52,7 @@ describe('matchGameToSteamEntity — FP防止（同一ゲームは same|uncertai
       })
     );
     // title 軸: JA title vs EN entity name → disagree。year は agree。→ uncertain
-    expect(result.verdict).not.toBe('different');
+    expect(result.verdict).toBe('uncertain');
   });
 
   it('vol.15 FP-1 GTA V Legacy: JA title × 二言語 entity, 年差2（許容内）→ same', () => {
