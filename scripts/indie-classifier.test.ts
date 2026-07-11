@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeDeveloperName, isLargeStudio, isIndieGame } from './indie-classifier';
+import { normalizeDeveloperName, isLargeStudio, isIndieGame, pickNewReleaseLabelCompany } from './indie-classifier';
 import type { GameData } from './types';
 
 function makeGame(overrides: Partial<GameData>): GameData {
@@ -458,5 +458,27 @@ describe('isIndieGame', () => {
   it('Halo Infinite (343 Industries) is NOT indie', () => {
     const game = makeGame({ title: 'Halo Infinite', developer: '343 Industries' });
     expect(isIndieGame(game)).toMatchObject({ ok: false });
+  });
+});
+
+describe('pickNewReleaseLabelCompany（Issue #180: 大手新作枠のラベル用企業名）', () => {
+  it('developer が大手 → developer の canonical 名を返す', () => {
+    expect(pickNewReleaseLabelCompany('nintendo', undefined)).toBe('Nintendo EPD');
+  });
+
+  it('受託開発（developer 小規模・publisher 大手）→ publisher の canonical 名を返す', () => {
+    // Echoes of Aincrad 型: ラベルは「バンダイナムコ側」を使い、
+    // game.developer 自体は受託スタジオ名（事実）のまま保持される前提
+    const label = pickNewReleaseLabelCompany('Game Studio Inc.', 'Bandai Namco Entertainment Inc.');
+    expect(label).toBeDefined();
+    expect(isLargeStudio(label).hit).toBe(true);
+  });
+
+  it('どちらも大手でない → developer をそのまま返す（フォールバック）', () => {
+    expect(pickNewReleaseLabelCompany('Small Studio', 'Small Publisher')).toBe('Small Studio');
+  });
+
+  it('developer 未定義・publisher も大手でない → undefined（呼び出し側が「注目新作」にする）', () => {
+    expect(pickNewReleaseLabelCompany(undefined, 'Small Publisher')).toBeUndefined();
   });
 });

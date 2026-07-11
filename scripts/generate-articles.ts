@@ -40,6 +40,7 @@ import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { validateArticle, buildFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
+import { pickNewReleaseLabelCompany } from './indie-classifier.js';
 import { normalizeTitle } from './normalize.js';
 
 // 開発モード判定
@@ -352,7 +353,11 @@ async function generateNewReleaseArticle(
     })
   );
 
-  const newReleaseCategoryLabel = game.developer ? `${game.developer}の新作` : '注目新作';
+  // 「大手企業の新作」枠のラベルは大手側の企業名を使う。受託開発タイトル
+  // （developer=受託スタジオ、publisher=大手）で developer をそのまま使うと
+  // 「Game Studio Inc.の新作」のように枠の趣旨と合わないラベルになる（Issue #180）。
+  const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
+  const newReleaseCategoryLabel = labelCompany ? `${labelCompany}の新作` : '注目新作';
   const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa);
   const summary = await generateSummary(content);
 
