@@ -364,6 +364,25 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
+  // Issue #180: publisher が大手の場合は indie 枠から除外
+  it('finalize 後に publisher が Bandai Namco（Echoes of Aincrad 相当）→ rejected になる', async () => {
+    const candidate = makeGame({ title: 'Echoes of Aincrad', normalizedTitle: 'echoes of aincrad' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Game Studio Inc.',  // 受託開発スタジオ（大手リストに載っていない）
+      publisher: 'Bandai Namco Entertainment Inc.',
+      coverImage: 'https://example.com/cover.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-adopted');
+  });
+
   it('finalize 後に developer が小規模スタジオならそのまま採用される', async () => {
     const candidate = makeGame({ title: 'Hollow Knight', normalizedTitle: 'hollow knight' });
     const finishedGame = {

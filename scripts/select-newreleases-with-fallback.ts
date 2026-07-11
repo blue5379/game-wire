@@ -54,20 +54,27 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
 
   if (!finalizeResult.ok) return null;
 
-  const studioResult = isLargeStudio(finalizeResult.game.developer);
-  if (!studioResult.hit) {
+  // developer または publisher のいずれかが大手なら通過とみなす。
+  // 受託開発の大手 IP タイトル（developer=受託スタジオ、publisher=大手）をカバーする。
+  const devResult = isLargeStudio(finalizeResult.game.developer);
+  const pubResult = isLargeStudio(finalizeResult.game.publisher);
+  if (!devResult.hit && !pubResult.hit) {
     console.log(
       JSON.stringify({
         scope: 'vet-new-release-candidate',
         title: game.title,
         step: 'large-studio-gate',
-        reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}")`,
+        reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}", publisher="${finalizeResult.game.publisher ?? ''}")`,
       })
     );
     return null;
   }
 
-  return { ...finalizeResult.game, developer: studioResult.matched };
+  // developer が大手なら canonical 名で上書き、受託開発なら developer をそのままにする。
+  const finalDeveloper = devResult.hit
+    ? devResult.matched
+    : finalizeResult.game.developer;
+  return { ...finalizeResult.game, developer: finalDeveloper };
 }
 
 /**
