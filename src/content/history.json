@@ -567,48 +567,6 @@
       "category": "feature",
       "issueNumber": 14,
       "publishDate": "2026-07-04"
-    },
-    {
-      "normalizedTitle": "project trash",
-      "title": "Project Trash",
-      "category": "newRelease",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
-    },
-    {
-      "normalizedTitle": "palworld / パルワールド",
-      "title": "Palworld / パルワールド",
-      "category": "indie",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
-    },
-    {
-      "normalizedTitle": "echoes of aincrad",
-      "title": "Echoes of Aincrad",
-      "category": "indie",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
-    },
-    {
-      "normalizedTitle": "プレートアップ！",
-      "title": "プレートアップ！",
-      "category": "feature",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
-    },
-    {
-      "normalizedTitle": "battle chef brigade",
-      "title": "Battle Chef Brigade",
-      "category": "feature",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
-    },
-    {
-      "normalizedTitle": "venba",
-      "title": "Venba",
-      "category": "feature",
-      "issueNumber": 15,
-      "publishDate": "2026-07-10"
     }
   ]
 }
