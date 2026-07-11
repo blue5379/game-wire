@@ -988,7 +988,13 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
       normalizedTitle: 'zombie-game',
       sourceUrls: { stores: [] },
     });
-    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const healthyIndie = makeGame({
+      title: 'Healthy Indie',
+      normalizedTitle: 'healthy-indie',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/i.jpg',
+    });
+    const selected = makeSelectedGames({ newReleases: [violatingGame], indies: [healthyIndie] });
     const report = await runCompletenessGate(selected, undefined, [], 'fail');
 
     // Issue #179: 違反ゲームは除去済みで破壊は残っていないため、補充不能でも号は止めない。
@@ -997,6 +1003,34 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
     expect(selected.newReleases).toHaveLength(0);
     expect(report.replacementShortfall).toContain('newReleases');
     expect(report.unresolvedMutableViolations).toBe(false);
+  });
+
+  it('全滅ガード: shortfall の結果 newReleases と indies が両方空になったら unresolved=true', async () => {
+    mockHeadOk.mockResolvedValue(true);
+
+    // 両スロットとも R1 違反（replaceable）で、reserves も無い → 全除去・補充ゼロ
+    const violatingRelease = makeGame({
+      title: 'Broken Release',
+      normalizedTitle: 'broken-release',
+      sourceUrls: { stores: [] },
+    });
+    const violatingIndie = makeGame({
+      title: 'Broken Indie',
+      normalizedTitle: 'broken-indie',
+      sourceUrls: { stores: [] },
+    });
+    const selected = makeSelectedGames({
+      newReleases: [violatingRelease],
+      indies: [violatingIndie],
+    });
+    const report = await runCompletenessGate(selected, undefined, [], 'fail');
+
+    // 全スロット全滅はデータパイプライン全体の障害シグナル。
+    // 新作・インディー0本の号を発行せず fail に倒す（部分的な shortfall とは区別する）。
+    expect(selected.newReleases).toHaveLength(0);
+    expect(selected.indies).toHaveLength(0);
+    expect(report.replacementShortfall.length).toBeGreaterThan(0);
+    expect(report.unresolvedMutableViolations).toBe(true);
   });
 
   it('R2 違反（replaceable=false）は mode=fail で差し替えず即 unresolved=true', async () => {
@@ -1116,8 +1150,14 @@ describe('runCompletenessGate: slotGates による差し替え候補の検証', 
       coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
     });
 
+    const healthyIndie = makeGame({
+      title: 'Healthy Indie',
+      normalizedTitle: 'healthy-indie',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/i.jpg',
+    });
     const slotGate = vi.fn().mockResolvedValue(null); // vet 不通過
-    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const selected = makeSelectedGames({ newReleases: [violatingGame], indies: [healthyIndie] });
     const report = await runCompletenessGate(
       selected,
       undefined,
