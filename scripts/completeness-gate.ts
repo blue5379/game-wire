@@ -585,10 +585,16 @@ export async function runCompletenessGate(
 
   // 差し替え後の未解消違反を判定する。
   // - unreplaceable な違反ゲーム（R2/R2b 系）は selectedGames に残っているので fail 対象
-  // - 補充不能（shortfall）は fail 対象にしない: 違反ゲームは除去済みで破壊は残っておらず、
+  // - 補充不能（shortfall）は原則 fail 対象にしない: 違反ゲームは除去済みで破壊は残っておらず、
   //   「枠を埋めるために不適格なゲームを載せる」ことも「号全体を止める」こともせず、
   //   少ない記事数で発行する（Issue #179 の設計原則。選定時の「2件未満で発行」と同じ扱い）
-  report.unresolvedMutableViolations = unreplaceableTitles.size > 0;
+  // - 例外（全滅ガード）: shortfall の結果 newReleases と indies が両方とも空になった場合のみ
+  //   fail に倒す。全スロット全滅はデータパイプライン全体の障害シグナルであり、
+  //   新作・インディー0本の号を発行するより停止して調査する方が被害が小さい。
+  const allMutableSlotsEmpty =
+    selectedGames.newReleases.length === 0 && selectedGames.indies.length === 0;
+  report.unresolvedMutableViolations =
+    unreplaceableTitles.size > 0 || (replacementShortfall.size > 0 && allMutableSlotsEmpty);
 
   return report;
 }
