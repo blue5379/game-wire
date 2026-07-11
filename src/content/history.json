@@ -567,6 +567,69 @@
       "category": "feature",
       "issueNumber": 14,
       "publishDate": "2026-07-04"
+    },
+    {
+      "normalizedTitle": "アサシン クリード ブラック フラッグ re シンクロ",
+      "title": "アサシン クリード ブラック フラッグ RE:シンクロ",
+      "category": "newRelease",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "palworld / パルワールド",
+      "title": "Palworld / パルワールド",
+      "category": "indie",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "granblue fantasy relink endless ragnarok アップグレードキット（standard edition）",
+      "title": "GRANBLUE FANTASY: Relink - Endless Ragnarok アップグレードキット（Standard Edition）",
+      "category": "indie",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "resident evil requiem",
+      "title": "Resident Evil Requiem",
+      "category": "classic",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "バイオハザード7 レジデント イービル",
+      "title": "バイオハザード7 レジデント イービル",
+      "category": "feature",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "outlast",
+      "title": "Outlast",
+      "category": "feature",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "amnesia the dark descent",
+      "title": "Amnesia: The Dark Descent",
+      "category": "feature",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "soma",
+      "title": "Soma",
+      "category": "feature",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "visage",
+      "title": "Visage",
+      "category": "feature",
+      "issueNumber": 15,
+      "publishDate": "2026-07-11"
     }
   ]
 }
