@@ -20,8 +20,8 @@ import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { isIndieGame } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
-import { selectIndieGamesWithFallback } from './select-indie-with-fallback.js';
-import { selectNewReleasesWithFallback, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
+import { selectIndieGamesWithFallback, vetIndieCandidate } from './select-indie-with-fallback.js';
+import { selectNewReleasesWithFallback, vetNewReleaseCandidate, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
 import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
 import { runCompletenessGate, getGateMode } from './completeness-gate.js';
@@ -1145,10 +1145,21 @@ async function main(): Promise<void> {
     ...selectedGames.newReleasesReserves,
     ...selectedGames.indieReserves,
   ];
-  const gateReport = await runCompletenessGate(selectedGames, resolverTrace, reservePool, gateMode, {
-    newReleases: selectedGames.newReleasesReserves,
-    indies: selectedGames.indieReserves,
-  });
+  const gateReport = await runCompletenessGate(
+    selectedGames,
+    resolverTrace,
+    reservePool,
+    gateMode,
+    {
+      newReleases: selectedGames.newReleasesReserves,
+      indies: selectedGames.indieReserves,
+    },
+    {
+      newReleases: vetNewReleaseCandidate,
+      // インディーの vetting は youtubePopularitySorted を必要とするためクロージャで渡す
+      indies: (g) => vetIndieCandidate(g, { youtubePopularitySorted: selectedGames.indieReserves }),
+    }
+  );
   console.log(
     `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
     `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}`
