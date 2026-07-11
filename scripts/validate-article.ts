@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
 import { normalizeCompanyName } from './steam-utils.js';
 import { MATCH_PROFILES, extractYearFromDate } from './game-identity.js';
+import { getReleaseStatus } from './bedrock-client.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -718,11 +719,18 @@ export async function validateGameSourceConsistencyForArticles(
   return warnings;
 }
 
+// 発売済みタイトルの見出しに使うべきでない未発売ニュアンスのパターン。
+// - 発表(?!会): 「発表会」(launch-event report) は発売済みゲームの正当な見出し語のため除外
+// - 待望の新作: 発売日当日の「待望の新作が遂に発売！」等にも使われる回顧的表現のため除外
+// - 発売前: 「発売前情報まとめ」等の未発売表現を追加
+const UNRELEASED_TITLE_PATTERNS = /発表(?!会)|次回作|近日|もうすぐ|予告|リリース予定|発売予定|発売前/;
+
 /**
  * 発売済みタイトルの記事見出しに未発売表現が使われていないかを検証
  *
  * releaseDate <= publishDate（発売済み）の newRelease/indie 記事のタイトルに
- * 「発表|次回作|近日|もうすぐ|予告」等の未発売ニュアンスが含まれる場合に medium 警告を出す。
+ * 未発売ニュアンスの表現が含まれる場合に high 警告を出す。
+ * high にすることで VALIDATION_AUTO_REGENERATE=true 時の自動修正対象になる。
  * publishDate が渡されていない場合は検証をスキップする（後方互換）。
  */
 export function validateReleasedTitleExpression(
@@ -737,20 +745,15 @@ export function validateReleasedTitleExpression(
   const releaseDate = article.game?.releaseDate;
   if (!releaseDate) return warnings;
 
-  const releaseTime = new Date(releaseDate).getTime();
-  if (isNaN(releaseTime)) return warnings;
+  if (getReleaseStatus(releaseDate, publishDate) !== '発売済み') return warnings;
 
-  // 発売予定の場合はチェック不要
-  if (releaseTime > publishDate.getTime()) return warnings;
+  if (!UNRELEASED_TITLE_PATTERNS.test(article.title)) return warnings;
 
-  const UNRELEASED_PATTERNS = /発表|次回作|近日|もうすぐ|予告|待望の新作|リリース予定|発売予定/;
-  if (!UNRELEASED_PATTERNS.test(article.title)) return warnings;
-
-  const matched = article.title.match(UNRELEASED_PATTERNS);
+  const matched = article.title.match(UNRELEASED_TITLE_PATTERNS);
   warnings.push({
     articleTitle: article.title,
     category: article.category,
-    severity: 'medium',
+    severity: 'high',
     type: 'released-title-expression',
     message:
       `発売済みタイトル（releaseDate=${releaseDate}）の記事見出しに未発売ニュアンスの表現「${matched?.[0]}」が含まれています。` +

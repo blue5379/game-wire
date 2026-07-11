@@ -93,6 +93,19 @@ export async function invokeClaudeModel(
 }
 
 /**
+ * 発売日と発行日を比較して発売状態ラベルを返す。
+ * 発売済みなら '発売済み'、発売予定なら '発売予定'、判定不能なら null。
+ */
+export function getReleaseStatus(
+  releaseDate: string,
+  publishDate: Date
+): '発売済み' | '発売予定' | null {
+  const releaseTime = new Date(releaseDate).getTime();
+  if (isNaN(releaseTime)) return null;
+  return releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
+}
+
+/**
  * プロンプトテンプレート管理
  */
 export const PromptTemplates = {
@@ -415,11 +428,8 @@ export function buildUserMessage(
   if (gameInfo.releaseDate) {
     let releaseDateLabel = gameInfo.releaseDate;
     if (publishDate) {
-      const releaseTime = new Date(gameInfo.releaseDate).getTime();
-      if (!isNaN(releaseTime)) {
-        const status = releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
-        releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
-      }
+      const status = getReleaseStatus(gameInfo.releaseDate, publishDate);
+      if (status) releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
     }
     lines.push(`発売日: ${releaseDateLabel}`);
   }

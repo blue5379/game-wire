@@ -25,6 +25,7 @@ import {
   proposeThemeGamesFromKnowledge,
   parseArticleResponse,
   parseTitleResponse,
+  getReleaseStatus,
 } from './bedrock-client.js';
 import type { FeatureSelectedGame, FeatureCandidateBase, FeatureCandidateWithSearch } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
@@ -168,15 +169,8 @@ async function generateTitle(
     ? `タイトル（日本語、記事内で優先使用）: ${titleJa}\nタイトル（英語/国際名、変更禁止）: ${gameTitle}`
     : `タイトル（英語/国際名、変更禁止）: ${gameTitle}`;
 
-  // 発売状態を判定してプロンプトに付与する
-  let releaseStatusNote = '';
-  if (releaseDate && publishDate) {
-    const releaseTime = new Date(releaseDate).getTime();
-    if (!isNaN(releaseTime)) {
-      const status = releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
-      releaseStatusNote = `\n発売状態: ${status}`;
-    }
-  }
+  const _releaseStatus = releaseDate && publishDate ? getReleaseStatus(releaseDate, publishDate) : null;
+  const releaseStatusNote = _releaseStatus ? `\n発売状態: ${_releaseStatus}` : '';
 
   const userMessage = `カテゴリ: ${category}
 ${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${countNote}

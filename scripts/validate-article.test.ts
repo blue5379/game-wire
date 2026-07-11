@@ -842,7 +842,7 @@ describe('validateGameSourceConsistency', () => {
 describe('validateReleasedTitleExpression', () => {
   const publishDate = new Date('2026-07-10');
 
-  it('発売済みタイトルの見出しに「発表」が含まれる場合に medium 警告を出す（Issue #181 再現）', () => {
+  it('発売済みタイトルの見出しに「発表」が含まれる場合に high 警告を出す（Issue #181 再現）', () => {
     const article = makeArticle({
       title: "Trashbubu Studio新作『Project Trash』発表、注目のインディー開発スタジオが放つ次回作",
       category: 'newRelease',
@@ -857,12 +857,12 @@ describe('validateReleasedTitleExpression', () => {
     const warnings = validateReleasedTitleExpression(article, publishDate);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].type).toBe('released-title-expression');
-    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].severity).toBe('high');
   });
 
-  it('発売済みタイトルの見出しに「次回作」が含まれる場合に medium 警告を出す', () => {
+  it('発売済みタイトルの見出しに「次回作」が含まれる場合に high 警告を出す', () => {
     const article = makeArticle({
-      title: "名スタジオ待望の次回作『Awesome Game』近日登場",
+      title: "名スタジオの次回作『Awesome Game』近日登場",
       category: 'indie',
       game: {
         title: 'Awesome Game',
@@ -874,7 +874,40 @@ describe('validateReleasedTitleExpression', () => {
 
     const warnings = validateReleasedTitleExpression(article, publishDate);
     expect(warnings).toHaveLength(1);
+    expect(warnings[0].severity).toBe('high');
+  });
+
+  it('発売済みタイトルの見出しに「発売前」が含まれる場合に high 警告を出す', () => {
+    const article = makeArticle({
+      title: "発売前情報まとめ『Project Trash』の注目ポイント",
+      category: 'newRelease',
+      game: {
+        title: 'Project Trash',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-07-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(1);
     expect(warnings[0].type).toBe('released-title-expression');
+  });
+
+  it('「発表会」は発売済みゲームの正当な見出し語のため警告しない（false-positive 防止）', () => {
+    const article = makeArticle({
+      title: "『Game X』発表会レポート：開発陣が語るゲームデザイン",
+      category: 'newRelease',
+      game: {
+        title: 'Game X',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-06-01',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
   });
 
   it('発売済みタイトルの見出しが適切な表現なら警告しない', () => {
