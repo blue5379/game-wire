@@ -190,6 +190,27 @@ export function isLargeStudio(developer: string | undefined): LargeStudioResult 
   return { hit: false };
 }
 
+/**
+ * 「大手企業の新作」枠の記事カテゴリラベルに使う企業名を選ぶ（Issue #180）。
+ *
+ * developer が大手ならその canonical 名、受託開発（developer は小規模だが
+ * publisher が大手）なら publisher の canonical 名を返す。
+ * どちらも大手でなければ developer をそのまま返す（呼び出し側のフォールバック用）。
+ *
+ * game.developer 自体は事実（受託スタジオ名）を保持する方針のため、
+ * 読者向けラベル「◯◯の新作」の◯◯だけをここで大手側に寄せる。
+ */
+export function pickNewReleaseLabelCompany(
+  developer: string | undefined,
+  publisher: string | undefined
+): string | undefined {
+  const dev = isLargeStudio(developer);
+  if (dev.hit) return dev.matched;
+  const pub = isLargeStudio(publisher);
+  if (pub.hit) return pub.matched;
+  return developer;
+}
+
 type IndieResult =
   | { ok: true }
   | { ok: false; reason: 'no-developer' | 'large-studio'; matched?: string };

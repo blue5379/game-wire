@@ -15,8 +15,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
-import { normalizeCompanyName } from './steam-utils.js';
-import { MATCH_PROFILES, extractYearFromDate } from './game-identity.js';
+import { matchGameToSteamEntity } from './game-identity.js';
+import { fetchSteamEntity } from './steam-entity.js';
 import { getReleaseStatus } from './bedrock-client.js';
 
 export type Severity = 'high' | 'medium' | 'low';
@@ -556,13 +556,6 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
   return warnings;
 }
 
-// game メタと Steam 実体の発売年乖離の許容幅（年）。
-// 早期アクセス→正式版・地域別リリースのズレを吸収しつつ、同名異作品（通常10年以上離れる）は弾く。
-// 集約時の同一性判定（game-identity.ts の aggregation プロファイル）と同じ値を参照する。
-// 揃えないと、集約段で「同一ゲーム」として通したメタを出力段で別ゲーム扱いして
-// build を落とす false positive が起きうる（Issue #166 コードレビュー指摘）。
-const GAME_SOURCE_YEAR_TOLERANCE = MATCH_PROFILES.aggregation.yearTolerance;
-
 // Steam Storefront API 呼び出し間のディレイ（ミリ秒）。レート制限対策。
 const STOREFRONT_REQUEST_DELAY_MS = 300;
 
@@ -586,20 +579,32 @@ function extractSteamAppIdFromArticle(article: GeneratedArticle): number | undef
 }
 
 /**
- * Issue #166 ③: 記事の `game` ブロックと Steam URL が指す実体の内的整合性を検証する（保険）。
+ * Issue #166 ③ / #179 PR-3: 記事の `game` ブロックと Steam URL が指す実体の同一性を検証する。
  *
- * Steam appId を持つ記事（newRelease / indie）について、Steam Storefront API から
- * 実体の name / release_date / developers を取得し、記事の game メタと突き合わせる。
- * 発売年が大きく乖離、または開発元が全く一致しない場合は high 警告を出す。
+ * Steam appId を持つ記事について、共有の fetchSteamEntity で実体を二言語取得し、
+ * matchGameToSteamEntity（title / year / company の3軸照合）で判定する。
+ *
+ * - verdict=different  → severity=high `game-source-mismatch`
+ *   （build-issue で hidden / 2件以上なら号停止。現行ポリシー踏襲）
+ * - verdict=uncertain  → severity=medium `game-source-uncertain`
+ *   （hidden にしない・fail 閾値にも算入されない。レポートで evidence を可視化）
+ * - verdict=same       → 警告なし
+ *
+ * 旧実装は「年単軸」「developer 単軸」の独立チェックで、タイトル完全一致という
+ * 最強の反証を見ずに hidden を確定させる FP があった（vol.15 FP-2:
+ * "Capcom Development Division 1" vs "CAPCOM Co., Ltd." → RE Requiem が hidden）。
+ * Issue #179 の設計原則に基づき、破壊的アクションは独立した複数軸の不一致
+ * （verdict=different）が揃った場合のみに限定する。
  *
  * 設計方針:
  * - **非同期・別関数**として実装し、build-issue の発行直前チェックだけに組み込む
  *   （同期 validateArticle の呼び出し元・再生成ループの同期性を壊さないため）。
- * - **fail-open**: Storefront API 不達・失敗時は警告を出さない（誤って build を落とさない）。
- *   「矛盾を検出できたときだけ」high を立てる。
+ * - **fail-open**: Storefront API 不達・実体取得失敗時は警告を出さない
+ *   （誤って build を落とさない）。
  */
 export async function validateGameSourceConsistency(
-  article: GeneratedArticle
+  article: GeneratedArticle,
+  fetchImpl: typeof fetch = fetch
 ): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
 
@@ -611,88 +616,48 @@ export async function validateGameSourceConsistency(
   const appId = extractSteamAppIdFromArticle(article);
   if (appId === undefined) return warnings;
 
-  // Steam Storefront API から実体を取得（失敗時は fail-open）
-  let data: { name?: string; release_date?: { date?: string; coming_soon?: boolean }; developers?: string[] } | undefined;
-  try {
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=japanese`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = (await res.json()) as Record<string, { success?: boolean; data?: typeof data }>;
-    const entry = json[String(appId)];
-    if (!entry?.success || !entry.data) {
-      // 実体が取れない（appId 無効等）→ 検証保留（fail-open）
-      return warnings;
-    }
-    data = entry.data;
-  } catch (err) {
-    console.warn(
-      JSON.stringify({
-        scope: 'validate-game-source-consistency',
-        title: article.title,
-        step: 'storefront-api',
-        reason: String(err),
-      })
-    );
-    return warnings;
-  }
+  // Steam 実体を二言語取得（失敗時は fail-open）
+  const entity = await fetchSteamEntity(appId, fetchImpl);
+  if (!entity) return warnings;
 
-  // 発売年の乖離チェック（両方判明・coming_soon でない場合のみ）。
-  // coming_soon（未発売・発売日未確定）の場合は Steam 側の年を信頼せず照合をスキップする
-  // （raw 文字列に年が含まれても fallback で拾わない。Issue #166 コードレビュー指摘）。
-  const gameYear = extractYearFromDate(game.releaseDate);
-  const steamYear = data.release_date?.coming_soon
-    ? undefined
-    : extractYearFromDate(data.release_date?.date);
-  if (
-    gameYear !== undefined &&
-    steamYear !== undefined &&
-    Math.abs(gameYear - steamYear) > GAME_SOURCE_YEAR_TOLERANCE
-  ) {
+  const matchResult = matchGameToSteamEntity(
+    {
+      title: game.title,
+      titleJa: game.titleJa,
+      releaseDate: game.releaseDate,
+      developer: game.developer,
+      publisher: game.publisher,
+    },
+    entity
+  );
+
+  const { title: tAxis, year: yAxis, company: cAxis } = matchResult.evidence;
+
+  if (matchResult.verdict === 'different') {
     warnings.push({
       articleTitle: article.title,
       category: article.category,
       severity: 'high',
       type: 'game-source-mismatch',
       message:
-        `記事の game メタの発売年（${gameYear}）と、Steam(appId=${appId})の実体の発売年（${steamYear}）が` +
-        `${GAME_SOURCE_YEAR_TOLERANCE}年を超えて乖離しています。` +
-        `同名異作品のメタデータが混入している可能性があります。`,
-      evidence: `game=${game.releaseDate ?? '不明'} / steam=${data.release_date?.date ?? '不明'}`,
+        `記事の game メタ「${game.title}」と、Steam(appId=${appId})の実体` +
+        `「${entity.nameEn ?? entity.nameJa ?? ''}」が別作品と判定されました` +
+        `（title=${tAxis} year=${yAxis} company=${cAxis}）。` +
+        `別ゲームのメタデータが混入している可能性があります。`,
+      evidence: matchResult.detail,
     });
-  }
-
-  // 開発元の一致チェック（両方判明している場合のみ）。
-  // Steam は共同開発を複数 developer で返すため、いずれか1社と部分一致すれば整合とみなす
-  // （developers[0] だけを見ると co-development で false positive が出る。Issue #166 コードレビュー指摘）。
-  const steamDevelopers = (data.developers ?? []).filter(
-    (d): d is string => typeof d === 'string' && d.trim().length > 0
-  );
-  if (game.developer && steamDevelopers.length > 0) {
-    const normGame = normalizeCompanyName(game.developer);
-    // 双方が空でなく、部分一致すらしない場合のみ mismatch とみなす（表記ゆれは吸収）
-    const overlaps =
-      normGame.length > 0 &&
-      steamDevelopers.some((sd) => {
-        const normSteam = normalizeCompanyName(sd);
-        return (
-          normSteam.length > 0 &&
-          (normGame === normSteam ||
-            normGame.includes(normSteam) ||
-            normSteam.includes(normGame))
-        );
-      });
-    if (!overlaps) {
-      warnings.push({
-        articleTitle: article.title,
-        category: article.category,
-        severity: 'high',
-        type: 'game-source-mismatch',
-        message:
-          `記事の game メタの開発元（"${game.developer}"）と、Steam(appId=${appId})の実体の開発元` +
-          `（"${steamDevelopers.join(', ')}"）が全く一致しません。同名異作品のメタデータが混入している可能性があります。`,
-        evidence: `game=${game.developer} / steam=${steamDevelopers.join(', ')}`,
-      });
-    }
+  } else if (matchResult.verdict === 'uncertain') {
+    warnings.push({
+      articleTitle: article.title,
+      category: article.category,
+      severity: 'medium',
+      type: 'game-source-uncertain',
+      message:
+        `記事の game メタ「${game.title}」と、Steam(appId=${appId})の実体の同一性を断定できません` +
+        `（title=${tAxis} year=${yAxis} company=${cAxis}）。` +
+        `破壊的アクション（hidden・号停止）は行わず記録のみとします（fail-open）。`,
+      evidence: matchResult.detail,
+    });
   }
 
   return warnings;
@@ -703,7 +668,8 @@ export async function validateGameSourceConsistency(
  * Storefront API のレート制限対策として、記事間に一定のディレイを入れる。
  */
 export async function validateGameSourceConsistencyForArticles(
-  articles: GeneratedArticle[]
+  articles: GeneratedArticle[],
+  fetchImpl: typeof fetch = fetch
 ): Promise<ValidationWarning[]> {
   const warnings: ValidationWarning[] = [];
   let first = true;
@@ -714,7 +680,7 @@ export async function validateGameSourceConsistencyForArticles(
       await new Promise((r) => setTimeout(r, STOREFRONT_REQUEST_DELAY_MS));
     }
     first = false;
-    warnings.push(...(await validateGameSourceConsistency(article)));
+    warnings.push(...(await validateGameSourceConsistency(article, fetchImpl)));
   }
   return warnings;
 }
