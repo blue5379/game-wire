@@ -25,6 +25,7 @@ import {
   proposeThemeGamesFromKnowledge,
   parseArticleResponse,
   parseTitleResponse,
+  getReleaseStatus,
 } from './bedrock-client.js';
 import type { FeatureSelectedGame, FeatureCandidateBase, FeatureCandidateWithSearch } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
@@ -158,7 +159,9 @@ async function generateTitle(
   gameTitle: string,
   summary?: string,
   itemCount?: number,
-  titleJa?: string
+  titleJa?: string,
+  releaseDate?: string,
+  publishDate?: Date
 ): Promise<string> {
   const countNote = itemCount !== undefined ? `\n紹介するゲームの本数: ${itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
 
@@ -167,8 +170,11 @@ async function generateTitle(
     ? `タイトル（日本語、記事内で優先使用）: ${titleJa}\nタイトル（英語/国際名、変更禁止）: ${gameTitle}`
     : `タイトル（英語/国際名、変更禁止）: ${gameTitle}`;
 
+  const _releaseStatus = releaseDate && publishDate ? getReleaseStatus(releaseDate, publishDate) : null;
+  const releaseStatusNote = _releaseStatus ? `\n発売状態: ${_releaseStatus}` : '';
+
   const userMessage = `カテゴリ: ${category}
-${titleSection}${summary ? `\n概要: ${summary}` : ''}${countNote}
+${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${countNote}
 
 上記の情報を元に、記事タイトルを1つ生成してください。
 ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。
@@ -358,7 +364,7 @@ async function generateNewReleaseArticle(
   // 「Game Studio Inc.の新作」のように枠の趣旨と合わないラベルになる（Issue #180）。
   const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
   const newReleaseCategoryLabel = labelCompany ? `${labelCompany}の新作` : '注目新作';
-  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa);
+  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate);
   const summary = await generateSummary(content);
 
   return {
@@ -474,7 +480,9 @@ async function generateIndieArticle(
     game.title,
     game.summary,
     undefined,
-    game.titleJa
+    game.titleJa,
+    game.releaseDate,
+    publishDate
   );
   const summary = await generateSummary(content);
 
@@ -1073,7 +1081,7 @@ async function generateClassicArticle(
     })
   );
 
-  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa);
+  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate);
   const summary = await generateSummary(content);
 
   return {
@@ -1344,14 +1352,14 @@ async function main(): Promise<void> {
     console.log('');
     console.log('Auto-regeneration enabled. Checking for high-severity warnings...');
     for (const item of regenerables) {
-      const highBefore = validateArticle(item.article).filter((w) => w.severity === 'high');
+      const highBefore = validateArticle(item.article, publishDate).filter((w) => w.severity === 'high');
       if (highBefore.length === 0) continue;
 
       const fix = buildFixInstruction(highBefore);
       console.log(`  [regenerate] "${item.article.title}" high=${highBefore.length} → 再生成`);
       try {
         const regenerated = await item.regenerate(fix);
-        const highAfter = validateArticle(regenerated).filter((w) => w.severity === 'high');
+        const highAfter = validateArticle(regenerated, publishDate).filter((w) => w.severity === 'high');
         console.log(`  [regenerate] high: ${highBefore.length} → ${highAfter.length}`);
         item.article = regenerated; // 1回だけ。残存警告は許容（次の validate/judge で記録される）
       } catch (error) {

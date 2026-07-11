@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
+import { getReleaseStatus } from './bedrock-client.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -684,10 +685,55 @@ export async function validateGameSourceConsistencyForArticles(
   return warnings;
 }
 
+// 発売済みタイトルの見出しに使うべきでない未発売ニュアンスのパターン。
+// - 発表(?!会): 「発表会」(launch-event report) は発売済みゲームの正当な見出し語のため除外
+// - 待望の新作: 発売日当日の「待望の新作が遂に発売！」等にも使われる回顧的表現のため除外
+// - 発売前: 「発売前情報まとめ」等の未発売表現を追加
+const UNRELEASED_TITLE_PATTERNS = /発表(?!会)|次回作|近日|もうすぐ|予告|リリース予定|発売予定|発売前/;
+
+/**
+ * 発売済みタイトルの記事見出しに未発売表現が使われていないかを検証
+ *
+ * releaseDate <= publishDate（発売済み）の newRelease/indie 記事のタイトルに
+ * 未発売ニュアンスの表現が含まれる場合に high 警告を出す。
+ * high にすることで VALIDATION_AUTO_REGENERATE=true 時の自動修正対象になる。
+ * publishDate が渡されていない場合は検証をスキップする（後方互換）。
+ */
+export function validateReleasedTitleExpression(
+  article: GeneratedArticle,
+  publishDate?: Date
+): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category !== 'newRelease' && article.category !== 'indie') return warnings;
+  if (!publishDate) return warnings;
+
+  const releaseDate = article.game?.releaseDate;
+  if (!releaseDate) return warnings;
+
+  if (getReleaseStatus(releaseDate, publishDate) !== '発売済み') return warnings;
+
+  if (!UNRELEASED_TITLE_PATTERNS.test(article.title)) return warnings;
+
+  const matched = article.title.match(UNRELEASED_TITLE_PATTERNS);
+  warnings.push({
+    articleTitle: article.title,
+    category: article.category,
+    severity: 'high',
+    type: 'released-title-expression',
+    message:
+      `発売済みタイトル（releaseDate=${releaseDate}）の記事見出しに未発売ニュアンスの表現「${matched?.[0]}」が含まれています。` +
+      `「発売中」「登場」等の発売済み表現に修正してください。`,
+    evidence: article.title,
+  });
+
+  return warnings;
+}
+
 /**
  * 1つの記事に対して全バリデーションを実行
  */
-export function validateArticle(article: GeneratedArticle): ValidationWarning[] {
+export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
   return [
     ...validateTitleConsistency(article),
     ...validateBodyTitleConsistency(article),
@@ -697,6 +743,7 @@ export function validateArticle(article: GeneratedArticle): ValidationWarning[] 
     ...validateFeaturePlatformConsistency(article),
     ...validateFeaturePersonAttribution(article),
     ...validateFeatureNumericClaims(article),
+    ...validateReleasedTitleExpression(article, publishDate),
   ];
 }
 
@@ -753,11 +800,12 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
 export function validateArticles(
   articles: GeneratedArticle[],
   issueNumber: number,
-  webSearchStats?: { searchFailures: number; pageContentFailures: number }
+  webSearchStats?: { searchFailures: number; pageContentFailures: number },
+  publishDate?: Date
 ): ValidationReport {
   const warnings: ValidationWarning[] = [];
   for (const article of articles) {
-    warnings.push(...validateArticle(article));
+    warnings.push(...validateArticle(article, publishDate));
   }
 
   const warningsBySeverity: Record<Severity, number> = {
@@ -891,12 +939,13 @@ async function mainCli(): Promise<void> {
   }
 
   const rawData = fs.readFileSync(articlesPath, 'utf-8');
-  const generatedIssue = JSON.parse(rawData) as { articles: GeneratedArticle[] };
+  const generatedIssue = JSON.parse(rawData) as { articles: GeneratedArticle[]; publishDate?: string };
 
   // issueNumber は引数または環境変数から取得（無ければ 0）
   const issueNumber = parseInt(process.env.ISSUE_NUMBER || '0', 10);
+  const publishDate = generatedIssue.publishDate ? new Date(generatedIssue.publishDate) : undefined;
 
-  const report = validateArticles(generatedIssue.articles, issueNumber);
+  const report = validateArticles(generatedIssue.articles, issueNumber, undefined, publishDate);
   const outputDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
   const passed = writeAndCheckReport(report, outputDir);
 

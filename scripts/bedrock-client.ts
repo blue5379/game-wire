@@ -93,6 +93,19 @@ export async function invokeClaudeModel(
 }
 
 /**
+ * 発売日と発行日を比較して発売状態ラベルを返す。
+ * 発売済みなら '発売済み'、発売予定なら '発売予定'、判定不能なら null。
+ */
+export function getReleaseStatus(
+  releaseDate: string,
+  publishDate: Date
+): '発売済み' | '発売予定' | null {
+  const releaseTime = new Date(releaseDate).getTime();
+  if (isNaN(releaseTime)) return null;
+  return releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
+}
+
+/**
  * プロンプトテンプレート管理
  */
 export const PromptTemplates = {
@@ -353,6 +366,13 @@ Steamレビューでの評判を紹介（100〜150文字）
   - 例: 「近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る」
   - 例: 「祖父の農場から始まる第二の人生──『Stardew Valley』が描く田舎暮らしRPGの魅力」
 
+発売状態の表現ルール（必ず守ること）:
+- 「発売状態」が「発売済み」と示されている場合:「発売中」「発売」「登場」等の表現を使うこと
+  - 「発表」「次回作」「もうすぐ」「近日」「予定」等の未発売ニュアンスを絶対に使わない
+- 「発売状態」が「発売予定」と示されている場合:「発表」「近日発売」等の未発売表現を使ってよい
+  - 「発売中」「リリース済み」等の発売済みニュアンスを使わない
+- 「発売状態」が提供されていない場合:発売済み・未発売を断言しない中立的な表現にする
+
 ハルシネーション防止のルール（必ず守ること）:
 - 提供されたゲームタイトル（英語/日本語）を勝手に短縮・翻訳・改変・並べ替えしない
   - 例: "Company of Heroes" を "Hero Company" や "ヒーローカンパニー" と書かない
@@ -408,11 +428,8 @@ export function buildUserMessage(
   if (gameInfo.releaseDate) {
     let releaseDateLabel = gameInfo.releaseDate;
     if (publishDate) {
-      const releaseTime = new Date(gameInfo.releaseDate).getTime();
-      if (!isNaN(releaseTime)) {
-        const status = releaseTime <= publishDate.getTime() ? '発売済み' : '発売予定';
-        releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
-      }
+      const status = getReleaseStatus(gameInfo.releaseDate, publishDate);
+      if (status) releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
     }
     lines.push(`発売日: ${releaseDateLabel}`);
   }
