@@ -490,9 +490,20 @@ async function main(): Promise<void> {
   // タイトル → 元の ValidationWarning を保持することで、後段レポートでカテゴリ・evidence を正確に記録する
   const sourceMismatchWarnings = new Map<string, import('./validate-article.js').ValidationWarning>();
   const sourceMismatchTitles = new Set<string>();
+  // uncertain（同一性を断定できない）は hidden にせず、レポート・CI サマリで evidence を可視化するのみ（#179 PR-3）
+  const sourceUncertainWarnings: import('./validate-article.js').ValidationWarning[] = [];
   try {
     const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
     const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
+    const uncertainWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-uncertain');
+    if (uncertainWarnings.length > 0) {
+      sourceUncertainWarnings.push(...uncertainWarnings);
+      console.warn('');
+      console.warn('⚠️  game-source-uncertain (同一性を断定できず。hidden にはしない):');
+      for (const w of uncertainWarnings) {
+        console.warn(`  - "${w.articleTitle}": ${w.evidence ?? w.message}`);
+      }
+    }
     if (mismatchWarnings.length > 0) {
       // 影響記事タイトルを収集（重複を除く）— 元の warning オブジェクトも保持
       for (const w of mismatchWarnings) {
@@ -617,6 +628,13 @@ async function main(): Promise<void> {
     }
     report.totalWarnings = report.warnings.length;
     report.warningsBySeverity.high += sourceMismatchWarnings.size;
+  }
+
+  // game-source-uncertain もレポートに記録する（medium。hidden・fail 閾値には影響しない）
+  if (sourceUncertainWarnings.length > 0) {
+    report.warnings.push(...sourceUncertainWarnings);
+    report.totalWarnings = report.warnings.length;
+    report.warningsBySeverity.medium += sourceUncertainWarnings.length;
   }
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
