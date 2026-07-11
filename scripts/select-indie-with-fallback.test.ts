@@ -344,7 +344,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].reason).toBe('not-large-studio');
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
   it('finalize 後に developer が PlatinumGames になったゲームは rejected になる', async () => {
@@ -361,7 +361,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
-    expect(result.rejected[0].reason).toBe('not-large-studio');
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
   it('finalize 後に developer が小規模スタジオならそのまま採用される', async () => {

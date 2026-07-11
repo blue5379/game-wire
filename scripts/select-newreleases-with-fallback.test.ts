@@ -121,7 +121,7 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted[1].title).toBe('C');
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].title).toBe('A');
-    expect(result.rejected[0].reason).toBe('date-mismatch');
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
   it('全件 reject → adopted=[], rejected に全件', async () => {
@@ -165,7 +165,7 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
 
     const result = await selectNewReleasesWithFallback([A], 1);
     expect(result.adopted).toHaveLength(0);
-    expect(result.rejected[0].reason).toBe('identity-mismatch');
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 });
 
@@ -187,7 +187,7 @@ describe('selectNewReleasesWithFallback — 例外処理', () => {
     expect(result.adopted[0].title).toBe('OK Game');
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].title).toBe('Error Game');
-    expect(result.rejected[0].reason).toBe('finalize-error');
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 });
 

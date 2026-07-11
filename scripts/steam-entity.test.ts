@@ -108,7 +108,7 @@ describe('fetchSteamEntity', () => {
     expect(entity).toBeUndefined();
   });
 
-  it('同一 appId の2回目は fetch を呼ばない（キャッシュ）', async () => {
+  it('同一 appId の2回目は fetch を呼ばない（両言語成功時のキャッシュ）', async () => {
     const mockFetch = makeFetch({
       'l=english': { '3': { success: true, data: { name: 'Cached', developers: [], publishers: [] } } },
       'l=japanese': { '3': { success: true, data: { name: 'キャッシュ', developers: [] } } },
@@ -118,5 +118,30 @@ describe('fetchSteamEntity', () => {
     await fetchSteamEntity(3, mockFetch as typeof fetch);
     // l=english と l=japanese で2回ずつ → 初回のみ（合計2回）
     expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('片言語失敗の場合はキャッシュせず、2回目も fetch を試みる', async () => {
+    // 1回目: 日本語失敗 → nameJa=undefined → キャッシュしない
+    // 2回目: 再度 fetch する（transient error から回復できる）
+    let callCount = 0;
+    const mockFetch = vi.fn((input: RequestInfo | URL) => {
+      callCount++;
+      const url = String(input);
+      if (url.includes('l=english')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            '4': { success: true, data: { name: 'Partial', developers: [], publishers: [] } },
+          }),
+        } as Response);
+      }
+      // 日本語は常に失敗
+      return Promise.resolve({ ok: false, status: 503 } as Response);
+    });
+
+    await fetchSteamEntity(4, mockFetch as typeof fetch);
+    await fetchSteamEntity(4, mockFetch as typeof fetch);
+    // 片言語失敗はキャッシュされないため、2回目も fetch が呼ばれる（合計4回）
+    expect(mockFetch).toHaveBeenCalledTimes(4);
   });
 });

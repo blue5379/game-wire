@@ -28,6 +28,49 @@ export function hasExistenceEvidence(g: GameData): boolean {
 }
 
 /**
+ * 大手新作ゲームとして採用できるか検証する（選定ループと差し替えで共用）。
+ * finalize → isLargeStudio の順で評価し、適格なら finalized GameData を返す。
+ * 不適格なら null を返す。
+ *
+ * runCompletenessGate の slotGates['newReleases'] として渡すことで、
+ * Gate が差し替え候補を補充する際にも選定基準と同じゲートを通す。
+ * これにより「枠を埋めるために不適格なゲームを載せない」という設計方針を保証する。
+ */
+export async function vetNewReleaseCandidate(game: GameData): Promise<GameData | null> {
+  let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
+  try {
+    finalizeResult = await finalizeGameMetadata(game, NEW_RELEASE_REQUIRED);
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        scope: 'vet-new-release-candidate',
+        title: game.title,
+        step: 'finalize',
+        reason: String(err),
+      })
+    );
+    return null;
+  }
+
+  if (!finalizeResult.ok) return null;
+
+  const studioResult = isLargeStudio(finalizeResult.game.developer);
+  if (!studioResult.hit) {
+    console.log(
+      JSON.stringify({
+        scope: 'vet-new-release-candidate',
+        title: game.title,
+        step: 'large-studio-gate',
+        reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}")`,
+      })
+    );
+    return null;
+  }
+
+  return { ...finalizeResult.game, developer: studioResult.matched };
+}
+
+/**
  * @param ranked 品質ゲート・実存フィルタ適用済み、スコア降順の候補リスト
  * @param targetCount 採用目標件数
  */
@@ -45,43 +88,15 @@ export async function selectNewReleasesWithFallback(
     const candidate = queue.shift()!;
     attempts++;
 
-    let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
-    try {
-      finalizeResult = await finalizeGameMetadata(candidate, NEW_RELEASE_REQUIRED);
-    } catch (err) {
-      console.warn(
-        JSON.stringify({
-          scope: 'select-newreleases-with-fallback',
-          title: candidate.title,
-          step: 'finalize',
-          reason: String(err),
-        })
-      );
-      rejected.push({ title: candidate.title, reason: 'finalize-error' });
+    const vetted = await vetNewReleaseCandidate(candidate);
+    if (vetted) {
+      adopted.push(vetted);
       continue;
     }
 
-    if (finalizeResult.ok) {
-      // finalize 後に developer が確定した状態で大手スタジオ判定を行う
-      const studioResult = isLargeStudio(finalizeResult.game.developer);
-      if (!studioResult.hit) {
-        console.log(
-          JSON.stringify({
-            scope: 'select-newreleases-with-fallback',
-            title: candidate.title,
-            step: 'large-studio-gate',
-            reason: `not-large-studio (developer="${finalizeResult.game.developer ?? ''}")`,
-          })
-        );
-        rejected.push({ title: candidate.title, reason: 'not-large-studio' });
-        continue;
-      }
-      // canonical 名を developer フィールドに書き戻す
-      adopted.push({ ...finalizeResult.game, developer: studioResult.matched });
-      continue;
-    }
-
-    rejected.push({ title: candidate.title, reason: finalizeResult.reason });
+    // vetting 失敗の理由を判定するため finalize を再実行するのはコスト大なので、
+    // rejected には finalize 失敗か large-studio 不通過かを区別せず記録する。
+    rejected.push({ title: candidate.title, reason: 'not-adopted' });
   }
 
   const adoptedTitles = new Set(adopted.map((g) => g.normalizedTitle));

@@ -37,7 +37,11 @@ async function fetchAppDetails(
   fetchImpl: typeof fetch
 ): Promise<AppDetailsData | undefined> {
   try {
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&l=${lang}`;
+    // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
+    // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
+    // 日本域限定タイトルで success:false → fail-open で照合が黙ってスキップされ得る
+    // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
+    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(STOREFRONT_TIMEOUT_MS) });
     if (!res.ok) return undefined;
     const json = (await res.json()) as Record<
@@ -71,9 +75,17 @@ export async function fetchSteamEntity(
     fetchAppDetails(appId, 'japanese', fetchImpl),
   ]);
 
-  // 両方失敗 → fail-open。一時的なネットワーク障害で永続キャッシュされることを避けるため、
-  // 失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
+  // 両方失敗 → fail-open。失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
+  // ログを残すことで「照合して same だった」と「実体が取れず未照合」を build ログ上で区別できるようにする。
   if (!enData && !jaData) {
+    console.warn(
+      JSON.stringify({
+        scope: 'steam-entity',
+        appId,
+        step: 'fetch-appdetails',
+        reason: 'both-languages-failed (fail-open: 照合はスキップされる)',
+      })
+    );
     return undefined;
   }
 
@@ -95,7 +107,12 @@ export async function fetchSteamEntity(
     publishers: (base.publishers ?? []).filter((p): p is string => typeof p === 'string' && p.trim().length > 0),
   };
 
-  cache.set(appId, entity);
+  // 片言語失敗（nameEn/nameJa が undefined）の場合はキャッシュしない。
+  // 一時的なネットワーク障害による部分的な結果が固定されると、
+  // 日本語 title のゲームが title 軸で常に disagree になる可能性があるため。
+  if (entity.nameEn !== undefined && entity.nameJa !== undefined) {
+    cache.set(appId, entity);
+  }
   return entity;
 }
 

@@ -84,6 +84,69 @@ export function formatIndividualDeveloper(rawName: string): string {
 }
 
 /**
+ * インディーゲームとして採用できるか検証する（選定ループと差し替えで共用）。
+ * 通常ルート → 話題性ルートの順で評価し、適格なら finalized GameData を返す。
+ * 不適格なら null を返す。
+ *
+ * runCompletenessGate の slotGates['indies'] として渡すことで、
+ * Gate が差し替え候補を補充する際にも選定基準と同じゲートを通す。
+ * これにより「枠を埋めるために不適格なゲームを載せない」という設計方針を保証する。
+ */
+export async function vetIndieCandidate(
+  game: GameData,
+  context: PopularityContext
+): Promise<GameData | null> {
+  let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
+  try {
+    finalizeResult = await finalizeGameMetadata(game, NORMAL_REQUIRED);
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        scope: 'vet-indie-candidate',
+        title: game.title,
+        step: 'finalize',
+        reason: String(err),
+      })
+    );
+    return null;
+  }
+
+  if (finalizeResult.ok) {
+    // finalize 後に IGDB が developer を補完した場合、大手スタジオが混入しないよう再チェック
+    if (isLargeStudio(finalizeResult.game.developer).hit) {
+      console.log(
+        JSON.stringify({
+          scope: 'vet-indie-candidate',
+          title: finalizeResult.game.title,
+          step: 'large-studio-gate',
+          reason: `not-indie after finalize (developer="${finalizeResult.game.developer ?? ''}")`,
+        })
+      );
+      return null;
+    }
+    return finalizeResult.game;
+  }
+
+  // 通常ルート不通過 → 話題性ルート評価
+  if (
+    finalizeResult.reason === 'still-missing-required' &&
+    isOnlyDeveloperMissing(finalizeResult.game) &&
+    meetsPopularityThreshold(game, context.youtubePopularitySorted)
+  ) {
+    const rawName = finalizeResult.game.steamRawDeveloper ?? 'unknown';
+    const adoptedGame: GameData = {
+      ...finalizeResult.game,
+      developer: formatIndividualDeveloper(rawName),
+    };
+    if (hasAllRequiredFields(adoptedGame, NORMAL_REQUIRED)) {
+      return adoptedGame;
+    }
+  }
+
+  return null;
+}
+
+/**
  * インディー候補リストから targetCount 件を採用する。
  * 通常ルート → 話題性ルートの順に評価し、予備プールからの差し替えも行う。
  */
@@ -99,60 +162,13 @@ export async function selectIndieGamesWithFallback(
   while (adopted.length < targetCount && queue.length > 0) {
     const candidate = queue.shift()!;
 
-    let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
-    try {
-      finalizeResult = await finalizeGameMetadata(candidate, NORMAL_REQUIRED);
-    } catch (err) {
-      console.warn(
-        JSON.stringify({
-          scope: 'select-indie-with-fallback',
-          title: candidate.title,
-          step: 'finalize',
-          reason: String(err),
-        })
-      );
-      rejected.push({ title: candidate.title, reason: 'finalize-error' });
+    const vetted = await vetIndieCandidate(candidate, context);
+    if (vetted) {
+      adopted.push(vetted);
       continue;
     }
 
-    if (finalizeResult.ok) {
-      // finalize 後に IGDB が developer を補完した場合、大手スタジオが混入しないよう再チェック
-      if (isLargeStudio(finalizeResult.game.developer).hit) {
-        console.log(
-          JSON.stringify({
-            scope: 'select-indie-with-fallback',
-            title: finalizeResult.game.title,
-            step: 'large-studio-gate',
-            reason: `not-indie after finalize (developer="${finalizeResult.game.developer ?? ''}")`,
-          })
-        );
-        rejected.push({ title: candidate.title, reason: 'not-large-studio' });
-        continue;
-      }
-      adopted.push(finalizeResult.game);
-      continue;
-    }
-
-    // 通常ルート不通過 → 話題性ルート評価
-    if (
-      finalizeResult.reason === 'still-missing-required' &&
-      isOnlyDeveloperMissing(finalizeResult.game) &&
-      meetsPopularityThreshold(candidate, context.youtubePopularitySorted)
-    ) {
-      const rawName = finalizeResult.game.steamRawDeveloper ?? 'unknown';
-      const adoptedGame: GameData = {
-        ...finalizeResult.game,
-        developer: formatIndividualDeveloper(rawName),
-      };
-
-      // developer を補完した状態で必須情報チェックを再確認
-      if (hasAllRequiredFields(adoptedGame, NORMAL_REQUIRED)) {
-        adopted.push(adoptedGame);
-        continue;
-      }
-    }
-
-    rejected.push({ title: candidate.title, reason: finalizeResult.reason });
+    rejected.push({ title: candidate.title, reason: 'not-adopted' });
   }
 
   return { adopted, rejected };

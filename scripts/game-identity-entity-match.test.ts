@@ -90,6 +90,23 @@ describe('matchGameToSteamEntity — FP防止（同一ゲームは same|uncertai
     expect(result.evidence.title).toBe('agree');
   });
 
+  it('正規化後3文字以下の短タイトルでも完全一致なら title=agree（FEZ 等を disagree に落とさない）', () => {
+    const result = matchGameToSteamEntity(
+      { title: 'FEZ', releaseDate: '2013-05-01' },
+      makeEntity({ appId: 224760, nameEn: 'FEZ', releaseDate: '1 May, 2013' })
+    );
+    expect(result.verdict).toBe('same');
+    expect(result.evidence.title).toBe('agree');
+  });
+
+  it('3文字以下タイトルの prefix 一致は引き続き不許可（"God" が "God of War" に一致しない）', () => {
+    const result = matchGameToSteamEntity(
+      { title: 'God' },
+      makeEntity({ appId: 1, nameEn: 'God of War' })
+    );
+    expect(result.evidence.title).toBe('disagree');
+  });
+
   it('PR-B ケース: Cyberpunk 2077 — EN title × 二言語 entity → same', () => {
     const result = matchGameToSteamEntity(
       { title: 'Cyberpunk 2077' },
