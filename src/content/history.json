@@ -630,6 +630,62 @@
       "category": "feature",
       "issueNumber": 15,
       "publishDate": "2026-07-11"
+    },
+    {
+      "normalizedTitle": "directive 8020",
+      "title": "Directive 8020",
+      "category": "newRelease",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "echoes of aincrad",
+      "title": "Echoes of Aincrad",
+      "category": "newRelease",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "full stride",
+      "title": "Full Stride",
+      "category": "indie",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "lured in",
+      "title": "Lured In",
+      "category": "indie",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "mole",
+      "title": "MOLE",
+      "category": "classic",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "サブノーティカ２",
+      "title": "サブノーティカ２",
+      "category": "feature",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "sid meier's pirates!",
+      "title": "Sid Meier's Pirates!",
+      "category": "feature",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "アサシン クリード ローグ",
+      "title": "アサシン クリード ローグ",
+      "category": "feature",
+      "issueNumber": 16,
+      "publishDate": "2026-07-17"
     }
   ]
 }
