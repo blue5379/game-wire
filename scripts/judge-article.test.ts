@@ -10,6 +10,7 @@ import {
   mapClaimsToWarnings,
   judgeArticles,
   isLlmJudgeEnabled,
+  judgeSystemPrompt,
   CONTRADICTED_CONFIDENCE_THRESHOLD,
   type JudgeClaim,
 } from './judge-article.js';
@@ -119,6 +120,16 @@ describe('buildGameMetadataSection', () => {
     const article = makeArticle({ game: undefined });
     expect(buildGameMetadataSection(article)).toBe('');
   });
+
+  it('セクション見出しに「同定のみ・根拠禁止」の旨が含まれる（循環参照防止）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [], developer: 'Dev Inc.' },
+    });
+    const section = buildGameMetadataSection(article);
+    // 同定用であることと根拠への使用禁止が見出しに明記されていることを確認
+    expect(section).toContain('同定');
+    expect(section).toContain('禁止');
+  });
 });
 
 describe('buildJudgeUserMessage (with game metadata)', () => {
@@ -162,6 +173,19 @@ describe('buildJudgeUserMessage (with game metadata)', () => {
     const msg = buildJudgeUserMessage(article);
     expect(msg).toContain('本文');
     expect(msg).toContain('=== 外部参照データ');
+  });
+});
+
+describe('judgeSystemPrompt', () => {
+  it('同定情報を根拠に使うことを禁止する旨が含まれる（循環参照防止）', () => {
+    // 案A対策: systemPrompt に「同定情報は根拠禁止・検索結果のみ」が明記されていることを確認
+    expect(judgeSystemPrompt).toContain('同定');
+    expect(judgeSystemPrompt).toContain('根拠にしてはならない');
+    expect(judgeSystemPrompt).toContain('検索結果のみ');
+  });
+
+  it('内部知識禁止ルールが含まれる', () => {
+    expect(judgeSystemPrompt).toContain('内部知識を根拠にしてはならない');
   });
 });
 
