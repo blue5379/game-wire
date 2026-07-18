@@ -379,6 +379,55 @@ describe('validateNumericClaims', () => {
     expect(playHours[0].evidence).toContain('40〜60時間');
   });
 
+  it('issue-191: 4桁以上のプレイ時間を正しく検出する（1000時間以上の下3桁にマッチしない）', () => {
+    // バグ時は evidence が "000時間以上" になっていた
+    const article = makeArticle({
+      title: 'やり込み作',
+      content: '前作を1000時間以上プレイしたユーザーも多い。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const playHours = validateNumericClaims(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toBe('1000時間以上');
+  });
+
+  it('issue-191: 5桁のプレイ時間も正しく検出する（10000時間）', () => {
+    const article = makeArticle({
+      title: 'やり込み作',
+      content: '10000時間超えのプレイヤーが続出している。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const playHours = validateNumericClaims(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toBe('10000時間超え');
+  });
+
+  it('issue-191: 4桁の範囲表記を 1 件として正しく検出する（1000〜2000時間）', () => {
+    const article = makeArticle({
+      title: 'やり込み作',
+      content: 'ヘビーユーザーは1000〜2000時間以上プレイしている。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const playHours = validateNumericClaims(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toContain('1000〜2000時間');
+  });
+
+  it('issue-191: 2〜3桁の既存ケースが壊れない（50時間以上）', () => {
+    const article = makeArticle({
+      title: 'RPG',
+      content: 'メインストーリーだけで50時間以上かかる大ボリューム。',
+      game: { title: 'Test', genre: [], platforms: ['PC'] },
+    });
+
+    const playHours = validateNumericClaims(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toBe('50時間以上');
+  });
+
   it('「N万件」のレビュー数を検出する（18万件以上のレビュー）', () => {
     const article = makeArticle({
       title: 'ヒット作',
