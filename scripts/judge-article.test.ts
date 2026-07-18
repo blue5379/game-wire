@@ -5,10 +5,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildJudgeUserMessage,
+  buildGameMetadataSection,
   parseJudgeResponse,
   mapClaimsToWarnings,
   judgeArticles,
   isLlmJudgeEnabled,
+  judgeSystemPrompt,
   CONTRADICTED_CONFIDENCE_THRESHOLD,
   type JudgeClaim,
 } from './judge-article.js';
@@ -56,6 +58,171 @@ describe('buildJudgeUserMessage', () => {
   it('webSearchSources が無くても例外を投げない', () => {
     const article = makeArticle({ content: '本文', webSearchSources: undefined });
     expect(() => buildJudgeUserMessage(article)).not.toThrow();
+  });
+});
+
+describe('buildGameMetadataSection', () => {
+  it('developer・publisher・releaseDate・sourceUrls をすべて含める', () => {
+    const article = makeArticle({
+      game: {
+        title: 'MOLE',
+        titleJa: 'モール',
+        genre: ['アクション'],
+        platforms: ['PC'],
+        developer: 'Off Black Creations',
+        publisher: 'Off Black Creations',
+        releaseDate: '2023-10-15',
+      },
+      sourceUrls: {
+        igdb: 'https://www.igdb.com/games/mole',
+        steam: 'https://store.steampowered.com/app/12345',
+      },
+    });
+
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('MOLE');
+    expect(section).toContain('モール');
+    expect(section).toContain('Off Black Creations');
+    expect(section).toContain('2023-10-15');
+    expect(section).toContain('https://www.igdb.com/games/mole');
+    expect(section).toContain('https://store.steampowered.com/app/12345');
+  });
+
+  it('titleJa が無ければ英語タイトルのみ（日本語タイトルのスラッシュ区切りが出ない）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('タイトル: MOLE');
+    // " / 日本語タイトル" の形式が含まれないことを確認（ヘッダーの "/" とは別）
+    expect(section).not.toMatch(/タイトル: MOLE \//);
+  });
+
+  it('developer が無ければ開発元行を出力しない', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).not.toContain('開発元');
+  });
+
+  it('stores[] 形式の Steam URL を同定情報に含める（新形式・優先）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        stores: [
+          { platform: 'steam', url: 'https://store.steampowered.com/app/99999', resolvedBy: 'igdb-website', confidence: 'high' },
+        ],
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('https://store.steampowered.com/app/99999');
+  });
+
+  it('sourceUrls.steam 直下（@deprecated）のみの記事でも Steam URL が含まれる（後方互換）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        steam: 'https://store.steampowered.com/app/12345',
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('https://store.steampowered.com/app/12345');
+  });
+
+  it('stores[] に steam 以外のプラットフォームしかない場合は Steam URL を出力しない', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        stores: [
+          { platform: 'nintendo', url: 'https://store.nintendo.com/foo', resolvedBy: 'cache', confidence: 'high' },
+        ],
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).not.toContain('Steam:');
+  });
+
+  it('sourceUrls が無くても例外を投げない', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [], developer: 'Dev Inc.' },
+      sourceUrls: undefined,
+    });
+    expect(() => buildGameMetadataSection(article)).not.toThrow();
+    const section = buildGameMetadataSection(article);
+    expect(section).not.toContain('参照URL');
+  });
+
+  it('article.game が undefined なら空文字列を返す', () => {
+    const article = makeArticle({ game: undefined });
+    expect(buildGameMetadataSection(article)).toBe('');
+  });
+
+  it('セクション見出しに「同定のみ・根拠禁止」の旨が含まれる（循環参照防止）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [], developer: 'Dev Inc.' },
+    });
+    const section = buildGameMetadataSection(article);
+    // 同定用であることと根拠への使用禁止が見出しに明記されていることを確認
+    expect(section).toContain('同定');
+    expect(section).toContain('禁止');
+  });
+});
+
+describe('buildJudgeUserMessage (with game metadata)', () => {
+  it('game メタデータが記事メッセージに含まれる（一般名タイトルの同名別物対策）', () => {
+    const article = makeArticle({
+      title: 'MOLE 深掘り記事',
+      content: '本文テキスト',
+      game: {
+        title: 'MOLE',
+        genre: ['アクション'],
+        platforms: ['PC'],
+        developer: 'Off Black Creations',
+        publisher: 'Off Black Creations',
+      },
+      sourceUrls: {
+        igdb: 'https://www.igdb.com/games/mole',
+      },
+      webSearchSources: [
+        { url: 'https://example.com/review', title: 'MOLE Review', snippet: 'snippet' },
+      ],
+    });
+
+    const msg = buildJudgeUserMessage(article);
+    // メタデータセクションが本文と外部参照データの間に挿入されている
+    expect(msg).toContain('Off Black Creations');
+    expect(msg).toContain('https://www.igdb.com/games/mole');
+    // 既存コンテンツも維持
+    expect(msg).toContain('本文テキスト');
+    expect(msg).toContain('=== 外部参照データ');
+    expect(msg).toContain('MOLE Review');
+  });
+
+  it('game が undefined の記事でもメタデータなしで正常動作する', () => {
+    const article = makeArticle({
+      title: 'タイトル',
+      content: '本文',
+      game: undefined,
+      webSearchSources: [{ url: 'https://e.com', title: 'T', snippet: 's' }],
+    });
+    expect(() => buildJudgeUserMessage(article)).not.toThrow();
+    const msg = buildJudgeUserMessage(article);
+    expect(msg).toContain('本文');
+    expect(msg).toContain('=== 外部参照データ');
+  });
+});
+
+describe('judgeSystemPrompt', () => {
+  it('同定情報を根拠に使うことを禁止する旨が含まれる（循環参照防止）', () => {
+    // 案A対策: systemPrompt に「同定情報は根拠禁止・検索結果のみ」が明記されていることを確認
+    expect(judgeSystemPrompt).toContain('同定');
+    expect(judgeSystemPrompt).toContain('根拠にしてはならない');
+    expect(judgeSystemPrompt).toContain('検索結果のみ');
+  });
+
+  it('内部知識禁止ルールが含まれる', () => {
+    expect(judgeSystemPrompt).toContain('内部知識を根拠にしてはならない');
   });
 });
 
