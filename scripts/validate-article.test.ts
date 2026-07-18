@@ -16,6 +16,7 @@ import {
   validateGameSourceConsistency,
   validateReleasedTitleExpression,
   buildFixInstruction,
+  extractNumericUnitKey,
 } from './validate-article.js';
 import type { ValidationWarning } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
@@ -593,6 +594,234 @@ describe('validateFeatureNumericClaims', () => {
     const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
     expect(pct).toBeDefined();
     expect(pct?.sourcedFrom?.url).toBe('https://example.com/late');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractNumericUnitKey のユニットテスト
+// ---------------------------------------------------------------------------
+describe('extractNumericUnitKey', () => {
+  it('大きな数値単位（万人）を正しく抽出する', () => {
+    expect(extractNumericUnitKey('40万人', '40')).toBe('40万人');
+  });
+
+  it('末尾の接尾語（以上）を除去してコア単位を返す', () => {
+    expect(extractNumericUnitKey('18万件以上', '18')).toBe('18万件');
+  });
+
+  it('プレイ時間の末尾語（超え）を除去する', () => {
+    expect(extractNumericUnitKey('100時間超え', '100')).toBe('100時間');
+  });
+
+  it('プレイ時間の末尾語（に拡張）を除去する', () => {
+    expect(extractNumericUnitKey('40〜60時間に拡張', '40〜60')).toBe('40〜60時間');
+  });
+
+  it('パーセント記号はそのまま保持する', () => {
+    expect(extractNumericUnitKey('96%', '96')).toBe('96%');
+  });
+
+  it('億本の単位を保持する', () => {
+    expect(extractNumericUnitKey('2億本', '2')).toBe('2億本');
+  });
+
+  it('vehicle-count: 「以上の実車」形式の内部装飾を除去してコア単位「台」を返す', () => {
+    // "550台以上の実車" → "550台"（以上の実車 は装飾語）
+    expect(extractNumericUnitKey('550台以上の実車', '550')).toBe('550台');
+  });
+
+  it('vehicle-count: 「以上の車両」形式も同様に除去する', () => {
+    expect(extractNumericUnitKey('550台以上の車両', '550')).toBe('550台');
+  });
+
+  it('vehicle-count: 「以上」なしの「の車」形式も除去する', () => {
+    // "550台の車" → "550台"（の車 は trailing suffix の の\S+ で除去）
+    expect(extractNumericUnitKey('550台の車', '550')).toBe('550台');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// issue-192 の回帰テスト: findSourceFor の単位誤マッチ防止
+// ---------------------------------------------------------------------------
+describe('validateNumericClaims — 単位誤マッチ防止（issue-192 回帰）', () => {
+  it('バグ再現: 本文「約40万人」に対し、検索結果が「40ダメ」しかない場合は sourcedFrom が付かない', () => {
+    // 修正前は "40" というキーで照合するため "40ダメ" にもマッチしていた（誤マッチ）
+    const article = makeArticle({
+      title: 'Slay the Spire 2',
+      content: '同時接続プレイヤー数が約40万人を突破した。',
+      game: { title: 'Slay the Spire 2', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/guide',
+          title: '攻略ブログ',
+          snippet: '1コス(＋4スター)で30ダメ(アプデで40ダメ)になった強カード。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    // 「40万人」は「40ダメ」に一致してはいけない → sourcedFrom は undefined
+    expect(w?.sourcedFrom).toBeUndefined();
+  });
+
+  it('正常系: 本文「約40万人」に対し、検索結果に「40万人」が含まれる場合は sourcedFrom が付く', () => {
+    const article = makeArticle({
+      title: 'Slay the Spire 2',
+      content: '同時接続プレイヤー数が約40万人を突破した。',
+      game: { title: 'Slay the Spire 2', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/news',
+          title: 'ゲームニュース',
+          snippet: 'Slay the Spire 2 の同時接続プレイヤー数が40万人を超えたと報告された。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    // 「40万人」が検索結果に含まれるので sourcedFrom が付く
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/news');
+  });
+
+  it('スペース区切りの表記ゆれ「40万 人」も根拠として認識する', () => {
+    const article = makeArticle({
+      title: 'テストゲーム',
+      content: '40万人のプレイヤーが遊んでいる。',
+      game: { title: 'テストゲーム', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/stats',
+          title: 'Stats',
+          snippet: '現在40万 人以上のユーザーが参加している。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/stats');
+  });
+
+  // --- unitKey の数値先頭桁境界チェック（issue-192 フォローアップ）---
+
+  it('unitKey 桁境界: 本文「96%」に対し、検索結果に「196%」しかない場合は sourcedFrom が付かない', () => {
+    // includes("96%") は "196%" にマッチしてしまうが、(?<!\d) により防ぐ
+    const article = makeArticle({
+      title: '高評価作',
+      content: 'Steamで96%の高評価を獲得している。',
+      game: { title: '高評価作', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/stats',
+          title: 'Stats',
+          snippet: '前年比196%増加した驚異的な売上を記録。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom).toBeUndefined();
+  });
+
+  it('unitKey 桁境界: 本文「100時間」に対し、検索結果に「3100時間」しかない場合は sourcedFrom が付かない', () => {
+    const article = makeArticle({
+      title: 'MMO特集',
+      content: '100時間超えの大ボリューム。',
+      game: { title: 'MMO特集', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/playtime',
+          title: 'Playtime Stats',
+          snippet: 'ヘビーユーザーの合計プレイ時間は3100時間を超えた。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-play-hours');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom).toBeUndefined();
+  });
+
+  it('unitKey 桁境界: 本文「96%」に対し、検索結果に単独の「96%」があれば sourcedFrom が付く', () => {
+    const article = makeArticle({
+      title: '高評価作',
+      content: 'Steamで96%の高評価を獲得している。',
+      game: { title: '高評価作', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/review',
+          title: 'Review',
+          snippet: 'The game holds a 96% positive rating on Steam.',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-percentage');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/review');
+  });
+
+  it('unitKey 桁境界: 本文「40〜60時間」の範囲表記も根拠として正しく照合される', () => {
+    const article = makeArticle({
+      title: 'リメイク作',
+      content: '原作を40〜60時間のボリュームに拡張した。',
+      game: { title: 'リメイク作', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/review',
+          title: 'Review',
+          snippet: 'ゲームクリアに40〜60時間かかると開発者が述べた。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-play-hours');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/review');
+  });
+
+  // --- vehicle-count の unitKey 抽出修正（extractNumericUnitKey code-review フォローアップ）---
+
+  it('vehicle-count: 本文「550台以上の実車」に対し、検索結果「550台の車が収録」で sourcedFrom が付く', () => {
+    // 修正前は unitKey が "550台以上の実車" のまま残り、"550台の車が収録" にマッチしなかった
+    const article = makeArticle({
+      title: 'Forza',
+      content: '日本全国の実在する景観を550台以上の実車で駆け抜ける。',
+      game: { title: 'Forza Horizon 6', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/forza',
+          title: 'Forza Horizon 6 レビュー',
+          snippet: '550台の車が収録されており、実在の景観を走れる。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-vehicle-count');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/forza');
+  });
+
+  it('vehicle-count: 本文「550台以上の実車」に対し、検索結果「550台以上の車」でも sourcedFrom が付く', () => {
+    const article = makeArticle({
+      title: 'Forza',
+      content: '550台以上の実車を収録している。',
+      game: { title: 'Forza Horizon 6', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/forza2',
+          title: 'Forza Horizon 6',
+          snippet: '550台以上の車を収録した大規模なレーシングゲーム。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-vehicle-count');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/forza2');
   });
 });
 
