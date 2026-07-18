@@ -24,6 +24,7 @@ import {
   buildUserMessage,
   buildFeatureUserMessage,
   prefilterFeatureCandidatesByTheme,
+  PromptTemplates,
 } from './bedrock-client.js';
 
 describe('buildUserMessage - 発売状況の判定', () => {
@@ -175,6 +176,26 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
     mockSend.mockRejectedValueOnce(new Error('network error'));
     const result = await prefilterFeatureCandidatesByTheme('写真の日特集', candidates, 3);
     expect(result).toEqual([]);
+  });
+});
+
+describe('PromptTemplates - 本文タイトル明記ルール（Issue #194）', () => {
+  const rule = '記事本文（特に導入部）で、紹介するゲームの正式タイトルを最低1回、提供データのとおり正確に記載すること';
+
+  it('newReleaseSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.newReleaseSystem).toContain(rule);
+  });
+
+  it('indieSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.indieSystem).toContain(rule);
+  });
+
+  it('classicSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.classicSystem).toContain(rule);
+  });
+
+  it('featureSystem には本文タイトル明記ルールを含まない（テーマベース記事は対象外）', () => {
+    expect(PromptTemplates.featureSystem).not.toContain(rule);
   });
 });
 
