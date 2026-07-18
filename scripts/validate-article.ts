@@ -84,24 +84,69 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * 数値クレームのマッチ全体（match[0]）から、照合に使う「数値＋単位」キーを抽出する。
+ *
+ * 例:
+ *   matchFull="40万人",      numericPart="40"    → "40万人"
+ *   matchFull="100時間超え", numericPart="100"   → "100時間"
+ *   matchFull="40〜60時間に拡張", numericPart="40〜60" → "40〜60時間"
+ *   matchFull="18万件以上",  numericPart="18"    → "18万件"
+ *   matchFull="96%",         numericPart="96"    → "96%"
+ *
+ * 末尾の「以上/超え/程度/ほど/プレイ/遊/の/を要/もの/に拡張/没入」等の
+ * 接尾語はコア単位ではないため除去する。
+ */
+export function extractNumericUnitKey(matchFull: string, numericPart: string): string {
+  // カンマ・空白を正規化してから単位部分を切り出す
+  const normalizedFull = matchFull.replace(/,/g, '').replace(/\s+/g, '');
+  const normalizedNum = numericPart.replace(/,/g, '');
+  const unitRaw = normalizedFull.startsWith(normalizedNum)
+    ? normalizedFull.slice(normalizedNum.length)
+    : normalizedFull;
+  // 末尾の接尾語（コア単位の後に続く文脈語）を除去する
+  const trailingSuffixes = /(?:以上|超え?|程度|ほど|プレイ|の|を要|もの|に拡張|没入|遊)+$/;
+  const unitCore = unitRaw.replace(trailingSuffixes, '');
+  return normalizedNum + unitCore;
+}
+
+/**
  * 検索結果の中から、指定したキーワードを含む最初のソースを返す
  * 見つかった場合: 根拠あり（ウェブ情報由来の可能性が高い）
  * 見つからない場合: undefined（捏造の可能性が高い）
  *
- * @param numeric true の場合、キーワードを数値として扱い「独立したトークン」
- *   （前後が数字でない）としての一致のみを根拠とする。これにより本文の「96」が
- *   検索結果の「1996」の一部に誤って一致する false positive を防ぐ。
+ * @param keyword  照合キーワード（数値モード時は bare 数値文字列、それ以外は任意文字列）
+ * @param sources  検索結果ソース一覧
+ * @param numeric  true の場合、数値として前後が数字でない位置でのみ一致させる。
+ *   さらに unitKey が指定されている場合は「数値＋単位」を含む文字列として照合し、
+ *   別文脈の同一数字（例: "40ダメ"）への誤マッチを防ぐ。
+ * @param unitKey  extractNumericUnitKey() で取り出した「数値＋単位」キー（例: "40万人"）。
+ *   指定時は numeric モードと組み合わせて単位まで含めた照合を行う。
  */
 function findSourceFor(
   keyword: string,
   sources: Array<{ url: string; title: string; snippet: string }> | undefined,
-  numeric = false
+  numeric = false,
+  unitKey?: string
 ): { url: string; title: string; snippet: string } | undefined {
   if (!sources || sources.length === 0) return undefined;
   const kw = keyword.replace(/,/g, '').toLowerCase();
   if (kw.length === 0) return undefined;
 
-  // 数値モード: 前後が数字でない位置でのみ一致させる（例: "96" は "1996" にはマッチしない）
+  // 単位キーモード: 数値＋単位を含む文字列として照合（例: "40万人" は "40ダメ" にはマッチしない）
+  // スペース・カンマを除去して照合することで "40万 人" 等の表記ゆれも吸収する
+  if (numeric && unitKey) {
+    const unitKeyNormalized = unitKey.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
+    if (unitKeyNormalized.length > 0) {
+      return sources.find((s) => {
+        const snippet = s.snippet.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
+        const title = s.title.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
+        return snippet.includes(unitKeyNormalized) || title.includes(unitKeyNormalized);
+      });
+    }
+  }
+
+  // 数値モード（unitKey なし）: 前後が数字でない位置でのみ一致させる
+  // （例: "96" は "1996" にはマッチしない）
   const numericMatcher = numeric
     ? new RegExp(`(?<!\\d)${escapeRegExp(kw)}(?!\\d)`)
     : null;
@@ -393,6 +438,8 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
     for (const match of matches) {
       // 概数パターン（approx-count）は capture group を持たないため match[1] が undefined
       const numericValue = match[1] ? match[1].replace(/,/g, '') : undefined;
+      // 単位まで含めた照合キーを生成して誤マッチを防ぐ（例: "40万人" ≠ "40ダメ"）
+      const unitKey = numericValue ? extractNumericUnitKey(match[0].trim(), numericValue) : undefined;
       warnings.push({
         articleTitle: article.title,
         category: article.category,
@@ -405,7 +452,7 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
         context: extractContext(content, match[0].trim()),
         // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
         sourcedFrom: numericValue
-          ? findSourceFor(numericValue, article.webSearchSources, true)
+          ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
           : undefined,
       });
     }
@@ -535,6 +582,8 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
       const numericValue = match[1] ? match[1].replace(/,/g, '') : undefined;
       // 提供データに含まれていればスキップ（releaseDate の年号など）
       if (numericValue && knownNumbers.has(numericValue)) continue;
+      // 単位まで含めた照合キーを生成して誤マッチを防ぐ（例: "40万人" ≠ "40ダメ"）
+      const unitKey = numericValue ? extractNumericUnitKey(match[0].trim(), numericValue) : undefined;
 
       warnings.push({
         articleTitle: article.title,
@@ -547,7 +596,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
         sourcedFrom: numericValue
-          ? findSourceFor(numericValue, article.webSearchSources, true)
+          ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
           : undefined,
       });
     }

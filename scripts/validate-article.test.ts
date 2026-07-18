@@ -16,6 +16,7 @@ import {
   validateGameSourceConsistency,
   validateReleasedTitleExpression,
   buildFixInstruction,
+  extractNumericUnitKey,
 } from './validate-article.js';
 import type { ValidationWarning } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
@@ -544,6 +545,100 @@ describe('validateFeatureNumericClaims', () => {
     const pct = validateFeatureNumericClaims(article).find((w) => w.type === 'numeric-percentage');
     expect(pct).toBeDefined();
     expect(pct?.sourcedFrom?.url).toBe('https://example.com/late');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractNumericUnitKey のユニットテスト
+// ---------------------------------------------------------------------------
+describe('extractNumericUnitKey', () => {
+  it('大きな数値単位（万人）を正しく抽出する', () => {
+    expect(extractNumericUnitKey('40万人', '40')).toBe('40万人');
+  });
+
+  it('末尾の接尾語（以上）を除去してコア単位を返す', () => {
+    expect(extractNumericUnitKey('18万件以上', '18')).toBe('18万件');
+  });
+
+  it('プレイ時間の末尾語（超え）を除去する', () => {
+    expect(extractNumericUnitKey('100時間超え', '100')).toBe('100時間');
+  });
+
+  it('プレイ時間の末尾語（に拡張）を除去する', () => {
+    expect(extractNumericUnitKey('40〜60時間に拡張', '40〜60')).toBe('40〜60時間');
+  });
+
+  it('パーセント記号はそのまま保持する', () => {
+    expect(extractNumericUnitKey('96%', '96')).toBe('96%');
+  });
+
+  it('億本の単位を保持する', () => {
+    expect(extractNumericUnitKey('2億本', '2')).toBe('2億本');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// issue-192 の回帰テスト: findSourceFor の単位誤マッチ防止
+// ---------------------------------------------------------------------------
+describe('validateNumericClaims — 単位誤マッチ防止（issue-192 回帰）', () => {
+  it('バグ再現: 本文「約40万人」に対し、検索結果が「40ダメ」しかない場合は sourcedFrom が付かない', () => {
+    // 修正前は "40" というキーで照合するため "40ダメ" にもマッチしていた（誤マッチ）
+    const article = makeArticle({
+      title: 'Slay the Spire 2',
+      content: '同時接続プレイヤー数が約40万人を突破した。',
+      game: { title: 'Slay the Spire 2', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/guide',
+          title: '攻略ブログ',
+          snippet: '1コス(＋4スター)で30ダメ(アプデで40ダメ)になった強カード。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    // 「40万人」は「40ダメ」に一致してはいけない → sourcedFrom は undefined
+    expect(w?.sourcedFrom).toBeUndefined();
+  });
+
+  it('正常系: 本文「約40万人」に対し、検索結果に「40万人」が含まれる場合は sourcedFrom が付く', () => {
+    const article = makeArticle({
+      title: 'Slay the Spire 2',
+      content: '同時接続プレイヤー数が約40万人を突破した。',
+      game: { title: 'Slay the Spire 2', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/news',
+          title: 'ゲームニュース',
+          snippet: 'Slay the Spire 2 の同時接続プレイヤー数が40万人を超えたと報告された。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    // 「40万人」が検索結果に含まれるので sourcedFrom が付く
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/news');
+  });
+
+  it('スペース区切りの表記ゆれ「40万 人」も根拠として認識する', () => {
+    const article = makeArticle({
+      title: 'テストゲーム',
+      content: '40万人のプレイヤーが遊んでいる。',
+      game: { title: 'テストゲーム', genre: [], platforms: ['PC'] },
+      webSearchSources: [
+        {
+          url: 'https://example.com/stats',
+          title: 'Stats',
+          snippet: '現在40万 人以上のユーザーが参加している。',
+        },
+      ],
+    });
+
+    const w = validateNumericClaims(article).find((w) => w.type === 'numeric-large-count');
+    expect(w).toBeDefined();
+    expect(w?.sourcedFrom?.url).toBe('https://example.com/stats');
   });
 });
 
