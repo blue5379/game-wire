@@ -133,14 +133,17 @@ function findSourceFor(
   if (kw.length === 0) return undefined;
 
   // 単位キーモード: 数値＋単位を含む文字列として照合（例: "40万人" は "40ダメ" にはマッチしない）
-  // スペース・カンマを除去して照合することで "40万 人" 等の表記ゆれも吸収する
+  // スペース・カンマを除去して照合することで "40万 人" 等の表記ゆれも吸収する。
+  // (?<!\d) で数値先頭の桁境界を保証し、"96%" が "196%" にマッチしないようにする。
+  // escapeRegExp で "%" や "〜" などのメタ文字を安全にエスケープする。
   if (numeric && unitKey) {
     const unitKeyNormalized = unitKey.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
     if (unitKeyNormalized.length > 0) {
+      const unitKeyMatcher = new RegExp(`(?<!\\d)${escapeRegExp(unitKeyNormalized)}`);
       return sources.find((s) => {
         const snippet = s.snippet.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
         const title = s.title.replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
-        return snippet.includes(unitKeyNormalized) || title.includes(unitKeyNormalized);
+        return unitKeyMatcher.test(snippet) || unitKeyMatcher.test(title);
       });
     }
   }
