@@ -24,6 +24,7 @@ import {
   buildUserMessage,
   buildFeatureUserMessage,
   prefilterFeatureCandidatesByTheme,
+  PromptTemplates,
 } from './bedrock-client.js';
 
 describe('buildUserMessage - 発売状況の判定', () => {
@@ -201,5 +202,25 @@ describe('parseTitleResponse', () => {
     expect(parseTitleResponse("『Stardew Valley』が描く田舎暮らしRPGの魅力\n余分な行")).toBe(
       "『Stardew Valley』が描く田舎暮らしRPGの魅力"
     );
+  });
+});
+
+describe('PromptTemplates - 定量値ハルシネーション防止ルール', () => {
+  const RULE_MARKER = '定量値は定性表現に置き換える（数値ハルシネーション防止）';
+
+  it('newReleaseSystem に定量値抑制ルールが含まれている', () => {
+    expect(PromptTemplates.newReleaseSystem).toContain(RULE_MARKER);
+  });
+
+  it('indieSystem に定量値抑制ルールが含まれている', () => {
+    expect(PromptTemplates.indieSystem).toContain(RULE_MARKER);
+  });
+
+  it('featureSystem に定量値抑制ルールが含まれている', () => {
+    expect(PromptTemplates.featureSystem).toContain(RULE_MARKER);
+  });
+
+  it('classicSystem に定量値抑制ルールが含まれている', () => {
+    expect(PromptTemplates.classicSystem).toContain(RULE_MARKER);
   });
 });
