@@ -179,6 +179,26 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
   });
 });
 
+describe('PromptTemplates - 本文タイトル明記ルール（Issue #194）', () => {
+  const rule = '記事本文（特に導入部）で、紹介するゲームの正式タイトルを最低1回、提供データのとおり正確に記載すること';
+
+  it('newReleaseSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.newReleaseSystem).toContain(rule);
+  });
+
+  it('indieSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.indieSystem).toContain(rule);
+  });
+
+  it('classicSystem に本文タイトル明記ルールが含まれる', () => {
+    expect(PromptTemplates.classicSystem).toContain(rule);
+  });
+
+  it('featureSystem には本文タイトル明記ルールを含まない（テーマベース記事は対象外）', () => {
+    expect(PromptTemplates.featureSystem).not.toContain(rule);
+  });
+});
+
 describe('parseTitleResponse', () => {
   it('『ゲーム名』を含む通常のタイトルはそのまま返す', () => {
     expect(parseTitleResponse("近未来の月面基地が舞台、カプコン新作SF『Pragmata』ハッキング要素を駆使して謎に迫る")).toBe(
