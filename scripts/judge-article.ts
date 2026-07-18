@@ -108,7 +108,10 @@ export function buildGameMetadataSection(article: GeneratedArticle): string {
   const sourceUrls = article.sourceUrls;
   const urlParts: string[] = [];
   if (sourceUrls?.igdb) urlParts.push(`IGDB: ${sourceUrls.igdb}`);
-  if (sourceUrls?.steam) urlParts.push(`Steam: ${sourceUrls.steam}`);
+  // stores[] 形式（新形式）を優先し、なければ直下の steam（@deprecated）にフォールバック
+  const steamUrl =
+    sourceUrls?.stores?.find((s) => s.platform === 'steam')?.url ?? sourceUrls?.steam;
+  if (steamUrl) urlParts.push(`Steam: ${steamUrl}`);
   if (sourceUrls?.official) urlParts.push(`公式: ${sourceUrls.official}`);
   if (urlParts.length > 0) lines.push(`参照URL: ${urlParts.join(' / ')}`);
 

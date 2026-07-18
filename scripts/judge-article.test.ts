@@ -106,6 +106,43 @@ describe('buildGameMetadataSection', () => {
     expect(section).not.toContain('開発元');
   });
 
+  it('stores[] 形式の Steam URL を同定情報に含める（新形式・優先）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        stores: [
+          { platform: 'steam', url: 'https://store.steampowered.com/app/99999', resolvedBy: 'igdb-website', confidence: 'high' },
+        ],
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('https://store.steampowered.com/app/99999');
+  });
+
+  it('sourceUrls.steam 直下（@deprecated）のみの記事でも Steam URL が含まれる（後方互換）', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        steam: 'https://store.steampowered.com/app/12345',
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('https://store.steampowered.com/app/12345');
+  });
+
+  it('stores[] に steam 以外のプラットフォームしかない場合は Steam URL を出力しない', () => {
+    const article = makeArticle({
+      game: { title: 'MOLE', genre: [], platforms: [] },
+      sourceUrls: {
+        stores: [
+          { platform: 'nintendo', url: 'https://store.nintendo.com/foo', resolvedBy: 'cache', confidence: 'high' },
+        ],
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).not.toContain('Steam:');
+  });
+
   it('sourceUrls が無くても例外を投げない', () => {
     const article = makeArticle({
       game: { title: 'MOLE', genre: [], platforms: [], developer: 'Dev Inc.' },
