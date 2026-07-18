@@ -365,7 +365,7 @@ const NUMERIC_PATTERNS: Array<{ pattern: RegExp; type: string; severity: Severit
   { pattern: /(\d+(?:[.,]\d+)?)\s*(?:万|億)\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)/g, type: 'large-count', severity: 'high' },
   { pattern: /(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
   // プレイ時間（中リスク）: 「プレイ/遊」直後限定を撤廃し、範囲表記・「以上/超え」等に対応
-  { pattern: /(\d{1,3}(?:[.,]\d+)?(?:[〜～\-]\d{1,3}(?:[.,]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
+  { pattern: /(?<!\d)((?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?(?:[〜～\-](?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
   // 価格（中リスク）
   { pattern: /(\d+(?:[.,]\d+)?)\s*(?:円|ドル|USD|\$)/g, type: 'price', severity: 'medium' },
   // 評価率（中リスク）: 範囲表記を 1 マッチに束ねる
