@@ -87,14 +87,17 @@ function escapeRegExp(s: string): string {
  * 数値クレームのマッチ全体（match[0]）から、照合に使う「数値＋単位」キーを抽出する。
  *
  * 例:
- *   matchFull="40万人",      numericPart="40"    → "40万人"
- *   matchFull="100時間超え", numericPart="100"   → "100時間"
+ *   matchFull="40万人",         numericPart="40"    → "40万人"
+ *   matchFull="100時間超え",    numericPart="100"   → "100時間"
  *   matchFull="40〜60時間に拡張", numericPart="40〜60" → "40〜60時間"
- *   matchFull="18万件以上",  numericPart="18"    → "18万件"
- *   matchFull="96%",         numericPart="96"    → "96%"
+ *   matchFull="18万件以上",     numericPart="18"    → "18万件"
+ *   matchFull="96%",            numericPart="96"    → "96%"
+ *   matchFull="550台以上の実車", numericPart="550"   → "550台"
+ *   matchFull="550台の車",       numericPart="550"   → "550台"
  *
- * 末尾の「以上/超え/程度/ほど/プレイ/遊/の/を要/もの/に拡張/没入」等の
- * 接尾語はコア単位ではないため除去する。
+ * 「以上の〈文脈語〉」形式（例: 台以上の実車）は内部装飾として先に除去し、
+ * その後「超え/程度/ほど/プレイ/の\S+/を要/もの/に拡張/没入/遊」等の
+ * 末尾接尾語を除去する。
  */
 export function extractNumericUnitKey(matchFull: string, numericPart: string): string {
   // カンマ・空白を正規化してから単位部分を切り出す
@@ -103,9 +106,14 @@ export function extractNumericUnitKey(matchFull: string, numericPart: string): s
   const unitRaw = normalizedFull.startsWith(normalizedNum)
     ? normalizedFull.slice(normalizedNum.length)
     : normalizedFull;
+  // 「以上の〈文脈語〉」形式の内部装飾を先に除去する
+  // 例: "台以上の実車" → "台", "台以上の車両" → "台"
+  const step1 = unitRaw.replace(/以上の.+/, '');
   // 末尾の接尾語（コア単位の後に続く文脈語）を除去する
-  const trailingSuffixes = /(?:以上|超え?|程度|ほど|プレイ|の|を要|もの|に拡張|没入|遊)+$/;
-  const unitCore = unitRaw.replace(trailingSuffixes, '');
+  // 「の\S*」は play-hours の末尾 "の"（時間の〜）と vehicle-count の「の車/の実車」を
+  // 両方除去するため \S* (0 文字以上) とする
+  const trailingSuffixes = /(?:以上|超え?|程度|ほど|プレイ|の\S*|を要|もの|に拡張|没入|遊)+$/;
+  const unitCore = step1.replace(trailingSuffixes, '');
   return normalizedNum + unitCore;
 }
 
