@@ -36,9 +36,21 @@ export interface ValidationWarning {
   };
 }
 
+/**
+ * レポートの生成元モード。
+ * 本番（CI）と開発・手動実行のレポートは同じ号番号ファイル名になり得るため、
+ * どの実行由来かを JSON 内・ファイル名の双方で明示して混同を防ぐ（Issue #193）。
+ */
+export type ReportMode = 'production' | 'dev' | 'manual';
+
 export interface ValidationReport {
   issueNumber: number;
   generatedAt: string;
+  /**
+   * 生成元モード。writeAndCheckReport が出力先ディレクトリから解決してセットする。
+   * production=CI 本番、dev=DEV_MODE、manual=validate-existing-issue。
+   */
+  mode?: ReportMode;
   totalArticles: number;
   totalWarnings: number;
   warningsBySeverity: Record<Severity, number>;
@@ -896,6 +908,18 @@ export function validateArticles(
 }
 
 /**
+ * 出力先ディレクトリ名からレポートの生成元モードを判定する。
+ * ディレクトリの末尾が validation-dev / validation-manual なら dev / manual、
+ * それ以外（本番 validation を含む）は production とみなす。
+ */
+export function resolveReportMode(outputDir: string): ReportMode {
+  const base = path.basename(outputDir);
+  if (base === 'validation-dev') return 'dev';
+  if (base === 'validation-manual') return 'manual';
+  return 'production';
+}
+
+/**
  * レポートをファイルに保存し、stdout にもサマリを出力
  *
  * @returns true = 通過、false = しきい値超過で fail
@@ -909,14 +933,20 @@ export function writeAndCheckReport(
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
+  // 出力先からモードを解決して JSON に埋め込む（本番/dev/manual の混同防止・Issue #193）
+  const mode = resolveReportMode(outputDir);
+  report.mode = mode;
+
+  // 本番以外はファイル名にモードサフィックスを付け、号番号だけの本番ファイルと区別する
+  const modeSuffix = mode === 'production' ? '' : `-${mode}`;
   const reportPath = path.join(
     outputDir,
-    `validation-report-${String(report.issueNumber).padStart(3, '0')}.json`
+    `validation-report-${String(report.issueNumber).padStart(3, '0')}${modeSuffix}.json`
   );
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
   console.log('');
-  console.log('=== Article Validation Report ===');
+  console.log(`=== Article Validation Report [${mode}] ===`);
   console.log(`Total articles: ${report.totalArticles}`);
   console.log(`Total warnings: ${report.totalWarnings}`);
   console.log(

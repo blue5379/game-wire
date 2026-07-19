@@ -17,10 +17,15 @@ import {
   validateReleasedTitleExpression,
   buildFixInstruction,
   extractNumericUnitKey,
+  resolveReportMode,
+  writeAndCheckReport,
 } from './validate-article.js';
-import type { ValidationWarning } from './validate-article.js';
+import type { ValidationWarning, ValidationReport } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import { clearSteamEntityCache } from './steam-entity.js';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 function makeArticle(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
   return {
@@ -1365,5 +1370,83 @@ describe('validateReleasedTitleExpression', () => {
 
     const warnings = validateReleasedTitleExpression(article, publishDate);
     expect(warnings).toHaveLength(0);
+  });
+});
+
+describe('resolveReportMode', () => {
+  it('validation-dev ディレクトリは dev と判定する', () => {
+    expect(resolveReportMode('/tmp/data/validation-dev')).toBe('dev');
+  });
+
+  it('validation-manual ディレクトリは manual と判定する', () => {
+    expect(resolveReportMode('/tmp/data/validation-manual')).toBe('manual');
+  });
+
+  it('本番 validation ディレクトリは production と判定する', () => {
+    expect(resolveReportMode('/tmp/data/validation')).toBe('production');
+  });
+
+  it('末尾スラッシュ付きでも正しく判定する', () => {
+    expect(resolveReportMode('/tmp/data/validation-dev/')).toBe('dev');
+  });
+});
+
+describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', () => {
+  let tmpBase: string;
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-report-'));
+    // 保存時の stdout ログを抑制
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  function makeReport(issueNumber: number): ValidationReport {
+    return {
+      issueNumber,
+      generatedAt: '2026-07-19T00:00:00.000Z',
+      totalArticles: 0,
+      totalWarnings: 0,
+      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warnings: [],
+    };
+  }
+
+  it('本番はサフィックス無しファイル名で mode=production を埋め込む', () => {
+    const dir = path.join(tmpBase, 'validation');
+    const report = makeReport(16);
+    writeAndCheckReport(report, dir);
+
+    const expectedPath = path.join(dir, 'validation-report-016.json');
+    expect(fs.existsSync(expectedPath)).toBe(true);
+    expect(report.mode).toBe('production');
+    const saved = JSON.parse(fs.readFileSync(expectedPath, 'utf-8'));
+    expect(saved.mode).toBe('production');
+  });
+
+  it('dev は -dev サフィックス付きファイル名で mode=dev を埋め込む', () => {
+    const dir = path.join(tmpBase, 'validation-dev');
+    const report = makeReport(16);
+    writeAndCheckReport(report, dir);
+
+    expect(fs.existsSync(path.join(dir, 'validation-report-016-dev.json'))).toBe(true);
+    // 本番と同名のファイルは作られない（混同防止）
+    expect(fs.existsSync(path.join(dir, 'validation-report-016.json'))).toBe(false);
+    expect(report.mode).toBe('dev');
+  });
+
+  it('manual は -manual サフィックス付きファイル名で mode=manual を埋め込む', () => {
+    const dir = path.join(tmpBase, 'validation-manual');
+    const report = makeReport(16);
+    writeAndCheckReport(report, dir);
+
+    expect(fs.existsSync(path.join(dir, 'validation-report-016-manual.json'))).toBe(true);
+    expect(report.mode).toBe('manual');
   });
 });
