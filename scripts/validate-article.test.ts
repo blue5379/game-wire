@@ -1449,4 +1449,36 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
     expect(fs.existsSync(path.join(dir, 'validation-report-016-manual.json'))).toBe(true);
     expect(report.mode).toBe('manual');
   });
+
+  it('JSON と同じ basename で人間向け .md も書き出す（Issue #202）', () => {
+    const dir = path.join(tmpBase, 'validation');
+    const report = makeReport(16);
+    writeAndCheckReport(report, dir);
+
+    const mdPath = path.join(dir, 'validation-report-016.md');
+    expect(fs.existsSync(mdPath)).toBe(true);
+    expect(fs.readFileSync(mdPath, 'utf-8')).toContain('第16号');
+  });
+
+  it('status を算出して JSON に埋め込む（警告なしは ok・Issue #202）', () => {
+    const dir = path.join(tmpBase, 'validation');
+    const report = makeReport(16);
+    writeAndCheckReport(report, dir);
+
+    expect(report.status).toBe('ok');
+    const saved = JSON.parse(
+      fs.readFileSync(path.join(dir, 'validation-report-016.json'), 'utf-8')
+    );
+    expect(saved.status).toBe('ok');
+  });
+
+  it('high 警告がある号は status=error になる（Issue #202）', () => {
+    const dir = path.join(tmpBase, 'validation');
+    const report = makeReport(16);
+    report.warningsBySeverity.high = 1;
+    report.totalWarnings = 1;
+    writeAndCheckReport(report, dir);
+
+    expect(report.status).toBe('error');
+  });
 });

@@ -50,6 +50,7 @@ src/content/history-dev.json
 data/aggregated.json
 data/generated-articles.json
 data/selected-games.json
-data/validation/
+# data/validation/ は本番レポート（JSON=調査用 / Markdown=人間向け）を
+# リポジトリに保存するため gitignore しない（Issue #202）
 data/validation-dev/
 data/validation-manual/
