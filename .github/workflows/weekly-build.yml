@@ -22,6 +22,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      issues: write
 
     steps:
       # 1. リポジトリをチェックアウト
@@ -74,111 +75,17 @@ jobs:
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
 
       # 6.5. バリデーションレポートを Job Summary に出力
+      #      整形は scripts/format-validation-report.ts が生成する .md をそのまま利用する
       - name: Validation report summary
         if: always()
         run: |
-          REPORT=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
-          if [ -z "$REPORT" ]; then
-            echo "## ⚠️ Article Validation Report" >> $GITHUB_STEP_SUMMARY
-            echo "レポートファイルが見つかりませんでした。" >> $GITHUB_STEP_SUMMARY
+          REPORT_MD=$(ls data/validation/validation-report-*.md 2>/dev/null | sort | tail -1)
+          if [ -z "$REPORT_MD" ]; then
+            echo "## ⚠️ Article Validation Report" >> "$GITHUB_STEP_SUMMARY"
+            echo "レポートファイルが見つかりませんでした。" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-
-          TOTAL=$(jq '.totalWarnings' "$REPORT")
-          HIGH=$(jq '.warningsBySeverity.high' "$REPORT")
-          MEDIUM=$(jq '.warningsBySeverity.medium' "$REPORT")
-          LOW=$(jq '.warningsBySeverity.low' "$REPORT")
-          ARTICLES=$(jq '.totalArticles' "$REPORT")
-          ISSUE=$(jq '.issueNumber' "$REPORT")
-
-          if [ "$HIGH" -gt 5 ]; then
-            ICON="❌"
-            STATUS="閾値超過（high: ${HIGH} > 5）"
-          else
-            ICON="✅"
-            STATUS="通過（high: ${HIGH} ≤ 5）"
-          fi
-
-          echo "## ${ICON} Article Validation Report（第${ISSUE}号）" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 項目 | 件数 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-          SEARCH_FAIL=$(jq '.webSearchStats.searchFailures // 0' "$REPORT")
-          PAGE_FAIL=$(jq '.webSearchStats.pageContentFailures // 0' "$REPORT")
-          TOTAL_WEB_FAIL=$((SEARCH_FAIL + PAGE_FAIL))
-
-          echo "| 記事数 | ${ARTICLES} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 警告合計 | ${TOTAL} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🔴 HIGH | ${HIGH} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟡 MEDIUM | ${MEDIUM} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 🟢 LOW | ${LOW} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 判定 | ${STATUS} |" >> $GITHUB_STEP_SUMMARY
-          if [ "$TOTAL_WEB_FAIL" -gt 0 ]; then
-            echo "| ⚠️ Web検索失敗（キーワード） | ${SEARCH_FAIL} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ⚠️ Web検索失敗（ページ取得） | ${PAGE_FAIL} |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| ✅ Web検索失敗 | 0 |" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "$TOTAL" -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### 警告一覧" >> $GITHUB_STEP_SUMMARY
-            jq -r '.warnings[] | (
-              "\n---\n" +
-              "**[\(.severity | ascii_upcase)] \(.type)**  \n" +
-              "記事: \(.articleTitle)  \n" +
-              "内容: \(.message)  \n" +
-              if .context then "> \(.context)\n" else "" end +
-              if .sourcedFrom then
-                "🔗 **検索結果に根拠あり（捏造ではない可能性）**: [\(.sourcedFrom.title)](\(.sourcedFrom.url))  \n" +
-                "> \(.sourcedFrom.snippet)"
-              else
-                "⚠️ **検索結果に根拠なし（捏造の可能性あり）**"
-              end
-            )' "$REPORT" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # 公式URL未取得の記事（記録のみ。人間レビューへの気付き提供）
-          MISSING_COUNT=$(jq 'if has("missingOfficialUrls") and .missingOfficialUrls != null then (.missingOfficialUrls | length) else 0 end' "$REPORT")
-          if [ "$MISSING_COUNT" -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## ⚠️ 公式URL未取得の記事（${MISSING_COUNT}件）" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "以下の記事は公式URLが取得できませんでした。必要に応じて手動で補完してください。" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            jq -r '.missingOfficialUrls[] | "- **[\(.category)]** \(.gameTitle)"' "$REPORT" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # LLM-as-a-judge による事実性チェック結果（記録のみ。fail 判定には算入しない）
-          if [ "$(jq 'has("llmJudge") and .llmJudge != null' "$REPORT")" = "true" ]; then
-            JUDGED=$(jq '.llmJudge.judgedArticles' "$REPORT")
-            SKIPPED=$(jq '.llmJudge.skippedArticles' "$REPORT")
-            CONTRA=$(jq '.llmJudge.claimsByVerdict.contradicted' "$REPORT")
-            UNVER=$(jq '.llmJudge.claimsByVerdict.unverifiable' "$REPORT")
-            SUPP=$(jq '.llmJudge.claimsByVerdict.supported' "$REPORT")
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "## 🔎 LLM 事実性チェック（参考・fail 判定には非算入）" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| 項目 | 件数 |" >> $GITHUB_STEP_SUMMARY
-            echo "|------|------|" >> $GITHUB_STEP_SUMMARY
-            echo "| 判定した記事 | ${JUDGED} |" >> $GITHUB_STEP_SUMMARY
-            echo "| スキップ記事 | ${SKIPPED} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ✅ 支持 | ${SUPP} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ❌ 矛盾 | ${CONTRA} |" >> $GITHUB_STEP_SUMMARY
-            echo "| ❓ 裏付け不能 | ${UNVER} |" >> $GITHUB_STEP_SUMMARY
-
-            if [ "$(jq '.llmJudge.warnings | length' "$REPORT")" -gt 0 ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### 事実性チェックの指摘" >> $GITHUB_STEP_SUMMARY
-              jq -r '.llmJudge.warnings[] | (
-                "\n---\n" +
-                "**[\(.severity | ascii_upcase)] \(.type)**  \n" +
-                "記事: \(.articleTitle)  \n" +
-                "内容: \(.message)  \n" +
-                if .context then "> \(.context)" else "" end
-              )' "$REPORT" >> $GITHUB_STEP_SUMMARY
-            fi
-          fi
+          cat "$REPORT_MD" >> "$GITHUB_STEP_SUMMARY"
 
       # 6.6. history.json の JSON 整合性チェック
       - name: Validate history.json
@@ -192,6 +99,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add src/content/issues/ src/content/history.json
           [ -d "public/images/features" ] && git add public/images/features/ || true
+          # 本番 validation レポート（JSON=調査用 / Markdown=人間向け）をリポジトリに保存（Issue #202）
+          [ -d "data/validation" ] && git add data/validation/ || true
           git diff --staged --quiet || git commit -m "Add issue for $(date '+%Y-%m-%d')"
           git stash --include-untracked || true
           git pull --rebase origin main
@@ -200,6 +109,51 @@ jobs:
           git push
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 7.5. 総合ステータスが error の号は Issue を自動起票（既存があればスキップ）
+      #      レポートを push した後に実行し、Issue 本文から保存済みレポートを参照できるようにする
+      - name: File issue on validation error
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          REPORT_JSON=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
+          if [ -z "$REPORT_JSON" ]; then
+            echo "レポート JSON が見つからないため起票をスキップします。"
+            exit 0
+          fi
+
+          STATUS=$(jq -r '.status // "ok"' "$REPORT_JSON")
+          if [ "$STATUS" != "error" ]; then
+            echo "status=${STATUS} のため起票不要です。"
+            exit 0
+          fi
+
+          ISSUE_NUM=$(jq -r '.issueNumber' "$REPORT_JSON")
+          HIGH=$(jq -r '.warningsBySeverity.high' "$REPORT_JSON")
+          TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（HIGH: ${HIGH}件）"
+
+          # 同一タイトルのオープン Issue が既にあれば起票しない（重複防止）
+          EXISTING=$(gh issue list --state open --search "in:title \"${TITLE}\"" --json title \
+            --jq "[.[] | select(.title == \"${TITLE}\")] | length")
+          if [ "$EXISTING" != "0" ]; then
+            echo "既存の Issue があるため起票をスキップします: ${TITLE}"
+            exit 0
+          fi
+
+          REPORT_MD=$(ls data/validation/validation-report-*.md 2>/dev/null | sort | tail -1)
+          {
+            cat "$REPORT_MD"
+            echo ""
+            echo "---"
+            echo "調査用の詳細レポート（このリポジトリに保存済み）: \`${REPORT_JSON}\`"
+            echo ""
+            echo "🤖 このIssueは weekly-build ワークフローが自動起票しました。"
+          } > /tmp/issue-body.md
+
+          gh issue create --title "${TITLE}" --body-file /tmp/issue-body.md --label validation
 
       # 8. Astro ビルド
       - name: Build Astro site
@@ -225,5 +179,6 @@ jobs:
           if [ -n "$REPORT" ]; then
             HIGH=$(jq '.warningsBySeverity.high' "$REPORT")
             TOTAL=$(jq '.totalWarnings' "$REPORT")
-            echo "- **Validation**: 警告 ${TOTAL}件（HIGH: ${HIGH}件）" >> $GITHUB_STEP_SUMMARY
+            STATUS=$(jq -r '.status // "ok"' "$REPORT")
+            echo "- **Validation**: status=${STATUS} / 警告 ${TOTAL}件（HIGH: ${HIGH}件）" >> $GITHUB_STEP_SUMMARY
           fi

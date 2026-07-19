@@ -18,6 +18,11 @@ import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 import { getReleaseStatus } from './bedrock-client.js';
+import {
+  computeReportStatus,
+  formatReportMarkdown,
+  type ReportStatus,
+} from './format-validation-report.js';
 
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -51,6 +56,11 @@ export interface ValidationReport {
    * production=CI 本番、dev=DEV_MODE、manual=validate-existing-issue。
    */
   mode?: ReportMode;
+  /**
+   * 総合ステータス（ok/warning/error）。writeAndCheckReport が算出してセットする。
+   * 「対応が必要か」を機械的に判定するための最重要フィールド（Issue #202）。
+   */
+  status?: ReportStatus;
   totalArticles: number;
   totalWarnings: number;
   warningsBySeverity: Record<Severity, number>;
@@ -937,16 +947,22 @@ export function writeAndCheckReport(
   const mode = resolveReportMode(outputDir);
   report.mode = mode;
 
+  // 総合ステータスを算出して埋め込む（Issue #202）。JSON 書き出しより前に行う。
+  report.status = computeReportStatus(report);
+
   // 本番以外はファイル名にモードサフィックスを付け、号番号だけの本番ファイルと区別する
   const modeSuffix = mode === 'production' ? '' : `-${mode}`;
-  const reportPath = path.join(
-    outputDir,
-    `validation-report-${String(report.issueNumber).padStart(3, '0')}${modeSuffix}.json`
-  );
+  const baseName = `validation-report-${String(report.issueNumber).padStart(3, '0')}${modeSuffix}`;
+  const reportPath = path.join(outputDir, `${baseName}.json`);
   fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 
+  // 人間向けの Markdown サマリを同じ basename で書き出す（Issue #202）。
+  // CI ではこの .md をリポジトリ保存・Issue 本文・Step Summary に流用する。
+  const markdownPath = path.join(outputDir, `${baseName}.md`);
+  fs.writeFileSync(markdownPath, formatReportMarkdown(report));
+
   console.log('');
-  console.log(`=== Article Validation Report [${mode}] ===`);
+  console.log(`=== Article Validation Report [${mode}] status=${report.status} ===`);
   console.log(`Total articles: ${report.totalArticles}`);
   console.log(`Total warnings: ${report.totalWarnings}`);
   console.log(
