@@ -111,9 +111,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # 7.5. 総合ステータスが error の号は Issue を自動起票（既存があればスキップ）
-      #      レポートを push した後に実行し、Issue 本文から保存済みレポートを参照できるようにする
+      #      Commit and push 成功後のみ実行（レポートがリポジトリに保存済みであることを保証）
       - name: File issue on validation error
-        if: always()
+        if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
@@ -135,20 +135,24 @@ jobs:
           HIGH=$(jq -r '.warningsBySeverity.high' "$REPORT_JSON")
           TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（HIGH: ${HIGH}件）"
 
-          # 同一タイトルのオープン Issue が既にあれば起票しない（重複防止）
-          EXISTING=$(gh issue list --state open --search "in:title \"${TITLE}\"" --json title \
+          # 同一タイトルのオープン Issue が既にあれば起票しない（重複防止）。
+          # GitHub 検索インデックスは即時反映されないため、全件取得してローカルで完全一致フィルタする。
+          EXISTING=$(gh issue list --state all --limit 100 --json title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | length")
           if [ "$EXISTING" != "0" ]; then
             echo "既存の Issue があるため起票をスキップします: ${TITLE}"
             exit 0
           fi
 
+          # F1: validation ラベルを冪等に作成（存在しなければ作る、あれば何もしない）
+          gh label create validation --description "Validation report issue" --color "e11d48" --force || true
+
           REPORT_MD=$(ls data/validation/validation-report-*.md 2>/dev/null | sort | tail -1)
           {
             cat "$REPORT_MD"
             echo ""
             echo "---"
-            echo "調査用の詳細レポート（このリポジトリに保存済み）: \`${REPORT_JSON}\`"
+            echo "調査用の詳細レポート: \`${REPORT_JSON}\`（main ブランチにコミット済みの場合はリポジトリから参照可能）"
             echo ""
             echo "🤖 このIssueは weekly-build ワークフローが自動起票しました。"
           } > /tmp/issue-body.md
