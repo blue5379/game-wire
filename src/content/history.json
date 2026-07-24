@@ -686,6 +686,55 @@
       "category": "feature",
       "issueNumber": 16,
       "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "ドラゴンソード アウェイクニング",
+      "title": "ドラゴンソード:アウェイクニング",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "grim dawn fangs of asterkarn",
+      "title": "Grim Dawn - Fangs of Asterkarn",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "pokémon infinite fusion",
+      "title": "Pokémon Infinite Fusion",
+      "category": "classic",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "北斗が如く",
+      "title": "北斗が如く",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "ドラゴンボール z kakarot",
+      "title": "ドラゴンボール Z Kakarot",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "naruto 疾風伝 ナルティメットストーム 4",
+      "title": "Naruto 疾風伝：ナルティメットストーム 4",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "鬼滅の刃 ヒノカミ血風譚",
+      "title": "鬼滅の刃 ヒノカミ血風譚",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-07-24"
     }
   ]
 }
