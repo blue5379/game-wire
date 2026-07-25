@@ -410,8 +410,6 @@ export const __test = {
   isRelevantSearchResult,
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
-  IGDB_THEME_EROTIC,
-  IGDB_GAME_TYPE_MAIN,
   buildIgdbCommonFilters,
 };
 

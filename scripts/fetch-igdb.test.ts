@@ -6,14 +6,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { __test, searchGameBySteamAppId } from './fetch-igdb.js';
+import { __test, searchGameBySteamAppId, fetchIGDBData } from './fetch-igdb.js';
 
 const {
   isRelevantSearchResult,
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
-  IGDB_THEME_EROTIC,
-  IGDB_GAME_TYPE_MAIN,
   buildIgdbCommonFilters,
 } = __test;
 
@@ -285,24 +283,93 @@ describe('searchGameBySteamAppId', () => {
 describe('buildIgdbCommonFilters (Issue #207)', () => {
   it('成人向け除外（Erotic = 42）と Main Game 限定（game_type = 0）を含む', () => {
     const filters = buildIgdbCommonFilters();
-    // 正しいフィルタが含まれること
-    expect(filters).toContain(`game_type = ${IGDB_GAME_TYPE_MAIN}`);
-    expect(filters).toContain(`themes != (${IGDB_THEME_EROTIC})`);
-    // 定数値の確認（回帰防止）
-    expect(IGDB_GAME_TYPE_MAIN).toBe(0);
-    expect(IGDB_THEME_EROTIC).toBe(42);
+    // 正しいフィルタが含まれること（リテラル値で検証）
+    expect(filters).toContain('game_type = 0');
+    expect(filters).toContain('themes != (42)');
   });
 
   it('旧バグの themes != (37) を含まない（回帰防止）', () => {
     const filters = buildIgdbCommonFilters();
     // 間違った旧フィルタが含まれていないこと
     expect(filters).not.toContain('themes != (37)');
-    expect(filters).not.toContain('themes!=(37)');
   });
 
   it('生成される文字列は IGDB クエリ where 句に埋め込める形式', () => {
     const filters = buildIgdbCommonFilters();
     // & で連結された条件式であること（クエリに埋め込み可能）
     expect(filters).toMatch(/game_type\s*=\s*0\s*&\s*themes\s*!=\s*\(\s*42\s*\)/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fetchIGDBData — 3つの母集団クエリが確実にフィルタを使用することを検証（Issue #207 統合テスト）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fetchIGDBData - pool queries use filters (Issue #207)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('3つの母集団クエリすべてが game_type = 0 & themes != (42) を含む', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      // Twitch OAuth token endpoint
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      // IGDB API endpoints
+      if (String(url).includes('api.igdb.com')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([]),
+        });
+      }
+      return Promise.reject(new Error('Unexpected URL'));
+    });
+
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    // IGDB API への呼び出しを抽出（Twitch OAuth 以外）
+    const igdbCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('api.igdb.com')
+    );
+    const igdbBodies = igdbCalls.map(([, init]) => {
+      const body = (init as { body?: string })?.body ?? '';
+      return body;
+    });
+
+    // 3つの母集団クエリが投げられたこと
+    expect(igdbBodies.length).toBe(3);
+
+    // すべてのクエリが game_type = 0 & themes != (42) を含むこと（全体チェック）
+    for (const body of igdbBodies) {
+      expect(body).toContain('game_type = 0');
+      expect(body).toContain('themes != (42)');
+    }
+
+    // 各クエリを区別してチェック（失敗時にどのクエリか特定できるように）
+    const recentQuery = igdbBodies.find((b) => b.includes('hypes > 5'));
+    const classicQuery = igdbBodies.find((b) => b.includes('hypes > 100'));
+    const indieQuery = igdbBodies.find((b) => b.includes('rating_count > 5'));
+
+    expect(recentQuery).toBeDefined();
+    expect(recentQuery).toContain('game_type = 0');
+    expect(recentQuery).toContain('themes != (42)');
+
+    expect(classicQuery).toBeDefined();
+    expect(classicQuery).toContain('game_type = 0');
+    expect(classicQuery).toContain('themes != (42)');
+
+    expect(indieQuery).toBeDefined();
+    expect(indieQuery).toContain('game_type = 0');
+    expect(indieQuery).toContain('themes != (42)');
   });
 });
