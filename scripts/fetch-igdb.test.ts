@@ -8,8 +8,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { __test, searchGameBySteamAppId } from './fetch-igdb.js';
 
-const { isRelevantSearchResult, pickOfficialUrlFromWebsites, mapRawGameToIGDBGame } =
-  __test;
+const {
+  isRelevantSearchResult,
+  pickOfficialUrlFromWebsites,
+  mapRawGameToIGDBGame,
+  IGDB_THEME_EROTIC,
+  IGDB_GAME_TYPE_MAIN,
+  buildIgdbCommonFilters,
+} = __test;
 
 describe('isRelevantSearchResult', () => {
   it('完全一致するタイトルは true', () => {
@@ -270,5 +276,33 @@ describe('searchGameBySteamAppId', () => {
 
     const result = await searchGameBySteamAppId(1087090, 'client-id', 'token');
     expect(result).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildIgdbCommonFilters — IGDB クエリで共通使用するフィルタ（Issue #207）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildIgdbCommonFilters (Issue #207)', () => {
+  it('成人向け除外（Erotic = 42）と Main Game 限定（game_type = 0）を含む', () => {
+    const filters = buildIgdbCommonFilters();
+    // 正しいフィルタが含まれること
+    expect(filters).toContain(`game_type = ${IGDB_GAME_TYPE_MAIN}`);
+    expect(filters).toContain(`themes != (${IGDB_THEME_EROTIC})`);
+    // 定数値の確認（回帰防止）
+    expect(IGDB_GAME_TYPE_MAIN).toBe(0);
+    expect(IGDB_THEME_EROTIC).toBe(42);
+  });
+
+  it('旧バグの themes != (37) を含まない（回帰防止）', () => {
+    const filters = buildIgdbCommonFilters();
+    // 間違った旧フィルタが含まれていないこと
+    expect(filters).not.toContain('themes != (37)');
+    expect(filters).not.toContain('themes!=(37)');
+  });
+
+  it('生成される文字列は IGDB クエリ where 句に埋め込める形式', () => {
+    const filters = buildIgdbCommonFilters();
+    // & で連結された条件式であること（クエリに埋め込み可能）
+    expect(filters).toMatch(/game_type\s*=\s*0\s*&\s*themes\s*!=\s*\(\s*42\s*\)/);
   });
 });
