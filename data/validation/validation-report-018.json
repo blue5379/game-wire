@@ -1,0 +1,100 @@
+{
+  "issueNumber": 18,
+  "generatedAt": "2026-07-31T22:01:28.990Z",
+  "totalArticles": 5,
+  "totalWarnings": 1,
+  "warningsBySeverity": {
+    "high": 1,
+    "medium": 0,
+    "low": 0
+  },
+  "warnings": [
+    {
+      "articleTitle": "『Street Fighter 6 - Year 4 アルティメットパス』発売中、追加キャラ4体とコスチューム・カラーセットを収録",
+      "category": "newRelease",
+      "severity": "high",
+      "type": "body-title-mismatch",
+      "message": "記事本文に正式ゲームタイトルが一度も登場しません。AI が本文中でタイトルを短縮・翻訳・改変した可能性があります。提供データ: en=\"Street Fighter 6 - Year 4 アルティメットパス\"",
+      "evidence": "Street Fighter 6 - Year 4 アルティメットパス"
+    }
+  ],
+  "webSearchStats": {
+    "searchFailures": 0,
+    "pageContentFailures": 0
+  },
+  "missingOfficialUrls": [
+    {
+      "articleTitle": "『Street Fighter 6 - Year 4 アルティメットパス』発売中、追加キャラ4体とコスチューム・カラーセットを収録",
+      "category": "newRelease",
+      "gameTitle": "Street Fighter 6 - Year 4 アルティメットパス"
+    },
+    {
+      "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
+      "category": "indie",
+      "gameTitle": "Corsair Cove コルセア・コーヴ"
+    },
+    {
+      "articleTitle": "1910年の架空世界を巨大歩行機で駆ける──『Sand: Raiders Of Sophie』が描く過酷な砂漠サバイバル",
+      "category": "classic",
+      "gameTitle": "Sand: Raiders Of Sophie"
+    }
+  ],
+  "llmJudge": {
+    "claimsByVerdict": {
+      "supported": 38,
+      "contradicted": 1,
+      "unverifiable": 4
+    },
+    "judgedArticles": 5,
+    "skippedArticles": 0,
+    "warnings": [
+      {
+        "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
+        "category": "indie",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「Steamでは好評を得ており」は検索結果で裏付けられません（確信度 30%）。検索結果[1]でForbesのレビューが肯定的であることは確認できるが、Steam上での評価状況については検索結果に具体的な記載がない。",
+        "evidence": "Steamでは好評を得ており",
+        "context": "Steamでは好評を得ており"
+      },
+      {
+        "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
+        "category": "indie",
+        "severity": "high",
+        "type": "llm-judge-contradicted",
+        "message": "LLM事実性チェック: 主張「ジャンルはシミュレーション、ストラテジー、ターン制ストラテジー」は検索結果と矛盾します（確信度 70%）。検索結果[3][6]に「ジャンル：ストラテジー / シミュレーション / 都市建設 / 海賊」と記載されており、「ターン制ストラテジー」という記述は見当たらない。検索結果[1]では船の戦闘が「card and dice-roll system」と説明されているが、ゲーム全体がターン制とは記載されていない。",
+        "evidence": "ジャンルはシミュレーション、ストラテジー、ターン制ストラテジー",
+        "context": "ジャンル: シミュレーション、ストラテジー、ターン制ストラテジー"
+      },
+      {
+        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「アブズ（Abzu）のタイトルは古代シュメール語で「知恵の海」を意味する」は検索結果で裏付けられません（確信度 30%）。検索結果にはタイトルの語源や意味に関する記述が見当たらない。[1][2][3]はゲームプレイの感想のみで語源には触れていない",
+        "evidence": "アブズ（Abzu）のタイトルは古代シュメール語で「知恵の海」を意味する",
+        "context": "古代シュメール語で「知恵の海」を意味するタイトル"
+      },
+      {
+        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「Spiritfarerでは猫のダッフォディルと共に冒険を進められる」は検索結果で裏付けられません（確信度 40%）。検索結果に猫のキャラクター「ダッフォディル」に関する具体的な記述が見当たらない。[4][5][6]にはゲームの概要はあるが、この固有名詞は確認できない",
+        "evidence": "Spiritfarerでは猫のダッフォディルと共に冒険を進められる",
+        "context": "猫のダッフォディルと共に冒険を進められます"
+      },
+      {
+        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「Grisは若い女性グリスの悲しみと喪失の旅を描く」は検索結果で裏付けられません（確信度 50%）。検索結果[7][8][9]にはGrisの美術性や雰囲気への言及はあるが、主人公の名前が「グリス」であることや「悲しみと喪失の旅」という具体的なストーリー設定の記述は確認できない",
+        "evidence": "Grisは若い女性グリスの悲しみと喪失の旅を描く",
+        "context": "若い女性グリスの悲しみと喪失の旅を描く"
+      }
+    ]
+  },
+  "mode": "production",
+  "status": "error"
+}

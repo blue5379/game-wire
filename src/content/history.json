@@ -735,6 +735,55 @@
       "category": "feature",
       "issueNumber": 17,
       "publishDate": "2026-07-24"
+    },
+    {
+      "normalizedTitle": "street fighter 6 year 4 アルティメットパス",
+      "title": "Street Fighter 6 - Year 4 アルティメットパス",
+      "category": "newRelease",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "ほの暮しの庭",
+      "title": "ほの暮しの庭",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "corsair cove コルセア・コーヴ",
+      "title": "Corsair Cove コルセア・コーヴ",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "sand raiders of sophie",
+      "title": "Sand: Raiders Of Sophie",
+      "category": "classic",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "アブズ",
+      "title": "アブズ",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "spiritfarer",
+      "title": "Spiritfarer",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
+    },
+    {
+      "normalizedTitle": "gris",
+      "title": "Gris",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-07-31"
     }
   ]
 }
