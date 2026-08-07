@@ -1,0 +1,55 @@
+{
+  "issueNumber": 19,
+  "generatedAt": "2026-08-07T21:35:34.634Z",
+  "totalArticles": 4,
+  "totalWarnings": 1,
+  "warningsBySeverity": {
+    "high": 0,
+    "medium": 1,
+    "low": 0
+  },
+  "warnings": [
+    {
+      "articleTitle": "事故物件の真相を暴け──和製ホラー『日本事故物件監視協会3 -Japan Stigmatized Property-』発売中",
+      "category": "indie",
+      "severity": "medium",
+      "type": "numeric-price",
+      "message": "本文に具体的な数値「880円」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "880円",
+      "context": "…人 ## 📅 発売情報 - **発売日**: 発売中 - **対応機種**: PC - **開発・発売元**: 日本事故物件監視協会 - **価格**: 880円 ## 🎯 Creator's Eye 本作の最大の魅力は「監視」という受動的な行為をゲームプレイの中心に据えた点にあります。プレイヤーは物件内を自由に探…",
+      "sourcedFrom": {
+        "url": "http://news.dengeki.com/article/202608/83879",
+        "title": "【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース - 電撃オンライン",
+        "snippet": "電撃オンライン\n ゲーム\n Steamモバイル・アプリインディーゲーム\n 【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n# 【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n文：電撃オンライン\n\n公開日時：\n\n日本事故物件監視協会は、Steam/iOS/Android用監視カメラ異変探しゲーム『日本事故物件監視協会3 -Japan Stigmatized Property-』を、本日8月7日に配信しました。価格は880円です。\n\n【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\nインディーゲームをAmazonで調べるインディーゲームを楽天で調べる\n\n『日本事故物件監視協会3 -Japan Stigmatized Property-』は、“日本事故物件監視協会”の監視員となり、物件内に設置された監視カメラを操作し、異常がないかを監視するゲームの新作です。\n\n【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n“日本事故物件監視協会”の監視員となって、午前0時から5時まで事故物件を監視カメラで監視し、異常がないかをチェックしましょう。  \n  \n　物件は実在する日本国内の物件となり、暗視カメラ、通常カメラで様子を確認するとこができます。異常はランダムに発生し、暗視カメラ、通常カメラそれぞれでしか視認できない現象もあるので、切り替えながら監視する必要があります。"
+      }
+    }
+  ],
+  "webSearchStats": {
+    "searchFailures": 0,
+    "pageContentFailures": 0
+  },
+  "missingOfficialUrls": [
+    {
+      "articleTitle": "事故物件の真相を暴け──和製ホラー『日本事故物件監視協会3 -Japan Stigmatized Property-』発売中",
+      "category": "indie",
+      "gameTitle": "日本事故物件監視協会3 -Japan Stigmatized Property-"
+    },
+    {
+      "articleTitle": "一人で挑むトレジャーハント、『スプラトゥーン レイダース』発売中──Deep Cutと共に謎の島々を探索",
+      "category": "classic",
+      "gameTitle": "Splatoon Raiders"
+    }
+  ],
+  "llmJudge": {
+    "claimsByVerdict": {
+      "supported": 8,
+      "contradicted": 0,
+      "unverifiable": 0
+    },
+    "judgedArticles": 4,
+    "skippedArticles": 0,
+    "warnings": []
+  },
+  "mode": "production",
+  "status": "warning"
+}
