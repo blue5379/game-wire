@@ -90,7 +90,7 @@ git add src/content/history.json
 git commit -m "$(cat <<'EOF'
 chore: Vol.$VOL 再生成のため記事と履歴を削除
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude Sonnet <noreply@anthropic.com>
 EOF
 )"
 git push -u origin chore/regenerate-vol-$VOL
