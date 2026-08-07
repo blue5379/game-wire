@@ -2,7 +2,7 @@
 issueNumber: 1
 publishDate: 2026-04-04
 title: "創刊号 - 2026年春のゲーム最前線"
-description: "Game Wire創刊！今週の注目タイトルから名作まで、AIがキュレーションしたゲーム情報をお届けします。"
+description: "GameQuestra創刊！今週の注目タイトルから名作まで、AIがキュレーションしたゲーム情報をお届けします。"
 articles:
   - title: "『アイザック』生みの親が贈る猫育成ローグライク『Mewgenics』、breeding×冒険で血統を紡ぐ"
     category: newRelease
@@ -354,7 +354,7 @@ articles:
       igdb: "https://www.igdb.com/games/dig-island"
 ---
 
-Game Wire創刊号へようこそ！
+GameQuestra創刊号へようこそ！
 
 このマガジンは、AIが毎週キュレーションしたゲーム情報をお届けする週刊Webマガジンです。大手メーカーの新作から注目のインディーゲーム、そして時代を超えて愛される名作まで、幅広いゲーム情報をお届けします。
 

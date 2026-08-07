@@ -244,7 +244,7 @@ articles:
       igdb: "https://www.igdb.com/games/pokemon-infinite-fusion"
 ---
 
-Game Wire 第17号（2026年7月24日発行）をお届けします。
+GameQuestra 第17号（2026年7月24日発行）をお届けします。
 
 今週も厳選したゲーム情報をAIがキュレーション。新作情報からインディーゲーム、特集記事まで、ゲームファン必見の内容をお届けします。
 

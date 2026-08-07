@@ -2,9 +2,15 @@
 
 AIを活用した週刊ゲーム情報雑誌の自動生成システム
 
+> **名称について**: 「Game Wire」は本プロジェクトのコード名（リポジトリ名・パッケージ名・内部識別名として使用）。
+> サービスの正式名称は **GameQuestra**。「Game Wire」という名称が既に他サービスで使用されていたため、
+> ユーザー向け表示（サイトタイトル・ロゴ・記事本文・OGP等）は GameQuestra に変更済み。
+> コード内の変数名・ファイルパス・ドメイン（`game-wire.pages.dev`）・User-Agent文字列等の内部識別子は
+> 移行コストを避けるため Game Wire のまま維持している。
+
 ## プロジェクト概要
 
-毎週土曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
+毎週土曜日に自動発行されるゲーム情報Webマガジン（サービス名: GameQuestra）。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
 
 ## 技術スタック
 

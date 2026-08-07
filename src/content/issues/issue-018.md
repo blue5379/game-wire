@@ -321,7 +321,7 @@ articles:
       igdb: "https://www.igdb.com/games/sand-raiders-of-sophie"
 ---
 
-Game Wire 第18号（2026年7月31日発行）をお届けします。
+GameQuestra 第18号（2026年7月31日発行）をお届けします。
 
 今週も厳選したゲーム情報をAIがキュレーション。新作情報からインディーゲーム、特集記事まで、ゲームファン必見の内容をお届けします。
 

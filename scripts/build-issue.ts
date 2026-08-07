@@ -94,7 +94,7 @@ function generateIssueDescription(
   articles: GeneratedArticle[]
 ): string {
   if (issueNumber === 1) {
-    return 'Game Wire創刊！今週の注目タイトルから名作まで、AIがキュレーションしたゲーム情報をお届けします。';
+    return 'GameQuestra創刊！今週の注目タイトルから名作まで、AIがキュレーションしたゲーム情報をお届けします。';
   }
 
   const newReleaseCount = articles.filter((a) => a.category === 'newRelease').length;
@@ -365,14 +365,14 @@ async function generateMarkdownContent(
   const body: string[] = [];
 
   if (issueNumber === 1) {
-    body.push('Game Wire創刊号へようこそ！');
+    body.push('GameQuestra創刊号へようこそ！');
     body.push('');
     body.push(
       'このマガジンは、AIが毎週キュレーションしたゲーム情報をお届けする週刊Webマガジンです。大手メーカーの新作から注目のインディーゲーム、そして時代を超えて愛される名作まで、幅広いゲーム情報をお届けします。'
     );
   } else {
     const formattedDate = format(publishDate, 'yyyy年M月d日', { locale: ja });
-    body.push(`Game Wire 第${issueNumber}号（${formattedDate}発行）をお届けします。`);
+    body.push(`GameQuestra 第${issueNumber}号（${formattedDate}発行）をお届けします。`);
     body.push('');
     body.push('今週も厳選したゲーム情報をAIがキュレーション。新作情報からインディーゲーム、特集記事まで、ゲームファン必見の内容をお届けします。');
   }
