@@ -862,6 +862,8 @@ Vol.1で `newRelease` として記録されたゲームが、Vol.2で `indie` �
 
 - [x] `scripts/adult-blocklist.ts` 新規作成（既知タイトルのブロックリスト）
 - [x] `scripts/fetch-igdb.ts`: 3クエリに `& themes != (37)` を追加（IGDB の Erotic テーマを除外）
+  - ⚠️ **このフィルタは無効だった**（Issue #207 で修正）。IGDB の themes に id=37 は存在せず、Erotic は id=42。
+    `themes != (37)` は 1 件も除外していなかった（実測: 全 370,449 件がそのまま通過）。正しくは `themes != (42)`。
 - [x] `scripts/fetch-steam.ts`: `getAppName()` → `getAppDetails()` に拡張、`content_descriptors.ids` に 1/2/3 を含む場合はスキップ
 - [x] `scripts/types.ts`: `SteamGame` に `isAdultContent?: boolean` を追加
 - [x] `scripts/fetch-data.ts`: `aggregateGames()` でブロックリストフィルタを適用

@@ -8,6 +8,18 @@ import type { IGDBGame, IGDBData, FetchResult } from './types.js';
 const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/token';
 const IGDB_API_URL = 'https://api.igdb.com/v4';
 
+// IGDB API フィルタ定数（クエリビルダで使用）
+const IGDB_THEME_EROTIC = 42;     // 成人向けコンテンツ（Erotic theme）
+const IGDB_GAME_TYPE_MAIN = 0;    // Main Game（DLC・エディション違い・バンドルを除外）
+
+/**
+ * IGDB クエリで共通使用するフィルタ文字列を生成
+ * 成人向けコンテンツ除外 & Main Game のみに限定
+ */
+function buildIgdbCommonFilters(): string {
+  return `game_type = ${IGDB_GAME_TYPE_MAIN} & themes != (${IGDB_THEME_EROTIC})`;
+}
+
 // キャッシュ用（同一セッション内でのトークン再利用）
 let cachedToken: { accessToken: string; expiresAt: number } | null = null;
 
@@ -398,6 +410,7 @@ export const __test = {
   isRelevantSearchResult,
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
+  buildIgdbCommonFilters,
 };
 
 /**
@@ -635,7 +648,7 @@ async function fetchRecentPopularGames(
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
              websites.url, websites.category;
-      where first_release_date > ${threeMonthsAgo} & hypes > 5 & themes != (37);
+      where first_release_date > ${threeMonthsAgo} & hypes > 5 & ${buildIgdbCommonFilters()};
       sort hypes desc;
       limit 20;
     `;
@@ -730,7 +743,7 @@ async function fetchClassicGames(
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
              websites.url, websites.category;
-      where hypes > 100 & themes != (37);
+      where hypes > 100 & ${buildIgdbCommonFilters()};
       sort hypes desc;
       limit 30;
     `;
@@ -828,7 +841,7 @@ async function fetchIndieGames(
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
              websites.url, websites.category;
-      where first_release_date > ${threeMonthsAgo} & rating_count > 5 & themes != (37);
+      where first_release_date > ${threeMonthsAgo} & rating_count > 5 & ${buildIgdbCommonFilters()};
       sort hypes desc;
       limit 50;
     `;
