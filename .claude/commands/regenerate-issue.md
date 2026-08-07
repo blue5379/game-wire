@@ -77,11 +77,22 @@ jq '.entries | length' src/content/history.json  # 件数確認
 
 `jq empty` が失敗したら commit せず中断する。
 
-### 4. issue ファイルを git rm
+### 4. issue ファイルと関連画像を git rm
 
 ```bash
 git rm src/content/issues/issue-$VOL.md
 ```
+
+対象号の `featureImage` が `public/images/features/` 配下のローカル画像を指している場合（IGDB 等の外部URLではなく `/images/features/feature-*` 形式のパスの場合）、そのファイルも削除する。再生成後は新しいタイムスタンプで別ファイルとして再生成されるため、削除しないと古い画像がゴミとして残る:
+
+```bash
+FEATURE_IMAGE=$(git show HEAD:src/content/issues/issue-$VOL.md | grep -o 'featureImage: *"/images/features/[^"]*"' | sed 's/.*"\(\/images.*\)"/\1/')
+if [ -n "$FEATURE_IMAGE" ]; then
+  git rm "public${FEATURE_IMAGE}"
+fi
+```
+
+削除対象が見つからない・パスが特定できない場合はスキップしてよい（featureImage を持たない号もあるため）。
 
 ### 5. コミット & push & PR 作成
 
@@ -99,6 +110,7 @@ gh pr create --title "chore: Vol.$VOL 再生成のため記事と履歴を削除
 - Vol.$VOL に不備があったため、記事を削除して再生成する
 - \`src/content/issues/issue-$VOL.md\` を削除
 - \`src/content/history.json\` から Vol.$VOL のエントリを除去
+- featureImage が存在する場合は \`public/images/features/\` の該当画像も削除
 
 ## マージ後の作業
 本 PR を main にマージ後、以下で再生成:
