@@ -43,6 +43,9 @@ screenshots/
 .claude/*
 !.claude/commands/
 
+# Claude Code scratch space (一時調査スクリプト用。rm自動許可の対象範囲)
+.claude-scratch/
+
 # Development generated content
 src/content/issues-dev/
 public/images/features-dev/
