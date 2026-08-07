@@ -6,7 +6,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { __test, searchGameBySteamAppId, fetchIGDBData } from './fetch-igdb.js';
+import {
+  __test,
+  searchGameBySteamAppId,
+  searchGameByName,
+  fetchIGDBData,
+} from './fetch-igdb.js';
 
 const {
   isRelevantSearchResult,
@@ -273,6 +278,104 @@ describe('searchGameBySteamAppId', () => {
     }) as unknown as typeof fetch;
 
     const result = await searchGameBySteamAppId(1087090, 'client-id', 'token');
+    expect(result).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// searchGameByName — 名前検索に共通フィルタ（成人向け除外 & Main Game 限定）を適用する（Issue #208）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('searchGameByName (Issue #208)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockIgdbResponse(games: unknown[]): void {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(games),
+    }) as unknown as typeof fetch;
+  }
+
+  it('games エンドポイントへ buildIgdbCommonFilters() 由来の where 句を含むクエリを投げる', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/games');
+    const body = String((init as { body: string }).body);
+    expect(body).toContain('where');
+    expect(body).toContain(__test.buildIgdbCommonFilters());
+  });
+
+  it('where 句が game_type = 0 と themes != (42) を含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('game_type = 0');
+    expect(body).toContain('themes != (42)');
+  });
+
+  it('回帰防止: searchGameBySteamAppId のクエリには game_type / themes フィルタを含めない', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameBySteamAppId(1087090, 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).not.toContain('game_type');
+    expect(body).not.toContain('themes');
+  });
+
+  it('クエリ構文が search / fields / where / limit の各句を ; 区切りで含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toMatch(/search\s+"[^"]*"\s*;/);
+    expect(body).toMatch(/fields\s+[^;]+;/);
+    expect(body).toMatch(/where\s+[^;]+;/);
+    expect(body).toMatch(/limit\s+\d+\s*;/);
+  });
+
+  it('検索語にダブルクォートを含む場合もエスケープを保ったまま where 句が残る', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Baldur"s Gate 3', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('Baldur\\"s Gate 3');
+    expect(body).toContain('game_type = 0');
+    expect(body).toContain('themes != (42)');
+  });
+
+  it('フィルタ適用後に0件が返る場合は null を返す（既存の0件パスの回帰防止）', async () => {
+    mockIgdbResponse([]);
+    const result = await searchGameByName('Elden Ring', 'client-id', 'token');
     expect(result).toBeNull();
   });
 });

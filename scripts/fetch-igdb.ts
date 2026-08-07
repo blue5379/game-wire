@@ -505,10 +505,11 @@ export async function searchGameByName(
       return null;
     }
 
-    // ゲーム検索
+    // ゲーム検索（成人向け除外 & Main Game 限定を共通ヘルパで適用）
     const query = `
       search "${searchName.replace(/"/g, '\\"')}";
       fields ${IGDB_GAME_FIELDS};
+      where ${buildIgdbCommonFilters()};
       limit 1;
     `;
 
