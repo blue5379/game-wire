@@ -327,7 +327,7 @@ articles:
         coverImage: "https://images.igdb.com/igdb/image/upload/t_cover_big/co1xdc.jpg"
 ---
 
-Game Wire 第13号（2026年6月26日発行）をお届けします。
+GameQuestra 第13号（2026年6月26日発行）をお届けします。
 
 今週も厳選したゲーム情報をAIがキュレーション。新作情報からインディーゲーム、特集記事まで、ゲームファン必見の内容をお届けします。
 

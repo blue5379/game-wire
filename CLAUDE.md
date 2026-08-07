@@ -2,9 +2,15 @@
 
 AIを活用した週刊ゲーム情報雑誌の自動生成システム
 
+> **名称について**: 「Game Wire」は本プロジェクトのコード名（リポジトリ名・パッケージ名・内部識別名として使用）。
+> サービスの正式名称は **GameQuestra**。「Game Wire」という名称が既に他サービスで使用されていたため、
+> ユーザー向け表示（サイトタイトル・ロゴ・記事本文・OGP等）は GameQuestra に変更済み。
+> コード内の変数名・ファイルパス・ドメイン（`game-wire.pages.dev`）・User-Agent文字列等の内部識別子は
+> 移行コストを避けるため Game Wire のまま維持している。
+
 ## プロジェクト概要
 
-毎週土曜日に自動発行されるゲーム情報Webマガジン。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
+毎週土曜日に自動発行されるゲーム情報Webマガジン（サービス名: GameQuestra）。Steam Charts、YouTube Data API、IGDB、Metacriticから情報を収集し、Amazon Bedrock経由のClaudeで記事を生成する。
 
 ## 技術スタック
 
@@ -142,6 +148,7 @@ AWS_REGION=              # AWS リージョン（例: us-east-1）
   - 記事生成に加え、`build-issue` 時に **LLM-as-a-judge による事実性チェック**（`scripts/judge-article.ts`）が走る。デフォルト ON で約 $0.3/号の追加コスト。`VALIDATION_LLM_JUDGE=false` で無効化できる
   - **自動再生成**（`VALIDATION_AUTO_REGENERATE=true`）を有効にすると、high 警告（正規表現バリデータ由来）を持つ記事を修正指示付きで1回だけ作り直す。デフォルト OFF。有効時は最悪で生成コストが約2倍になる
 - **スクリーンショットの配置**: テストや検討に使用するスクリーンショットは `screenshots/` ディレクトリに配置すること（gitignore対象、リポジトリには含まれない）
+- **一時調査スクリプトの配置**: API調査・デバッグ用などの使い捨てスクリプトは `.claude-scratch/` ディレクトリに作成すること（gitignore対象、リポジトリには含まれない）。このディレクトリ配下のファイルは `rm -f` / `rm -rf` が確認不要で自動実行される設定になっている（`.claude/settings.local.json`）。プロジェクトルート直下や他ディレクトリに一時ファイルを作らないこと
 
 ## Issue対応ワークフロー
 

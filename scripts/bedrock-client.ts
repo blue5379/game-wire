@@ -120,7 +120,7 @@ export const PromptTemplates = {
   /**
    * 大手企業新作紹介記事のシステムプロンプト
    */
-  newReleaseSystem: `あなたはゲーム情報Webマガジン「Game Wire」のライターです。
+  newReleaseSystem: `あなたはゲーム情報Webマガジン「GameQuestra」のライターです。
 大手ゲーム企業の新作ゲームを紹介する、読み応えのある記事を書いてください。
 
 ## 記事構成（必ず以下のセクションをすべて含めてください）
@@ -185,7 +185,7 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
   /**
    * インディーゲーム紹介記事のシステムプロンプト
    */
-  indieSystem: `あなたはゲーム情報Webマガジン「Game Wire」のライターです。
+  indieSystem: `あなたはゲーム情報Webマガジン「GameQuestra」のライターです。
 話題のインディーゲームを紹介する、読み応えのある記事を書いてください。
 
 ## 記事構成（必ず以下のセクションをすべて含めてください）
@@ -252,7 +252,7 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
   /**
    * 特集記事のシステムプロンプト
    */
-  featureSystem: `あなたはゲーム情報Webマガジン「Game Wire」のライターです。
+  featureSystem: `あなたはゲーム情報Webマガジン「GameQuestra」のライターです。
 特定のテーマに沿った特集記事を書いてください。
 紹介するゲームは既に選定済みで、ユーザーメッセージの【紹介するゲーム】に提示されます。
 あなたの仕事は、提示された全てのゲームをテーマに沿って紹介する本文を書くことです。
@@ -302,7 +302,7 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
   /**
    * 名作深掘り記事のシステムプロンプト
    */
-  classicSystem: `あなたはゲーム情報Webマガジン「Game Wire」のライターです。
+  classicSystem: `あなたはゲーム情報Webマガジン「GameQuestra」のライターです。
 過去の名作ゲームを深く掘り下げる、読み応えのある記事を書いてください。
 
 ## 記事構成（必ず以下のセクションをすべて含めてください）
@@ -362,7 +362,7 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
   /**
    * 記事タイトル生成のシステムプロンプト
    */
-  titleSystem: `あなたはゲーム情報Webマガジン「Game Wire」の編集者です。
+  titleSystem: `あなたはゲーム情報Webマガジン「GameQuestra」の編集者です。
 与えられた情報を元に、魅力的な記事タイトルを1つだけ生成してください。
 
 タイトルのスタイル:
@@ -582,7 +582,7 @@ export function buildFeatureUserMessage(
 /**
  * 特集テーマ選定用のシステムプロンプト
  */
-export const featureThemeSelectionPrompt = `あなたはゲーム情報Webマガジン「Game Wire」の編集者です。
+export const featureThemeSelectionPrompt = `あなたはゲーム情報Webマガジン「GameQuestra」の編集者です。
 以下のイベント・記念日リストから、ゲーム特集記事のテーマとして最適なものを選び、
 魅力的な特集テーマを生成してください。
 
@@ -765,7 +765,7 @@ ${excludeSection}
  * これにより、選定確定後に各ゲームの正確なメタデータ・Web検索結果を揃えてから
  * 本文生成プロンプトに渡せる（グラウンディング）。
  */
-export const featureGameSelectionPrompt = `あなたはゲーム情報Webマガジン「Game Wire」の編集者です。
+export const featureGameSelectionPrompt = `あなたはゲーム情報Webマガジン「GameQuestra」の編集者です。
 特集テーマに沿って、提供されたゲーム候補リストの中から紹介するゲームを選定してください。
 本文は書かず、選んだゲームのタイトルだけを出力します。
 
@@ -793,7 +793,7 @@ export const featureGameSelectionPrompt = `あなたはゲーム情報Webマガ�
  * ここでは最終選定はせず「テーマに関連する可能性があるもの」を広めに拾う（recall重視）。
  * 厳密な本数の絞り込みは後続の selectFeatureGames が担う。
  */
-export const featureThemePrefilterPrompt = `あなたはゲーム情報Webマガジン「Game Wire」の編集者です。
+export const featureThemePrefilterPrompt = `あなたはゲーム情報Webマガジン「GameQuestra」の編集者です。
 特集テーマに沿った記事を作るための「候補の一次選抜」を行います。
 提供されたゲーム候補リストから、テーマに関連する可能性があるゲームを広めに抽出してください。
 

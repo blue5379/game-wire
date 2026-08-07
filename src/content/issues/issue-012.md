@@ -351,7 +351,7 @@ articles:
       igdb: "https://www.igdb.com/games/dungeon-blitz-r"
 ---
 
-Game Wire 第12号（2026年6月19日発行）をお届けします。
+GameQuestra 第12号（2026年6月19日発行）をお届けします。
 
 今週も厳選したゲーム情報をAIがキュレーション。新作情報からインディーゲーム、特集記事まで、ゲームファン必見の内容をお届けします。
 

@@ -1,6 +1,6 @@
 {
-  "name": "Game Wire",
-  "short_name": "Game Wire",
+  "name": "GameQuestra",
+  "short_name": "GameQuestra",
   "description": "AIが毎週発行するゲーム情報マガジン",
   "start_url": "/",
   "display": "standalone",
