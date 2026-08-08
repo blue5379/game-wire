@@ -292,6 +292,23 @@ YES または NO のみを1行で出力してください。理由は不要で�
 }
 
 /**
+ * ゲーム配列から成人向けコンテンツを AI スクリーニングで除外する。
+ * isAdultContentByAI を順次呼び出す（Bedrock 呼び出しの順序・レート挙動を
+ * 既存3箇所と揃えるため Promise.all は使わない）。
+ */
+async function screenOutAdultGames(games: GameData[]): Promise<GameData[]> {
+  const result: GameData[] = [];
+  for (const game of games) {
+    if (await isAdultContentByAI(game)) {
+      console.warn(`  Skipping adult content game: "${game.title}"`);
+      continue;
+    }
+    result.push(game);
+  }
+  return result;
+}
+
+/**
  * 大手企業新作記事を生成
  */
 async function generateNewReleaseArticle(
@@ -795,7 +812,7 @@ export async function generateFeatureArticle(
 
   // 選定タイトルを候補 GameData に突き合わせる（完全一致 → 正規化一致のフォールバック）
   // 検索対象は prefiltered（qualified のうちテーマ事前フィルタ通過分）
-  const selectedGameData: GameData[] = [];
+  let selectedGameData: GameData[] = [];
   for (const title of selectedTitles) {
     const exact = prefiltered.find((g) => g.title === title);
     const matched =
@@ -870,6 +887,10 @@ export async function generateFeatureArticle(
       }
     }
   }
+
+  // AI スクリーニングで成人向けコンテンツを除外（他3カテゴリと同じ2層防御を揃える）。
+  // 規定本数チェックより前に行い、スクリーニングで薄くなった特集を下の警告で検知できるようにする。
+  selectedGameData = await screenOutAdultGames(selectedGameData);
 
   // 特集ゲームが規定本数を下回ったら警告（黙って薄い特集が出るのを検知するため）。
   // テーマが限定的で候補が枯渇した場合に起こり得る。
@@ -1408,9 +1429,11 @@ async function main(): Promise<void> {
 }
 
 // テスト用にエクスポート（Issue #208: verifyProposedGames が enrichGameWithIGDB に
-// mainGameOnly: true を渡していることを検証するため）
+// mainGameOnly: true を渡していることを検証するため。screenOutAdultGames は特集記事の
+// AI スクリーニング挙動を検証するため）
 export const __test = {
   verifyProposedGames,
+  screenOutAdultGames,
 };
 
 // スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）
