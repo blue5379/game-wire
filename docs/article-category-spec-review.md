@@ -819,7 +819,7 @@ function buildIgdbCommonFilters(allowedGameTypes: readonly number[] = [IGDB_GAME
 
 ### 6.2 `isQualifiedGame()` の再設計
 
-> ⚠️ **2026-08-09 追記: 本節はどの PR にも割り当てられていない**（`article-category-spec.md` §8 の PR 一覧に無い）。論点A と同じ構図なので、論点D の結論と合わせて PR を割り当てること。
+> ⚠️ **2026-08-09 追記: 本節は長らくどの PR にも割り当てられていなかった**（論点A と同じ構図）。同日付で `article-category-spec.md` §8 の実装計画表に **15 行目**として追加したので、論点D の結論と合わせて具体的な PR を切ること。
 >
 > また、**本節の素案（`aggregated_rating` 経路の追加）だけでは Issue #238 は解決しない**。『Splatoon Raiders』は `aggregated_rating_count = 1` なので「批評媒体数 2 以上」を満たさず、救うには §2.3 の 4 つ目の経路（**Amazon 国内ランキング掲載**）が要る。その経路は PR-B2 のスコープにも含まれていない。
 

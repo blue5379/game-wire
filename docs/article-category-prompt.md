@@ -10,7 +10,7 @@
 | PR-A | `fix/steam-dlc-exclusion` | ✅ **マージ済み**（2026-08-08。`2011619`。squash） | - / PR #226 | 24ファイル / 760テスト（着手前 749）。**仕様書に無い新事実を実測で発見**: `coming_soon` からサウンドトラック（`type=music`）が混入していた。レビュー指摘4件の内訳は 1件を本PRで修正 / 2件を **#227 / #228** に分離 / 1件（進捗表の更新）は後続の docs PR #229 で対応。**このPRで `fetch-steam.ts` の行番号が大きくずれた**（下記「行番号は必ず自分で確認する」節） |
 | PR-B | `feat/newrelease-score-and-remake` | ✅ **マージ済み**（2026-08-08。`1bb61e6`。squash） | #210（`Refs`。未クローズ）/ PR #230 | 26ファイル / 865テスト（着手前 24 / 760）。コミット2本（実装 → レビュー対応）。**`/code-review` の指摘5件は全件が実在し、全件を本PRで修正**（別Issue分離なし）。**着手前測定（§9.3-9）で新作枠0本の原因を特定 → #231**。名作枠に `isFanGame` 未適用だったことも実測で発覚し本PRで修正 |
 | PR-B2 | `feat/domestic-sales-axis` | 未着手 | 関連 **#238** | PR-B / PR-I の後。⚠️ **スコープ追加が必要**（#238）: ①Amazon 掲載を `isQualifiedGame` の経路として通す（順位を `GameData` に載せない制約と両立する設計が要る）②「スプラトゥーン レイダース」↔「Splatoon Raiders」の照合成立を受け入れ条件にする。**ただし #241（母集団クエリの上限欠落）を先に直さないと、Amazon 軸を入れても候補プールに入らない** |
-| **#241 対応**（新規） | `fix/newrelease-population-window` | 未着手（**次はこれ**。2026-08-09 のユーザー判断） | **#241** / 関連 #238 | 新作枠の母集団クエリに**発売日の上限**が無く、未発売の大作が `sort hypes desc; limit 20` を占領している。**実測（2026-08-09）: 60 日窓の上限を足すだけで『Splatoon Raiders』は `hypes desc` のままでも 12 位に入る**ため、保留理由だった「サーバ側 sort の代替が未決着」はこの対応には当てはまらない。**未発売枠（§2.4）の供給を別クエリで手当てすることが必須** |
+| **#241 対応**（新規） | `fix/issue-241-newrelease-population-window` | ⏳ **レビュー中**（2026-08-09。PR #243） | **#241** / 関連 #238 | 新作枠の母集団クエリに**発売日の上限**が無く、未発売の大作が `sort hypes desc; limit 20` を占領している。**実測（2026-08-09）: 60 日窓の上限を足すだけで『Splatoon Raiders』は `hypes desc` のままでも 12 位に入る**ため、保留理由だった「サーバ側 sort の代替が未決着」はこの対応には当てはまらない。**未発売枠（§2.4）の供給を別クエリで手当てすることが必須** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
 | 名作枠PR | `feat/classic-slot-redesign` | 未着手 | 関連 **#238** | PR-D と直列。⚠️ **スコープ明記が必要**（#238）: 母集団クエリだけでなく**選定側 `buildClassicCandidates`（`fetch-data.ts`）も評価母数ベースに変更する**こと。現在は `igdbRating >= 85` だけで通すため、他クエリ経由でプールに入った発売直後のタイトル（実測: 『Splatoon Raiders』`total_rating_count=7`）を拾ってしまう。PR-B の教訓（3クエリの結果は1プールに平坦化される）と同型 |
@@ -171,7 +171,7 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `pickSteamUrlFromWebsites`（PR-I で新設） | — | **`fetch-igdb.ts:331`** |
 | `IGDB_GAME_FIELDS`（`fetch-igdb.ts`） | :346 | **:375** |
 | 3 母集団クエリ（`fetch-igdb.ts`） | :661 / :771 / :875 | **:692 / :810 / :922** |
-| `aggregateGames`（`fetch-data.ts`。PR-I で export 化） | :165 | **:175** |
+| `aggregateGames`（`fetch-data.ts`。PR-I で export 化） | :167 | **:175** |
 | `deduplicateGames`（`fetch-data.ts`） | :557 | **:575** |
 | `buildNewReleaseCandidates`（`fetch-data.ts`） | :938 | **:967** |
 | `isWithinIndieReleaseWindow`（PR-I で新設） | — | **`fetch-data.ts:1037`** |
