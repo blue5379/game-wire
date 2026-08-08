@@ -225,6 +225,52 @@ describe('parseTitleResponse', () => {
   });
 });
 
+describe('buildUserMessage - gameType（リメイク/リマスター明記）', () => {
+  it('gameType: 8 のとき「種別: リメイク」を含む', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game', gameType: 8 });
+    expect(msg).toContain('種別: リメイク');
+  });
+
+  it('gameType: 9 のとき「種別: リマスター」を含む', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game', gameType: 9 });
+    expect(msg).toContain('種別: リマスター');
+  });
+
+  it('境界値: gameType: 0（Main Game）のとき種別行を出さない', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game', gameType: 0 });
+    expect(msg).not.toContain('種別:');
+  });
+
+  it('境界値: gameType が undefined のとき種別行を出さない', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game' });
+    expect(msg).not.toContain('種別:');
+  });
+
+  it('境界値: 未知の gameType（例: 11 = Port）のとき種別行を出さない', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game', gameType: 11 });
+    expect(msg).not.toContain('種別:');
+  });
+});
+
+describe('PromptTemplates.newReleaseSystem - リメイク/リマスター明記ルール', () => {
+  const remakeRule =
+    '提供データの【ゲーム情報】欄に種別がリメイク／リマスターと示されている場合は、記事本文でその旨を明記すること';
+
+  it('リメイク/リマスター明記ルールが含まれる', () => {
+    expect(PromptTemplates.newReleaseSystem).toContain(remakeRule);
+  });
+
+  it('回帰防止: 既存の禁止リスト「続編・関連作・DLC・コラボの存在」がそのまま残っている（緩めていないことの確認）', () => {
+    expect(PromptTemplates.newReleaseSystem).toContain('続編・関連作・DLC・コラボの存在');
+  });
+
+  it('indieSystem/classicSystem/featureSystem にはリメイク明記ルールを追加しない（新作枠限定）', () => {
+    expect(PromptTemplates.indieSystem).not.toContain(remakeRule);
+    expect(PromptTemplates.classicSystem).not.toContain(remakeRule);
+    expect(PromptTemplates.featureSystem).not.toContain(remakeRule);
+  });
+});
+
 describe('PromptTemplates - 定量値ハルシネーション防止ルール', () => {
   const RULE_MARKER = '定量値は定性表現に置き換える（数値ハルシネーション防止）';
 

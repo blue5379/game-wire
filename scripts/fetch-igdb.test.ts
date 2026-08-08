@@ -353,7 +353,7 @@ describe('searchGameByName (Issue #208)', () => {
     expect(body).toContain(__test.buildIgdbCommonFilters());
   });
 
-  it('mainGameOnly: true のとき where 句が game_type = 0 と themes != (42) を含む', async () => {
+  it('mainGameOnly: true のとき where 句が game_type = (0) と themes != (42) を含む', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
@@ -363,14 +363,14 @@ describe('searchGameByName (Issue #208)', () => {
     await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: true });
 
     const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
-    expect(body).toContain('game_type = 0');
+    expect(body).toContain('game_type = (0)');
     expect(body).toContain('themes != (42)');
   });
 
   it('回帰防止: searchGameBySteamAppId のクエリには where フィルタを含めない（フィールド選択とは区別する）', async () => {
-    // IGDB_GAME_FIELDS は searchGameByName と共有されており、後続 PR で game_type を
-    // フィールドとして追加すると `not.toContain('game_type')` は誤って失敗する。
-    // ここでは「where 句としてのフィルタ」の有無だけを見る。
+    // IGDB_GAME_FIELDS は searchGameByName と共有されており、PR-B で game_type を
+    // fields として追加したため、body には "game_type" という文字列自体は含まれる。
+    // ここでは「where 句としての比較フィルタ（game_type = ...）」の有無だけを見る。
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve([]),
@@ -381,7 +381,7 @@ describe('searchGameByName (Issue #208)', () => {
 
     const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
     expect(body).not.toContain('where game_type');
-    expect(body).not.toContain('game_type = 0');
+    expect(body).not.toContain('game_type =');
     expect(body).not.toContain('themes != (42)');
   });
 
@@ -412,7 +412,7 @@ describe('searchGameByName (Issue #208)', () => {
 
     const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
     expect(body).toContain('Baldur\\"s Gate 3');
-    expect(body).toContain('game_type = 0');
+    expect(body).toContain('game_type = (0)');
     expect(body).toContain('themes != (42)');
   });
 
@@ -473,7 +473,9 @@ describe('enrichGameWithIGDB — mainGameOnly propagation (Issue #208)', () => {
     const body = String((igdbCalls[0][1] as { body: string }).body);
     expect(body).toContain('external_games.uid = "123456"');
     expect(body).not.toContain('where game_type');
-    expect(body).not.toContain('game_type = 0');
+    // game_type は IGDB_GAME_FIELDS 経由でフィールドとしては取得するが、
+    // where 句としての比較フィルタ（game_type = ...）は appId 逆引きには乗らない。
+    expect(body).not.toContain('game_type =');
     expect(body).not.toContain('themes != (42)');
   });
 
@@ -508,7 +510,7 @@ describe('enrichGameWithIGDB — mainGameOnly propagation (Issue #208)', () => {
     expect(igdbCalls.length).toBe(2);
     const nameSearchBody = String((igdbCalls[1][1] as { body: string }).body);
     expect(nameSearchBody).toContain('where');
-    expect(nameSearchBody).toContain('game_type = 0');
+    expect(nameSearchBody).toContain('game_type = (0)');
     expect(nameSearchBody).toContain('themes != (42)');
   });
 });
@@ -517,10 +519,10 @@ describe('enrichGameWithIGDB — mainGameOnly propagation (Issue #208)', () => {
 // buildIgdbCommonFilters — IGDB クエリで共通使用するフィルタ（Issue #207）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildIgdbCommonFilters (Issue #207)', () => {
-  it('成人向け除外（Erotic = 42）と Main Game 限定（game_type = 0）を含む', () => {
+  it('成人向け除外（Erotic = 42）と Main Game 限定（game_type = (0)）を含む', () => {
     const filters = buildIgdbCommonFilters();
     // 正しいフィルタが含まれること（リテラル値で検証）
-    expect(filters).toContain('game_type = 0');
+    expect(filters).toContain('game_type = (0)');
     expect(filters).toContain('themes != (42)');
   });
 
@@ -533,7 +535,7 @@ describe('buildIgdbCommonFilters (Issue #207)', () => {
   it('生成される文字列は IGDB クエリ where 句に埋め込める形式', () => {
     const filters = buildIgdbCommonFilters();
     // & で連結された条件式であること（クエリに埋め込み可能）
-    expect(filters).toMatch(/game_type\s*=\s*0\s*&\s*themes\s*!=\s*\(\s*42\s*\)/);
+    expect(filters).toMatch(/game_type\s*=\s*\(\s*0\s*\)\s*&\s*themes\s*!=\s*\(\s*42\s*\)/);
   });
 
   it('gameTypes を複数指定すると括弧付きリストになり、成人向け除外は維持される', () => {
@@ -542,16 +544,14 @@ describe('buildIgdbCommonFilters (Issue #207)', () => {
     expect(filters).toContain('themes != (42)');
   });
 
-  it('境界値: gameTypes 要素1個（既定値）は括弧なしの game_type = 0 になる', () => {
+  it('境界値: gameTypes 要素1個（既定値）でも括弧付きの game_type = (0) になる（要素数によらず括弧付き形式に統一）', () => {
     const filters = buildIgdbCommonFilters({ gameTypes: [0] });
-    expect(filters).toContain('game_type = 0');
-    expect(filters).not.toContain('game_type = (0)');
+    expect(filters).toBe('game_type = (0) & themes != (42)');
   });
 
-  it('境界値: gameTypes 要素1個（既定と異なる値）でも括弧なしになる', () => {
+  it('境界値: gameTypes 要素1個（既定と異なる値）でも括弧付きの game_type = (8) になる', () => {
     const filters = buildIgdbCommonFilters({ gameTypes: [8] });
-    expect(filters).toContain('game_type = 8');
-    expect(filters).not.toContain('game_type = (8)');
+    expect(filters).toBe('game_type = (8) & themes != (42)');
   });
 
   it('引数なし呼び出しと { gameTypes: [0] } の出力は文字列として完全一致する', () => {
@@ -568,14 +568,14 @@ describe('buildIgdbCommonFilters (Issue #207)', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // fetchIGDBData — 3つの母集団クエリが確実にフィルタを使用することを検証（Issue #207 統合テスト）
 // ─────────────────────────────────────────────────────────────────────────────
-describe('fetchIGDBData - pool queries use filters (Issue #207)', () => {
+describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     delete process.env.IGDB_CLIENT_ID;
     delete process.env.IGDB_CLIENT_SECRET;
   });
 
-  it('3つの母集団クエリすべてが game_type = 0 & themes != (42) を含む', async () => {
+  it('新作クエリのみ game_type = (0,8,9)、名作・インディークエリは game_type = (0) を使う（新作枠だけリメイク/リマスターを含める）', async () => {
     process.env.IGDB_CLIENT_ID = 'test-client-id';
     process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
 
@@ -613,9 +613,8 @@ describe('fetchIGDBData - pool queries use filters (Issue #207)', () => {
     // 3つの母集団クエリが投げられたこと
     expect(igdbBodies.length).toBe(3);
 
-    // すべてのクエリが game_type = 0 & themes != (42) を含むこと（全体チェック）
+    // すべてのクエリが成人向け除外を含むこと（全体チェック）
     for (const body of igdbBodies) {
-      expect(body).toContain('game_type = 0');
       expect(body).toContain('themes != (42)');
     }
 
@@ -625,15 +624,115 @@ describe('fetchIGDBData - pool queries use filters (Issue #207)', () => {
     const indieQuery = igdbBodies.find((b) => b.includes('rating_count > 5'));
 
     expect(recentQuery).toBeDefined();
-    expect(recentQuery).toContain('game_type = 0');
+    // 新作枠のみ Remake(8)/Remaster(9) を候補に含める
+    expect(recentQuery).toContain('game_type = (0,8,9)');
     expect(recentQuery).toContain('themes != (42)');
 
+    // 名作枠・インディー枠は Main Game のみ（絶対に変更しない、仕様 §6.2）
     expect(classicQuery).toBeDefined();
-    expect(classicQuery).toContain('game_type = 0');
+    expect(classicQuery).toContain('game_type = (0)');
+    expect(classicQuery).not.toContain('game_type = (0,8,9)');
     expect(classicQuery).toContain('themes != (42)');
 
     expect(indieQuery).toBeDefined();
-    expect(indieQuery).toContain('game_type = 0');
+    expect(indieQuery).toContain('game_type = (0)');
+    expect(indieQuery).not.toContain('game_type = (0,8,9)');
     expect(indieQuery).toContain('themes != (42)');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IGDB フィールド拡張: game_type / aggregated_rating / aggregated_rating_count /
+// keywords.slug の取得と変換（タスクC: 新作枠リメイク明記・批評スコア・ファンゲーム判定用）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IGDB additional fields (game_type / aggregated_rating / keywords)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('mapRawGameToIGDBGame: game_type / aggregated_rating / aggregated_rating_count / keywords.slug を変換する', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 1,
+      name: 'Resident Evil 4',
+      slug: 'resident-evil-4-remake',
+      game_type: 8,
+      aggregated_rating: 91.5,
+      aggregated_rating_count: 12,
+      keywords: [
+        { id: 1, slug: 'survival-horror' },
+        { id: 2, slug: 'zombies' },
+      ],
+    } as any);
+
+    expect(result.gameType).toBe(8);
+    expect(result.aggregatedRating).toBe(91.5);
+    expect(result.aggregatedRatingCount).toBe(12);
+    expect(result.keywords).toEqual(['survival-horror', 'zombies']);
+  });
+
+  it('境界値: game_type / aggregated_rating / keywords が未指定でもクラッシュせず undefined になる', () => {
+    const result = mapRawGameToIGDBGame({ id: 2, name: 'Minimal', slug: 'minimal' });
+    expect(result.gameType).toBeUndefined();
+    expect(result.aggregatedRating).toBeUndefined();
+    expect(result.aggregatedRatingCount).toBeUndefined();
+    expect(result.keywords).toBeUndefined();
+  });
+
+  it('境界値: keywords が空配列のとき、変換結果も空配列になる（undefined にすり替わらない）', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 3,
+      name: 'No Keywords',
+      slug: 'no-keywords',
+      keywords: [],
+    } as any);
+    expect(result.keywords).toEqual([]);
+  });
+
+  it('searchGameByName: IGDB_GAME_FIELDS に game_type / aggregated_rating / aggregated_rating_count / keywords.slug を含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('game_type');
+    expect(body).toContain('aggregated_rating');
+    expect(body).toContain('aggregated_rating_count');
+    expect(body).toContain('keywords.slug');
+  });
+
+  it('fetchIGDBData: 3母集団クエリすべてが game_type / aggregated_rating / aggregated_rating_count / keywords.slug を fields に含む', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    const igdbBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('api.igdb.com'))
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''));
+
+    expect(igdbBodies.length).toBe(3);
+    for (const body of igdbBodies) {
+      expect(body).toContain('game_type');
+      expect(body).toContain('aggregated_rating');
+      expect(body).toContain('aggregated_rating_count');
+      expect(body).toContain('keywords.slug');
+    }
   });
 });

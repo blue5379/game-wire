@@ -362,6 +362,7 @@ async function generateNewReleaseArticle(
       summary: game.summary,
       metascore: game.metascore,
       userScore: game.userScore,
+      gameType: game.gameType,
     },
     webSearchContext || undefined,
     publishDate,

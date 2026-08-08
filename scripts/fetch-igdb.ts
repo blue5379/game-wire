@@ -11,25 +11,22 @@ const IGDB_API_URL = 'https://api.igdb.com/v4';
 // IGDB API フィルタ定数（クエリビルダで使用）
 const IGDB_THEME_EROTIC = 42;     // 成人向けコンテンツ（Erotic theme）
 const IGDB_GAME_TYPE_MAIN = 0;    // Main Game（DLC・エディション違い・バンドルを除外）
+const IGDB_GAME_TYPE_REMAKE = 8;  // Remake（新作枠の母集団クエリでのみ許可、§6.2）
+const IGDB_GAME_TYPE_REMASTER = 9; // Remaster（新作枠の母集団クエリでのみ許可、§6.2）
 
 /**
  * IGDB クエリで共通使用するフィルタ文字列を生成
  * 成人向けコンテンツ除外 & 指定した game_type のみに限定
  *
  * @param options.gameTypes 許可する game_type の配列（省略時は [IGDB_GAME_TYPE_MAIN] = Main Game のみ）
- *   要素が1個のときは `game_type = N`、2個以上のときは `game_type = (N,M,...)` を生成する
- *   （既定挙動＝要素1個の出力を、括弧の有無まで含めて変更しないため）
+ *   要素数によらず常に `game_type = (N,M,...)` の括弧付き形式を生成する
  */
 function buildIgdbCommonFilters(options?: { gameTypes?: number[] }): string {
   const gameTypes = options?.gameTypes ?? [IGDB_GAME_TYPE_MAIN];
   if (gameTypes.length === 0) {
     throw new Error('buildIgdbCommonFilters: gameTypes must not be empty');
   }
-  const gameTypeClause =
-    gameTypes.length === 1
-      ? `game_type = ${gameTypes[0]}`
-      : `game_type = (${gameTypes.join(',')})`;
-  return `${gameTypeClause} & themes != (${IGDB_THEME_EROTIC})`;
+  return `game_type = (${gameTypes.join(',')}) & themes != (${IGDB_THEME_EROTIC})`;
 }
 
 // キャッシュ用（同一セッション内でのトークン再利用）
@@ -335,6 +332,14 @@ interface IGDBRawGame {
   rating_count?: number;
   game_localizations?: { name: string; region?: number }[];
   websites?: { url: string; category?: number }[];
+  /** ゲーム種別（0=Main Game, 8=Remake, 9=Remaster）。新作枠のリメイク明記に使う（§6.2） */
+  game_type?: number;
+  /** 批評スコア集計（Metacritic 相当） */
+  aggregated_rating?: number;
+  /** 批評スコアの集計媒体数 */
+  aggregated_rating_count?: number;
+  /** IGDB キーワード（ファンゲーム判定に使う、§6.1） */
+  keywords?: { id: number; slug: string }[];
 }
 
 // searchGameByName / searchGameBySteamAppId 共通で使う fields 一覧
@@ -344,7 +349,8 @@ const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        cover.url, screenshots.url, rating, rating_count,
        involved_companies.company.country,
        game_localizations.name, game_localizations.region,
-       websites.url, websites.category`;
+       websites.url, websites.category,
+       game_type, aggregated_rating, aggregated_rating_count, keywords.slug`;
 
 /**
  * IGDB games の生レスポンスを IGDBGame に変換する共通ロジック
@@ -414,6 +420,10 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     officialUrl,
     officialUrlSource: officialUrl ? 'igdb-official' : undefined,
     websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
+    gameType: game.game_type,
+    aggregatedRating: game.aggregated_rating,
+    aggregatedRatingCount: game.aggregated_rating_count,
+    keywords: game.keywords?.map((k) => k.slug),
   };
 }
 
@@ -664,8 +674,11 @@ async function fetchRecentPopularGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category;
-      where first_release_date > ${threeMonthsAgo} & hypes > 5 & ${buildIgdbCommonFilters()};
+             websites.url, websites.category,
+             game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
+      where first_release_date > ${threeMonthsAgo} & hypes > 5 & ${buildIgdbCommonFilters({
+        gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
+      })};
       sort hypes desc;
       limit 20;
     `;
@@ -689,6 +702,10 @@ async function fetchRecentPopularGames(
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
       websites?: { url: string; category: number }[];
+      game_type?: number;
+      aggregated_rating?: number;
+      aggregated_rating_count?: number;
+      keywords?: { id: number; slug: string }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -736,6 +753,10 @@ async function fetchRecentPopularGames(
         rating: game.rating,
         ratingCount: game.rating_count,
         websites: game.websites,
+        gameType: game.game_type,
+        aggregatedRating: game.aggregated_rating,
+        aggregatedRatingCount: game.aggregated_rating_count,
+        keywords: game.keywords?.map((k) => k.slug),
       };
     });
   } catch (error) {
@@ -759,7 +780,8 @@ async function fetchClassicGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category;
+             websites.url, websites.category,
+             game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
       where hypes > 100 & ${buildIgdbCommonFilters()};
       sort hypes desc;
       limit 30;
@@ -784,6 +806,10 @@ async function fetchClassicGames(
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
       websites?: { url: string; category: number }[];
+      game_type?: number;
+      aggregated_rating?: number;
+      aggregated_rating_count?: number;
+      keywords?: { id: number; slug: string }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -831,6 +857,10 @@ async function fetchClassicGames(
         rating: game.rating,
         ratingCount: game.rating_count,
         websites: game.websites,
+        gameType: game.game_type,
+        aggregatedRating: game.aggregated_rating,
+        aggregatedRatingCount: game.aggregated_rating_count,
+        keywords: game.keywords?.map((k) => k.slug),
       };
     });
   } catch (error) {
@@ -857,7 +887,8 @@ async function fetchIndieGames(
              involved_companies.developer, involved_companies.publisher,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category;
+             websites.url, websites.category,
+             game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
       where first_release_date > ${threeMonthsAgo} & rating_count > 5 & ${buildIgdbCommonFilters()};
       sort hypes desc;
       limit 50;
@@ -882,6 +913,10 @@ async function fetchIndieGames(
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
       websites?: { url: string; category: number }[];
+      game_type?: number;
+      aggregated_rating?: number;
+      aggregated_rating_count?: number;
+      keywords?: { id: number; slug: string }[];
     }
 
     const games = await igdbRequest<IGDBRawGame>(
@@ -929,6 +964,10 @@ async function fetchIndieGames(
         rating: game.rating,
         ratingCount: game.rating_count,
         websites: game.websites,
+        gameType: game.game_type,
+        aggregatedRating: game.aggregated_rating,
+        aggregatedRatingCount: game.aggregated_rating_count,
+        keywords: game.keywords?.map((k) => k.slug),
       };
     });
   } catch (error) {
