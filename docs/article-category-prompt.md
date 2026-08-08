@@ -9,11 +9,12 @@
 | PR-0.5 | `refactor/parameterize-igdb-filters` | ✅ **マージ済み**（2026-08-08。`28f835f`。squash） | - / PR #224 | 挙動不変の純リファクタ。24ファイル / 749テスト（着手前 744）。`/code-review` の**指摘ゼロ**。**ユーザー確認事項は「`mainGameOnly` を `gameTypes` に一般化しない」で確定**（別軸のため。下記 PR-0.5 節に根拠）。**このPRで `fetch-igdb.ts` の行番号が 21 行目以降すべて +12 ずれた** |
 | PR-A | `fix/steam-dlc-exclusion` | ✅ **マージ済み**（2026-08-08。`2011619`。squash） | - / PR #226 | 24ファイル / 760テスト（着手前 749）。**仕様書に無い新事実を実測で発見**: `coming_soon` からサウンドトラック（`type=music`）が混入していた。レビュー指摘4件の内訳は 1件を本PRで修正 / 2件を **#227 / #228** に分離 / 1件（進捗表の更新）は後続の docs PR #229 で対応。**このPRで `fetch-steam.ts` の行番号が大きくずれた**（下記「行番号は必ず自分で確認する」節） |
 | PR-B | `feat/newrelease-score-and-remake` | ✅ **マージ済み**（2026-08-08。`1bb61e6`。squash） | #210（`Refs`。未クローズ）/ PR #230 | 26ファイル / 865テスト（着手前 24 / 760）。コミット2本（実装 → レビュー対応）。**`/code-review` の指摘5件は全件が実在し、全件を本PRで修正**（別Issue分離なし）。**着手前測定（§9.3-9）で新作枠0本の原因を特定 → #231**。名作枠に `isFanGame` 未適用だったことも実測で発覚し本PRで修正 |
-| PR-B2 | `feat/domestic-sales-axis` | 未着手 | - | PR-B の後。**ただし PR-I を先に入れる**（#231。2026-08-08 のユーザー判断） |
+| PR-B2 | `feat/domestic-sales-axis` | 未着手 | 関連 **#238** | PR-B / PR-I の後。⚠️ **スコープ追加が必要**（#238）: ①Amazon 掲載を `isQualifiedGame` の経路として通す（順位を `GameData` に載せない制約と両立する設計が要る）②「スプラトゥーン レイダース」↔「Splatoon Raiders」の照合成立を受け入れ条件にする。**ただし #241（母集団クエリの上限欠落）を先に直さないと、Amazon 軸を入れても候補プールに入らない** |
+| **#241 対応**（新規） | `fix/newrelease-population-window` | 未着手（**次はこれ**。2026-08-09 のユーザー判断） | **#241** / 関連 #238 | 新作枠の母集団クエリに**発売日の上限**が無く、未発売の大作が `sort hypes desc; limit 20` を占領している。**実測（2026-08-09）: 60 日窓の上限を足すだけで『Splatoon Raiders』は `hypes desc` のままでも 12 位に入る**ため、保留理由だった「サーバ側 sort の代替が未決着」はこの対応には当てはまらない。**未発売枠（§2.4）の供給を別クエリで手当てすることが必須** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
-| 名作枠PR | `feat/classic-slot-redesign` | 未着手 | - | PR-D と直列 |
-| PR-I | `feat/indie-scale-classification` | 未着手（**次はこれ**。2026-08-08 に前倒し） | 関連 #175（読み替え要）/ **#231** | **PR-B の着手前測定で優先度が上がった。** 新作枠が 0 本になる直接原因が `isLargeStudio` の静的リスト不備で、PR-I の `developed > 20` 判定がそのまま効く（`isLargeStudio` は新作枠ゲートとインディー判定の共通関数）。**インディー枠だけの変更ではないので、新作枠の採用件数の前後比較を受け入れ条件に入れること**（#231） |
+| 名作枠PR | `feat/classic-slot-redesign` | 未着手 | 関連 **#238** | PR-D と直列。⚠️ **スコープ明記が必要**（#238）: 母集団クエリだけでなく**選定側 `buildClassicCandidates`（`fetch-data.ts`）も評価母数ベースに変更する**こと。現在は `igdbRating >= 85` だけで通すため、他クエリ経由でプールに入った発売直後のタイトル（実測: 『Splatoon Raiders』`total_rating_count=7`）を拾ってしまう。PR-B の教訓（3クエリの結果は1プールに平坦化される）と同型 |
+| PR-I | `feat/indie-scale-classification` | ✅ **マージ済み**（2026-08-09。`7a2a0da`。squash） | #231（Closed）/ 関連 #175（`Refs`）/ PR #237 | 26ファイル / **960テスト**（着手前 26 / 865）。コミット2本（実装 → レビュー対応）。**着手後に「決着済みだが未実装」の論点A（新作枠の企業規模ゲート撤廃）を発見し、同PRで実装**（下記「実施結果」）。Issue #231 が提案していた方針は決着で棄却された A-3 相当だった。**分離した Issue は 7 件**（#234 / #235 / #236 / #238 / #239 / #240 / #241） |
 | PR-E | `fix/prompt-excerpt-length` | 未着手 | - | PR-C と同じ箇所を触る。どちらか先に入れてリベース |
 | PR-F0 | `fix/publish-date-jst` | 未着手 | - | PR-F の直前に入れる |
 | PR-F | `feat/feature-event-fallback` | 未着手 | - | PR-F0 の後 |
@@ -41,6 +42,31 @@
 1. `CLAUDE.md`（Issue対応ワークフロー・品質ゲート・テストコード規約・DEV_MODE）
 2. `docs/article-category-spec.md` の該当節（下記PR指示で指定）
 3. `docs/article-category-spec-review.md` の該当決着ブロック（判断の根拠。grep で探す）
+
+# 🚨 着手前の必須検証（厳守事項。省略禁止）
+
+**Issue 本文・本指示書に書かれている「原因の説明」「想定される修正」「対処方針」を、絶対に鵜呑みにしないこと。**
+着手前に、仕様書・決着ブロック・コード・実データで**独立に検証**する。これは推奨ではなく厳守事項である。
+
+検証する対象は「その修正が正しいか」だけではない。**「そもそもその処理は仕様上存在してよいのか」**まで含めて確認すること。
+
+手順:
+
+1. Issue が引用している箇所だけでなく、**その Issue が触れていない上位ドキュメント**
+   （仕様書の該当節・決着ブロック・§11.1 の確定事項の表）を grep して読む
+2. 「この条件・この処理は仕様上存在すべきか」を先に確認してから「どう直すか」に進む
+3. **決着済みだが、どの PR にも割り当てられていないタスク**が仕様書に埋もれていることがある。
+   §8 の実装計画表と §11.1 の確定事項の表を突き合わせる
+4. Issue の**受け入れ条件そのものも検証対象**。実データで前提が再現しないことがある
+5. 検証結果が Issue の記述と食い違ったら、**実装を止めてユーザーに提示する**
+
+> ⚠️ **この節は実際の事故を受けて追加された（2026-08-09）。**
+> PR-I（#237）で、Issue #231 が挙げた「新作枠の大手判定ゲートの精度を上げる」という方針を
+> そのまま実装しかけた。実際には仕様書 §1.1・§2.2 と決着ブロック 論点A（2026-07-29、
+> §11.1 確定事項 #1）で**新作枠の企業規模ゲートは撤廃が決定済み**であり、Issue の方針は
+> **決着で棄却された A-3 に相当**していた。ユーザーの指摘で初めて発覚した。
+> 放置すれば、Steam Top Sellers 1 位のタイトルがどの枠にも載らない状態のままマージされていた。
+> **「Issue に書いてあるから」は着手の根拠にならない。**
 
 # 全PR共通の規約
 
@@ -132,6 +158,28 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `buildIndieCandidates`（PR-B で新設） | — | **`fetch-data.ts:990`** |
 | `buildClassicCandidates`（PR-B で新設） | — | **`fetch-data.ts:1012`** |
 | `computeNewReleaseScore`（PR-B で新設） | — | **`newrelease-score.ts:159`** |
+
+⚠️ **PR-I（#237）で `indie-classifier.ts` / `fetch-igdb.ts` / `fetch-data.ts` の行番号が大きくずれ、
+`computeIndieScore` が削除された。** マージ後の実測値（2026-08-09。`7a2a0da`）:
+
+| シンボル | PR-I 前 | PR-I マージ後 |
+|---|---|---|
+| `LARGE_DEVELOPERS` / `MAJOR_PUBLISHER_SUBSIDIARIES`（`indie-classifier.ts`） | :9 / :71 | :9 / :71（不変） |
+| `isLargeStudio`（`indie-classifier.ts`。第2引数 `developedCount` が追加） | :169 | **:203** |
+| `pickDeveloperGameCount`（PR-I で新設） | — | **`indie-classifier.ts:277`** |
+| `isIndieGame`（`indie-classifier.ts`） | :218 | **:296** |
+| `pickSteamUrlFromWebsites`（PR-I で新設） | — | **`fetch-igdb.ts:331`** |
+| `IGDB_GAME_FIELDS`（`fetch-igdb.ts`） | :346 | **:375** |
+| 3 母集団クエリ（`fetch-igdb.ts`） | :661 / :771 / :875 | **:692 / :810 / :922** |
+| `aggregateGames`（`fetch-data.ts`。PR-I で export 化） | :165 | **:175** |
+| `deduplicateGames`（`fetch-data.ts`） | :557 | **:575** |
+| `buildNewReleaseCandidates`（`fetch-data.ts`） | :938 | **:967** |
+| `isWithinIndieReleaseWindow`（PR-I で新設） | — | **`fetch-data.ts:1037`** |
+| `compareIndieCandidates`（PR-I で新設。`computeIndieScore` を置換） | — | **`fetch-data.ts:1063`** |
+| `buildIndieCandidates`（`fetch-data.ts`） | :990 | **:1092** |
+| `buildClassicCandidates`（`fetch-data.ts`） | :1012 | **:1115** |
+| `GameData` 型（`types.ts`） | :92 | **:94** |
+| ~~`computeIndieScore`~~ | `fetch-data.ts:975` | **削除**（§3.6 で棄却された旧スコア） |
 
 ⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
 **PR-0 / PR-0.5 の「当初の指示」節および PR-0 の「実施結果」節の行番号は記載時点のまま**
@@ -1177,6 +1225,104 @@ DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述
 ## 回帰ケース
 
   Nihon Falcom のインディー誤判定（§8 の検証方法が明示的に要求している）。
+
+## 実施結果（2026-08-09）
+
+**PR #237。マージコミット `7a2a0da`（squash）。コミット 2 本（`98ba151` 実装 → `373ba2c` レビュー対応）。**
+実装は Sonnet に委譲し、diff を管理者が検証した。
+
+### ⚠️ 最重要: 当初スコープは誤っていた（論点A の未実装を発見）
+
+**着手後の実測で、Steam Top Sellers 1 位の『ほの暮しの庭』が新作枠にもインディー枠にも載らない**ことが判明し、
+ユーザーの指摘（「新作紹介は大手かインディーかを問わない仕様ではなかったか」）を受けて仕様書を遡ったところ、
+**新作枠の企業規模ゲートは撤廃が決定済み**だった。
+
+| 出典 | 記述 |
+|---|---|
+| 仕様書 §1.1 | 「企業規模の判定はインディー枠の除外条件としてのみ使います。**新作紹介から「大手であること」という条件は撤廃されます**」 |
+| 仕様書 §2.2 | 「**企業規模は問わない**。大手でもインディーでも「注目されているなら載せる」」 |
+| 決着ブロック 論点A（2026-07-29） | 「✅ **(A-1) を採用。新作紹介から企業規模条件を撤廃する**」 |
+| §11.1 確定事項 #1 | 「**撤廃する**。`select-newreleases-with-fallback.ts:56-68` の `isLargeStudio` AND ゲートを削除」 |
+
+**Issue #231 が提案していた「ゲートを維持したまま判定精度を上げる」は、決着で棄却された (A-3) に相当していた。**
+この削除タスクは §8 の PR 一覧のどこにも割り当てられていなかったため実装されずに残っていた。
+→ **本PRで論点A を実装した**（ユーザー判断で PR-I に同梱、2026-08-09）。
+→ 再発防止として**共通ヘッダに「🚨 着手前の必須検証（厳守事項）」節を追加した**。
+
+### 実装（4 つ）
+
+| 対象 | 内容 |
+|---|---|
+| `indie-classifier.ts` | `isLargeStudio(developer, developedCount?)` に本数判定を OR 追加（`LARGE_STUDIO_DEVELOPED_THRESHOLD`、既定 20、`> 20` で大手）。`pickDeveloperGameCount` を新設 |
+| `select-newreleases-with-fallback.ts` | **企業規模ゲートを削除**（論点A）。canonical 名の正規化（Issue #180）は維持 |
+| `fetch-igdb.ts` | `involved_companies.company.developed` を 4 クエリに追加。`pickSteamUrlFromWebsites` を新設し 4 箇所で共有。`websites.type` を追加 |
+| `fetch-data.ts` | IGDB 単独エントリへの `steamAppId` 引き継ぎ。`computeIndieScore` を廃止し `compareIndieCandidates`（Steam おすすめ数降順）に置換。`isWithinIndieReleaseWindow`（90 日窓）を新設 |
+
+**環境変数**: `LARGE_STUDIO_DEVELOPED_THRESHOLD`(20) / `INDIE_RELEASE_WINDOW_DAYS`(90)。
+どちらも `Number(x) || 既定値` を使わず `Number.isFinite` で判定し、呼び出し時に読む。
+
+### 📊 前後比較（2026-08-09 ライブ。#231 の受け入れ条件）
+
+| 指標 | 変更前 | 変更後 |
+|---|---|---|
+| **新作枠の採用** | **0 本** | **2 本**『ほの暮しの庭』『MARVEL Tōkon: Fighting Souls』 |
+| 新作枠 大手ゲート不通過 | 19 件 | **ゲート自体を撤廃** |
+| **インディー枠の採用** | 大手 2 本（Nippon Ichi Software / Arc System Works） | Palworld (PocketPair) / Scrap Mechanic (Axolot Games) |
+| インディー候補の窓外混入 | 上位 10 件中 **5 件**（Geometry Dash 2013 等） | **0 件** |
+| `steamAppId` を持つ候補 | 32 | **92** |
+| IGDB 由来のみ かつ `steamAppId` あり | **0** | **59** |
+| `steamRecommendations` を持つ候補 | 17 | **60** |
+| 実行時間 | 2 分 32 秒 | 2 分 45 秒 |
+
+### 📊 実測で判明した「仕様書に無い事実」（4 件）
+
+1. **IGDB が `websites.category` を `websites.type` に改名している。** 母集団 60 件で `category === 13` の一致は **0 件**。
+   Steam URL 抽出が生きていたのは URL 部分一致フォールバックのおかげ。**`officialUrl` 抽出（`category === 1`）は全経路で死んでいる** → **#234**
+2. **`aggregateGames` の IGDB 単独エントリに `steamAppId` が設定されていない。** IGDB enrich ループは
+   `!coverImage || genres 空` のときしか走らないため、`steamUrl` を抽出しても Storefront 補完に到達しない。
+   §3.6 の警告ブロックが指摘していた経路とは**別の欠落**
+3. **IGDB に会社レコードの重複がある。** `Nippon Ichi Software`=187 と `Nippon Ichi Software, Inc.`=**3** の 2 レコードがあり、
+   『ほの暮しの庭』は後者を参照している。**#231 の「閾値 20 で 2 件とも拾える」という前提は実データで成立しなかった** → **#236**
+4. **`normalizeDeveloperName` が「カンマ + Inc.」形式の末尾カンマを除去できない**（`"Nippon Ichi Software, Inc."` →
+   `"nippon ichi software,"`）。IGDB は実データでこの表記を返すため、静的リスト照合にも穴があった（本PRで修正）
+
+### レビュー指摘への対応（5 件。3 件を本PRで修正・2 件を分離）
+
+| 指摘 | 検証結果 | 対応 |
+|---|---|---|
+| `pickSteamUrlFromWebsites` が配列の先頭一致で決まる | 現データでは発生ゼロ（Steam 的 URL が複数の候補 0 件）だが理屈は正しい | ✅ 本PRで 2 パス化 |
+| `steamAppId` 引き継ぎで `gameMap.set` の上書き経路が増える | 当該 WARN は実測で **変更前 3 件 → 変更後 0 件**。上書きは既存挙動 | → **#239** |
+| 生の `developed` 件数が多作な小規模スタジオを大手扱い | **実測で裏付け: Kairosoft = 88 本**。ただし §3.4 の決定事項 | → **#240** |
+| `developer` と `developerGameCount` が別会社の組み合わせになりうる | **本PRが持ち込む欠陥** | ✅ 本PRで修正（`pickDeveloperGameCount`） |
+| `INDIE_RELEASE_WINDOW_DAYS=0` のコメントが実挙動と逆 | コードで確認 | ✅ 本PRで修正（コメントのみ） |
+
+### 品質ゲート・検証手法
+
+`npm run test` **26ファイル / 960テスト 全通過**（着手前 26 / 865）。
+
+**ミュータント検証を管理者が 11 種実施し、全種でテストが検出することを確認した**（閾値 20→19 / OR→削除 /
+`deduplicateGames` の転記削除 / mapper が publisher の developed を拾う / `steamRecommendations` の 0 を truthy 判定 /
+`steamAppId` 引き継ぎ削除 / `type===13` 判定削除 / インディークエリだけ steamUrl 抽出を戻す / ペアリングガード削除 /
+末尾カンマ除去削除 / steamUrl 抽出の 1 パス化）。
+
+**うち 2 件は空虚なテストを検出した**（次回以降の再利用価値あり）:
+
+- **`type === 13` 経路のテストがフィクスチャの URL に `store.steampowered.com` を含んでいた**ため、
+  URL 部分一致で通っていた。**ドメインを含まない URL** のフィクスチャに直して初めて経路を検証できた
+- **「Nihon Falcom(214) は大手」というテストが静的リスト経由で通っていた**（`indie-classifier.ts:63` に登録済み）。
+  本数判定を丸ごと削除しても通るため、`list: 'large'` を assert する形と、本数判定専用のケースに分割した
+
+### 本PRの検証中に分離した Issue（7 件）
+
+| Issue | 内容 |
+|---|---|
+| **#234** | `websites.category` → `type` 改名で `officialUrl` 抽出が全経路で機能していない |
+| **#235** | §3.5 の「話題性ルートから YouTube を外す」決定が未実装・PR 未割り当て |
+| **#236** | IGDB の会社レコード重複で `developed` 判定が取りこぼす |
+| **#238** | 話題の国内新作『Splatoon Raiders』が新作枠に載らず名作深掘り枠に選ばれる |
+| **#239** | `aggregateGames` が同一 `normalizedTitle` の既存エントリを黙って上書きする |
+| **#240** | 生の `developed` 件数が多作な小規模スタジオを大手扱いする（Kairosoft = 88 本） |
+| **#241** | 新作枠の母集団クエリに発売日の上限が無く、未発売の大作が枠を占領している |
 
 ---
 
