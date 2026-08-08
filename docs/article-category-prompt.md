@@ -8,12 +8,12 @@
 | PR-0.1 | `fix/issue-208-feature-ai-screening` | ✅ **マージ済み**（2026-08-08。`0c07ba1`。**#208 クローズ済み**） | #208（Closed）/ PR #220 | **PR-0 の残タスク**。24ファイル / 744テスト（着手前 736）。レビュー指摘4件のうち1件を本PRで修正、3件を **#221 / #222** に分離。Issue #208 の「想定される修正」2項目目＝特集経路への `isAdultContentByAI` 適用（他 3 カテゴリは適用済み: `generate-articles.ts:1251` / `:1272` / `:1352`。feature のみ適用箇所が無い）。**適用位置は「選定確定後・本数警告の前」に決定済み**（2026-08-08。下記 PR-0.1 節に根拠）。**これで #208 をクローズする**。PR-0 の後・PR-0.5 の前。#219 はマージ済みなので `main` から切ればリベース不要 |
 | PR-0.5 | `refactor/parameterize-igdb-filters` | ✅ **マージ済み**（2026-08-08。`28f835f`。squash） | - / PR #224 | 挙動不変の純リファクタ。24ファイル / 749テスト（着手前 744）。`/code-review` の**指摘ゼロ**。**ユーザー確認事項は「`mainGameOnly` を `gameTypes` に一般化しない」で確定**（別軸のため。下記 PR-0.5 節に根拠）。**このPRで `fetch-igdb.ts` の行番号が 21 行目以降すべて +12 ずれた** |
 | PR-A | `fix/steam-dlc-exclusion` | ✅ **マージ済み**（2026-08-08。`2011619`。squash） | - / PR #226 | 24ファイル / 760テスト（着手前 749）。**仕様書に無い新事実を実測で発見**: `coming_soon` からサウンドトラック（`type=music`）が混入していた。レビュー指摘4件の内訳は 1件を本PRで修正 / 2件を **#227 / #228** に分離 / 1件（進捗表の更新）は後続の docs PR #229 で対応。**このPRで `fetch-steam.ts` の行番号が大きくずれた**（下記「行番号は必ず自分で確認する」節） |
-| PR-B | `feat/newrelease-score-and-remake` | 未着手（**次はこれ**） | #210（初期パラメータ再調整） | PR-0.5 の後 |
-| PR-B2 | `feat/domestic-sales-axis` | 未着手 | - | PR-B の後 |
+| PR-B | `feat/newrelease-score-and-remake` | ✅ **マージ済み**（2026-08-08。`1bb61e6`。squash） | #210（`Refs`。未クローズ）/ PR #230 | 26ファイル / 865テスト（着手前 24 / 760）。コミット2本（実装 → レビュー対応）。**`/code-review` の指摘5件は全件が実在し、全件を本PRで修正**（別Issue分離なし）。**着手前測定（§9.3-9）で新作枠0本の原因を特定 → #231**。名作枠に `isFanGame` 未適用だったことも実測で発覚し本PRで修正 |
+| PR-B2 | `feat/domestic-sales-axis` | 未着手 | - | PR-B の後。**ただし PR-I を先に入れる**（#231。2026-08-08 のユーザー判断） |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
 | 名作枠PR | `feat/classic-slot-redesign` | 未着手 | - | PR-D と直列 |
-| PR-I | `feat/indie-scale-classification` | 未着手 | 関連 #175（読み替え要） | - |
+| PR-I | `feat/indie-scale-classification` | 未着手（**次はこれ**。2026-08-08 に前倒し） | 関連 #175（読み替え要）/ **#231** | **PR-B の着手前測定で優先度が上がった。** 新作枠が 0 本になる直接原因が `isLargeStudio` の静的リスト不備で、PR-I の `developed > 20` 判定がそのまま効く（`isLargeStudio` は新作枠ゲートとインディー判定の共通関数）。**インディー枠だけの変更ではないので、新作枠の採用件数の前後比較を受け入れ条件に入れること**（#231） |
 | PR-E | `fix/prompt-excerpt-length` | 未着手 | - | PR-C と同じ箇所を触る。どちらか先に入れてリベース |
 | PR-F0 | `fix/publish-date-jst` | 未着手 | - | PR-F の直前に入れる |
 | PR-F | `feat/feature-event-fallback` | 未着手 | - | PR-F0 の後 |
@@ -112,6 +112,26 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `fetchTopPlayed` | :205 | **:224** |
 | `fetchNewReleases` | :243 | **:267** |
 | `fetchSteamData` | :318 | **:358** |
+
+⚠️ **PR-B（#230）で `fetch-igdb.ts` / `fetch-data.ts` / `types.ts` / `bedrock-client.ts` の行番号がずれ、
+`scripts/newrelease-score.ts` が新設された。** マージ後の実測値（2026-08-08）:
+
+| シンボル | PR-B 前 | PR-B マージ後 |
+|---|---|---|
+| `buildIgdbCommonFilters`（`fetch-igdb.ts`） | :23 | **:24** |
+| `IGDB_GAME_FIELDS`（`fetch-igdb.ts`） | :341 | **:346** |
+| 呼び出し元4箇所（`fetch-igdb.ts`） | :524 / :668 / :763 / :861 | **:534 / :679 / :785 / :892** |
+| `IGDBGame` 型（`types.ts`） | :42 | :42（不変） |
+| `GameData` 型（`types.ts`） | :84 | **:92** |
+| `buildUserMessage`（`bedrock-client.ts`） | :404 | **:412** |
+| `isFanGame`（`game-filter.ts`） | :45 | **:51** |
+| `deduplicateGames`（`fetch-data.ts`。PR-B で export 化） | :539 | **:557** |
+| `isAlreadySelected`（PR-B で新設） | — | **`fetch-data.ts:926`** |
+| `buildNewReleaseCandidates`（PR-B で新設） | — | **`fetch-data.ts:938`** |
+| `isRemakeOrRemaster`（PR-B で新設） | — | **`fetch-data.ts:967`** |
+| `buildIndieCandidates`（PR-B で新設） | — | **`fetch-data.ts:990`** |
+| `buildClassicCandidates`（PR-B で新設） | — | **`fetch-data.ts:1012`** |
+| `computeNewReleaseScore`（PR-B で新設） | — | **`newrelease-score.ts:159`** |
 
 ⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
 **PR-0 / PR-0.5 の「当初の指示」節および PR-0 の「実施結果」節の行番号は記載時点のまま**
@@ -780,6 +800,108 @@ fail-closed 自体は仕様 §6.1 の決定どおりなので**覆さない**。
 **LLM が原作のストーリー・内容（禁止項目）に踏み込まないこと**を確認する
 - 回帰ケース: 成人向けのすり抜け、DLC混入、`Pokémon Infinite Fusion` の除外
 - 境界値: 批評媒体数 2/1、票数 15/14、Steam 1位/最下位、票数500超のクリップ
+
+## 実施結果（2026-08-08）
+
+**PR #230。マージコミット `1bb61e6`（squash）。コミット 2 本（`f70f027` 実装 → `32e622c` レビュー対応）。**
+実装は Sonnet に委譲し、diff を管理者が検証した。
+
+### 実装
+
+| 対象 | 内容 |
+|---|---|
+| `scripts/newrelease-score.ts`（新設） | 3 軸スコア。`loadNewReleaseScoreParams()` / `computeNewReleaseScore()` / `sortByNewReleaseScore()` |
+| `fetch-igdb.ts` | `buildIgdbCommonFilters` の要素1個の特例を撤廃（常に括弧付き）。新作枠クエリのみ `gameTypes: [0,8,9]`。4 箇所の fields に `game_type, aggregated_rating, aggregated_rating_count, keywords.slug` を追加 |
+| `types.ts` | `IGDBGame` / `GameData` に `gameType` / `aggregatedRating` / `aggregatedRatingCount` / `keywords` |
+| `game-filter.ts` | `isFanGame` にキーワード**完全一致**判定を追加 |
+| `bedrock-client.ts` | `buildUserMessage` に `gameType`（【ゲーム情報】欄に「種別: リメイク」）。`newReleaseSystem` に明記ルール 1 行 |
+| `generate-articles.ts` | newRelease 呼び出しにだけ `gameType` を渡す |
+| `fetch-data.ts` | `isAlreadySelected` / `buildNewReleaseCandidates` / `buildIndieCandidates` / `buildClassicCandidates` / `isRemakeOrRemaster` を切り出し。候補ログに score / topAxis / 軸内訳 |
+
+**環境変数（Issue #210 の再調整対象）**: `NEWRELEASE_SCORE_WEIGHT_CRITIC` / `_VOTES` / `_STEAM`（各 1.0）、
+`_CRITIC_COUNT_MIN`(2) / `_CRITIC_COUNT_FULL`(4) / `_VOTES_MIN`(15) / `_VOTES_FULL`(500)。
+**`Number(x) || 既定値` を使わないこと**（重み 0＝軸の無効化が既定値に化ける）。**環境変数は
+モジュール読み込み時ではなく呼び出し時に読む**（`vi.stubEnv` で検証可能にするため。
+`select-indie-with-fallback.ts` は読み込み時読みだが、そちらは再調整対象ではない）。
+
+### 📊 着手前測定（§9.3-9 への回答。2026-08-08 ライブ）
+
+**新作枠 0 本の原因を特定した。→ Issue #231**
+
+| 段階 | 件数 |
+|---|---|
+| 集約後の全ゲーム | 106 |
+| `releaseDate` なしで脱落 | 6 |
+| フィルタ通過候補 | **23** |
+| `finalizeGameMetadata` 失敗 | 5（date-mismatch 2 件） |
+| 大手判定ゲート不通過 | **18** |
+| 採用 | **0** |
+
+⚠️ **18 件のうち 16 件は正しく除外されている**（PocketPair 等）。**候補プールにあった大手タイトルは
+2 件だけで、その 2 件が両方とも判定漏れで落ちた**（`Arc System Works`/**SIE**、
+`Nippon Ichi Software`/**NIS America**。いずれも静的リストに未登録）。
+**判定さえ正しければ今週はちょうど 2 本埋まっていた。**「18 件が誤判定」ではないので数字の扱いに注意。
+
+### 📊 仕様書の記述の訂正（3 件。実測・実読による）
+
+1. **§6.2 の「未測定」が解消**: `Assassin's Creed Black Flag Resynced` は `aggregated_rating_count = 4`
+   で品質条件（媒体数 2 以上）を**通る**（`aggregated_rating=84` / `rating_count=25`）
+2. **§6.3 の記述が誤り**: `normalizeTitle`（`normalize.ts:19-27`）はローマ数字とアラビア数字の差を
+   **吸収しない**。『Slay the Spire II』/『Slay the Spire 2』は本改修では解決しない
+3. **§2.3 の数値が誤り**: 票数軸のクリップ根拠「5,000 票で 133」は正しくは **137**
+
+### ⚠️ 後続PRへの申し送り — 3件
+
+**(1) 3 つの母集団クエリの結果は 1 つのプールに平坦化される。**
+`fetchIGDBData` が recent + classic + indie をマージして 1 本の `igdbData.games` にするため、
+**「新作枠クエリにだけ許可した種別」は枠の分離を保証しない**。実際 PR-B は
+`game_type = (0,8,9)` を新作枠クエリにだけ渡したが、そのリメイクが名作枠の選定条件を
+すべて通過する状態になっていた（レビューで指摘され本PRで修正）。
+**枠ごとの方針をクエリだけで表現しないこと。選定側にも同じ条件を置く。**
+
+**(2) `deduplicateGames`（`fetch-data.ts:557`）は field ごとの手動マージ。**
+`GameData` にフィールドを足したら**必ずこの関数にも足す**。足し忘れると重複マージが
+起きた候補でだけ値が消える（PR-B で実際に `keywords` が消え、ファンゲーム判定が
+無効化される経路ができていた）。同じ理由で `finalizeGameMetadata`（`igdbConfirmed`
+ガードの内側）と `enrichGameFromIgdb`、`aggregateGames` の 2 ブランチも確認する。
+**配列フィールドは `||` ではなく length ガードで入れる**（空配列は truthy）。
+
+**(3) `isLargeStudio` は新作枠ゲートとインディー判定の共通関数。**
+PR-I はインディー枠だけの変更ではない。→ **#231**
+
+### レビュー指摘への対応（5件。全件が実在し全件を本PRで修正）
+
+| 指摘 | 判定 | 対応 |
+|---|---|---|
+| `deduplicateGames` が新フィールドをマージしない | ✅ 実在・**重大** | 本PRで修正 |
+| リメイクが名作枠・インディー枠に漏れる（本PRの回帰） | ✅ 実在・**重大** | 本PRで修正 |
+| `keywords` の上書きが `\|\|` | ✅ 実在 | 本PRで修正 |
+| `VOTES_FULL <= 1` で票数軸が壊れる | ✅ 実在 | 本PRで修正 |
+| `finalizeGameMetadata` が `gameType` を補完しない | ✅ 実在 | 本PRで修正 |
+
+「プロンプトが原作の年号等に手を伸ばさせるのでは」という情報提供のみの指摘は、
+DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述が提供データに根拠を持つ**ことを
+確認したため現状維持とした。
+
+### スコープから外した判断（管理者判断）
+
+- **母集団クエリの窓・`hypes > 5`・`sort hypes desc`・`limit 20` は変更しない**（ユーザー確認済み）。
+  §2.3 の 60 日窓と §4.1.3 の hypes ソート廃止はサーバ側 sort の代替が未決着のため別PR
+- **特集枠への除外フィルタ適用は別Issue** → **#232**（選定経路が `generate-articles.ts` 側にあり調査が要る）
+- `date_format`（§2.4 の未発売枠）は PR-C の担当
+
+### テスト設計上の落とし穴（次回以降の再利用価値あり）
+
+- **新モジュールの Red は「モジュールが無い」で通してはいけない。** Sonnet の Red 報告が
+  `Cannot find module` だったため、管理者が**実装を一時的に戻して 24 件がアサーション失敗する**ことを
+  独立に再現した。さらにスコアモジュールは**ミュータント 3 種**（票数クリップの削除 /
+  `Number(x)||default` / `max`→`Σ`）を入れて、対応するテストが実際に殺すことを確認した
+- 「除外されること」のテストにポジティブコントロールを同居させる方針は今回も有効だった
+  （`deduplicateGames` の回帰テストは「マージ後の primary が `isFanGame` で true になる」形にした）
+
+### 品質ゲート
+
+`npm run test` **26ファイル / 865テスト 全通過**（ベースライン 24 / 760）。
 
 ---
 
