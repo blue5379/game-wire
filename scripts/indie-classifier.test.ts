@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { normalizeDeveloperName, isLargeStudio, isIndieGame, pickNewReleaseLabelCompany } from './indie-classifier';
 import type { GameData } from './types';
 
@@ -351,6 +351,129 @@ describe('isLargeStudio', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// isLargeStudio — 開発本数による規模判定（§3.4, Issue #231・PR-I その1）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('isLargeStudio — developedCount（§3.4 開発本数による規模判定）', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('境界値: developedCount = 19 は大手ではない', () => {
+    expect(isLargeStudio('Unlisted Small Studio', 19)).toEqual({ hit: false });
+  });
+
+  it('境界値: developedCount = 20 は大手ではない（20は大手ではない、21から大手）', () => {
+    expect(isLargeStudio('Unlisted Small Studio', 20)).toEqual({ hit: false });
+  });
+
+  it('境界値: developedCount = 21 は大手になる', () => {
+    expect(isLargeStudio('Unlisted Small Studio', 21)).toEqual({
+      hit: true,
+      matched: 'Unlisted Small Studio',
+      list: 'developed-count',
+    });
+  });
+
+  it('OR判定①: 静的リストに無い名前 + developedCount 25 → 大手（matched は引数の文字列そのまま）', () => {
+    expect(isLargeStudio('Some New Studio', 25)).toEqual({
+      hit: true,
+      matched: 'Some New Studio',
+      list: 'developed-count',
+    });
+  });
+
+  it('OR判定②: 静的リストにある名前（The Coalition）+ developedCount 8（閾値未満）でも大手のまま（list は従来値のまま）', () => {
+    expect(isLargeStudio('The Coalition', 8)).toEqual({
+      hit: true,
+      matched: 'The Coalition',
+      list: 'subsidiary',
+    });
+  });
+
+  it('OR判定③: 静的リストにある名前 + developedCount undefined でも大手のまま（既存挙動を1ミリも変えない）', () => {
+    expect(isLargeStudio('The Coalition')).toEqual({
+      hit: true,
+      matched: 'The Coalition',
+      list: 'subsidiary',
+    });
+  });
+
+  // 回帰ケース（Issue #231 / §8・実測値）
+  it('[Issue #231] Arc System Works (241本) は大手判定になる', () => {
+    expect(isLargeStudio('Arc System Works', 241).hit).toBe(true);
+  });
+
+  it('[Issue #231] Nihon Falcom (214本) は静的リスト経由で大手判定になる（本数判定ではなく list 一致であることを明示）', () => {
+    // Nihon Falcom は静的リスト（LARGE_DEVELOPERS）に登録済みのため、本数判定を
+    // 丸ごと削除しても本テストは通ってしまう（ミュータント検証で発見）。list を
+    // 'large' まで assert することで、リスト経由であることを明示する。
+    expect(isLargeStudio('Nihon Falcom', 214)).toEqual({
+      hit: true,
+      matched: 'Nihon Falcom',
+      list: 'large',
+    });
+  });
+
+  it('[Issue #231] 静的リスト未登録の名前 + 214本（Nihon Falcom と同じ件数）は本数判定経由で大手判定になる（list=developed-count）', () => {
+    // 上のテストと同じ 214 という件数を、静的リストに存在しない名前に持たせる。
+    // これにより本数判定ロジックが実際に働いていることを list の値で検証できる
+    // （本数判定を削除すると { hit: false } になり、このテストが落ちる）。
+    expect(isLargeStudio('Unlisted Studio With 214 Games', 214)).toEqual({
+      hit: true,
+      matched: 'Unlisted Studio With 214 Games',
+      list: 'developed-count',
+    });
+  });
+
+  it('[Issue #231] Nippon Ichi Software (187本) は大手判定になる', () => {
+    expect(isLargeStudio('Nippon Ichi Software', 187).hit).toBe(true);
+  });
+
+  // 逆方向: インディー側に残ること
+  it('[Issue #231] 逆方向: PocketPair (7本) は大手ではない', () => {
+    expect(isLargeStudio('PocketPair', 7)).toEqual({ hit: false });
+  });
+
+  it('[Issue #231] 逆方向: Yacht Club Games (12本) は大手ではない', () => {
+    expect(isLargeStudio('Yacht Club Games', 12)).toEqual({ hit: false });
+  });
+
+  it('[Issue #231] 逆方向: ZA/UM (6本) は大手ではない', () => {
+    expect(isLargeStudio('ZA/UM', 6)).toEqual({ hit: false });
+  });
+
+  // 環境変数
+  it('LARGE_STUDIO_DEVELOPED_THRESHOLD=50 のとき、count=30は大手にならず、count=51は大手になる', () => {
+    vi.stubEnv('LARGE_STUDIO_DEVELOPED_THRESHOLD', '50');
+    expect(isLargeStudio('Env Test Studio A', 30)).toEqual({ hit: false });
+    expect(isLargeStudio('Env Test Studio B', 51)).toEqual({
+      hit: true,
+      matched: 'Env Test Studio B',
+      list: 'developed-count',
+    });
+  });
+
+  it('LARGE_STUDIO_DEVELOPED_THRESHOLD="0" のとき、count=1でも大手になる（`Number(x) || 20` の回帰防止）', () => {
+    vi.stubEnv('LARGE_STUDIO_DEVELOPED_THRESHOLD', '0');
+    expect(isLargeStudio('Env Test Studio C', 1)).toEqual({
+      hit: true,
+      matched: 'Env Test Studio C',
+      list: 'developed-count',
+    });
+  });
+
+  it('LARGE_STUDIO_DEVELOPED_THRESHOLD が不正値（"abc"）のとき既定の20に戻る', () => {
+    vi.stubEnv('LARGE_STUDIO_DEVELOPED_THRESHOLD', 'abc');
+    expect(isLargeStudio('Env Test Studio D', 20)).toEqual({ hit: false });
+    expect(isLargeStudio('Env Test Studio E', 21)).toEqual({
+      hit: true,
+      matched: 'Env Test Studio E',
+      list: 'developed-count',
+    });
+  });
+});
+
 describe('isIndieGame', () => {
   // Vol.12 再発防止: 実際に混入したケース
   it('[Vol.12 regression] Cyberpunk 2077 (CD Projekt RED) is NOT indie', () => {
@@ -458,6 +581,36 @@ describe('isIndieGame', () => {
   it('Halo Infinite (343 Industries) is NOT indie', () => {
     const game = makeGame({ title: 'Halo Infinite', developer: '343 Industries' });
     expect(isIndieGame(game)).toMatchObject({ ok: false });
+  });
+
+  // 開発本数による規模判定（§3.4, Issue #231）
+  it('[Issue #231] Arc System Works (241本, 静的リスト外) is NOT indie（本数判定 OR）', () => {
+    const game = makeGame({ title: 'ASW Game', developer: 'Arc System Works', developerGameCount: 241 });
+    const result = isIndieGame(game);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe('large-studio');
+    }
+  });
+
+  it('[Issue #231] Nippon Ichi Software (187本, 静的リスト外) is NOT indie（本数判定 OR）', () => {
+    const game = makeGame({ title: 'NIS Game', developer: 'Nippon Ichi Software', developerGameCount: 187 });
+    expect(isIndieGame(game)).toMatchObject({ ok: false, reason: 'large-studio' });
+  });
+
+  it('[Issue #231] 逆方向: PocketPair (7本) is indie のまま', () => {
+    const game = makeGame({ title: 'Palworld', developer: 'PocketPair', developerGameCount: 7 });
+    expect(isIndieGame(game)).toEqual({ ok: true });
+  });
+
+  it('[Issue #231] 逆方向: Yacht Club Games (12本) is indie のまま', () => {
+    const game = makeGame({ title: 'Shovel Knight', developer: 'Yacht Club Games', developerGameCount: 12 });
+    expect(isIndieGame(game)).toEqual({ ok: true });
+  });
+
+  it('[Issue #231] 逆方向: ZA/UM (6本) is indie のまま', () => {
+    const game = makeGame({ title: 'Disco Elysium', developer: 'ZA/UM', developerGameCount: 6 });
+    expect(isIndieGame(game)).toEqual({ ok: true });
   });
 });
 

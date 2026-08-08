@@ -4,7 +4,7 @@
  * Issue #94: Steam Storefront 補完で導入した正規化・品質ガード関数。
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseSteamReleaseDate,
   isQualifiedCompanyName,
@@ -13,12 +13,17 @@ import {
   enrichGameFromIgdb,
   buildNewReleaseCandidates,
   buildClassicCandidates,
+  buildIndieCandidates,
+  compareIndieCandidates,
   isAlreadySelected,
   deduplicateGames,
   isRemakeOrRemaster,
+  isWithinIndieReleaseWindow,
+  aggregateGames,
 } from './fetch-data.js';
 import { isFanGame } from './game-filter.js';
-import type { SelectedGames, GameData, IGDBGame } from './types.js';
+import { isIndieGame } from './indie-classifier.js';
+import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData, MetacriticData } from './types.js';
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
 function makeIgdbGame(overrides: Partial<IGDBGame> = {}): IGDBGame {
@@ -53,6 +58,14 @@ function makeSelected(overrides: Partial<SelectedGames> = {}): SelectedGames {
     classic: null,
     ...overrides,
   };
+}
+
+// 実行時の「今日」から n 日前の YYYY-MM-DD 文字列を返す（テストフィクスチャ用）。
+// isWithinIndieReleaseWindow の実装とは独立した単純な暦計算であり、実装のコピーではない。
+function daysAgoStr(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
 }
 
 describe('removeZombieGames - Issue #103 zombie ゲーム除去', () => {
@@ -628,6 +641,72 @@ describe('enrichGameFromIgdb — 新規フィールド（gameType/aggregatedRati
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// enrichGameFromIgdb — developerGameCount の転記（§3.4 開発本数による規模判定, Issue #231・PR-I その1）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('enrichGameFromIgdb — developerGameCount の転記（§3.4, Issue #231）', () => {
+  it('igdbGame.developerGameCount を GameData に転記する', () => {
+    const game = makeGame({
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      steamAppId: 1,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Test Game',
+      steamUrl: 'https://store.steampowered.com/app/1',
+      developer: 'Some Studio',
+      developerGameCount: 241,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.developerGameCount).toBe(241);
+  });
+
+  it('境界値: developerGameCount が 0 でも ?? により正しく採用される（|| だと欠損する回帰防止）', () => {
+    const game = makeGame({
+      title: 'Zero Count Game',
+      normalizedTitle: 'zero count game',
+      steamAppId: 2,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Zero Count Game',
+      steamUrl: 'https://store.steampowered.com/app/2',
+      developerGameCount: 0,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.developerGameCount).toBe(0);
+  });
+
+  it('igdbGame 側に developerGameCount が無い場合、既存の game 側の値を保持する', () => {
+    const game = makeGame({
+      title: 'Keep Existing',
+      normalizedTitle: 'keep existing',
+      steamAppId: 3,
+      platforms: ['PC'],
+      genres: [],
+      developerGameCount: 99,
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Keep Existing',
+      steamUrl: 'https://store.steampowered.com/app/3',
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.developerGameCount).toBe(99);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // isAlreadySelected — 号内カテゴリ間の重複判定（§6.3・正規化タイトル比較）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('isAlreadySelected — 号内カテゴリ間の重複判定（正規化タイトル比較）', () => {
@@ -1093,6 +1172,369 @@ describe('deduplicateGames — 新規フィールドのマージ（修正1）', 
     const result = deduplicateGames([primaryWithKeywords, dupEmptyKeywords]);
 
     expect(result[0].keywords).toEqual(['open-world']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deduplicateGames — developerGameCount のマージ（§3.4 開発本数による規模判定, Issue #231・PR-I その1）
+// PR-B で deduplicateGames が新フィールドをマージし忘れて差し戻された教訓を踏まえ、
+// マージ後の値が isIndieGame の判定に実際に効くことまで検証する。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #231）', () => {
+  it('primary に developerGameCount が無く dup にある場合、マージ後 primary が isIndieGame で large-studio になる（値が生き残っている証拠）', () => {
+    // primary 選定基準は steamRank 昇順 → steamRank を持つ Steam 側が primary になる。
+    const primary = makeGame({
+      title: 'Merge Test Game',
+      normalizedTitle: 'merge test game',
+      steamAppId: 700,
+      steamRank: 1,
+      source: ['steam'],
+      developer: 'Arc System Works', // 静的リスト外の名前。本数判定のみで large-studio になることを検証
+    });
+    const dup = makeGame({
+      title: 'Merge Test Game',
+      normalizedTitle: 'merge test game',
+      steamAppId: 700,
+      source: ['igdb'],
+      developerGameCount: 241,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].developerGameCount).toBe(241);
+    expect(isIndieGame(result[0])).toMatchObject({ ok: false, reason: 'large-studio' });
+  });
+
+  it('境界値: primary が既に developerGameCount を持つ場合は dup の値で上書きしない（?? の挙動）', () => {
+    const primary = makeGame({
+      title: 'Keep Primary Count',
+      normalizedTitle: 'keep primary count',
+      steamAppId: 800,
+      steamRank: 1,
+      source: ['steam'],
+      developerGameCount: 5,
+    });
+    const dup = makeGame({
+      title: 'Keep Primary Count',
+      normalizedTitle: 'keep primary count',
+      steamAppId: 800,
+      source: ['igdb'],
+      developerGameCount: 999,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result[0].developerGameCount).toBe(5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// aggregateGames — developerGameCount の転記（§3.4 開発本数による規模判定, Issue #231・PR-I その1）
+//
+// マッチ時ブランチ・新規エントリ生成の両方で igdb.developerGameCount が GameData に
+// 転記されることを検証する。Storefront API / Metacritic 補完のネットワーク呼び出しに
+// 触れないよう、フィクスチャは needsCompletion が false になるよう組み立てるか、
+// global.fetch を ok:false でモックして早期 return させる。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）', () => {
+  const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
+  const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
+  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
+
+  it('新規エントリ生成: IGDB 単独ゲームに developerGameCount が転記される', async () => {
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 10,
+          name: 'Solo IGDB Game',
+          slug: 'solo-igdb-game',
+          developer: 'Some New Studio',
+          developerGameCount: 241,
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover.jpg',
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+
+    const game = games.find((g) => g.title === 'Solo IGDB Game');
+    expect(game).toBeDefined();
+    expect(game!.developerGameCount).toBe(241);
+  });
+
+  it('マッチ時ブランチ: Steam 由来の既存エントリに IGDB マッチで developerGameCount が転記される', async () => {
+    const steamData: SteamData = {
+      topSellers: [{ appId: 555, name: 'Matched Game' }],
+      topPlayed: [],
+      fetchedAt: '',
+    };
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 20,
+          name: 'Matched Game',
+          slug: 'matched-game',
+          developer: 'Arc System Works',
+          developerGameCount: 241,
+          genres: ['Fighting'],
+          coverUrl: 'https://images.igdb.com/cover2.jpg',
+          steamUrl: 'https://store.steampowered.com/app/555',
+        },
+      ],
+      fetchedAt: '',
+    };
+    // metascore を確定させて Metacritic 補完ループのネットワーク呼び出しを避ける
+    const metacriticData: MetacriticData = {
+      scores: [{ title: 'Matched Game', platform: 'PC', metascore: null, userScore: null }],
+      fetchedAt: '',
+    };
+
+    const originalFetch = global.fetch;
+    // Storefront 補完ループ（steamRecommendations 等が未確定で needsCompletion=true になる）が
+    // 実ネットワークに飛ばないよう、ok:false を返して早期 return させる
+    global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
+    try {
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const game = games.find((g) => g.title === 'Matched Game');
+      expect(game).toBeDefined();
+      expect(game!.developerGameCount).toBe(241);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// aggregateGames — IGDB 単独ゲームへの steamAppId 継承（§3.6, PR-I その2）
+//
+// steamUrl を持つ IGDB 単独ゲームが、新規エントリ生成時に steamAppId を持たずに
+// 集約結果へ入っていた欠落を検証する。既に計算済みの igdbSteamAppId 変数を
+// 新規エントリのオブジェクトリテラルに転記するだけの修正（新規API呼び出しは増えない）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('aggregateGames — IGDB 単独ゲームへの steamAppId 継承（§3.6, PR-I その2）', () => {
+  const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
+  const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
+  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
+
+  it('steamUrl を持つ IGDB 単独ゲームは steamAppId を持って集約結果に入る。steamUrl を持たない候補は steamAppId が undefined のまま（ポジティブコントロール）', async () => {
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 100,
+          name: 'Solo With Steam',
+          slug: 'solo-with-steam',
+          developer: 'Some Studio',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-a.jpg',
+          steamUrl: 'https://store.steampowered.com/app/778899',
+        },
+        {
+          id: 101,
+          name: 'Solo Without Steam',
+          slug: 'solo-without-steam',
+          developer: 'Some Other Studio',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-b.jpg',
+          // steamUrl なし
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const originalFetch = global.fetch;
+    // steamAppId が埋まった「Solo With Steam」は Storefront 補完ループ（needsCompletion）に
+    // 入るため、実ネットワークに飛ばないよう ok:false で早期 return させる
+    global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
+    try {
+      const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+
+      const withSteam = games.find((g) => g.title === 'Solo With Steam');
+      expect(withSteam).toBeDefined();
+      expect(withSteam!.steamAppId).toBe(778899);
+
+      // ポジティブコントロール: steamUrl が無い候補は steamAppId が undefined のまま
+      const withoutSteam = games.find((g) => g.title === 'Solo Without Steam');
+      expect(withoutSteam).toBeDefined();
+      expect(withoutSteam!.steamAppId).toBeUndefined();
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// compareIndieCandidates / buildIndieCandidates — インディー枠の並び順（§3.6, PR-I その3）
+//
+// 旧スコア（youtubePopularity + (1000 - steamRank) + igdbRating*10）は §3.6 で明示的に
+// 棄却され、Steam おすすめ数（steamRecommendations）の降順に置き換わる。
+// 「持つ」の判定は !== undefined（0 は「持っている」扱い。|| 0 にしない）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('compareIndieCandidates — インディー枠の並び順（§3.6, PR-I その3）', () => {
+  it('両方が steamRecommendations を持つ → 降順', () => {
+    const a = makeGame({ title: 'A', steamRecommendations: 100 });
+    const b = makeGame({ title: 'B', steamRecommendations: 500 });
+    expect([a, b].sort(compareIndieCandidates).map((g) => g.title)).toEqual(['B', 'A']);
+  });
+
+  it('片方だけ steamRecommendations を持つ → 持つ方が先', () => {
+    const withRec = makeGame({ title: 'HasRec', steamRecommendations: 10 });
+    const noRec = makeGame({ title: 'NoRec' });
+    expect([noRec, withRec].sort(compareIndieCandidates).map((g) => g.title)).toEqual([
+      'HasRec',
+      'NoRec',
+    ]);
+  });
+
+  it('両方とも steamRecommendations を持たない → igdbRating の降順', () => {
+    const low = makeGame({ title: 'Low', igdbRating: 60 });
+    const high = makeGame({ title: 'High', igdbRating: 90 });
+    expect([low, high].sort(compareIndieCandidates).map((g) => g.title)).toEqual(['High', 'Low']);
+  });
+
+  it('両方とも steamRecommendations も igdbRating も持たない候補は末尾に来る（配列順のまま放置しない）', () => {
+    const withRating = makeGame({ title: 'WithRating', igdbRating: 70 });
+    const noRating = makeGame({ title: 'NoRating' });
+    expect([noRating, withRating].sort(compareIndieCandidates).map((g) => g.title)).toEqual([
+      'WithRating',
+      'NoRating',
+    ]);
+  });
+
+  it('境界値: steamRecommendations = 0 の候補は「持たない候補」より先に来る（`|| 0` 実装だと落ちる）', () => {
+    const zero = makeGame({ title: 'Zero', steamRecommendations: 0 });
+    const none = makeGame({ title: 'None', igdbRating: 99 });
+    expect([none, zero].sort(compareIndieCandidates).map((g) => g.title)).toEqual(['Zero', 'None']);
+  });
+});
+
+describe('buildIndieCandidates — 旧スコアなら別順序になるフィクスチャで新しい順序を検証（§3.6, PR-I その3）', () => {
+  it('youtubePopularity が極端に大きく steamRank も良いが steamRecommendations が小さい候補は、steamRecommendations が大きい候補より後ろになる', () => {
+    const youtubeHeavy = makeGame({
+      title: 'YouTube Heavy',
+      developer: 'Indie Dev A',
+      source: ['steam', 'youtube'],
+      youtubePopularity: 10_000_000,
+      steamRank: 1,
+      steamRecommendations: 50,
+      igdbRating: 60,
+      releaseDate: daysAgoStr(10), // 90日窓フィルタ（本PR）に引っかからないよう窓内にする
+    });
+    const steamHeavy = makeGame({
+      title: 'Steam Heavy',
+      developer: 'Indie Dev B',
+      source: ['steam'],
+      youtubePopularity: 0,
+      steamPlayers: 5000,
+      steamRecommendations: 900_000,
+      igdbRating: 60,
+      releaseDate: daysAgoStr(10), // 90日窓フィルタ（本PR）に引っかからないよう窓内にする
+    });
+
+    const result = buildIndieCandidates([youtubeHeavy, steamHeavy], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    // 旧スコア（youtubePopularity + (1000 - steamRank) + igdbRating*10）なら
+    // youtubeHeavy が圧倒的優位（10,000,999+600）で先頭になっていたはず。
+    // 新しい並び順（steamRecommendations 降順）では steamHeavy が先。
+    expect(result.map((g) => g.title)).toEqual(['Steam Heavy', 'YouTube Heavy']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isWithinIndieReleaseWindow — インディー枠の発売日90日窓フィルタ（§3.4）
+//
+// docs/article-category-spec.md §3.4 が定めるインディー枠の母集団条件
+// 「発売日: 過去90日以内」を実装。旧スコアが Steam Top Sellers 順に強く依存していたため
+// これまでは実害が無かったが、PR-I で並び順が steamRecommendations 降順（§3.6）に
+// 変わったことで古い人気作（例: Geometry Dash, 2013-08-12発売, おすすめ数584,079）が
+// 上位に来るようになり、実データで窓外の作品が候補上位を占める事態が発生した
+// （管理者ライブ実測、候補上位10件中5件が窓外）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 境界値テストは実時刻に依存しないよう now を固定する。
+// 2026-06-15T12:00:00Z（= JST 21:00）を基準日とする。日本時間(UTC+9)でも同一暦日に
+// 収まる時刻を選ぶことで、setDate によるローカル日付計算がテスト実行環境の
+// タイムゾーンに左右されないようにしている。
+const FIXED_NOW = new Date('2026-06-15T12:00:00Z');
+
+describe('isWithinIndieReleaseWindow — 発売日90日窓フィルタ（§3.4）', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('境界値: ちょうど90日前の発売日は通す', () => {
+    const game = makeGame({ releaseDate: '2026-03-17' }); // FIXED_NOW の90日前
+    expect(isWithinIndieReleaseWindow(game, FIXED_NOW)).toBe(true);
+  });
+
+  it('境界値: 91日前の発売日は除外する', () => {
+    const game = makeGame({ releaseDate: '2026-03-16' }); // FIXED_NOW の91日前
+    expect(isWithinIndieReleaseWindow(game, FIXED_NOW)).toBe(false);
+  });
+
+  it('境界値: 89日前の発売日は通す', () => {
+    const game = makeGame({ releaseDate: '2026-03-18' }); // FIXED_NOW の89日前
+    expect(isWithinIndieReleaseWindow(game, FIXED_NOW)).toBe(true);
+  });
+
+  it('releaseDate が undefined の候補は除外する（窓内と確認できないため）', () => {
+    const game = makeGame({ releaseDate: undefined });
+    expect(isWithinIndieReleaseWindow(game, FIXED_NOW)).toBe(false);
+  });
+
+  it('未来日（未発売）の候補は除外する（§3.3 インディー枠は未発売タイトルを扱わない）', () => {
+    const game = makeGame({ releaseDate: '2026-06-16' }); // FIXED_NOW の1日後
+    expect(isWithinIndieReleaseWindow(game, FIXED_NOW)).toBe(false);
+  });
+
+  it('INDIE_RELEASE_WINDOW_DAYS=30 のとき、60日前の候補は除外され、20日前の候補は通る', () => {
+    vi.stubEnv('INDIE_RELEASE_WINDOW_DAYS', '30');
+    const tooOld = makeGame({ releaseDate: '2026-04-16' }); // FIXED_NOW の60日前
+    const withinWindow = makeGame({ releaseDate: '2026-05-26' }); // FIXED_NOW の20日前
+    expect(isWithinIndieReleaseWindow(tooOld, FIXED_NOW)).toBe(false);
+    expect(isWithinIndieReleaseWindow(withinWindow, FIXED_NOW)).toBe(true);
+  });
+
+  it('INDIE_RELEASE_WINDOW_DAYS が不正値（"abc"）のとき既定の90日に戻る（`Number(x) || 90` の回帰防止）', () => {
+    vi.stubEnv('INDIE_RELEASE_WINDOW_DAYS', 'abc');
+    const within90 = makeGame({ releaseDate: '2026-03-18' }); // 89日前 → 既定90日なら通る
+    const beyond90 = makeGame({ releaseDate: '2026-03-16' }); // 91日前 → 既定90日なら除外
+    expect(isWithinIndieReleaseWindow(within90, FIXED_NOW)).toBe(true);
+    expect(isWithinIndieReleaseWindow(beyond90, FIXED_NOW)).toBe(false);
+  });
+});
+
+describe('buildIndieCandidates — 発売日90日窓フィルタの統合テスト（§3.4, 実データ回帰）', () => {
+  it('窓外の古い高人気候補（Geometry Dash想定）は除外され、窓内の低人気候補（ポジティブコントロール）は残る', () => {
+    const oldPopular = makeGame({
+      title: 'Geometry Dash',
+      normalizedTitle: 'geometry dash',
+      releaseDate: '2013-08-12',
+      steamRecommendations: 584079,
+      steamRank: 5,
+    });
+
+    const withinWindow = makeGame({
+      title: 'Recent Indie Game',
+      normalizedTitle: 'recent indie game',
+      releaseDate: daysAgoStr(30),
+      steamRecommendations: 7182,
+      steamRank: 50,
+    });
+
+    const result = buildIndieCandidates([oldPopular, withinWindow], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    // ポジティブコントロール: フィルタが働かなくなった場合（全件通す壊れ方）を検知するため、
+    // 「除外されること」だけでなく「窓内の候補が残ること」も検証する。
+    expect(result.map((g) => g.title)).toEqual(['Recent Indie Game']);
   });
 });
 

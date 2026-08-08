@@ -114,7 +114,9 @@ export async function vetIndieCandidate(
   if (finalizeResult.ok) {
     // developer または publisher のいずれかが大手なら indie 枠から除外する。
     // publisher のみ大手（受託開発）のケースをカバーするため両方チェックする。
-    const devHit = isLargeStudio(finalizeResult.game.developer).hit;
+    // developer 側は静的リストに加え IGDB 開発本数（developerGameCount）による規模判定も適用する（§3.4）。
+    // publisher 側の developed は規模指標にならないため本数判定は適用しない。
+    const devHit = isLargeStudio(finalizeResult.game.developer, finalizeResult.game.developerGameCount).hit;
     const pubHit = isLargeStudio(finalizeResult.game.publisher).hit;
     if (devHit || pubHit) {
       console.log(

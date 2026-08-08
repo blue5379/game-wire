@@ -168,8 +168,9 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.rejected[0].reason).toBe('not-adopted');
   });
 
-  // Issue #180: developer が大手でなくても publisher が大手なら通過（受託開発の大手 IP タイトル）
-  it('developer が小規模スタジオでも publisher が Bandai Namco（Echoes of Aincrad）なら通過し developer は受託スタジオ名のまま保持する', async () => {
+  // Issue #180: 企業規模ゲートは撤廃済み（論点A）なので developer が小規模でも通過するが、
+  // developer は受託スタジオ名（事実）のまま保持され、publisher 名で上書きされないことを検証する。
+  it('developer が小規模スタジオでも publisher が Bandai Namco（Echoes of Aincrad）でも通過し developer は受託スタジオ名のまま保持する', async () => {
     const A = makeGame({ title: 'Echoes of Aincrad', normalizedTitle: 'echoes of aincrad' });
     const finished = {
       ...A,
@@ -189,8 +190,9 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted[0].publisher).toBe('Bandai Namco Entertainment Inc.');
   });
 
-  // Issue #180: developer が大手なら canonical 名を使う（既存挙動の維持）
-  it('developer が Nintendo（canonical）→ 通過し developer が canonical 名になる', async () => {
+  // Issue #180: developer が静的リストの大手なら canonical 名に正規化される（既存挙動の維持。
+  // 企業規模ゲート撤廃後も、この canonical 名への正規化自体は残る）
+  it('developer が静的リストの大手（別名表記 nintendo）→ 採用され developer が canonical 名（Nintendo EPD）に正規化される', async () => {
     const A = makeGame({ title: 'Mario Game', normalizedTitle: 'mario game' });
     const finished = {
       ...A,
@@ -206,22 +208,49 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted[0].developer).toBe('Nintendo EPD');
   });
 
-  // Issue #180: developer が小規模スタジオで publisher も小規模 → rejected
-  it('developer も publisher も大手でない → rejected', async () => {
-    const A = makeGame({ title: 'Indie Game', normalizedTitle: 'indie game' });
-    const finished = {
-      ...A,
+  // 論点A（企業規模条件の撤廃）: developer・publisher がどちらも大手でなくても、
+  // finalize さえ通れば採用される。大手候補（ポジティブコントロール）と同居させ、
+  // 「企業規模は採用可否に影響しない」ことを示す。
+  it('企業規模に関わらず finalize が通れば採用される（小規模スタジオ・大手が両方採用される）', async () => {
+    const small = makeGame({ title: 'Indie Game', normalizedTitle: 'indie game' });
+    const large = makeGame({ title: 'AAA Game', normalizedTitle: 'aaa game' });
+    const finishedSmall = {
+      ...small,
       developer: 'Small Studio',
       publisher: 'Small Publisher',
       coverImage: 'https://example.com/cover.jpg',
       sourceUrls: { steam: 'https://store.steampowered.com/app/99' },
     };
+    const finishedLarge = {
+      ...large,
+      developer: 'Capcom',
+      coverImage: 'https://example.com/cover2.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/100' },
+    };
 
-    mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+    mockFinalize
+      .mockResolvedValueOnce({ ok: true, game: finishedSmall })
+      .mockResolvedValueOnce({ ok: true, game: finishedLarge });
+
+    const result = await selectNewReleasesWithFallback([small, large], 2);
+    expect(result.adopted.map((g) => g.title)).toEqual(['Indie Game', 'AAA Game']);
+    expect(result.rejected).toHaveLength(0);
+  });
+
+  // 落ちる理由として残るのは finalizeGameMetadata の失敗のみ（企業規模では落ちない）。
+  it('企業規模に関わらず finalize が失敗すれば不採用になる（不採用理由は finalize 失敗のみ）', async () => {
+    const A = makeGame({ title: 'Large But Bad Data', normalizedTitle: 'large but bad data' });
+    // developer は大手（Nintendo）でも finalize が失敗すれば不採用
+    mockFinalize.mockResolvedValueOnce({
+      ok: false,
+      reason: 'still-missing-required' as const,
+      game: { ...A, developer: 'Nintendo' },
+    });
 
     const result = await selectNewReleasesWithFallback([A], 1);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].reason).toBe('not-adopted');
   });
 });
 
@@ -390,5 +419,70 @@ describe('selectNewReleasesWithFallback — 候補が尽きるまで評価 (Issu
     // 2件採用した時点で停止、残り3件は未評価
     expect(mockFinalize).toHaveBeenCalledTimes(2);
     expect(result.reserves).toHaveLength(3);
+  });
+});
+
+// ────────────────────────────────────────────────
+// selectNewReleasesWithFallback — developerGameCount は新作枠の採否に影響しない
+// (論点A: 企業規模条件の撤廃。旧仕様の developerGameCount ゲートを検証していたテストを更新)
+// ────────────────────────────────────────────────
+describe('selectNewReleasesWithFallback — developerGameCount は新作枠の採否に影響しない (論点A, Issue #231)', () => {
+  it('静的リスト未登録の developer は developerGameCount の大小に関わらず両方採用される', async () => {
+    // PR-I 時点では developerGameCount=241 は通過・7 は不採用という期待だったが、
+    // 論点A（§11.1 確定事項 #1）で新作枠の企業規模ゲートは撤廃されたため、
+    // 開発本数の大小に関わらずどちらも finalize が通れば採用される。
+    const large = makeGame({ title: 'Large By Count', normalizedTitle: 'large by count' });
+    const small = makeGame({ title: 'Small By Count', normalizedTitle: 'small by count' });
+
+    const finishedLarge = {
+      ...large,
+      developer: 'Arc System Works', // 静的リストに無い名前
+      developerGameCount: 241,
+      coverImage: 'https://x/large.jpg',
+      sourceUrls: { steam: 'https://s/large' },
+    };
+    const finishedSmall = {
+      ...small,
+      developer: 'Some Tiny Studio',
+      developerGameCount: 7,
+      coverImage: 'https://x/small.jpg',
+      sourceUrls: { steam: 'https://s/small' },
+    };
+
+    mockFinalize
+      .mockResolvedValueOnce({ ok: true, game: finishedLarge })
+      .mockResolvedValueOnce({ ok: true, game: finishedSmall });
+
+    const result = await selectNewReleasesWithFallback([large, small], 2);
+
+    expect(result.adopted.map((g) => g.title)).toContain('Large By Count');
+    expect(result.adopted.map((g) => g.title)).toContain('Small By Count');
+    expect(result.rejected).toHaveLength(0);
+  });
+
+  // 実データ由来の回帰防止テスト（Issue #231 / 論点A）。
+  // 2026-08-08 のライブデータで、Steam Top Sellers 1位・新作枠スコア100.0 の
+  // 『ほの暮しの庭』が developer=Nippon Ichi Software, Inc.（静的リスト外・
+  // developerGameCount=3）/ publisher=NIS America, Inc.（静的リスト外）という
+  // 組み合わせで企業規模ゲートにのみ引っかかり、新作枠・インディー枠どちらにも
+  // 載らない状態になっていた。このテストは、企業規模ゲートが新作枠に復活すると
+  // 失敗する（= ゲート復活の回帰を検知する）。
+  it('[Issue #231, 論点A] developer=Nippon Ichi Software, developerGameCount=3, publisher=NIS America（共に静的リスト外の小規模扱い）の候補が採用される', async () => {
+    const A = makeGame({ title: 'ほの暮しの庭', normalizedTitle: 'honogurashi no niwa' });
+    const finished = {
+      ...A,
+      developer: 'Nippon Ichi Software, Inc.',
+      developerGameCount: 3,
+      publisher: 'NIS America, Inc.',
+      coverImage: 'https://x/honogurashi.jpg',
+      sourceUrls: { steam: 'https://s/honogurashi' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+    const result = await selectNewReleasesWithFallback([A], 1);
+    expect(result.adopted).toHaveLength(1);
+    expect(result.adopted[0].title).toBe('ほの暮しの庭');
+    expect(result.rejected).toHaveLength(0);
   });
 });

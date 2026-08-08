@@ -458,6 +458,87 @@ describe('finalizeGameMetadata - 新規フィールド補完（gameType/aggregat
   });
 });
 
+describe('finalizeGameMetadata - developerGameCount の補完（§3.4 開発本数による規模判定, Issue #231・PR-I その1）', () => {
+  const REQUIRED_NO_REC = { cover: true, developer: true, sourceUrl: true } as const;
+
+  it('IGDB再検索結果からdeveloperGameCountが補完される（appId確証済み）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      developerGameCount: 241,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(241);
+  });
+
+  it('既存値がある場合は上書きしない（?? の挙動）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+      developerGameCount: 3,
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      developerGameCount: 241,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(3);
+  });
+
+  it('境界値: developerGameCount が 0 でも ?? により正しく採用される（|| だと欠損する回帰防止）', async () => {
+    const game = makeGame({
+      steamAppId: 999,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists2.jpg',
+      developer: 'Existing Dev 2',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 2, name: 'Zero Count Game', slug: 'zero-count-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists2.jpg',
+      steamUrl: 'https://store.steampowered.com/app/999',
+      developerGameCount: 0,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(0);
+  });
+
+  it('igdbConfirmedがfalse（appId不一致）のときは補完されない（誤った規模判定の防止）', async () => {
+    const gameMismatch = makeGame({
+      title: 'Old Game',
+      steamAppId: 1087090,
+      coverImage: 'https://example.com/cdn-cover.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 999, name: 'Old Game', slug: 'old-game',
+      developerGameCount: 241,
+      // steamUrl なし → appId 未確証
+    } as any);
+
+    const resultMismatch = await finalizeGameMetadata(gameMismatch, REQUIRED_NO_REC);
+
+    expect(resultMismatch.game.developerGameCount).toBeUndefined();
+  });
+});
+
 describe('finalizeGameMetadata - fetch count constraint', () => {
   it('IGDB and Storefront are each called at most once per candidate', async () => {
     const game = makeGame({

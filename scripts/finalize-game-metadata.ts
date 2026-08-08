@@ -74,6 +74,7 @@ export async function finalizeGameMetadata(
         } else {
           // 既存値を上書きしない（?? 演算子で空欄のみ補完）
           game.developer = game.developer ?? igdb.developer;
+          game.developerGameCount = game.developerGameCount ?? igdb.developerGameCount;
           game.publisher = game.publisher ?? igdb.publisher;
           game.releaseDate = game.releaseDate ?? igdb.releaseDate;
           game.genres = game.genres.length > 0 ? game.genres : (igdb.genres ?? game.genres);
