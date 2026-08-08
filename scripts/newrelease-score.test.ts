@@ -306,6 +306,65 @@ describe('sortByNewReleaseScore', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// votesFull / criticCountFull の安全ガード（修正4）
+// NEWRELEASE_SCORE_VOTES_FULL / NEWRELEASE_SCORE_CRITIC_COUNT_FULL は Issue #210 で
+// 運用中に調整されるノブのため、危険な値（<=1 / <=0）が入っても壊れないことを保証する。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('computeNewReleaseScore - votesFull の安全ガード（修正4）', () => {
+  const baseParams: NewReleaseScoreParams = {
+    weightCritic: 1.0,
+    weightVotes: 1.0,
+    weightSteam: 1.0,
+    criticCountMin: 2,
+    criticCountFull: 4,
+    votesMin: 15,
+    votesFull: 500,
+  };
+
+  it('境界値: votesFull=1 のとき票数軸は棄権する（log10(1)=0 の0除算でInfinity→100に化ける回帰防止）', () => {
+    const params: NewReleaseScoreParams = { ...baseParams, votesFull: 1 };
+    const game = makeGame({ igdbRatingCount: 1000 });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, params });
+    expect(result.axes.find((a) => a.axis === 'votes')).toBeUndefined();
+  });
+
+  it('境界値: votesFull=2（1の直後）では棄権しない', () => {
+    const params: NewReleaseScoreParams = { ...baseParams, votesFull: 2 };
+    const game = makeGame({ igdbRatingCount: 1000 });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, params });
+    expect(result.axes.find((a) => a.axis === 'votes')).toBeDefined();
+  });
+
+  it('votesFull=0.5（1未満）でも棄権する（log10が負になり符号反転する回帰防止）', () => {
+    const params: NewReleaseScoreParams = { ...baseParams, votesFull: 0.5 };
+    const game = makeGame({ igdbRatingCount: 1000 });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, params });
+    expect(result.axes.find((a) => a.axis === 'votes')).toBeUndefined();
+  });
+});
+
+describe('computeNewReleaseScore - criticCountFull の安全ガード（修正4）', () => {
+  it('criticCountFull=0 のときスコアが Infinity/NaN/負にならない', () => {
+    // criticCountMin も 0 にして保有条件ゲートを通過させ、0/0 の NaN 経路を露出させる
+    const params: NewReleaseScoreParams = {
+      weightCritic: 1.0,
+      weightVotes: 1.0,
+      weightSteam: 1.0,
+      criticCountMin: 0,
+      criticCountFull: 0,
+      votesMin: 15,
+      votesFull: 500,
+    };
+    const game = makeGame({ aggregatedRating: 50, aggregatedRatingCount: 0 });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, params });
+    const critic = result.axes.find((a) => a.axis === 'critic');
+    expect(critic).toBeDefined();
+    expect(Number.isFinite(critic!.raw)).toBe(true);
+    expect(critic!.raw).toBeGreaterThanOrEqual(0);
+  });
+});
+
 describe('実データによる統合的なケース（2026-08-08 ライブ実測）', () => {
   it('4件の実測データが期待される並び順（ほの暮しの庭 > Palworld > ACBF Resynced > 007 First Light）になる', () => {
     // Steam Top Sellers 取得件数: 20件（実測）

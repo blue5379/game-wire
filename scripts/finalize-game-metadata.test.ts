@@ -348,6 +348,116 @@ describe('finalizeGameMetadata - IGDB field completion', () => {
   });
 });
 
+describe('finalizeGameMetadata - 新規フィールド補完（gameType/aggregatedRating/aggregatedRatingCount/keywords, 修正5）', () => {
+  // steamRecommendations を required に含めない: 補完対象フィールドの検証に無関係な
+  // Storefront API 呼び出し（未モック時にネットワークへ飛ぶ）を避けるため。
+  const REQUIRED_NO_REC = { cover: true, developer: true, sourceUrl: true } as const;
+
+  it('IGDB再検索結果からgameType/aggregatedRating/aggregatedRatingCount/keywordsが補完される（appId確証済み）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      gameType: 8,
+      aggregatedRating: 85.24,
+      aggregatedRatingCount: 25,
+      keywords: ['remake', 'action'],
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.gameType).toBe(8);
+    expect(result.game.aggregatedRating).toBe(85.24);
+    expect(result.game.aggregatedRatingCount).toBe(25);
+    expect(result.game.keywords).toEqual(['remake', 'action']);
+  });
+
+  it('既存値がある場合は上書きしない（?? の挙動）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+      gameType: 0,
+      aggregatedRating: 90,
+      aggregatedRatingCount: 10,
+      keywords: ['open-world'],
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      gameType: 8,
+      aggregatedRating: 50,
+      aggregatedRatingCount: 1,
+      keywords: ['remake'],
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.gameType).toBe(0);
+    expect(result.game.aggregatedRating).toBe(90);
+    expect(result.game.aggregatedRatingCount).toBe(10);
+    expect(result.game.keywords).toEqual(['open-world']);
+  });
+
+  it('igdbConfirmedがfalse（appId不一致）のときは補完されない。appId一致時には補完される（ポジティブコントロール、誤ったリメイク表記の防止）', async () => {
+    // appId 不一致（IGDB 側 steamUrl 無し = 名前検索フォールバック由来）
+    const gameMismatch = makeGame({
+      title: 'Old Game',
+      steamAppId: 1087090,
+      coverImage: 'https://example.com/cdn-cover.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 999, name: 'Old Game', slug: 'old-game',
+      gameType: 8,
+      aggregatedRating: 85,
+      aggregatedRatingCount: 10,
+      keywords: ['remake'],
+      // steamUrl なし → appId 未確証
+    } as any);
+
+    const resultMismatch = await finalizeGameMetadata(gameMismatch, REQUIRED_NO_REC);
+
+    expect(resultMismatch.game.gameType).toBeUndefined();
+    expect(resultMismatch.game.aggregatedRating).toBeUndefined();
+    expect(resultMismatch.game.aggregatedRatingCount).toBeUndefined();
+    expect(resultMismatch.game.keywords).toBeUndefined();
+
+    // ポジティブコントロール: appId 一致時は補完される
+    const gameMatch = makeGame({
+      title: 'New Game',
+      steamAppId: 555,
+      coverImage: 'https://example.com/cdn-cover2.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/555' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 2, name: 'New Game', slug: 'new-game',
+      steamUrl: 'https://store.steampowered.com/app/555',
+      gameType: 8,
+      aggregatedRating: 85,
+      aggregatedRatingCount: 10,
+      keywords: ['remake'],
+    } as any);
+
+    const resultMatch = await finalizeGameMetadata(gameMatch, REQUIRED_NO_REC);
+
+    expect(resultMatch.game.gameType).toBe(8);
+    expect(resultMatch.game.aggregatedRating).toBe(85);
+    expect(resultMatch.game.aggregatedRatingCount).toBe(10);
+    expect(resultMatch.game.keywords).toEqual(['remake']);
+  });
+});
+
 describe('finalizeGameMetadata - fetch count constraint', () => {
   it('IGDB and Storefront are each called at most once per candidate', async () => {
     const game = makeGame({

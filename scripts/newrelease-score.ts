@@ -112,7 +112,12 @@ function computeCriticAxis(game: GameData, params: NewReleaseScoreParams): numbe
   if (game.aggregatedRatingCount === undefined) return undefined;
   if (game.aggregatedRatingCount < params.criticCountMin) return undefined;
 
-  const coverage = Math.min(1, game.aggregatedRatingCount / params.criticCountFull);
+  // criticCountFull <= 0 は 0 除算（Infinity/NaN）や符号反転を引き起こすため、
+  // 除算を行わず coverage=1（満点扱い）にクランプする。0〜1 の範囲を必ず保つ。
+  const coverage =
+    params.criticCountFull > 0
+      ? Math.min(1, Math.max(0, game.aggregatedRatingCount / params.criticCountFull))
+      : 1;
   return game.aggregatedRating * coverage;
 }
 
@@ -122,6 +127,12 @@ function computeCriticAxis(game: GameData, params: NewReleaseScoreParams): numbe
 function computeVotesAxis(game: GameData, params: NewReleaseScoreParams): number | undefined {
   if (game.igdbRatingCount === undefined) return undefined;
   if (game.igdbRatingCount < params.votesMin) return undefined;
+
+  // votesFull <= 1 は log10(votesFull) <= 0 となり、0 除算（Infinity → 100点クリップで
+  // 全候補が常に勝つ）や符号反転（軸の順序が逆転）を引き起こす。NEWRELEASE_SCORE_VOTES_FULL は
+  // Issue #210 で運用中に調整されるノブのため、安全な範囲外の値は棄権として扱う
+  // （computeSteamAxis が steamSlotCount <= 0 を棄権にしているのと同じ流儀）。
+  if (params.votesFull <= 1) return undefined;
 
   const raw = (100 * Math.log10(game.igdbRatingCount)) / Math.log10(params.votesFull);
   return Math.min(100, raw);

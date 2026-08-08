@@ -140,7 +140,8 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.gameType = igdbGame.gameType ?? game.gameType;
   game.aggregatedRating = igdbGame.aggregatedRating ?? game.aggregatedRating;
   game.aggregatedRatingCount = igdbGame.aggregatedRatingCount ?? game.aggregatedRatingCount;
-  game.keywords = igdbGame.keywords || game.keywords;
+  // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+  game.keywords = igdbGame.keywords?.length ? igdbGame.keywords : game.keywords;
   if (!game.source.includes('igdb')) {
     game.source.push('igdb');
   }
@@ -333,7 +334,8 @@ async function aggregateGames(
         game.gameType = igdb.gameType ?? game.gameType;
         game.aggregatedRating = igdb.aggregatedRating ?? game.aggregatedRating;
         game.aggregatedRatingCount = igdb.aggregatedRatingCount ?? game.aggregatedRatingCount;
-        game.keywords = igdb.keywords || game.keywords;
+        // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+        game.keywords = igdb.keywords?.length ? igdb.keywords : game.keywords;
         if (igdb.websites?.length) {
           game.igdbWebsites = igdb.websites;
         }
@@ -552,7 +554,7 @@ async function aggregateGames(
  * マージ先: steamRank が小さい方、なければ source 数が多い方、それも同じなら先着。
  * スコア・人気指標は合算ではなく「より良い値」を採用する（重複加算を防ぐ）。
  */
-function deduplicateGames(games: GameData[]): GameData[] {
+export function deduplicateGames(games: GameData[]): GameData[] {
   // グループ化: steamAppId が同じものをまとめる
   const byAppId = new Map<number, GameData[]>();
   const noAppId: GameData[] = [];
@@ -634,6 +636,11 @@ function deduplicateGames(games: GameData[]): GameData[] {
       primary.userScore = primary.userScore ?? dup.userScore;
       primary.igdbRating = primary.igdbRating ?? dup.igdbRating;
       primary.igdbRatingCount = primary.igdbRatingCount ?? dup.igdbRatingCount;
+      primary.gameType = primary.gameType ?? dup.gameType;
+      primary.aggregatedRating = primary.aggregatedRating ?? dup.aggregatedRating;
+      primary.aggregatedRatingCount = primary.aggregatedRatingCount ?? dup.aggregatedRatingCount;
+      // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+      primary.keywords = primary.keywords?.length ? primary.keywords : dup.keywords;
       // source リストをマージ
       for (const s of dup.source) {
         if (!primary.source.includes(s)) primary.source.push(s);
@@ -946,6 +953,59 @@ export function buildNewReleaseCandidates(
   return sortByNewReleaseScore(filtered, { steamSlotCount: options.steamTopSellersCount });
 }
 
+// 新作枠以外の枠から除外するゲーム種別（IGDB game_type、§6.2）
+const GAME_TYPE_REMAKE = 8;
+const GAME_TYPE_REMASTER = 9;
+
+/**
+ * 新作枠以外の枠から除外するゲーム種別（リメイク=8 / リマスター=9）かを判定する（§6.2）。
+ * gameType が未取得（undefined）の候補は除外しない（判定材料が無いため従来どおり通す）。
+ *
+ * 本PRでは名作枠・インディー枠から一律除外する（保守的な対応）。名作枠での
+ * 「原作が母集団にいないリメイクだけ条件付き許可」（§5.5）は名作枠PRの担当。
+ */
+export function isRemakeOrRemaster(game: GameData): boolean {
+  if (game.gameType === undefined) return false;
+  return game.gameType === GAME_TYPE_REMAKE || game.gameType === GAME_TYPE_REMASTER;
+}
+
+/**
+ * インディー枠のランキングスコア（§6.1）。
+ */
+function computeIndieScore(g: GameData): number {
+  return (
+    (g.youtubePopularity || 0) +
+    (g.steamRank ? 1000 - g.steamRank : 0) +
+    (g.igdbRating || 0) * 10
+  );
+}
+
+/**
+ * インディー枠の候補を絞り込み、indieScore 降順に並べる（§6.1 / §6.2 / §6.3）。
+ * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
+ *
+ * developer=undefined は isIndieGame が 'no-developer' で ok:false を返すが、
+ * 候補プールには含める（話題性ルートで steamRawDeveloper による補完を後段で行うため）。
+ */
+export function buildIndieCandidates(
+  games: GameData[],
+  options: { cooldown: Set<string>; alreadySelected: (GameData | null | undefined)[] }
+): GameData[] {
+  return games
+    .filter((g) => {
+      const r = isIndieGame(g);
+      return r.ok || r.reason === 'no-developer';
+    })
+    .filter((g) => !isFanGame(g))
+    .filter((g) => !isRemakeOrRemaster(g))
+    .filter((g) => isQualifiedGame(g))
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
+    .filter((g) => !options.cooldown.has(g.normalizedTitle))
+    .filter((g) => !isAlreadySelected(g, options.alreadySelected))
+    .sort((a, b) => computeIndieScore(b) - computeIndieScore(a));
+}
+
 /**
  * 名作枠の候補を絞り込む（§5 / §6.1 / §6.3）。副作用を持たない純関数。
  */
@@ -956,6 +1016,7 @@ export function buildClassicCandidates(
   return games
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => !isFanGame(g))
+    .filter((g) => !isRemakeOrRemaster(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle))
     .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
     .filter((g) => {
@@ -1035,24 +1096,14 @@ async function selectGamesForArticles(
   // インディーゲーム候補（大手スタジオと確定できるものだけ除外）
   // developer=undefined は 'no-developer' で ok:false になるが、候補プールには含める。
   // 話題性ルートで steamRawDeveloper を使った「個人開発（アカウント名）」補完を後段で行う。
-  const indieScore = (g: GameData): number =>
-    (g.youtubePopularity || 0) +
-    (g.steamRank ? 1000 - g.steamRank : 0) +
-    (g.igdbRating || 0) * 10;
-
-  const indieRanked = games
-    .filter((g) => { const r = isIndieGame(g); return r.ok || r.reason === 'no-developer'; })
-    .filter((g) => !isFanGame(g))
-    .filter((g) => isQualifiedGame(g))
-    .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
-    .filter((g) => !indieCooldown.has(g.normalizedTitle))
-    .filter((g) => !isAlreadySelected(g, newReleases))
-    .sort((a, b) => indieScore(b) - indieScore(a));
+  const indieRanked = buildIndieCandidates(games, {
+    cooldown: indieCooldown,
+    alreadySelected: newReleases,
+  });
 
   console.log(`  [indie] candidates after filter: ${indieRanked.length}件`);
   for (const g of indieRanked.slice(0, 10)) {
-    console.log(`    - ${g.title} (score=${indieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
+    console.log(`    - ${g.title} (score=${computeIndieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
   }
 
   // youtubePopularity 降順リスト（話題性 percentile 計算用）

@@ -14,7 +14,10 @@ import {
   buildNewReleaseCandidates,
   buildClassicCandidates,
   isAlreadySelected,
+  deduplicateGames,
+  isRemakeOrRemaster,
 } from './fetch-data.js';
+import { isFanGame } from './game-filter.js';
 import type { SelectedGames, GameData, IGDBGame } from './types.js';
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
@@ -990,5 +993,220 @@ describe('buildClassicCandidates', () => {
     });
 
     expect(result.map((g) => g.title)).toEqual(['Higher Score', 'Lower Score']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deduplicateGames — 新規フィールドのマージ（修正1）
+// 重複エントリをマージするとき gameType/aggregatedRating/aggregatedRatingCount/keywords が
+// 黙って捨てられていた回帰の防止（fetch-data.ts:616-636 付近のマージブロック）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deduplicateGames — 新規フィールドのマージ（修正1）', () => {
+  it('Steam側がprimaryに選ばれるとき、IGDB側の重複からgameType/aggregatedRating/aggregatedRatingCount/keywordsを引き継ぐ', () => {
+    // primary 選定基準は steamRank 昇順 → steamRank を持つ Steam 側が primary になる。
+    // IGDB 側は steamRank を持たないため duplicate 側に回る。
+    const steamEntry = makeGame({
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      steamAppId: 123,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const igdbEntry = makeGame({
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      steamAppId: 123,
+      source: ['igdb'],
+      gameType: 8,
+      aggregatedRating: 85.24,
+      aggregatedRatingCount: 25,
+      keywords: ['unofficial', 'fangame'],
+    });
+
+    const result = deduplicateGames([steamEntry, igdbEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].gameType).toBe(8);
+    expect(result[0].aggregatedRating).toBe(85.24);
+    expect(result[0].aggregatedRatingCount).toBe(25);
+    expect(result[0].keywords).toEqual(['unofficial', 'fangame']);
+  });
+
+  it('回帰の実害: マージ後の primary は isFanGame() で true になる。ポジティブコントロールとして非ファンゲームの重複ペアは false のまま', () => {
+    const fanSteamEntry = makeGame({
+      title: 'Fan Made Thing',
+      normalizedTitle: 'fan made thing',
+      steamAppId: 111,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const fanIgdbEntry = makeGame({
+      title: 'Fan Made Thing',
+      normalizedTitle: 'fan made thing',
+      steamAppId: 111,
+      source: ['igdb'],
+      keywords: ['fangame'],
+    });
+
+    // ポジティブコントロール: keywords がファンゲームを示さない同種の重複ペア
+    const normalSteamEntry = makeGame({
+      title: 'Normal Game',
+      normalizedTitle: 'normal game',
+      steamAppId: 222,
+      steamRank: 2,
+      source: ['steam'],
+    });
+    const normalIgdbEntry = makeGame({
+      title: 'Normal Game',
+      normalizedTitle: 'normal game',
+      steamAppId: 222,
+      source: ['igdb'],
+      keywords: ['open-world'],
+    });
+
+    const result = deduplicateGames([fanSteamEntry, fanIgdbEntry, normalSteamEntry, normalIgdbEntry]);
+
+    const fan = result.find((g) => g.title === 'Fan Made Thing')!;
+    const normal = result.find((g) => g.title === 'Normal Game')!;
+
+    expect(isFanGame(fan)).toBe(true);
+    expect(isFanGame(normal)).toBe(false);
+  });
+
+  it('境界値: dup.keywords が空配列のとき primary の既存 keywords を潰さない', () => {
+    const primaryWithKeywords = makeGame({
+      title: 'Has Keywords',
+      normalizedTitle: 'has keywords',
+      steamAppId: 333,
+      steamRank: 1,
+      source: ['steam'],
+      keywords: ['open-world'],
+    });
+    const dupEmptyKeywords = makeGame({
+      title: 'Has Keywords',
+      normalizedTitle: 'has keywords',
+      steamAppId: 333,
+      source: ['igdb'],
+      keywords: [],
+    });
+
+    const result = deduplicateGames([primaryWithKeywords, dupEmptyKeywords]);
+
+    expect(result[0].keywords).toEqual(['open-world']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isRemakeOrRemaster — リメイク/リマスター判定（修正2, §6.2）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('isRemakeOrRemaster — リメイク/リマスター判定（修正2, §6.2）', () => {
+  it('gameType=8（Remake）は true', () => {
+    expect(isRemakeOrRemaster(makeGame({ gameType: 8 }))).toBe(true);
+  });
+
+  it('gameType=9（Remaster）は true', () => {
+    expect(isRemakeOrRemaster(makeGame({ gameType: 9 }))).toBe(true);
+  });
+
+  it('境界値: gameType=0（Main Game）は false', () => {
+    expect(isRemakeOrRemaster(makeGame({ gameType: 0 }))).toBe(false);
+  });
+
+  it('境界値: gameType 未設定（undefined）は false（判定材料が無いため除外しない）', () => {
+    expect(isRemakeOrRemaster(makeGame({}))).toBe(false);
+  });
+
+  it('境界値: gameType=11（Port）は false', () => {
+    expect(isRemakeOrRemaster(makeGame({ gameType: 11 }))).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildClassicCandidates — リメイク/リマスター除外（修正2）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildClassicCandidates — リメイク/リマスター除外（修正2）', () => {
+  it('gameType=8のリメイクは落ち、gameType=0の通常候補とgameType未設定の候補は残る（ポジティブコントロール・実測値ベース）', () => {
+    // 実測値: Assassin's Creed Black Flag Resynced は gameType=8 だが
+    // buildClassicCandidates の他の全条件（スコア・cover/summary）を通過する（管理者が本日実測）。
+    const acbfResynced = makeGame({
+      title: "Assassin's Creed Black Flag Resynced",
+      normalizedTitle: "assassin's creed black flag resynced",
+      gameType: 8,
+      igdbRating: 85.24,
+      igdbRatingCount: 25,
+      coverImage: 'https://example.com/acbf.jpg',
+      summary: 'A resynced version of Assassin\'s Creed Black Flag.',
+    });
+    const normalClassic = makeGame({
+      title: 'Normal Classic',
+      normalizedTitle: 'normal classic',
+      gameType: 0,
+      igdbRating: 90,
+      coverImage: 'https://example.com/normal.jpg',
+      summary: 'A normal classic game.',
+    });
+    const unknownTypeClassic = makeGame({
+      title: 'Unknown Type Classic',
+      normalizedTitle: 'unknown type classic',
+      // gameType 未設定（Steam 由来など）
+      igdbRating: 88,
+      coverImage: 'https://example.com/unknown.jpg',
+      summary: 'summary',
+    });
+
+    const result = buildClassicCandidates([acbfResynced, normalClassic, unknownTypeClassic], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain("Assassin's Creed Black Flag Resynced");
+    expect(result.map((g) => g.title)).toContain('Normal Classic');
+    expect(result.map((g) => g.title)).toContain('Unknown Type Classic');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// enrichGameFromIgdb — keywords 空配列で既存値を潰さない（修正3）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('enrichGameFromIgdb — keywords 空配列で既存値を潰さない（修正3）', () => {
+  it('IGDB側が空配列を返したときに既存のkeywordsが保持される。非空配列なら上書きされる（同一テスト内で両方確認）', () => {
+    const gameWithKeywords = makeGame({
+      title: 'Elden Ring',
+      normalizedTitle: 'elden ring',
+      steamAppId: 1245620,
+      platforms: ['PC'],
+      genres: [],
+      keywords: ['open-world', 'souls-like'],
+    });
+    const igdbEmptyKeywords = makeIgdbGame({
+      name: 'Elden Ring',
+      steamUrl: 'https://store.steampowered.com/app/1245620',
+      keywords: [],
+    });
+
+    const applied = enrichGameFromIgdb(gameWithKeywords, igdbEmptyKeywords);
+
+    expect(applied).toBe(true);
+    expect(gameWithKeywords.keywords).toEqual(['open-world', 'souls-like']);
+
+    // 非空配列なら上書きされる
+    const gameWithKeywords2 = makeGame({
+      title: 'Elden Ring',
+      normalizedTitle: 'elden ring',
+      steamAppId: 1245620,
+      platforms: ['PC'],
+      genres: [],
+      keywords: ['open-world', 'souls-like'],
+    });
+    const igdbNonEmptyKeywords = makeIgdbGame({
+      name: 'Elden Ring',
+      steamUrl: 'https://store.steampowered.com/app/1245620',
+      keywords: ['dark-fantasy'],
+    });
+
+    const applied2 = enrichGameFromIgdb(gameWithKeywords2, igdbNonEmptyKeywords);
+
+    expect(applied2).toBe(true);
+    expect(gameWithKeywords2.keywords).toEqual(['dark-fantasy']);
   });
 });
