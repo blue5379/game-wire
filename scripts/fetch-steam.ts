@@ -57,7 +57,7 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
     if (data.top_sellers?.items) {
       for (const item of data.top_sellers.items.slice(0, 20)) {
         // appdetails で成人向けコンテンツチェック + appId/name 整合性検証（Issue #102）
-        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
+        const { name: storefrontName, isAdultContent, type } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
@@ -67,6 +67,14 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
         if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
           console.warn(
             `  [Steam] appId/name mismatch in top_sellers: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
@@ -96,6 +104,10 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
 // 2: Frequent Nudity or Sexual Content
 // 3: Adult Only Sexual Content
 const ADULT_CONTENT_DESCRIPTOR_IDS = [1, 2, 3];
+
+// Steam appdetails の `type` フィールドがゲーム本体であることを示す値。
+// DLC / demo / music（サウンドトラック）等はこれ以外の値で返ってくる（PR-A: DLC除外）。
+const STEAM_APP_TYPE_GAME = 'game';
 
 /**
  * Featured Categories の `item.name` と Storefront `appData.name` が
@@ -177,25 +189,32 @@ export async function fetchSteamAppName(
 }
 
 /**
- * Steam公式APIからゲーム詳細（名前・成人向けフラグ）を取得
+ * Steam公式APIからゲーム詳細（名前・成人向けフラグ・アプリ種別）を取得
+ *
+ * `type` は Steam appdetails の `type` フィールド（"game" / "dlc" / "demo" / "music" 等）。
+ * PR-A: Steam 経路（Top Sellers / Top Played / New Releases / Coming Soon）に DLC や
+ * サウンドトラックが候補として混入するのを防ぐため、呼び出し側で `type !== STEAM_APP_TYPE_GAME`
+ * を除外条件として利用する。`fullgame`（親ゲーム情報）は読み替えを行わないため参照しない。
  */
-async function getAppDetails(appId: number): Promise<{ name: string | null; isAdultContent: boolean }> {
+async function getAppDetails(
+  appId: number
+): Promise<{ name: string | null; isAdultContent: boolean; type: string | null }> {
   try {
     const response = await fetch(
       `${STEAM_STORE_API}/appdetails?appids=${appId}&cc=jp&l=japanese`
     );
     const data = await response.json();
     const appData = data[appId]?.data;
-    if (!appData) return { name: null, isAdultContent: false };
+    if (!appData) return { name: null, isAdultContent: false, type: null };
 
     const descriptorIds: number[] = appData.content_descriptors?.ids ?? [];
     const isAdultContent = descriptorIds.some((id) =>
       ADULT_CONTENT_DESCRIPTOR_IDS.includes(id)
     );
 
-    return { name: appData.name || null, isAdultContent };
+    return { name: appData.name || null, isAdultContent, type: appData.type ?? null };
   } catch {
-    return { name: null, isAdultContent: false };
+    return { name: null, isAdultContent: false, type: null };
   }
 }
 
@@ -213,10 +232,15 @@ async function fetchTopPlayed(): Promise<SteamGame[]> {
     // 上位20件を取得
     for (const item of ranks.slice(0, 20)) {
       // ゲーム名と成人向けフラグを取得（レート制限対策で少し待機）
-      const { name, isAdultContent } = await getAppDetails(item.appid);
+      const { name, isAdultContent, type } = await getAppDetails(item.appid);
       if (name) {
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${name}" (appId: ${item.appid})`);
+        } else if (type !== STEAM_APP_TYPE_GAME) {
+          // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${name}" (appId: ${item.appid})`
+          );
         } else {
           topPlayed.push({
             appId: item.appid,
@@ -252,7 +276,7 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
     // new_releases カテゴリから取得
     if (data.new_releases?.items) {
       for (const item of data.new_releases.items.slice(0, 10)) {
-        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
+        const { name: storefrontName, isAdultContent, type } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
@@ -261,6 +285,14 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
         if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
           console.warn(
             `  [Steam] appId/name mismatch in new_releases: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
@@ -280,7 +312,7 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
     // coming_soon カテゴリも取得
     if (data.coming_soon?.items) {
       for (const item of data.coming_soon.items.slice(0, 5)) {
-        const { name: storefrontName, isAdultContent } = await getAppDetails(item.id);
+        const { name: storefrontName, isAdultContent, type } = await getAppDetails(item.id);
         if (isAdultContent) {
           console.log(`  [Steam] Skipping adult content game: "${item.name}" (appId: ${item.id})`);
           await new Promise((r) => setTimeout(r, 200));
@@ -289,6 +321,14 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
         if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
           console.warn(
             `  [Steam] appId/name mismatch in coming_soon: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
