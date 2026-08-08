@@ -13,6 +13,7 @@ vi.mock('./url-health.js', () => ({
 import { finalizeGameMetadata } from './finalize-game-metadata';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { headOk, getImageOrientation } from './url-health.js';
+import { isIndieGame } from './indie-classifier.js';
 
 const mockEnrich = vi.mocked(enrichGameWithIGDB);
 const mockHeadOk = vi.mocked(headOk);
@@ -455,6 +456,134 @@ describe('finalizeGameMetadata - 新規フィールド補完（gameType/aggregat
     expect(resultMatch.game.aggregatedRating).toBe(85);
     expect(resultMatch.game.aggregatedRatingCount).toBe(10);
     expect(resultMatch.game.keywords).toEqual(['remake']);
+  });
+});
+
+describe('finalizeGameMetadata - developerGameCount の補完（§3.4 開発本数による規模判定, Issue #231・PR-I その1）', () => {
+  const REQUIRED_NO_REC = { cover: true, developer: true, sourceUrl: true } as const;
+
+  it('IGDB再検索結果からdeveloperGameCountが補完される（appId確証済み、developer名も一致）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+    });
+    // developer も igdb 側で一致させる（developerGameCount は同じ会社の developer と
+    // ペアで来る実データの形。§修正2: developer 名が一致しないと件数を採らないゲートが入った）。
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      developer: 'Existing Dev',
+      developerGameCount: 241,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(241);
+  });
+
+  it('既存値がある場合は上書きしない（?? の挙動）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+      developerGameCount: 3,
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      developerGameCount: 241,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(3);
+  });
+
+  it('境界値: developerGameCount が 0 でも ?? により正しく採用される（|| だと欠損する回帰防止）', async () => {
+    const game = makeGame({
+      steamAppId: 999,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists2.jpg',
+      developer: 'Existing Dev 2',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 2, name: 'Zero Count Game', slug: 'zero-count-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists2.jpg',
+      steamUrl: 'https://store.steampowered.com/app/999',
+      developer: 'Existing Dev 2',
+      developerGameCount: 0,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(0);
+  });
+
+  it('developer 名が食い違う場合、igdb の developerGameCount は採用されない（isIndieGame が large-studio にならない）', async () => {
+    const game = makeGame({
+      steamAppId: 1001,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists3.jpg',
+      developer: 'Small Studio', // 既存（Steam 由来等）の小規模スタジオ名
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1001' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 3, name: 'Mismatch Game', slug: 'mismatch-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists3.jpg',
+      steamUrl: 'https://store.steampowered.com/app/1001',
+      developer: 'Big Port House', // IGDB 再検索で別会社（共同開発会社等）がヒットしたケース
+      developerGameCount: 241,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developer).toBe('Small Studio');
+    expect(result.game.developerGameCount).toBeUndefined();
+    expect(isIndieGame(result.game)).toEqual({ ok: true });
+  });
+
+  it('developer 名が表記ゆれ（Co., Ltd.）込みで一致する場合、igdb の developerGameCount が採用される', async () => {
+    const game = makeGame({
+      steamAppId: 1002,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists4.jpg',
+      developer: 'Nippon Ichi Software Co., Ltd.',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1002' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 4, name: 'Alias Game', slug: 'alias-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists4.jpg',
+      steamUrl: 'https://store.steampowered.com/app/1002',
+      developer: 'Nippon Ichi Software',
+      developerGameCount: 187,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.developerGameCount).toBe(187);
+    expect(isIndieGame(result.game)).toMatchObject({ ok: false, reason: 'large-studio' });
+  });
+
+  it('igdbConfirmedがfalse（appId不一致）のときは補完されない（誤った規模判定の防止）', async () => {
+    const gameMismatch = makeGame({
+      title: 'Old Game',
+      steamAppId: 1087090,
+      coverImage: 'https://example.com/cdn-cover.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 999, name: 'Old Game', slug: 'old-game',
+      developerGameCount: 241,
+      // steamUrl なし → appId 未確証
+    } as any);
+
+    const resultMismatch = await finalizeGameMetadata(gameMismatch, REQUIRED_NO_REC);
+
+    expect(resultMismatch.game.developerGameCount).toBeUndefined();
   });
 });
 

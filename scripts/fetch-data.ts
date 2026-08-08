@@ -18,7 +18,7 @@ import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
-import { isIndieGame } from './indie-classifier.js';
+import { isIndieGame, pickDeveloperGameCount } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback, vetIndieCandidate } from './select-indie-with-fallback.js';
 import { selectNewReleasesWithFallback, vetNewReleaseCandidate, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
@@ -130,6 +130,14 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.platforms = igdbGame.platforms || game.platforms;
   game.releaseDate = igdbGame.releaseDate || game.releaseDate;
   game.developer = igdbGame.developer || game.developer;
+  // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
+  // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
+  game.developerGameCount = pickDeveloperGameCount(
+    game.developer,
+    game.developerGameCount,
+    igdbGame.developer,
+    igdbGame.developerGameCount
+  );
   game.publisher = igdbGame.publisher || game.publisher;
   game.developerCountry = igdbGame.developerCountry || game.developerCountry;
   game.coverImage = igdbGame.coverUrl || game.coverImage;
@@ -164,7 +172,7 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
 /**
  * データソースを統合してゲームリストを作成
  */
-async function aggregateGames(
+export async function aggregateGames(
   steamData: SteamData,
   youtubeData: YouTubeData,
   igdbData: IGDBData,
@@ -324,6 +332,14 @@ async function aggregateGames(
         game.platforms = igdb.platforms || game.platforms;
         game.releaseDate = igdb.releaseDate || game.releaseDate;
         game.developer = igdb.developer || game.developer;
+        // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
+        // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
+        game.developerGameCount = pickDeveloperGameCount(
+          game.developer,
+          game.developerGameCount,
+          igdb.developer,
+          igdb.developerGameCount
+        );
         game.publisher = igdb.publisher || game.publisher;
         game.developerCountry = igdb.developerCountry || game.developerCountry;
         game.coverImage = igdb.coverUrl || game.coverImage;
@@ -357,11 +373,13 @@ async function aggregateGames(
         title: igdb.name,
         titleJa: igdb.titleJa,
         normalizedTitle: normalized,
+        steamAppId: igdbSteamAppId,
         igdbSlug: igdb.slug,
         genres: igdb.genres || [],
         platforms: igdb.platforms || [],
         releaseDate: igdb.releaseDate,
         developer: igdb.developer,
+        developerGameCount: igdb.developerGameCount,
         publisher: igdb.publisher,
         developerCountry: igdb.developerCountry,
         coverImage: igdb.coverUrl,
@@ -622,6 +640,17 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.platforms = primary.platforms.length ? primary.platforms : dup.platforms;
       primary.releaseDate = primary.releaseDate ?? dup.releaseDate;
       primary.developer = primary.developer ?? dup.developer;
+      // developerGameCount は「マージ後の primary.developer」と dup 側の名前が一致する場合のみ
+      // dup の件数を採る（コードレビュー指摘）。primary が既に件数を持つならそのまま
+      // （pickDeveloperGameCount は currentCount が undefined のときだけ呼ばれる）。
+      primary.developerGameCount =
+        primary.developerGameCount ??
+        pickDeveloperGameCount(
+          primary.developer,
+          primary.developerGameCount,
+          dup.developer,
+          dup.developerGameCount
+        );
       primary.publisher = primary.publisher ?? dup.publisher;
       primary.developerCountry = primary.developerCountry ?? dup.developerCountry;
       primary.coverImage = primary.coverImage ?? dup.coverImage;
@@ -969,15 +998,88 @@ export function isRemakeOrRemaster(game: GameData): boolean {
   return game.gameType === GAME_TYPE_REMAKE || game.gameType === GAME_TYPE_REMASTER;
 }
 
+const DEFAULT_INDIE_RELEASE_WINDOW_DAYS = 90;
+
 /**
- * インディー枠のランキングスコア（§6.1）。
+ * 環境変数を数値として読む。未設定・空文字・数値でない場合のみ既定値にフォールバックする。
+ *
+ * 注意: `Number(process.env.X) || defaultValue` という書き方はしないこと。
+ * `0` が既定値（90日）に化けてしまう（`0 || default` は default になる）。
+ * `Number.isFinite` で明示的に判定する。
+ * （indie-classifier.ts の readLargeStudioDevelopedThreshold と同じ方針）
+ *
+ * `INDIE_RELEASE_WINDOW_DAYS` は「窓を無効化するスイッチ」ではない点に注意。
+ * `0`（または負値）を指定すると windowStart が「今日」（またはそれより未来）になり、
+ * 発売日が今日ちょうどの候補しか通らない最も厳しい設定になる。窓を広げたい場合は
+ * 大きな値を指定すること。
+ *
+ * 呼び出し時（モジュール読み込み時ではない）に process.env を読む。
+ * テストから `vi.stubEnv` で差し替えて検証できる必要があるため。
  */
-function computeIndieScore(g: GameData): number {
-  return (
-    (g.youtubePopularity || 0) +
-    (g.steamRank ? 1000 - g.steamRank : 0) +
-    (g.igdbRating || 0) * 10
-  );
+function readIndieReleaseWindowDays(): number {
+  const raw = process.env.INDIE_RELEASE_WINDOW_DAYS;
+  if (raw === undefined || raw === '') return DEFAULT_INDIE_RELEASE_WINDOW_DAYS;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : DEFAULT_INDIE_RELEASE_WINDOW_DAYS;
+}
+
+/**
+ * インディー枠の母集団条件「発売日: 過去 INDIE_RELEASE_WINDOW_DAYS 日以内」を判定する（§3.4）。
+ *
+ * - releaseDate を持たない候補は窓内と確認できないため除外する
+ * - 未来日（未発売）の候補も除外する（§3.3「インディー枠は未発売タイトルを扱わない」）
+ * - 日付比較は既存コード（.toISOString().split('T')[0] で YYYY-MM-DD 文字列化する流儀）に
+ *   合わせ、YYYY-MM-DD 文字列の比較で行う。「日本時間当日0時以前」のようなタイムゾーンの
+ *   厳密化（JST統一）はこのPRの対象外（§2.8 の JST 統一は PR-C の担当）。
+ *
+ * `now` を注入できるようにし、テストが実時刻に依存しないようにする。
+ */
+export function isWithinIndieReleaseWindow(game: GameData, now: Date = new Date()): boolean {
+  if (!game.releaseDate) return false;
+
+  const todayStr = now.toISOString().split('T')[0];
+  if (game.releaseDate > todayStr) return false;
+
+  const windowDays = readIndieReleaseWindowDays();
+  const windowStart = new Date(now);
+  windowStart.setDate(windowStart.getDate() - windowDays);
+  const windowStartStr = windowStart.toISOString().split('T')[0];
+
+  return game.releaseDate >= windowStartStr;
+}
+
+/**
+ * インディー枠の並び順（§3.6）。
+ *
+ * 1. steamRecommendations を持つ候補が先、持たない候補は末尾
+ * 2. 持つ者同士は steamRecommendations の降順
+ * 3. 持たない者同士は igdbRating の降順。igdbRating も無い候補はその中で末尾
+ *
+ * 「持つ」の判定は `!== undefined`（0 は「持っている」として扱う。`|| 0` にしない）。
+ *
+ * 旧スコア（computeIndieScore = youtubePopularity + (1000 − steamRank) + igdbRating × 10）は
+ * §3.6 で明示的に棄却された（YouTube 話題性軸を §3.5 で廃止したため）。
+ */
+export function compareIndieCandidates(a: GameData, b: GameData): number {
+  const aHasRec = a.steamRecommendations !== undefined;
+  const bHasRec = b.steamRecommendations !== undefined;
+
+  if (aHasRec && bHasRec) {
+    return b.steamRecommendations! - a.steamRecommendations!;
+  }
+  if (aHasRec !== bHasRec) {
+    return aHasRec ? -1 : 1;
+  }
+
+  // どちらも steamRecommendations を持たない: igdbRating の降順（無い候補は末尾）
+  const aRating = a.igdbRating;
+  const bRating = b.igdbRating;
+  if (aRating !== undefined && bRating !== undefined) {
+    return bRating - aRating;
+  }
+  if (aRating !== undefined) return -1;
+  if (bRating !== undefined) return 1;
+  return 0;
 }
 
 /**
@@ -1003,7 +1105,8 @@ export function buildIndieCandidates(
     .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
     .filter((g) => !options.cooldown.has(g.normalizedTitle))
     .filter((g) => !isAlreadySelected(g, options.alreadySelected))
-    .sort((a, b) => computeIndieScore(b) - computeIndieScore(a));
+    .filter((g) => isWithinIndieReleaseWindow(g))
+    .sort(compareIndieCandidates);
 }
 
 /**
@@ -1103,7 +1206,7 @@ async function selectGamesForArticles(
 
   console.log(`  [indie] candidates after filter: ${indieRanked.length}件`);
   for (const g of indieRanked.slice(0, 10)) {
-    console.log(`    - ${g.title} (score=${computeIndieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate ?? '-'}, steamRecommendations=${g.steamRecommendations ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
   }
 
   // youtubePopularity 降順リスト（話題性 percentile 計算用）

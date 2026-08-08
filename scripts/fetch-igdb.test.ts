@@ -12,6 +12,7 @@ import {
   searchGameByName,
   enrichGameWithIGDB,
   fetchIGDBData,
+  pickSteamUrlFromWebsites,
 } from './fetch-igdb.js';
 
 const {
@@ -120,6 +121,96 @@ describe('pickOfficialUrlFromWebsites', () => {
         { url: 'https://foo.fandom.com/wiki/Bar' },
       ])
     ).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pickSteamUrlFromWebsites — websites から Steam ストア URL を抽出する共通ヘルパ（§3.6, PR-I その2）
+//
+// 2026-08-08 実測: IGDB API は websites.category を返さなくなっており websites.type に
+// 改名されている（母集団クエリ60件で category===13 の一致は0件、type===13 なら取れる）。
+// type を優先しつつ category は後方互換として残し、どちらも無ければ URL 部分一致で拾う。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('pickSteamUrlFromWebsites (§3.6)', () => {
+  it('実測に即したケース: type === 13 のみが付いた websites から Steam URL を拾う', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/app/1234567', type: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/1234567');
+  });
+
+  // ミュータント検証で発見（空虚テストの再発防止）: 上のテストは URL が
+  // store.steampowered.com を含むため、述語から `type === 13` を消しても
+  // URL 部分一致フォールバックで通ってしまい、type 経路の検証になっていなかった。
+  // ここでは URL に store.steampowered.com を含まないフィクスチャを使い、
+  // type === 13 経路が単独で機能していることを検証する
+  // （URL 部分一致で通ってしまわないようにドメインを含まない URL を使う）。
+  it('type === 13 経路が単独で機能する（URL は store.steampowered.com を含まない）', () => {
+    expect(
+      pickSteamUrlFromWebsites([{ url: 'https://steam.example/app/1234', type: 13 }])
+    ).toBe('https://steam.example/app/1234');
+  });
+
+  it('category === 13 でも拾う（後方互換）', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/app/9999', category: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/9999');
+  });
+
+  // 同様に category === 13 経路も、URL 部分一致フォールバックに頼らず
+  // 単独で機能していることを検証する（ドメインを含まない URL を使う）。
+  it('category === 13 経路が単独で機能する（URL は store.steampowered.com を含まない）', () => {
+    expect(
+      pickSteamUrlFromWebsites([{ url: 'https://steam.example/app/5678', category: 13 }])
+    ).toBe('https://steam.example/app/5678');
+  });
+
+  it('type も category も無いが URL が store.steampowered.com を含む場合は拾う（フォールバック）', () => {
+    expect(
+      pickSteamUrlFromWebsites([{ url: 'https://store.steampowered.com/app/424242' }])
+    ).toBe('https://store.steampowered.com/app/424242');
+  });
+
+  // 2パス化の回帰防止（コードレビュー指摘）: 無タグの Steam ドメイン URL（バンドル・サントラ等）が
+  // 配列の先頭に来ても、タグ付き（type: 13）の正しいストア URL が後ろにあればそちらを優先すること。
+  // 単一の find で OR 判定していた旧実装では、先頭の無タグ URL がフォールバック条件（URL部分一致）で
+  // マッチしてしまい、後ろの正しいタグ付き URL より先に返ってしまっていた。
+  it('無タグの Steam バンドル URL が先頭、type: 13 のストア URL が後ろの場合、後ろのタグ付き URL を返す', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/bundle/9999/Some_Bundle/' },
+        { url: 'https://store.steampowered.com/app/1234567', type: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/1234567');
+  });
+
+  it('無タグの Steam サントラ URL が先頭、category: 13 のストア URL が後ろの場合、後ろのタグ付き URL を返す', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/app/7777/Some_Soundtrack/' },
+        { url: 'https://store.steampowered.com/app/1234567', category: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/1234567');
+  });
+
+  it('Steam でない URL だけなら undefined', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://x.com/foo', type: 2 },
+        { url: 'https://official-site.example.com', category: 1 },
+      ])
+    ).toBeUndefined();
+  });
+
+  it('websites が undefined なら undefined', () => {
+    expect(pickSteamUrlFromWebsites(undefined)).toBeUndefined();
+  });
+
+  it('websites が空配列なら undefined', () => {
+    expect(pickSteamUrlFromWebsites([])).toBeUndefined();
   });
 });
 
@@ -733,6 +824,268 @@ describe('IGDB additional fields (game_type / aggregated_rating / keywords)', ()
       expect(body).toContain('aggregated_rating');
       expect(body).toContain('aggregated_rating_count');
       expect(body).toContain('keywords.slug');
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// developerGameCount — 開発本数による規模判定用フィールド（§3.4, Issue #231・PR-I その1）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IGDB developerGameCount (§3.4 開発本数による規模判定)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('mapRawGameToIGDBGame: developer 側の involved_companies.company.developed.length を developerGameCount として拾う', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 1,
+      name: 'Test Game',
+      slug: 'test-game',
+      involved_companies: [
+        { company: { name: 'Big Publisher', developed: [1, 2] }, developer: false, publisher: true },
+        {
+          company: { name: 'Dev Studio', developed: Array.from({ length: 241 }, (_, i) => i) },
+          developer: true,
+          publisher: false,
+        },
+      ],
+    } as any);
+
+    expect(result.developer).toBe('Dev Studio');
+    expect(result.developerGameCount).toBe(241);
+  });
+
+  it('mapRawGameToIGDBGame: publisher 側の developed は拾わない（developer と publisher で件数が異なるフィクスチャで検証）', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 2,
+      name: 'Test Game 2',
+      slug: 'test-game-2',
+      involved_companies: [
+        {
+          company: { name: 'Big Publisher', developed: Array.from({ length: 999 }, (_, i) => i) },
+          developer: false,
+          publisher: true,
+        },
+        {
+          company: { name: 'Small Dev', developed: Array.from({ length: 5 }, (_, i) => i) },
+          developer: true,
+          publisher: false,
+        },
+      ],
+    } as any);
+
+    expect(result.developer).toBe('Small Dev');
+    expect(result.developerGameCount).toBe(5);
+    expect(result.developerGameCount).not.toBe(999);
+  });
+
+  it('境界値: developer 側に developed が無ければ developerGameCount は undefined', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 3,
+      name: 'No Developed',
+      slug: 'no-developed',
+      involved_companies: [
+        { company: { name: 'Dev Without Count' }, developer: true, publisher: false },
+      ],
+    } as any);
+
+    expect(result.developerGameCount).toBeUndefined();
+  });
+
+  it('searchGameByName: IGDB_GAME_FIELDS が involved_companies.company.developed を含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('involved_companies.company.developed');
+  });
+
+  it('fetchIGDBData: 3母集団クエリすべてが involved_companies.company.developed を fields に含む（枠によって挙動が変わらないこと）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    const igdbBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('api.igdb.com'))
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''));
+
+    expect(igdbBodies.length).toBe(3);
+    for (const body of igdbBodies) {
+      expect(body).toContain('involved_companies.company.developed');
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 母集団クエリ（fetchRecentPopularGames / fetchClassicGames / fetchIndieGames）の
+// steamUrl 抽出（§3.6, PR-I その2）
+//
+// 3つとも個別に検証する。1クエリだけ直すと枠によって並び順ロジック（§3.6）の
+// 挙動が変わってしまうため（3クエリの結果は1プールに平坦化される）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('母集団クエリの steamUrl 抽出（§3.6, PR-I その2）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  function mockPerQuery(overrides: {
+    recent?: unknown[];
+    classic?: unknown[];
+    indie?: unknown[];
+  }): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      const body = String((init as { body?: string })?.body ?? '');
+      if (body.includes('hypes > 5')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.recent ?? []) });
+      }
+      if (body.includes('hypes > 100')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.classic ?? []) });
+      }
+      if (body.includes('rating_count > 5')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.indie ?? []) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  it('fetchRecentPopularGames（新作候補プール）: websites の Steam URL が steamUrl に入る', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+    mockPerQuery({
+      recent: [
+        {
+          id: 5001,
+          name: 'Recent Pool Game',
+          slug: 'recent-pool-game',
+          websites: [{ url: 'https://store.steampowered.com/app/5001', type: 13 }],
+        },
+      ],
+    });
+
+    const result = await fetchIGDBData();
+    expect(result.success).toBe(true);
+    const game = result.data!.games.find((g) => g.id === 5001);
+    expect(game).toBeDefined();
+    expect(game!.steamUrl).toBe('https://store.steampowered.com/app/5001');
+  });
+
+  it('fetchClassicGames（名作候補プール）: websites の Steam URL が steamUrl に入る', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+    mockPerQuery({
+      classic: [
+        {
+          id: 5002,
+          name: 'Classic Pool Game',
+          slug: 'classic-pool-game',
+          websites: [{ url: 'https://store.steampowered.com/app/5002', type: 13 }],
+        },
+      ],
+    });
+
+    const result = await fetchIGDBData();
+    const game = result.data!.games.find((g) => g.id === 5002);
+    expect(game).toBeDefined();
+    expect(game!.steamUrl).toBe('https://store.steampowered.com/app/5002');
+  });
+
+  it('fetchIndieGames（インディー候補プール）: websites の Steam URL が steamUrl に入る', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+    mockPerQuery({
+      indie: [
+        {
+          id: 5003,
+          name: 'Indie Pool Game',
+          slug: 'indie-pool-game',
+          websites: [{ url: 'https://store.steampowered.com/app/5003', type: 13 }],
+        },
+      ],
+    });
+
+    const result = await fetchIGDBData();
+    const game = result.data!.games.find((g) => g.id === 5003);
+    expect(game).toBeDefined();
+    expect(game!.steamUrl).toBe('https://store.steampowered.com/app/5003');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IGDB fields に websites.type が含まれる（§3.6, PR-I その2）
+//
+// IGDB API の現行仕様が websites.category ではなく websites.type を返すため、
+// IGDB_GAME_FIELDS と3つの母集団クエリの fields すべてに websites.type を追加する。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IGDB fields に websites.type が含まれる（§3.6, PR-I その2）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('searchGameByName（IGDB_GAME_FIELDS）が websites.type を含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('websites.type');
+  });
+
+  it('fetchIGDBData: 3母集団クエリすべてが websites.type を fields に含む', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    const igdbBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('api.igdb.com'))
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''));
+
+    expect(igdbBodies.length).toBe(3);
+    for (const body of igdbBodies) {
+      expect(body).toContain('websites.type');
     }
   });
 });

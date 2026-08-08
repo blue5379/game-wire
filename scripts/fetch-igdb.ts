@@ -311,6 +311,35 @@ function pickOfficialUrlFromWebsites(
 }
 
 /**
+ * IGDB websites 配列から Steam ストア URL を抽出する共通ヘルパ（§3.6）。
+ *
+ * IGDB API は `websites.category` を返さなくなっており `websites.type` に改名されている
+ * （2026-08-08 実測: 母集団クエリ60件で category===13 の一致は0件、type===13 なら取れる）。
+ * type を最優先で見て、category は後方互換のため残し、どちらのタグも無い場合は
+ * URL文字列の部分一致でフォールバックする。
+ *
+ * mapRawGameToIGDBGame（検索経路）と fetchRecentPopularGames / fetchClassicGames /
+ * fetchIndieGames（母集団クエリ3種）の計4箇所で共有する。
+ *
+ * 2パスで探索する: ①まず type === 13 または category === 13 のタグ付き URL を探す
+ * ②見つからなければ URL 部分一致（store.steampowered.com）でフォールバックする。
+ * 1つの find で OR 判定すると配列の先頭に来た要素が無条件で勝ってしまい、無タグの
+ * Steam ドメイン URL（バンドル・サウンドトラック・デモのページ等）が、後ろにある
+ * タグ付きの正しいストア URL より先に拾われてしまう。2パスにすることで、タグ付き URL が
+ * 存在する限り常にそちらを優先し、無タグ URL に先を越されないようにする。
+ */
+export function pickSteamUrlFromWebsites(
+  websites?: { url: string; category?: number; type?: number }[]
+): string | undefined {
+  if (!websites?.length) return undefined;
+
+  const tagged = websites.find((w) => w.type === 13 || w.category === 13);
+  if (tagged) return tagged.url;
+
+  return websites.find((w) => w.url.includes('store.steampowered.com'))?.url;
+}
+
+/**
  * IGDB games エンドポイントの生レスポンス（メタデータ取得に使う共通フィールド一式）
  */
 interface IGDBRawGame {
@@ -322,7 +351,7 @@ interface IGDBRawGame {
   platforms?: { name: string }[];
   first_release_date?: number;
   involved_companies?: {
-    company: { name: string; country?: number };
+    company: { name: string; country?: number; developed?: number[] };
     developer: boolean;
     publisher: boolean;
   }[];
@@ -331,7 +360,7 @@ interface IGDBRawGame {
   rating?: number;
   rating_count?: number;
   game_localizations?: { name: string; region?: number }[];
-  websites?: { url: string; category?: number }[];
+  websites?: { url: string; category?: number; type?: number }[];
   /** ゲーム種別（0=Main Game, 8=Remake, 9=Remaster）。新作枠のリメイク明記に使う（§6.2） */
   game_type?: number;
   /** 批評スコア集計（Metacritic 相当） */
@@ -346,10 +375,11 @@ interface IGDBRawGame {
 const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        first_release_date, involved_companies.company.name,
        involved_companies.developer, involved_companies.publisher,
+       involved_companies.company.developed,
        cover.url, screenshots.url, rating, rating_count,
        involved_companies.company.country,
        game_localizations.name, game_localizations.region,
-       websites.url, websites.category,
+       websites.url, websites.category, websites.type,
        game_type, aggregated_rating, aggregated_rating_count, keywords.slug`;
 
 /**
@@ -363,12 +393,15 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
   let developer: string | undefined;
   let publisher: string | undefined;
   let developerCountry: number | undefined;
+  // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
+  let developerGameCount: number | undefined;
 
   if (game.involved_companies) {
     for (const ic of game.involved_companies) {
       if (ic.developer && !developer) {
         developer = ic.company.name;
         developerCountry = ic.company.country;
+        developerGameCount = ic.company.developed?.length;
       }
       if (ic.publisher && !publisher) {
         publisher = ic.company.name;
@@ -407,16 +440,14 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     developer,
     publisher,
     developerCountry: developerCountryName,
+    developerGameCount,
     coverUrl: formatImageUrl(game.cover?.url),
     screenshotUrls: game.screenshots
       ?.map((s) => formatScreenshotUrl(s.url))
       .filter((url): url is string => url !== undefined),
     rating: game.rating,
     ratingCount: game.rating_count,
-    // category=13がSteamだが返却されないことがあるため、URLパターンでも判定
-    steamUrl: game.websites?.find(
-      (w) => w.category === 13 || w.url.includes('store.steampowered.com')
-    )?.url,
+    steamUrl: pickSteamUrlFromWebsites(game.websites),
     officialUrl,
     officialUrlSource: officialUrl ? 'igdb-official' : undefined,
     websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
@@ -672,9 +703,10 @@ async function fetchRecentPopularGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
+             involved_companies.company.developed,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category,
+             websites.url, websites.category, websites.type,
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
       where first_release_date > ${threeMonthsAgo} & hypes > 5 & ${buildIgdbCommonFilters({
         gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
@@ -692,7 +724,7 @@ async function fetchRecentPopularGames(
       platforms?: { name: string }[];
       first_release_date?: number;
       involved_companies?: {
-        company: { name: string };
+        company: { name: string; developed?: number[] };
         developer: boolean;
         publisher: boolean;
       }[];
@@ -701,7 +733,7 @@ async function fetchRecentPopularGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
-      websites?: { url: string; category: number }[];
+      websites?: { url: string; category?: number; type?: number }[];
       game_type?: number;
       aggregated_rating?: number;
       aggregated_rating_count?: number;
@@ -718,10 +750,15 @@ async function fetchRecentPopularGames(
     return games.map((game) => {
       let developer: string | undefined;
       let publisher: string | undefined;
+      // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
+      let developerGameCount: number | undefined;
 
       if (game.involved_companies) {
         for (const ic of game.involved_companies) {
-          if (ic.developer && !developer) developer = ic.company.name;
+          if (ic.developer && !developer) {
+            developer = ic.company.name;
+            developerGameCount = ic.company.developed?.length;
+          }
           if (ic.publisher && !publisher) publisher = ic.company.name;
         }
       }
@@ -744,6 +781,7 @@ async function fetchRecentPopularGames(
           : undefined,
         developer,
         publisher,
+        developerGameCount,
         coverUrl: formatImageUrl(game.cover?.url),
         screenshotUrls: game.screenshots
           ?.map((s) =>
@@ -752,7 +790,8 @@ async function fetchRecentPopularGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
-        websites: game.websites,
+        steamUrl: pickSteamUrlFromWebsites(game.websites),
+        websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
         gameType: game.game_type,
         aggregatedRating: game.aggregated_rating,
         aggregatedRatingCount: game.aggregated_rating_count,
@@ -778,9 +817,10 @@ async function fetchClassicGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
+             involved_companies.company.developed,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category,
+             websites.url, websites.category, websites.type,
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
       where hypes > 100 & ${buildIgdbCommonFilters()};
       sort hypes desc;
@@ -796,7 +836,7 @@ async function fetchClassicGames(
       platforms?: { name: string }[];
       first_release_date?: number;
       involved_companies?: {
-        company: { name: string };
+        company: { name: string; developed?: number[] };
         developer: boolean;
         publisher: boolean;
       }[];
@@ -805,7 +845,7 @@ async function fetchClassicGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
-      websites?: { url: string; category: number }[];
+      websites?: { url: string; category?: number; type?: number }[];
       game_type?: number;
       aggregated_rating?: number;
       aggregated_rating_count?: number;
@@ -822,10 +862,15 @@ async function fetchClassicGames(
     return games.map((game) => {
       let developer: string | undefined;
       let publisher: string | undefined;
+      // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
+      let developerGameCount: number | undefined;
 
       if (game.involved_companies) {
         for (const ic of game.involved_companies) {
-          if (ic.developer && !developer) developer = ic.company.name;
+          if (ic.developer && !developer) {
+            developer = ic.company.name;
+            developerGameCount = ic.company.developed?.length;
+          }
           if (ic.publisher && !publisher) publisher = ic.company.name;
         }
       }
@@ -848,6 +893,7 @@ async function fetchClassicGames(
           : undefined,
         developer,
         publisher,
+        developerGameCount,
         coverUrl: formatImageUrl(game.cover?.url),
         screenshotUrls: game.screenshots
           ?.map((s) =>
@@ -856,7 +902,8 @@ async function fetchClassicGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
-        websites: game.websites,
+        steamUrl: pickSteamUrlFromWebsites(game.websites),
+        websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
         gameType: game.game_type,
         aggregatedRating: game.aggregated_rating,
         aggregatedRatingCount: game.aggregated_rating_count,
@@ -885,9 +932,10 @@ async function fetchIndieGames(
       fields name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
+             involved_companies.company.developed,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
-             websites.url, websites.category,
+             websites.url, websites.category, websites.type,
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
       where first_release_date > ${threeMonthsAgo} & rating_count > 5 & ${buildIgdbCommonFilters()};
       sort hypes desc;
@@ -903,7 +951,7 @@ async function fetchIndieGames(
       platforms?: { name: string }[];
       first_release_date?: number;
       involved_companies?: {
-        company: { name: string };
+        company: { name: string; developed?: number[] };
         developer: boolean;
         publisher: boolean;
       }[];
@@ -912,7 +960,7 @@ async function fetchIndieGames(
       rating?: number;
       rating_count?: number;
       game_localizations?: { name: string; region?: number }[];
-      websites?: { url: string; category: number }[];
+      websites?: { url: string; category?: number; type?: number }[];
       game_type?: number;
       aggregated_rating?: number;
       aggregated_rating_count?: number;
@@ -929,10 +977,15 @@ async function fetchIndieGames(
     return games.map((game) => {
       let developer: string | undefined;
       let publisher: string | undefined;
+      // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
+      let developerGameCount: number | undefined;
 
       if (game.involved_companies) {
         for (const ic of game.involved_companies) {
-          if (ic.developer && !developer) developer = ic.company.name;
+          if (ic.developer && !developer) {
+            developer = ic.company.name;
+            developerGameCount = ic.company.developed?.length;
+          }
           if (ic.publisher && !publisher) publisher = ic.company.name;
         }
       }
@@ -955,6 +1008,7 @@ async function fetchIndieGames(
           : undefined,
         developer,
         publisher,
+        developerGameCount,
         coverUrl: formatImageUrl(game.cover?.url),
         screenshotUrls: game.screenshots
           ?.map((s) =>
@@ -963,7 +1017,8 @@ async function fetchIndieGames(
           .filter((url): url is string => url !== undefined),
         rating: game.rating,
         ratingCount: game.rating_count,
-        websites: game.websites,
+        steamUrl: pickSteamUrlFromWebsites(game.websites),
+        websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
         gameType: game.game_type,
         aggregatedRating: game.aggregated_rating,
         aggregatedRatingCount: game.aggregated_rating_count,

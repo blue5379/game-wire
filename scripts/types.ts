@@ -67,6 +67,8 @@ export interface IGDBGame {
   aggregatedRatingCount?: number;
   /** IGDB キーワードの slug 一覧。ファンゲーム判定に使う（§6.1） */
   keywords?: string[];
+  /** 開発元（developer）の IGDB `developed` 件数。規模判定に使う（§3.4）。生件数で Main Game への数え直しはしない */
+  developerGameCount?: number;
 }
 
 export interface IGDBData {
@@ -132,6 +134,8 @@ export interface GameData {
   aggregatedRatingCount?: number;
   /** IGDB キーワードの slug 一覧。ファンゲーム判定に使う（§6.1） */
   keywords?: string[];
+  /** 開発元（developer）の IGDB `developed` 件数。規模判定に使う（§3.4）。生件数で Main Game への数え直しはしない */
+  developerGameCount?: number;
 }
 
 // 統合データ出力

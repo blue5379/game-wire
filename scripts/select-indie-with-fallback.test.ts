@@ -445,3 +445,39 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(mockFinalize).toHaveBeenCalledTimes(2);
   });
 });
+
+// ────────────────────────────────────────────────
+// selectIndieGamesWithFallback — developerGameCount による大手ゲート（§3.4, Issue #231・PR-I その1）
+// 新作枠と逆方向: count が高い候補は除外され、低い候補はインディーとして残ること
+// ────────────────────────────────────────────────
+describe('selectIndieGamesWithFallback — developerGameCount による大手ゲート (§3.4, Issue #231)', () => {
+  it('developerGameCount=241 の候補は大手ゲートで除外され、count=7 の候補はインディーとして残る', async () => {
+    const large = makeGame({ title: 'Large By Count', normalizedTitle: 'large by count' });
+    const small = makeGame({ title: 'Small By Count', normalizedTitle: 'small by count' });
+
+    const finishedLarge = {
+      ...large,
+      developer: 'Arc System Works', // 静的リストに無い名前。本数判定のみで除外されることを検証
+      developerGameCount: 241,
+      coverImage: 'https://x/large.jpg',
+      sourceUrls: { steam: 'https://s/large' },
+    };
+    const finishedSmall = {
+      ...small,
+      developer: 'Some Tiny Studio',
+      developerGameCount: 7,
+      coverImage: 'https://x/small.jpg',
+      sourceUrls: { steam: 'https://s/small' },
+    };
+
+    mockFinalize
+      .mockResolvedValueOnce({ ok: true, game: finishedLarge })
+      .mockResolvedValueOnce({ ok: true, game: finishedSmall });
+
+    const result = await selectIndieGamesWithFallback([large, small], 2, EMPTY_CONTEXT);
+
+    expect(result.adopted.map((g) => g.title)).toContain('Small By Count');
+    expect(result.adopted.map((g) => g.title)).not.toContain('Large By Count');
+    expect(result.rejected.map((r) => r.title)).toContain('Large By Count');
+  });
+});
