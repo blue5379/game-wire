@@ -37,13 +37,20 @@ const FAN_GAME_TITLE_PATTERN = /\b(fan\s*game|fangame|fan-game|unofficial|non-of
 // ファンゲーム・非公式作品を示すジャンルタグ（IGDB）
 const FAN_GAME_GENRES = ['fan game', 'fangame'];
 
+// ファンゲーム・非公式作品を示す IGDB キーワード slug（完全一致で判定）
+// 部分一致（includes等）にすると "fan-translation"（有志翻訳がある公式ゲーム）・
+// "fanservice" / "fan-service" / "fanfiction" などの実在タグを誤ってファンゲーム扱いする
+// （実測: IGDB キーワード語彙に多数存在）ため、完全一致（Set.has）のみで判定する。
+const FAN_GAME_KEYWORD_SLUGS = new Set(['unofficial', 'fangame', 'fanmade']);
+
 /**
  * ファンゲーム・非公式作品かどうかを判定する。
- * タイトルの word-boundary マッチと IGDB ジャンルタグで検出する。
+ * タイトルの word-boundary マッチ、IGDB ジャンルタグ、IGDB キーワード slug（完全一致）で検出する。
  * summary は誤検知リスクが高いため対象外。
  */
 export function isFanGame(g: GameData): boolean {
   if (FAN_GAME_TITLE_PATTERN.test(g.title)) return true;
   if (g.genres?.some((genre) => FAN_GAME_GENRES.includes(genre.toLowerCase()))) return true;
+  if (g.keywords?.some((slug) => FAN_GAME_KEYWORD_SLUGS.has(slug.toLowerCase()))) return true;
   return false;
 }

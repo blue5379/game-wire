@@ -27,6 +27,7 @@ import { resolveGameIdentity } from './identity-resolver.js';
 import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
 import { normalizeTitle } from './normalize.js';
+import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
 import {
   isInvalidGameTitle,
   extractYearFromDate,
@@ -136,6 +137,11 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.summary = igdbGame.summary || game.summary;
   game.igdbRating = igdbGame.rating ?? game.igdbRating;
   game.igdbRatingCount = igdbGame.ratingCount ?? game.igdbRatingCount;
+  game.gameType = igdbGame.gameType ?? game.gameType;
+  game.aggregatedRating = igdbGame.aggregatedRating ?? game.aggregatedRating;
+  game.aggregatedRatingCount = igdbGame.aggregatedRatingCount ?? game.aggregatedRatingCount;
+  // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+  game.keywords = igdbGame.keywords?.length ? igdbGame.keywords : game.keywords;
   if (!game.source.includes('igdb')) {
     game.source.push('igdb');
   }
@@ -325,6 +331,11 @@ async function aggregateGames(
         game.summary = igdb.summary || game.summary;
         game.igdbRating = igdb.rating ?? game.igdbRating;
         game.igdbRatingCount = igdb.ratingCount ?? game.igdbRatingCount;
+        game.gameType = igdb.gameType ?? game.gameType;
+        game.aggregatedRating = igdb.aggregatedRating ?? game.aggregatedRating;
+        game.aggregatedRatingCount = igdb.aggregatedRatingCount ?? game.aggregatedRatingCount;
+        // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+        game.keywords = igdb.keywords?.length ? igdb.keywords : game.keywords;
         if (igdb.websites?.length) {
           game.igdbWebsites = igdb.websites;
         }
@@ -358,6 +369,10 @@ async function aggregateGames(
         summary: igdb.summary,
         igdbRating: igdb.rating,
         igdbRatingCount: igdb.ratingCount,
+        gameType: igdb.gameType,
+        aggregatedRating: igdb.aggregatedRating,
+        aggregatedRatingCount: igdb.aggregatedRatingCount,
+        keywords: igdb.keywords,
         igdbWebsites: igdb.websites?.length ? igdb.websites : undefined,
         source: ['igdb'],
         sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
@@ -539,7 +554,7 @@ async function aggregateGames(
  * マージ先: steamRank が小さい方、なければ source 数が多い方、それも同じなら先着。
  * スコア・人気指標は合算ではなく「より良い値」を採用する（重複加算を防ぐ）。
  */
-function deduplicateGames(games: GameData[]): GameData[] {
+export function deduplicateGames(games: GameData[]): GameData[] {
   // グループ化: steamAppId が同じものをまとめる
   const byAppId = new Map<number, GameData[]>();
   const noAppId: GameData[] = [];
@@ -621,6 +636,11 @@ function deduplicateGames(games: GameData[]): GameData[] {
       primary.userScore = primary.userScore ?? dup.userScore;
       primary.igdbRating = primary.igdbRating ?? dup.igdbRating;
       primary.igdbRatingCount = primary.igdbRatingCount ?? dup.igdbRatingCount;
+      primary.gameType = primary.gameType ?? dup.gameType;
+      primary.aggregatedRating = primary.aggregatedRating ?? dup.aggregatedRating;
+      primary.aggregatedRatingCount = primary.aggregatedRatingCount ?? dup.aggregatedRatingCount;
+      // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+      primary.keywords = primary.keywords?.length ? primary.keywords : dup.keywords;
       // source リストをマージ
       for (const s of dup.source) {
         if (!primary.source.includes(s)) primary.source.push(s);
@@ -890,9 +910,133 @@ async function enrichSelectedGamesWithOfficialUrl(
 }
 
 /**
+ * 号内カテゴリ間の重複判定。正規化タイトルで比較する（§6.3）。null/undefined は無視する。
+ *
+ * 4箇所（newReleases 除外×2、indies 除外、featured 除外）で同じ比較ロジックを
+ * コピーすると、PR #209 が対処した「同じ誤りが3箇所に同時に存在する」事故の
+ * 再発条件になるため、共通関数に集約する。
+ *
+ * 保持済みの normalizedTitle ではなく title から再計算するのは、選定段階の
+ * GameData には aggregateGames を経ていない経路で作られたものが混ざりうるため
+ * （両者は現状同期しているが、比較の正しさをフィールドの同期に依存させない）。
+ *
+ * 注意: normalizeTitle が吸収するのは大文字小文字・コロン・ハイフン・空白・™®© の
+ * 差異だけで、ローマ数字とアラビア数字の差（II と 2）は吸収しない（実測）。
+ */
+export function isAlreadySelected(
+  game: GameData,
+  selected: (GameData | null | undefined)[]
+): boolean {
+  const target = normalizeTitle(game.title);
+  return selected.some((s) => s != null && normalizeTitle(s.title) === target);
+}
+
+/**
+ * 新作枠の候補を絞り込み、3軸スコア降順に並べる（§2.3）。
+ * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
+ */
+export function buildNewReleaseCandidates(
+  games: GameData[],
+  options: { releasedAfter: Date; cooldown: Set<string>; steamTopSellersCount: number }
+): GameData[] {
+  const filtered = games
+    .filter((g) => {
+      if (!g.releaseDate) return false;
+      return new Date(g.releaseDate) > options.releasedAfter;
+    })
+    .filter((g) => !isFanGame(g))
+    .filter((g) => isQualifiedGame(g))
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => hasExistenceEvidence(g))
+    .filter((g) => !options.cooldown.has(g.normalizedTitle));
+
+  return sortByNewReleaseScore(filtered, { steamSlotCount: options.steamTopSellersCount });
+}
+
+// 新作枠以外の枠から除外するゲーム種別（IGDB game_type、§6.2）
+const GAME_TYPE_REMAKE = 8;
+const GAME_TYPE_REMASTER = 9;
+
+/**
+ * 新作枠以外の枠から除外するゲーム種別（リメイク=8 / リマスター=9）かを判定する（§6.2）。
+ * gameType が未取得（undefined）の候補は除外しない（判定材料が無いため従来どおり通す）。
+ *
+ * 本PRでは名作枠・インディー枠から一律除外する（保守的な対応）。名作枠での
+ * 「原作が母集団にいないリメイクだけ条件付き許可」（§5.5）は名作枠PRの担当。
+ */
+export function isRemakeOrRemaster(game: GameData): boolean {
+  if (game.gameType === undefined) return false;
+  return game.gameType === GAME_TYPE_REMAKE || game.gameType === GAME_TYPE_REMASTER;
+}
+
+/**
+ * インディー枠のランキングスコア（§6.1）。
+ */
+function computeIndieScore(g: GameData): number {
+  return (
+    (g.youtubePopularity || 0) +
+    (g.steamRank ? 1000 - g.steamRank : 0) +
+    (g.igdbRating || 0) * 10
+  );
+}
+
+/**
+ * インディー枠の候補を絞り込み、indieScore 降順に並べる（§6.1 / §6.2 / §6.3）。
+ * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
+ *
+ * developer=undefined は isIndieGame が 'no-developer' で ok:false を返すが、
+ * 候補プールには含める（話題性ルートで steamRawDeveloper による補完を後段で行うため）。
+ */
+export function buildIndieCandidates(
+  games: GameData[],
+  options: { cooldown: Set<string>; alreadySelected: (GameData | null | undefined)[] }
+): GameData[] {
+  return games
+    .filter((g) => {
+      const r = isIndieGame(g);
+      return r.ok || r.reason === 'no-developer';
+    })
+    .filter((g) => !isFanGame(g))
+    .filter((g) => !isRemakeOrRemaster(g))
+    .filter((g) => isQualifiedGame(g))
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
+    .filter((g) => !options.cooldown.has(g.normalizedTitle))
+    .filter((g) => !isAlreadySelected(g, options.alreadySelected))
+    .sort((a, b) => computeIndieScore(b) - computeIndieScore(a));
+}
+
+/**
+ * 名作枠の候補を絞り込む（§5 / §6.1 / §6.3）。副作用を持たない純関数。
+ */
+export function buildClassicCandidates(
+  games: GameData[],
+  options: { cooldown: Set<string>; alreadySelected: (GameData | null | undefined)[] }
+): GameData[] {
+  return games
+    .filter((g) => !isInvalidGameTitle(g.title))
+    .filter((g) => !isFanGame(g))
+    .filter((g) => !isRemakeOrRemaster(g))
+    .filter((g) => !options.cooldown.has(g.normalizedTitle))
+    .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
+    .filter((g) => {
+      // スコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
+      if ((g.metascore && g.metascore >= 85) || (g.igdbRating && g.igdbRating >= 85)) return true;
+      // それ以外は Steam/YouTube での人気が必要
+      return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
+    })
+    .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
+    .filter((g) => !isAlreadySelected(g, options.alreadySelected))
+    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+}
+
+/**
  * 記事生成用にゲームを選定
  */
-async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames> {
+async function selectGamesForArticles(
+  games: GameData[],
+  options: { steamTopSellersCount: number }
+): Promise<SelectedGames> {
   const now = new Date();
 
   // カテゴリ別クールダウン中タイトルを取得
@@ -910,7 +1054,7 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     console.log(`  classic cooldown: ${[...classicCooldown].join(', ')}`);
   }
 
-  // 大手企業の新作: 品質ゲート・実存フィルタ適用後にスコア降順で採用+予備差し替え
+  // 大手企業の新作: 品質ゲート・実存フィルタ適用後に3軸スコア降順で採用+予備差し替え（§2.3）
   const threeMonthsAgo = new Date();
   threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
 
@@ -919,21 +1063,17 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
     console.log(`  [newReleases] releaseDate なし (${noReleaseDate.length}件): ${noReleaseDate.map((g) => g.title).join(', ')}`);
   }
 
-  const recentGamesCandidates = games
-    .filter((g) => {
-      if (!g.releaseDate) return false;
-      return new Date(g.releaseDate) > threeMonthsAgo;
-    })
-    .filter((g) => !isFanGame(g))
-    .filter((g) => isQualifiedGame(g))
-    .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => hasExistenceEvidence(g))
-    .filter((g) => !newReleaseCooldown.has(g.normalizedTitle))
-    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+  const recentGamesCandidates = buildNewReleaseCandidates(games, {
+    releasedAfter: threeMonthsAgo,
+    cooldown: newReleaseCooldown,
+    steamTopSellersCount: options.steamTopSellersCount,
+  });
 
   console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
   for (const g of recentGamesCandidates) {
-    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'})`);
+    const score = computeNewReleaseScore(g, { steamSlotCount: options.steamTopSellersCount });
+    const axesSummary = score.axes.map((a) => `${a.axis}=${a.raw.toFixed(1)}`).join(', ');
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, score=${score.score.toFixed(1)}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
   }
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
@@ -956,24 +1096,14 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
   // インディーゲーム候補（大手スタジオと確定できるものだけ除外）
   // developer=undefined は 'no-developer' で ok:false になるが、候補プールには含める。
   // 話題性ルートで steamRawDeveloper を使った「個人開発（アカウント名）」補完を後段で行う。
-  const indieScore = (g: GameData): number =>
-    (g.youtubePopularity || 0) +
-    (g.steamRank ? 1000 - g.steamRank : 0) +
-    (g.igdbRating || 0) * 10;
-
-  const indieRanked = games
-    .filter((g) => { const r = isIndieGame(g); return r.ok || r.reason === 'no-developer'; })
-    .filter((g) => !isFanGame(g))
-    .filter((g) => isQualifiedGame(g))
-    .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => g.source.includes('steam') || g.source.includes('igdb'))
-    .filter((g) => !indieCooldown.has(g.normalizedTitle))
-    .filter((g) => !newReleases.some((nr) => nr.title === g.title))
-    .sort((a, b) => indieScore(b) - indieScore(a));
+  const indieRanked = buildIndieCandidates(games, {
+    cooldown: indieCooldown,
+    alreadySelected: newReleases,
+  });
 
   console.log(`  [indie] candidates after filter: ${indieRanked.length}件`);
   for (const g of indieRanked.slice(0, 10)) {
-    console.log(`    - ${g.title} (score=${indieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
+    console.log(`    - ${g.title} (score=${computeIndieScore(g)}, steamRank=${g.steamRank ?? '-'}, youtubePopularity=${g.youtubePopularity ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
   }
 
   // youtubePopularity 降順リスト（話題性 percentile 計算用）
@@ -1015,25 +1145,11 @@ async function selectGamesForArticles(games: GameData[]): Promise<SelectedGames>
         ) && ((g.metascore && g.metascore > 75) || (g.igdbRating && g.igdbRating >= 75))
     ) || games.find((g) => g.steamPlayers && g.steamPlayers > 50000) || null;
 
-  // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い）
-  const classicCandidates = games
-    .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => !classicCooldown.has(g.normalizedTitle))
-    .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
-    .filter((g) => {
-      // スコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
-      if ((g.metascore && g.metascore >= 85) || (g.igdbRating && g.igdbRating >= 85)) return true;
-      // それ以外は Steam/YouTube での人気が必要
-      return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
-    })
-    .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
-    .filter(
-      (g) =>
-        !newReleases.some((nr) => nr.title === g.title) &&
-        !indies.some((i) => i.title === g.title) &&
-        g.title !== featured?.title
-    )
-    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+  // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い。§5 / §6.1 / §6.3）
+  const classicCandidates = buildClassicCandidates(games, {
+    cooldown: classicCooldown,
+    alreadySelected: [...newReleases, ...indies, featured],
+  });
 
   const classic = classicCandidates[0] || null;
 
@@ -1116,7 +1232,9 @@ async function main(): Promise<void> {
   // 記事用ゲーム選定
   console.log('');
   console.log('Selecting games for articles...');
-  const selectedGames = await selectGamesForArticles(games);
+  const selectedGames = await selectGamesForArticles(games, {
+    steamTopSellersCount: steamData.topSellers.length,
+  });
   console.log(`New Releases: ${selectedGames.newReleases.length}`);
   console.log(`Indies: ${selectedGames.indies.length}`);
   console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);

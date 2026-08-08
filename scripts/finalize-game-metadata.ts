@@ -82,6 +82,11 @@ export async function finalizeGameMetadata(
           game.summary = game.summary ?? igdb.summary;
           game.igdbRating = game.igdbRating ?? igdb.rating;
           game.igdbRatingCount = game.igdbRatingCount ?? igdb.ratingCount;
+          game.gameType = game.gameType ?? igdb.gameType;
+          game.aggregatedRating = game.aggregatedRating ?? igdb.aggregatedRating;
+          game.aggregatedRatingCount = game.aggregatedRatingCount ?? igdb.aggregatedRatingCount;
+          // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
+          game.keywords = game.keywords?.length ? game.keywords : (igdb.keywords ?? game.keywords);
           if (igdb.slug) {
             game.igdbSlug = game.igdbSlug ?? igdb.slug;
             game.sourceUrls = game.sourceUrls ?? {};

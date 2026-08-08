@@ -163,6 +163,7 @@ export const PromptTemplates = {
   - 開発期間、開発費、開発人数
   - 価格情報
 ${QUANTITATIVE_TO_QUALITATIVE_RULE}
+- 提供データの【ゲーム情報】欄に種別がリメイク／リマスターと示されている場合は、記事本文でその旨を明記すること
 - 不明な情報がある場合、対応するセクションは「詳細は公式情報をご確認ください」と記載するか、内容を一般的な説明に留めるか、セクションごと省略する
 - 開発元名・発売元名・対応機種・発売日は提供データのものを正確に転記する（推測で補完しない）
 
@@ -398,6 +399,13 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
 出力形式: タイトルのみを1行で出力`,
 };
 
+// IGDB game_type → 記事本文に明記する種別ラベル。
+// 0（Main Game）・undefined・未知の値は行を出さない（該当なし）。
+const GAME_TYPE_LABELS: Record<number, string> = {
+  8: 'リメイク',
+  9: 'リマスター',
+};
+
 /**
  * ユーザーメッセージを生成
  */
@@ -414,6 +422,7 @@ export function buildUserMessage(
     summary?: string;
     metascore?: number | null;
     userScore?: number | null;
+    gameType?: number;
   },
   additionalContext?: string,
   publishDate?: Date,
@@ -447,6 +456,10 @@ export function buildUserMessage(
       if (status) releaseDateLabel = `${gameInfo.releaseDate}（${status}）`;
     }
     lines.push(`発売日: ${releaseDateLabel}`);
+  }
+
+  if (gameInfo.gameType !== undefined && GAME_TYPE_LABELS[gameInfo.gameType]) {
+    lines.push(`種別: ${GAME_TYPE_LABELS[gameInfo.gameType]}`);
   }
 
   if (gameInfo.developer) {
