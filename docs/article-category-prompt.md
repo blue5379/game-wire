@@ -6,8 +6,8 @@
 |---|---|---|---|---|
 | PR-0 | `fix/issue-208-search-filter` | ✅ **マージ済み**（2026-08-08。`ad5b916`） | #208（`Refs`。未クローズ）/ PR #219 | **ブランチ名は当初案の `fix/issue-208-searchgamebyname-filter` から短縮**。**レビューで初回実装が差し戻され、無条件適用 → `mainGameOnly` オプションによる呼び出し元切り替えに設計変更**（コミット 2 本）。24 ファイル / 736 テスト全通過（着手前 23 / 724） |
 | PR-0.1 | `fix/issue-208-feature-ai-screening` | ✅ **マージ済み**（2026-08-08。`0c07ba1`。**#208 クローズ済み**） | #208（Closed）/ PR #220 | **PR-0 の残タスク**。24ファイル / 744テスト（着手前 736）。レビュー指摘4件のうち1件を本PRで修正、3件を **#221 / #222** に分離。Issue #208 の「想定される修正」2項目目＝特集経路への `isAdultContentByAI` 適用（他 3 カテゴリは適用済み: `generate-articles.ts:1251` / `:1272` / `:1352`。feature のみ適用箇所が無い）。**適用位置は「選定確定後・本数警告の前」に決定済み**（2026-08-08。下記 PR-0.1 節に根拠）。**これで #208 をクローズする**。PR-0 の後・PR-0.5 の前。#219 はマージ済みなので `main` から切ればリベース不要 |
-| PR-0.5 | `refactor/parameterize-igdb-filters` | 未着手（**次はこれ**） | - | PR-0 の後、PR-A / PR-B / 名作枠PR より前。**PR-0 で `mainGameOnly?: boolean` を導入済み**（`fetch-igdb.ts:490` / `:994`）。`buildIgdbCommonFilters({ gameTypes })` の引数化と併せ、`mainGameOnly` を `gameTypes` に一般化するか検討する（着手時にユーザー確認） |
-| PR-A | `fix/steam-dlc-exclusion` | 未着手 | - | 他PRと独立。PR-0.5 の後が望ましい |
+| PR-0.5 | `refactor/parameterize-igdb-filters` | ✅ **マージ済み**（2026-08-08。`28f835f`。squash） | - / PR #224 | 挙動不変の純リファクタ。24ファイル / 749テスト（着手前 744）。`/code-review` の**指摘ゼロ**。**ユーザー確認事項は「`mainGameOnly` を `gameTypes` に一般化しない」で確定**（別軸のため。下記 PR-0.5 節に根拠）。**このPRで `fetch-igdb.ts` の行番号が 21 行目以降すべて +12 ずれた** |
+| PR-A | `fix/steam-dlc-exclusion` | 未着手（**次はこれ**） | - | 他PRと独立。PR-0.5 の後が望ましい |
 | PR-B | `feat/newrelease-score-and-remake` | 未着手 | #210（初期パラメータ再調整） | PR-0.5 の後 |
 | PR-B2 | `feat/domestic-sales-axis` | 未着手 | - | PR-B の後 |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
@@ -60,8 +60,8 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 ## 品質ゲート（コミット前に必須）
 
 - `npm run test`（typecheck + vitest）
-- **ベースラインは PR-0.1 マージ後で 24ファイル / 744テスト 全通過**
-  （PR-0 マージ後は 24 / 736、PR-0 着手前は 23 / 724）。
+- **ベースラインは PR-0.5 マージ後で 24ファイル / 749テスト 全通過**
+  （PR-0.1 マージ後は 24 / 744、PR-0 マージ後は 24 / 736、PR-0 着手前は 23 / 724）。
   これを下回らないこと。**着手時に自分で `npm run test` を実行して実際の数を確認すること**
   （この数値は PR がマージされるたび増える）
 - シンボルを削除・リネームしたら残存参照を grep で確認
@@ -94,7 +94,9 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 
 **本ファイル中の行番号は全て「記載時点」のもので、PR がマージされるたびにずれる。**
 実際に PR-0 / PR-0.1 のマージで `fetch-igdb.ts` が約+5行、`generate-articles.ts` が
-約+22行ずれ、複数の参照が陳腐化した。
+約+22行ずれ、複数の参照が陳腐化した。**さらに PR-0.5 で `fetch-igdb.ts` の
+21 行目以降が一律 +12 行ずれた**（`buildIgdbCommonFilters` の本体が 3 行→15 行になったため）。
+本ファイルの `fetch-igdb.ts` 参照は PR-0.5 マージ後（`28f835f`）の値に更新済み。
 
 - 行番号は**目印であって根拠ではない**。着手時に必ず `grep` でシンボル名を引き直すこと
 - 特に「呼び出し元は N 箇所」という記述は、**件数ごと** grep で再確認する
@@ -427,6 +429,9 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
 # PR-0.5: 除外フィルタを枠ごとにパラメータ化
 
+> ✅ **実装完了・マージ済み（2026-08-08）。PR #224。** 以下は当初の指示。
+> 着手前に必ず末尾の「実施結果」節を読むこと（**後続PRに効く申し送りが2件ある**）。
+
 - ブランチ: `refactor/parameterize-igdb-filters`
 - 仕様: §6.1
 - 決着ブロック: `grep -n "J-5" docs/article-category-spec-review.md`
@@ -463,6 +468,58 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
   `game_type = (0,8,9)` のように複数指定した場合のクエリ文字列を検証する。
   IGDB のクエリ構文として `game_type = (0,8,9)` が妥当であることは実測済み。
+
+## 実施結果（2026-08-08）
+
+**PR #224。マージコミット `28f835f`（squash）。`/code-review` の指摘ゼロ。**
+実装は Sonnet に委譲し、diff を管理者が検証した。
+
+### 実装
+
+```ts
+// scripts/fetch-igdb.ts:23
+function buildIgdbCommonFilters(options?: { gameTypes?: number[] }): string
+```
+
+- 既定は `[IGDB_GAME_TYPE_MAIN]`（`[0]`）。`??` で受けるため `{ gameTypes: [] }` は既定に落ちない
+- **要素1個 → `game_type = 0`（括弧なし）、2個以上 → `game_type = (0,8,9)`**
+- 空配列 → 例外（`gameTypes must not be empty`）
+- 呼び出し元4箇所は**全て引数なしのまま**（`:524` / `:668` / `:763` / `:861`。マージ後の行番号）
+
+### ユーザー確認事項の決着: `mainGameOnly` は `gameTypes` に一般化しない
+
+`mainGameOnly`（`fetch-igdb.ts:502` / `:1006`）は「**where 句を出すか否か**
+（`themes != (42)` の有無を含む）」を切り替える軸で、「**どの `game_type` を許すか**」とは
+別軸。統合すると 2 つの軸が混ざり、「既定＝フィルタ一切なし」という Issue #208 の
+回帰テストの意味が変わる。また `gameTypes` を必要とするのは母集団クエリ
+（`:668` / `:763` / `:861`）であって `searchGameByName` ではない。
+
+### ⚠️ 後続PR（PR-B / 名作枠PR）への申し送り — 2件
+
+**(1) 空配列の例外は4箇所すべてで `catch` に飲まれる。**
+母集団クエリ3箇所と `searchGameByName` はいずれも関数全体が `try` で囲まれ、
+`catch` が `console.error(...); return []` を行う（`:741` 等）。したがって空配列を渡しても
+ビルドは止まらず「**その枠の候補が 0 件 + エラーログ 1 行**」に劣化する。
+`gameTypes` を動的に組み立てる場合は、**呼び出し側で非空を担保すること。**
+
+**(2) PR-B 着手時に「要素1個で括弧を付けない」分岐を畳むか判断する。**
+この分岐は既定出力を現行と**バイト単位で同一**に保つためだけの特例
+（既存テスト `fetch-igdb.test.ts:534` が `/game_type\s*=\s*0\s*&.../` で検証しており、
+`game_type = (0)` にすると落ちる）。PR-B が入ってバイト同一性の制約が外れたら、
+分岐を畳むことで「動的生成した配列の要素数によって出力形状が変わる」差異を消せる。
+**畳む場合は `:534` のテストも併せて更新が必要。**
+
+**(3) 複数値パスはライブ API で未検証。**
+`game_type = (0,8,9)` が正しいことは apicalypse 仕様（スカラーフィールドの `= (a,b,c)` は OR。
+配列フィールド用の `[]` / `{}` とは別）と本ファイル記載の過去実測から確認したが、
+**本 PR ではライブ IGDB を叩いていない**（本番呼び出し元がまだ存在しないため）。
+**最初の実呼び出し元となる PR-B で実 API 検証を行うこと。**
+
+### 品質ゲート
+
+`npm run test` **24ファイル / 749テスト 全通過**（ベースライン 744）。
+追加テスト5件: 複数指定 `[0,8,9]` / 境界値 要素1個 `[0]` / 境界値 要素1個 `[8]` /
+引数なし呼び出しとの文字列完全一致（`toBe`）/ 空配列の例外送出。**既存3テストは未改変**。
 
 ---
 
@@ -530,7 +587,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
   触る箇所は4つ:
 
-1. `IGDB_GAME_FIELDS`（`scripts/fetch-igdb.ts:329`）と3つの母集団クエリの fields
+1. `IGDB_GAME_FIELDS`（`scripts/fetch-igdb.ts:341`。PR-0.5 マージ後の値）と3つの母集団クエリの fields
 2. `IGDBGame` 型（`scripts/types.ts:42`）
 3. `GameData` 型（`scripts/types.ts:84`）
 4. `buildUserMessage`（`scripts/bedrock-client.ts:404`）
@@ -627,7 +684,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
   日本語の商品名（「リズム天国 ミラクルスターズ -Switch」）と英語のIGDBタイトルを
   突き合わせる必要がある。既存の `normalizeTitle` / `isSameGameIdentity` /
-  `JAPANESE_TO_ENGLISH_TITLES`（`fetch-igdb.ts:27`）を活用する。
+  `JAPANESE_TO_ENGLISH_TITLES`（`fetch-igdb.ts:39`。PR-0.5 マージ後の値）を活用する。
 
 ### 4. ⚠️  ライセンス制約（設計を縛る最重要事項）
 
@@ -836,8 +893,8 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
   3つの母集団クエリ（`fetchRecentPopularGames` / `fetchClassicGames` /
   `fetchIndieGames`）の変換処理が `websites` を生のまま返し、`steamUrl` を
-  抽出していない。抽出しているのは `mapRawGameToIGDBGame`（`fetch-igdb.ts:399`、
-  検索経路用）だけ。
+  抽出していない。抽出しているのは `mapRawGameToIGDBGame`（`fetch-igdb.ts:411`、
+  検索経路用。PR-0.5 マージ後の値）だけ。
 
   そのため `fetch-data.ts:149` の appId 補完（`if (igdbGame.steamUrl)`）が
   母集団由来の候補では**一度も発火せず**、`steamAppId` が埋まらない。
@@ -847,7 +904,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
   **データは存在する**: 実測で90日窓の発売済み候補33件のうち**30件（91%）が**
   `websites` **に Steam ストアURLを持つ**。真にSteam非掲載は3件のみ。
 
-  3つの変換処理で `mapRawGameToIGDBGame:399` と同じ抽出を行うようにする。
+  3つの変換処理で `mapRawGameToIGDBGame:411` と同じ抽出を行うようにする。
 
 ### 3. 並び順の実装（§3.6）
 
