@@ -14,10 +14,22 @@ const IGDB_GAME_TYPE_MAIN = 0;    // Main Game（DLC・エディション違い�
 
 /**
  * IGDB クエリで共通使用するフィルタ文字列を生成
- * 成人向けコンテンツ除外 & Main Game のみに限定
+ * 成人向けコンテンツ除外 & 指定した game_type のみに限定
+ *
+ * @param options.gameTypes 許可する game_type の配列（省略時は [IGDB_GAME_TYPE_MAIN] = Main Game のみ）
+ *   要素が1個のときは `game_type = N`、2個以上のときは `game_type = (N,M,...)` を生成する
+ *   （既定挙動＝要素1個の出力を、括弧の有無まで含めて変更しないため）
  */
-function buildIgdbCommonFilters(): string {
-  return `game_type = ${IGDB_GAME_TYPE_MAIN} & themes != (${IGDB_THEME_EROTIC})`;
+function buildIgdbCommonFilters(options?: { gameTypes?: number[] }): string {
+  const gameTypes = options?.gameTypes ?? [IGDB_GAME_TYPE_MAIN];
+  if (gameTypes.length === 0) {
+    throw new Error('buildIgdbCommonFilters: gameTypes must not be empty');
+  }
+  const gameTypeClause =
+    gameTypes.length === 1
+      ? `game_type = ${gameTypes[0]}`
+      : `game_type = (${gameTypes.join(',')})`;
+  return `${gameTypeClause} & themes != (${IGDB_THEME_EROTIC})`;
 }
 
 // キャッシュ用（同一セッション内でのトークン再利用）
