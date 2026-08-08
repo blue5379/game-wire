@@ -7,8 +7,8 @@
 | PR-0 | `fix/issue-208-search-filter` | ✅ **マージ済み**（2026-08-08。`ad5b916`） | #208（`Refs`。未クローズ）/ PR #219 | **ブランチ名は当初案の `fix/issue-208-searchgamebyname-filter` から短縮**。**レビューで初回実装が差し戻され、無条件適用 → `mainGameOnly` オプションによる呼び出し元切り替えに設計変更**（コミット 2 本）。24 ファイル / 736 テスト全通過（着手前 23 / 724） |
 | PR-0.1 | `fix/issue-208-feature-ai-screening` | ✅ **マージ済み**（2026-08-08。`0c07ba1`。**#208 クローズ済み**） | #208（Closed）/ PR #220 | **PR-0 の残タスク**。24ファイル / 744テスト（着手前 736）。レビュー指摘4件のうち1件を本PRで修正、3件を **#221 / #222** に分離。Issue #208 の「想定される修正」2項目目＝特集経路への `isAdultContentByAI` 適用（他 3 カテゴリは適用済み: `generate-articles.ts:1251` / `:1272` / `:1352`。feature のみ適用箇所が無い）。**適用位置は「選定確定後・本数警告の前」に決定済み**（2026-08-08。下記 PR-0.1 節に根拠）。**これで #208 をクローズする**。PR-0 の後・PR-0.5 の前。#219 はマージ済みなので `main` から切ればリベース不要 |
 | PR-0.5 | `refactor/parameterize-igdb-filters` | ✅ **マージ済み**（2026-08-08。`28f835f`。squash） | - / PR #224 | 挙動不変の純リファクタ。24ファイル / 749テスト（着手前 744）。`/code-review` の**指摘ゼロ**。**ユーザー確認事項は「`mainGameOnly` を `gameTypes` に一般化しない」で確定**（別軸のため。下記 PR-0.5 節に根拠）。**このPRで `fetch-igdb.ts` の行番号が 21 行目以降すべて +12 ずれた** |
-| PR-A | `fix/steam-dlc-exclusion` | 未着手（**次はこれ**） | - | 他PRと独立。PR-0.5 の後が望ましい |
-| PR-B | `feat/newrelease-score-and-remake` | 未着手 | #210（初期パラメータ再調整） | PR-0.5 の後 |
+| PR-A | `fix/steam-dlc-exclusion` | ✅ **マージ済み**（2026-08-08。`2011619`。squash） | - / PR #226 | 24ファイル / 760テスト（着手前 749）。**仕様書に無い新事実を実測で発見**: `coming_soon` にサウンドトラック（`type=music`）が10件中2件混入。レビュー指摘4件のうち1件を本PRで修正、2件を **#227 / #228** に分離。**このPRで `fetch-steam.ts` の行番号が大きくずれた**（下記「行番号は必ず自分で確認する」節） |
+| PR-B | `feat/newrelease-score-and-remake` | 未着手（**次はこれ**） | #210（初期パラメータ再調整） | PR-0.5 の後 |
 | PR-B2 | `feat/domestic-sales-axis` | 未着手 | - | PR-B の後 |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
@@ -60,8 +60,9 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 ## 品質ゲート（コミット前に必須）
 
 - `npm run test`（typecheck + vitest）
-- **ベースラインは PR-0.5 マージ後で 24ファイル / 749テスト 全通過**
-  （PR-0.1 マージ後は 24 / 744、PR-0 マージ後は 24 / 736、PR-0 着手前は 23 / 724）。
+- **ベースラインは PR-A マージ後で 24ファイル / 760テスト 全通過**
+  （PR-0.5 マージ後は 24 / 749、PR-0.1 マージ後は 24 / 744、PR-0 マージ後は 24 / 736、
+  PR-0 着手前は 23 / 724）。
   これを下回らないこと。**着手時に自分で `npm run test` を実行して実際の数を確認すること**
   （この数値は PR がマージされるたび増える）
 - シンボルを削除・リネームしたら残存参照を grep で確認
@@ -96,6 +97,21 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 実際に PR-0 / PR-0.1 のマージで `fetch-igdb.ts` が約+5行、`generate-articles.ts` が
 約+22行ずれ、複数の参照が陳腐化した。**さらに PR-0.5 で `fetch-igdb.ts` の
 21 行目以降が一律 +12 行ずれた**（`buildIgdbCommonFilters` の本体が 3 行→15 行になったため）。
+
+⚠️ **PR-A（#226）で `fetch-steam.ts` の行番号がずれた。** 位置によってずれ幅が違う
+（4 つのループそれぞれに 8 行の判定ブロックが入ったため、後ろほど大きくずれる）。
+マージ後の実測値（2026-08-08）:
+
+| シンボル | 記載時点 | PR-A マージ後 |
+|---|---|---|
+| `ADULT_CONTENT_DESCRIPTOR_IDS` | :98 | **:106** |
+| `STEAM_APP_TYPE_GAME`（PR-A で新設） | — | **:110** |
+| `isSameSteamApp` | :124 | **:136** |
+| `fetchSteamAppName` | :151 | **:163** |
+| `getAppDetails` | :182 | **:199** |
+| `fetchTopPlayed` | :205 | **:224** |
+| `fetchNewReleases` | :243 | **:267** |
+| `fetchSteamData` | :318 | **:358** |
 ⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
 **PR-0 / PR-0.5 の「当初の指示」節および PR-0 の「実施結果」節の行番号は記載時点のまま**
 （例: `:124` の `searchGameByName:486` は現在 `:498`、`:172` の `:490` は現在 `:502`、
@@ -551,6 +567,9 @@ PR-B が入ってバイト同一性の制約が外れたら、分岐を畳むこ
 
 # PR-A: Steam 経路の DLC 除外
 
+> ✅ **実装完了・マージ済み（2026-08-08）。PR #226。** 以下は当初の指示。
+> 着手前に必ず末尾の「実施結果」節を読むこと（**後続PRに効く申し送りが2件ある**）。
+
 - ブランチ: `fix/steam-dlc-exclusion`
 - 仕様: §6.1 の「Steam 経路の DLC 除外」ブロック（決定内容と実測値あり）
 - 他PRと独立。PR-0.5 の後が望ましい
@@ -558,8 +577,8 @@ PR-B が入ってバイト同一性の制約が外れたら、分岐を畳むこ
 ## 問題
 
   Steam の Top Sellers / Top Played 経路に DLC を除外する処理が無い。
-  `getAppDetails()`（`scripts/fetch-steam.ts:188-196`）は `name` と `isAdultContent`
-  だけを返し、`type` フィールドを読んでいない。
+  `getAppDetails()`（`scripts/fetch-steam.ts:188-196`。**マージ後は :199**）は `name` と
+  `isAdultContent` だけを返し、`type` フィールドを読んでいない。
 
   実測（本日）: Top Sellers 10件中2件が非 game。
   **vol.18 の記事1本目が実際に Street Fighter 6 の DLC だった**（`issue-018.md:7`）。
@@ -582,6 +601,85 @@ PR-B が入ってバイト同一性の制約が外れたら、分岐を畳むこ
 
   `scripts/fetch-steam.test.ts` に、`type` が `game` / `dlc` / `undefined` の
   それぞれで採用・除外が正しく分かれることを検証するテストを追加する。
+
+## 実施結果（2026-08-08）
+
+**PR #226。マージコミット `2011619`（squash）。コミット 2 本
+（`b007f5f` 実装 → `dc0de26` レビュー対応）。**
+実装は Sonnet に委譲し、diff を管理者が検証した。
+
+### 実装
+
+- `getAppDetails`（`fetch-steam.ts:199`）の戻り値に `type: string | null` を追加
+  （`appData.type ?? null`。`appData` 無し・例外時も `null`）
+- 判定値は `STEAM_APP_TYPE_GAME`（`:110`）に定数化
+- 4 つのループで `type !== STEAM_APP_TYPE_GAME` を除外（`:75` / `:239` / `:293` / `:329`）
+- **判定順序は 成人向け → name 不一致（`isSameSteamApp`）→ type**（レビュー対応で確定。下記）
+- スキップ分岐でも 200ms のレート制限待機を維持
+- スキップログに `type=${type ?? 'unknown'}` を出す（systemic な取得失敗を運用で識別するため）
+- `fullgame` は読まない（親ゲーム読み替えをしないため）。`SteamGame` 型は未変更
+
+### 📊 仕様書に無い新事実を実測で発見（2026-08-08 ライブ API）
+
+| カテゴリ | 混入 | type |
+|---|---|---|
+| top_sellers 10件中 **2件** | `Street Fighter 6 - Year 4 アルティメットパス`(4412690) / `キャラクターパス`(4412680) | `dlc`（fullgame=1364780） |
+| coming_soon 10件中 **2件** | `Pight Soundtrack`(4713630) / `Lord of Kensai Soundtrack`(4990990) | **`music`** |
+
+仕様書は DLC しか挙げていないが、**サウンドトラックが `coming_soon` 経由で混入している**。
+`fetchNewReleases` の結果は `fetchSteamData` 内で `topSellers` にマージされるため同じ穴で、
+`type !== 'game'` 判定で同時に塞がる。
+
+**混入は現に起きていた**: vol.18 の記事1本目が appId 4412690 のこの DLC そのもの
+（`src/content/issues/issue-018.md:7` で実物確認）。
+
+### ⚠️ 後続PRへの申し送り — 2件
+
+**(1) `type` が取れないケースは「DLC だと答えられた」ケースと区別できない（#227）。**
+`getAppDetails` はリトライ無しの生 `fetch` で `response.ok` も見ない。取得失敗時も
+`type: null` → 除外に倒れる。**本PR以前は `name: storefrontName ?? item.name` により
+Featured 側の name で採用されていた**ので、これは挙動変更である
+（`fetchTopPlayed` は元から `if (name)` で落ちていたため変化なし）。
+1 回の実行で `appdetails` は最大 55 件呼ばれる（20+20+10+5）。
+
+fail-closed 自体は仕様 §6.1 の決定どおりなので**覆さない**。従来の fail-open には
+「`appdetails` が取れないと `isAdultContent` が `false` になり成人向けが素通りする」という
+別の穴があった。→ **#227** に分離（対応案は `fetchWithRetry` 化 / HTTP 失敗と
+`success:false` の区別。いずれも実行時間か仕様の再確認を伴う）。
+
+**(2) スクリーニング処理が 4 ループに重複している（#228）。**
+重複は本PR以前から存在（成人向け・name 不一致が 3 箇所にコピー済み）。
+`fetchTopPlayed` だけ構造が異なる（`if (name)` 内の `else if` チェーン）ため
+横断的な変更で見落としやすい。→ **#228** に分離。
+**許可する種別を `'game'` 以外に広げる PR、または `fullgame` 読み替えを入れる PR は
+先に #228 を片付けたほうがよい。**
+
+### レビュー指摘への対応（採用1件）
+
+**`type` 判定を `isSameSteamApp` の name 不一致判定の「後ろ」に移した**（`dc0de26`）。
+当初の指示では前に置いていたが、appId 取り違え（Issue #102 型）でその appId の実体が
+たまたま `dlc` / `music` だった場合、**より診断価値の高い `appId/name mismatch` 警告が
+出なくなる**。どちらの判定でもスキップするため候補の採否は変わらず、観測性のみの変更。
+成人向け判定は先頭のまま不変。
+
+### テスト設計上の落とし穴（次回以降の再利用価値あり）
+
+初回実装のテストは **「空虚に通る」構造だった**。除外を「候補に居ないこと」だけで
+検証していたため、**そのループが丸ごと死んでいても通ってしまう**状態だった。
+
+対策として全ケースに**同カテゴリの `type='game'` 項目を同居させ、それが採用されることを
+同じテスト内で assert する**（ポジティブコントロール）形に直した。`coming_soon` の処理
+ブロックを一時的に無効化すると、除外側ではなく**採用側の assert が失敗する**ことを実際に
+確認済み。**「除外されること」を検証するテストを書くときは必ずこの形にすること。**
+
+管理者は実装を一時的に戻して**新規テスト 7 件がアサーション失敗すること**を独立に再現した
+（Sonnet の Red 報告の裏取り）。
+
+### 品質ゲート
+
+`npm run test` **24ファイル / 760テスト 全通過**（ベースライン 749）。実行時間 2.59s
+（ベースライン 2.67s。`vi.useFakeTimers()` + `runAllTimersAsync()` で 200ms 待機を消化したため
+実行時間はほぼ増えていない。実タイマーだと +2.3 秒だった）。
 
 ---
 

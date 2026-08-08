@@ -279,7 +279,7 @@ My Femboy Roommate: Special Weekend  hypes=7   themes=[Comedy, Erotic, Romance]
 vol.17 の候補にも実際に混入していた（実ログより）: `プライムステータスアップグレード`、`GRANBLUE FANTASY: Relink - Endless Ragnarok（Standard Edition）`。
 vol.14 のインディー枠は **ARK の DLC 2 本**だった。
 
-> **【2026-07-29 追記】** 本項の対策として PR #209 で `game_type = 0` を適用した（§10）。しかしこれは **IGDB 経路にしか効かない**。もう一方の入口である **Steam Top Sellers / Top Played 経路には DLC 除外が存在しない**ことが判明した（`fetch-steam.ts` が `appData.type` を読んでいない。現在の Top Sellers 10 件中 2 件が DLC）。→ **§8.1**（未修正）。
+> **【2026-07-29 追記】** 本項の対策として PR #209 で `game_type = 0` を適用した（§10）。しかしこれは **IGDB 経路にしか効かない**。もう一方の入口である **Steam Top Sellers / Top Played 経路には DLC 除外が存在しない**ことが判明した（`fetch-steam.ts` が `appData.type` を読んでいない。現在の Top Sellers 10 件中 2 件が DLC）。→ **§8.1**（✅ **2026-08-08 に PR #226 で修正済み**。§8.1.1）。
 > また IGDB 側のエディション混入は運用条件下では定量的に軽微であることも確認した → **§8.3**。
 
 ### 3.3 履歴のクールダウンがすり抜ける経路
@@ -1883,11 +1883,16 @@ J-1-c（記事中でリメイクであることを明記）を採る場合は、
 | 2 | `game_type = 0` の追加（DLC / エディション除外） | §3.2 | vol.14 の ARK DLC・vol.17 の「Standard Edition」混入が止まる | ✅ **完了**（Issue #207 / PR #209、§10） |
 | 3 | `fetchRecentPopularGames` に `first_release_date < now` を追加、`limit` を引き上げ | §2.2 | 未発売作が新作枠の候補を食い潰す問題が止まる（論点C で未発売作を扱う場合は別枠として実装） | 未着手（§11.1 で発売済み/未発売の 2 クエリ分離が確定したため、その実装に統合する） |
 | 4 | `isQualifiedGame()` の `metascore` 経路が死んでいる事実の解消 | §2.3 | 論点D の結論待ちだが、「死んだ経路を残したまま運用する」状態は解消すべき | 未着手（論点 D の結論待ち） |
-| 5 | **Steam 経路で DLC が除外されていない**（`fetch-steam.ts` の `getAppDetails` が `appData.type` を読んでいない） | §8.1 | vol.13 の DJMAX DLC・vol.15 の GRANBLUE アップグレードキット・vol.17 の Grim Dawn 拡張の混入が止まる。**現に Top Sellers 10 件中 2 件が DLC** | 未着手・**仕様議論と独立に修正可能** |
+| 5 | **Steam 経路で DLC が除外されていない**（`fetch-steam.ts` の `getAppDetails` が `appData.type` を読んでいない） | §8.1 | vol.13 の DJMAX DLC・vol.15 の GRANBLUE アップグレードキット・vol.17 の Grim Dawn 拡張の混入が止まる。**現に Top Sellers 10 件中 2 件が DLC** | ✅ **完了**（2026-08-08。PR #226 = PR-A。実装時に**サウンドトラック `type=music` の混入も新たに発見**し同時に塞いだ） |
 | 6 | 未発売作の `first_release_date` が確定日でない（`date_format != 0`） | §8.2 | 「Q3 2026」のような曖昧日付を「発売日」として記事に書く事故を防ぐ | §11.1 の未発売クエリに `date_format = 0` 条件として組み込む |
 | 7 | **Issue #208: `searchGameByName` に `where` 句が無い**（特集の LLM 提案検証経路が全フィルタを迂回） | §7 論点J-4 | 成人向けが記事に載る状態が止まる。**実測で Erotic 7/10 が通り、DLC も `game_type=2` が 2/2 通った。この経路の唯一の防御は 1 件しかないブロックリスト** | ✅ **方針決定**（2026-08-01。(J-4-a) を採用）・**単独 PR で最優先** |
 
 ### 8.1 【新規・重大】Steam 経路で DLC が除外されていない
+
+> ✅ **解消済み（2026-08-08。PR #226 = PR-A、マージコミット `2011619`）。** 以下は発見時点の記録。
+> 実装内容と実装時の追加実測は本節末尾の「実施結果」を参照。
+> **本節中の `fetch-steam.ts` の行番号は発見時点のもので、PR #226 で大きくずれている**
+> （`getAppDetails` は `:182` → **`:199`**）。
 
 **PR #209 の `game_type = 0` は IGDB 経路にしか効かない。** 候補プールへのもう一方の入口である Steam Top Sellers / Top Played 経路には、DLC を除外する処理が存在しない。
 
@@ -1917,6 +1922,33 @@ appId 2138330  type=dlc  fullgame=1091500  サイバーパンク2077：仮初め
 **これが過去の DLC 混入事故の真の原因と考えられる**（vol.13 DJMAX DLC / vol.15 GRANBLUE アップグレードキット / vol.17 Grim Dawn 拡張）。IGDB 側のエディション混入（§10.4）は運用条件下では 0.6% と定量的に小さい（§8.3）のに対し、Steam 経路は **現時点の実データで 20%** が DLC である。
 
 **修正方針（案）**: `getAppDetails()` の戻り値に `type` と `fullgame` を含め、`type !== 'game'` を候補から除外する。`fullgame` があれば親 appId が取れるので、DLC を親ゲームに読み替えるという選択肢もある（要決定）。カテゴリ横断で効くため、新作紹介・インディー両方に影響する。
+
+#### 8.1.1 実施結果（2026-08-08。PR #226 = PR-A）
+
+**採用した方針**: `getAppDetails()` の戻り値に `type: string | null` のみを追加し、4 つのループ（`fetchTopSellers` / `fetchTopPlayed` / `fetchNewReleases` の `new_releases` と `coming_soon`）で `type !== 'game'` を除外する。**`fullgame` は読まず、親ゲームへの読み替えは行わない**（上記「要決定」の決着。親ゲームは発売から年数が経っており 60 日窓で落ちるため、読み替えても除外と同じ結果になる）。
+
+**実装時のライブ実測（2026-08-08）で、本節に記載の無い混入経路を発見した**:
+
+```
+top_sellers（10 件中 2 件。発見時点の記録を再現）:
+appId 4412690  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 アルティメットパス
+appId 4412680  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 キャラクターパス
+
+coming_soon（10 件中 2 件。★本節に記載が無かった）:
+appId 4713630  type=music  fullgame={2682270, "Pight"}             Pight Soundtrack
+appId 4990990  type=music                                          Lord of Kensai Soundtrack
+```
+
+**サウンドトラック（`type=music`）が `coming_soon` 経由で混入していた。** `fetchNewReleases` の結果は `fetchSteamData` 内で `topSellers` にマージされるため DLC と同じ穴である。判定を「dlc の除外」ではなく「**game 以外の除外**」としたため同時に塞がった。
+
+**混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）。
+
+**判定順序**: 成人向け → name 不一致（`isSameSteamApp`）→ type。当初 type を name 不一致より前に置いていたが、appId 取り違え（Issue #102 型）でその appId の実体がたまたま `dlc` / `music` だった場合に、より診断価値の高い `appId/name mismatch` 警告が出なくなるためレビューで後ろに移した。候補の採否は変わらない（観測性のみ）。
+
+**残った課題（別 Issue に分離）**:
+
+- **#227**: `getAppDetails` はリトライ無しの生 `fetch` で `response.ok` も見ないため、**取得失敗が候補の欠落に直結する**（実装前は Featured 側の name で採用されていた）。fail-closed 自体は §6.1 の決定どおりなので覆さない。実装前の fail-open にも「`appdetails` が取れないと `isAdultContent` が `false` になり成人向けが素通りする」別の穴があった
+- **#228**: スクリーニング処理が 4 ループに重複している（重複自体は本 PR 以前から存在）。**許可する種別を広げる場合や `fullgame` 読み替えを入れる場合は先に片付けたほうがよい**
 
 ### 8.2 未発売作の `first_release_date` が確定日でない
 
@@ -1987,6 +2019,7 @@ Neverway       Oct 2026 (fmt=1)
 9. ~~**§7 論点D（`metascore` / OpenCritic）**~~ ✅ **決着**（2026-08-04。(D-1') = 取得経路・型・選定条件・プロンプト参照・バリデータ参照を削除し、表示層 5 ファイルと `content.config.ts` は残す。**実測で `metascore` は全 17 号 0 件＝動作していなかった**ため「置き換え」ではなく「削除」。§7 論点D の決着ブロック）→ **PR-D として単独実装できる（削除のみ・挙動不変）。ただし `fetch-data.ts` の名作枠選定部を触るため名作枠 PR と直列に並べる**
 9.5. ~~**§7 論点G（名作枠の歴史セクション）**~~ ✅ **決着**（2026-08-04。(G-4) = ①`classicSystem` の禁止リストから重複項目 `:342` を削除し 📜 の指示を「材料が無ければ省略」に強める ②`fetch-web-search.ts` のプロンプト抜粋を `slice(0, 300)` → `slice(0, SNIPPET_MAX_LENGTH)`(1500) に統一 ③`searchGameHistory()` のクエリに発売年を追加。§7 論点G の決着ブロック）→ **①③は名作枠 PR に含める。②は全カテゴリに影響するため PR-E として単独実装**
 10. **PR-A: §8.1（Steam 経路の DLC 除外）** — 他の論点と独立。単独 PR として先行できる。下位判断（DLC を捨てるか `fullgame` で親に解決するか）は実装時に決める
+    → ✅ **完了**（2026-08-08。PR #226）。下位判断は「**捨てる**（`fullgame` 読み替えはしない）」で決着。§8.1.1 参照
 11. **PR-B: N-6 のスコア実装 + ファンゲーム検出の修正 + J-1-c の実装**（下記のユーザー指示により同一 PR。J-1-c を含める理由は `IGDB_GAME_FIELDS` / `IGDBGame` / `GameData` / `buildUserMessage` の同一 4 箇所を触るため。§7 論点J-1 の決着ブロック「実装上の位置づけ」）
 12. **PR-C 以降: N-5 の実装** — 未発売記事のプロンプト分岐 / Tavily 検索セット分岐 / 評価断定バリデータ / judge の 1 行追記 / インディー枠の発売状態フィルタ（確定事項 #17）
 13. **PR-E: プロンプト抜粋長の 300 → 1500 統一**（論点G の (2)）— 4 カテゴリすべてに影響する。`DEV_MODE=true` で全カテゴリの出力品質を確認してからマージする。**PR-C（N-5 のプロンプト分岐）と同じ箇所を触るため、どちらか一方を先に入れて他方をリベースする**
@@ -2341,6 +2374,7 @@ Meccha Chameleon [LEMORION developed=5]        agg=82  rc=57
 
 - IGDB 側のエディション混入: 発売済み 60 日 0.6% / 未発売 90 日 1.0% / 名作枠 0% / **品質条件通過層 0/12 件**
 - **Steam 経路には DLC 除外が存在しない**。`fetch-steam.ts:182-200` の `getAppDetails` が `appData.type` を読んでいない。**現在の Top Sellers 10 件中 2 件が DLC**。vol.13 / vol.15 / vol.17 の DLC 混入事故はこの経路と考えられる
+  → ✅ **解消済み**（2026-08-08。PR #226。実装時に `coming_soon` のサウンドトラック混入も発見し同時に塞いだ。§8.1.1）
 - Steam 経路は新作紹介・インディーの両方に効く（カテゴリ横断）
 
 ### 11.3 論点 N-5（未発売記事の情報ソースと構成） — ✅ 決着（2026-08-01）
