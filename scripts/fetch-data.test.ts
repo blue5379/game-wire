@@ -673,9 +673,13 @@ describe('enrichGameFromIgdb — developerGameCount の転記（§3.4, Issue #23
       platforms: ['PC'],
       genres: [],
     });
+    // developer も igdbGame 側で設定する（developerGameCount は必ず同じ会社の developer と
+    // ペアで来る実際のデータ形状に合わせる。§修正2: 名前が一致しないと件数を採らないゲートが
+    // 入ったため、developer 無しで developerGameCount だけ、というフィクスチャは非現実的）。
     const igdbGame = makeIgdbGame({
       name: 'Zero Count Game',
       steamUrl: 'https://store.steampowered.com/app/2',
+      developer: 'Zero Count Studio',
       developerGameCount: 0,
     });
 
@@ -703,6 +707,68 @@ describe('enrichGameFromIgdb — developerGameCount の転記（§3.4, Issue #23
 
     expect(applied).toBe(true);
     expect(game.developerGameCount).toBe(99);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // developer 名とのペアリングガード（コードレビュー指摘）
+  //
+  // enrichGameFromIgdb は `game.developer = igdbGame.developer || game.developer` を
+  // developerGameCount の転記より先に実行するため、igdbGame.developer が truthy な限り
+  // 上書き後の game.developer は必ず igdbGame.developer と一致する（`||` の性質上）。
+  // そのため「名前が食い違う」ケースは、igdbGame.developer が falsy（取得できなかった）のに
+  // developerGameCount だけが（本来ありえないが防御的に）付いてくるという形でのみ構築できる。
+  // ─────────────────────────────────────────────────────────────────────────
+  it('igdbGame.developer が取得できず developerGameCount だけがある場合、名前を確認できないため件数は採用されない', () => {
+    const game = makeGame({
+      title: 'Unverifiable Count Game',
+      normalizedTitle: 'unverifiable count game',
+      steamAppId: 4,
+      platforms: ['PC'],
+      genres: [],
+      developer: 'Small Studio',
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Unverifiable Count Game',
+      steamUrl: 'https://store.steampowered.com/app/4',
+      // developer が undefined のまま developerGameCount だけ来る、という本来ありえない
+      // 組み合わせを防御的にテストする（実データでは mapRawGameToIGDBGame が両方を
+      // 同じ involved_companies レコードから同時にセットするため通常は起こらない）。
+      developerGameCount: 241,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    // developer は || により既存の 'Small Studio' のまま
+    expect(game.developer).toBe('Small Studio');
+    // developerGameCount は取り違えを防ぐため採用されない
+    expect(game.developerGameCount).toBeUndefined();
+    expect(isIndieGame(game)).toEqual({ ok: true });
+  });
+
+  // 表記ゆれ吸収そのもの（normalizeDeveloperName）は pickDeveloperGameCount の
+  // ユニットテスト（indie-classifier.test.ts）で検証済み。ここでは、enrichGameFromIgdb
+  // 経由でも件数が実際に isIndieGame の判定まで届くことを確認する。
+  it('developer 名が一致する場合、件数が採用され isIndieGame が large-studio になる', () => {
+    const game = makeGame({
+      title: 'Alias Match Game',
+      normalizedTitle: 'alias match game',
+      steamAppId: 5,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Alias Match Game',
+      steamUrl: 'https://store.steampowered.com/app/5',
+      developer: 'Nippon Ichi Software',
+      developerGameCount: 187,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.developerGameCount).toBe(187);
+    expect(isIndieGame(game)).toMatchObject({ ok: false, reason: 'large-studio' });
   });
 });
 
@@ -1181,7 +1247,7 @@ describe('deduplicateGames — 新規フィールドのマージ（修正1）', 
 // マージ後の値が isIndieGame の判定に実際に効くことまで検証する。
 // ─────────────────────────────────────────────────────────────────────────────
 describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #231）', () => {
-  it('primary に developerGameCount が無く dup にある場合、マージ後 primary が isIndieGame で large-studio になる（値が生き残っている証拠）', () => {
+  it('primary に developerGameCount が無く dup にある場合、developer 名が一致すればマージ後 primary が isIndieGame で large-studio になる（値が生き残っている証拠）', () => {
     // primary 選定基準は steamRank 昇順 → steamRank を持つ Steam 側が primary になる。
     const primary = makeGame({
       title: 'Merge Test Game',
@@ -1196,6 +1262,9 @@ describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #2
       normalizedTitle: 'merge test game',
       steamAppId: 700,
       source: ['igdb'],
+      // developerGameCount は同じ会社（Arc System Works）の developed 件数として、
+      // developer 名とペアで来るのが実データの形（コードレビュー指摘のガード対応）
+      developer: 'Arc System Works',
       developerGameCount: 241,
     });
 
@@ -1204,6 +1273,55 @@ describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #2
     expect(result).toHaveLength(1);
     expect(result[0].developerGameCount).toBe(241);
     expect(isIndieGame(result[0])).toMatchObject({ ok: false, reason: 'large-studio' });
+  });
+
+  it('developer 名が表記ゆれ（Co., Ltd.）込みで一致する場合も、dup の developerGameCount が採用される', () => {
+    const primary = makeGame({
+      title: 'Alias Merge Game',
+      normalizedTitle: 'alias merge game',
+      steamAppId: 701,
+      steamRank: 1,
+      source: ['steam'],
+      developer: 'Nippon Ichi Software Co., Ltd.',
+    });
+    const dup = makeGame({
+      title: 'Alias Merge Game',
+      normalizedTitle: 'alias merge game',
+      steamAppId: 701,
+      source: ['igdb'],
+      developer: 'Nippon Ichi Software',
+      developerGameCount: 187,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result[0].developerGameCount).toBe(187);
+    expect(isIndieGame(result[0])).toMatchObject({ ok: false, reason: 'large-studio' });
+  });
+
+  it('developer 名が食い違う場合、dup の developerGameCount は採用されない（isIndieGame が large-studio にならない）', () => {
+    const primary = makeGame({
+      title: 'Mismatch Merge Game',
+      normalizedTitle: 'mismatch merge game',
+      steamAppId: 702,
+      steamRank: 1,
+      source: ['steam'],
+      developer: 'Small Studio', // Steam 由来の小規模スタジオ名
+    });
+    const dup = makeGame({
+      title: 'Mismatch Merge Game',
+      normalizedTitle: 'mismatch merge game',
+      steamAppId: 702,
+      source: ['igdb'],
+      developer: 'Big Port House', // IGDB 側の別会社（共同開発会社等）
+      developerGameCount: 241,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result[0].developer).toBe('Small Studio');
+    expect(result[0].developerGameCount).toBeUndefined();
+    expect(isIndieGame(result[0])).toEqual({ ok: true });
   });
 
   it('境界値: primary が既に developerGameCount を持つ場合は dup の値で上書きしない（?? の挙動）', () => {
@@ -1301,6 +1419,54 @@ describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）
       const game = games.find((g) => g.title === 'Matched Game');
       expect(game).toBeDefined();
       expect(game!.developerGameCount).toBe(241);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  // developer 名とのペアリングガード（コードレビュー指摘）
+  //
+  // マッチ時ブランチも enrichGameFromIgdb 同様 `game.developer = igdb.developer || game.developer`
+  // を developerGameCount の転記より先に実行するため、igdb.developer が truthy な限り上書き後の
+  // game.developer は必ず igdb.developer と一致する。「名前が食い違う」ケースは igdb.developer が
+  // falsy（取得できなかった）のに developerGameCount だけが（本来ありえないが防御的に）
+  // 付いてくるという形でのみ構築できる。
+  it('マッチ時ブランチ: igdb.developer が取得できず developerGameCount だけがある場合、件数は採用されない', async () => {
+    const steamData: SteamData = {
+      topSellers: [{ appId: 556, name: 'Unverifiable Match Game' }],
+      topPlayed: [],
+      fetchedAt: '',
+    };
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 21,
+          name: 'Unverifiable Match Game',
+          slug: 'unverifiable-match-game',
+          // developer が undefined のまま developerGameCount だけ来る、という本来ありえない
+          // 組み合わせを防御的にテストする。
+          developerGameCount: 241,
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover3.jpg',
+          steamUrl: 'https://store.steampowered.com/app/556',
+        },
+      ],
+      fetchedAt: '',
+    };
+    const metacriticData: MetacriticData = {
+      scores: [{ title: 'Unverifiable Match Game', platform: 'PC', metascore: null, userScore: null }],
+      fetchedAt: '',
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
+    try {
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const game = games.find((g) => g.title === 'Unverifiable Match Game');
+      expect(game).toBeDefined();
+      expect(game!.developer).toBeUndefined();
+      expect(game!.developerGameCount).toBeUndefined();
+      expect(isIndieGame(game!)).toMatchObject({ ok: false, reason: 'no-developer' });
     } finally {
       global.fetch = originalFetch;
     }

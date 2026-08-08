@@ -13,6 +13,7 @@
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { headOk, getImageOrientation } from './url-health.js';
 import { parseSteamReleaseDate, isQualifiedCompanyName } from './steam-utils.js';
+import { pickDeveloperGameCount } from './indie-classifier.js';
 import type { GameData } from './types.js';
 
 export type FinalizeRejection =
@@ -74,7 +75,17 @@ export async function finalizeGameMetadata(
         } else {
           // 既存値を上書きしない（?? 演算子で空欄のみ補完）
           game.developer = game.developer ?? igdb.developer;
-          game.developerGameCount = game.developerGameCount ?? igdb.developerGameCount;
+          // developerGameCount は「この時点で確定した game.developer」と igdb.developer が
+          // 一致する場合のみ igdb 側の件数を採る（コードレビュー指摘）。game が既に件数を
+          // 持つならそのまま（pickDeveloperGameCount は currentCount が undefined のときだけ呼ばれる）。
+          game.developerGameCount =
+            game.developerGameCount ??
+            pickDeveloperGameCount(
+              game.developer,
+              game.developerGameCount,
+              igdb.developer,
+              igdb.developerGameCount
+            );
           game.publisher = game.publisher ?? igdb.publisher;
           game.releaseDate = game.releaseDate ?? igdb.releaseDate;
           game.genres = game.genres.length > 0 ? game.genres : (igdb.genres ?? game.genres);

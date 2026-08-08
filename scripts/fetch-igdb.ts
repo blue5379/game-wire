@@ -320,13 +320,23 @@ function pickOfficialUrlFromWebsites(
  *
  * mapRawGameToIGDBGame（検索経路）と fetchRecentPopularGames / fetchClassicGames /
  * fetchIndieGames（母集団クエリ3種）の計4箇所で共有する。
+ *
+ * 2パスで探索する: ①まず type === 13 または category === 13 のタグ付き URL を探す
+ * ②見つからなければ URL 部分一致（store.steampowered.com）でフォールバックする。
+ * 1つの find で OR 判定すると配列の先頭に来た要素が無条件で勝ってしまい、無タグの
+ * Steam ドメイン URL（バンドル・サウンドトラック・デモのページ等）が、後ろにある
+ * タグ付きの正しいストア URL より先に拾われてしまう。2パスにすることで、タグ付き URL が
+ * 存在する限り常にそちらを優先し、無タグ URL に先を越されないようにする。
  */
 export function pickSteamUrlFromWebsites(
   websites?: { url: string; category?: number; type?: number }[]
 ): string | undefined {
-  return websites?.find(
-    (w) => w.type === 13 || w.category === 13 || w.url.includes('store.steampowered.com')
-  )?.url;
+  if (!websites?.length) return undefined;
+
+  const tagged = websites.find((w) => w.type === 13 || w.category === 13);
+  if (tagged) return tagged.url;
+
+  return websites.find((w) => w.url.includes('store.steampowered.com'))?.url;
 }
 
 /**

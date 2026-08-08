@@ -159,6 +159,13 @@ export function normalizeDeveloperName(name: string): string {
     .replace(/\s+s\.a\.?$/i, '')
     .replace(/\s+corp\.?$/i, '')
     .replace(/\s+gmbh$/i, '')
+    // 上記サフィックス除去は先頭に空白のみを要求するため、"Nippon Ichi Software, Inc." のような
+    // 「カンマ + サフィックス」形式（"Co." を伴わない）だと " Inc." だけが消えて末尾にカンマが
+    // 残ってしまい、カンマ無し表記（"Nippon Ichi Software"）と正規化結果が一致しなくなる不具合が
+    // あった（コードレビュー指摘・IGDB は実データでこの表記形式を返す）。
+    // ここで「末尾に残ったカンマ」だけを取り除く。$ アンカーにより文字列末尾にしか作用しないため、
+    // "Foo, Bar Games" のような語中のカンマは対象外で保持される。
+    .replace(/,\s*$/, '')
     .trim();
 }
 
@@ -248,6 +255,38 @@ export function pickNewReleaseLabelCompany(
   const pub = isLargeStudio(publisher);
   if (pub.hit) return pub.matched;
   return developer;
+}
+
+/**
+ * developer 名の一致をゲートにして developerGameCount を選ぶ共通ヘルパ（コードレビュー指摘対応）。
+ *
+ * developerGameCount は「その developer の IGDB developed 件数」なので、採用した developer 名と
+ * 別ソースの件数が組み合わさってはいけない（例: 名前は Steam 由来の小規模スタジオ、件数は IGDB の
+ * 共同開発会社（200本超）という取り違え）。normalizeDeveloperName で表記ゆれ（Inc. / Co., Ltd. 等）
+ * を吸収した上で、currentDeveloper と sourceDeveloper が正規化一致する場合のみ sourceCount を
+ * 採用候補にする。一致しない場合、またはどちらかの名前が undefined の場合は currentCount を返す
+ * （sourceCount は採らない。currentCount 自体が undefined ならそのまま undefined）。
+ *
+ * 呼び出し側の使い分け（挙動が異なる2パターンを、この1つのヘルパで表現できる）:
+ * - source 優先で値を更新したい場合（IGDB再取得直後の enrichGameFromIgdb 等。
+ *   従来 `source.count ?? current.count` だった箇所）:
+ *     x.developerGameCount = pickDeveloperGameCount(x.developer, x.developerGameCount, source.developer, source.developerGameCount);
+ * - 既存値があれば変更したくない場合（マージ/dedup系。従来 `current.count ?? source.count` だった箇所）:
+ *     x.developerGameCount = x.developerGameCount ?? pickDeveloperGameCount(x.developer, x.developerGameCount, source.developer, source.developerGameCount);
+ */
+export function pickDeveloperGameCount(
+  currentDeveloper: string | undefined,
+  currentCount: number | undefined,
+  sourceDeveloper: string | undefined,
+  sourceCount: number | undefined
+): number | undefined {
+  if (currentDeveloper === undefined || sourceDeveloper === undefined) {
+    return currentCount;
+  }
+  if (normalizeDeveloperName(currentDeveloper) !== normalizeDeveloperName(sourceDeveloper)) {
+    return currentCount;
+  }
+  return sourceCount ?? currentCount;
 }
 
 type IndieResult =

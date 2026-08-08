@@ -174,6 +174,28 @@ describe('pickSteamUrlFromWebsites (§3.6)', () => {
     ).toBe('https://store.steampowered.com/app/424242');
   });
 
+  // 2パス化の回帰防止（コードレビュー指摘）: 無タグの Steam ドメイン URL（バンドル・サントラ等）が
+  // 配列の先頭に来ても、タグ付き（type: 13）の正しいストア URL が後ろにあればそちらを優先すること。
+  // 単一の find で OR 判定していた旧実装では、先頭の無タグ URL がフォールバック条件（URL部分一致）で
+  // マッチしてしまい、後ろの正しいタグ付き URL より先に返ってしまっていた。
+  it('無タグの Steam バンドル URL が先頭、type: 13 のストア URL が後ろの場合、後ろのタグ付き URL を返す', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/bundle/9999/Some_Bundle/' },
+        { url: 'https://store.steampowered.com/app/1234567', type: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/1234567');
+  });
+
+  it('無タグの Steam サントラ URL が先頭、category: 13 のストア URL が後ろの場合、後ろのタグ付き URL を返す', () => {
+    expect(
+      pickSteamUrlFromWebsites([
+        { url: 'https://store.steampowered.com/app/7777/Some_Soundtrack/' },
+        { url: 'https://store.steampowered.com/app/1234567', category: 13 },
+      ])
+    ).toBe('https://store.steampowered.com/app/1234567');
+  });
+
   it('Steam でない URL だけなら undefined', () => {
     expect(
       pickSteamUrlFromWebsites([

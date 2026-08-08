@@ -18,7 +18,7 @@ import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
-import { isIndieGame } from './indie-classifier.js';
+import { isIndieGame, pickDeveloperGameCount } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
 import { selectIndieGamesWithFallback, vetIndieCandidate } from './select-indie-with-fallback.js';
 import { selectNewReleasesWithFallback, vetNewReleaseCandidate, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
@@ -130,7 +130,14 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.platforms = igdbGame.platforms || game.platforms;
   game.releaseDate = igdbGame.releaseDate || game.releaseDate;
   game.developer = igdbGame.developer || game.developer;
-  game.developerGameCount = igdbGame.developerGameCount ?? game.developerGameCount;
+  // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
+  // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
+  game.developerGameCount = pickDeveloperGameCount(
+    game.developer,
+    game.developerGameCount,
+    igdbGame.developer,
+    igdbGame.developerGameCount
+  );
   game.publisher = igdbGame.publisher || game.publisher;
   game.developerCountry = igdbGame.developerCountry || game.developerCountry;
   game.coverImage = igdbGame.coverUrl || game.coverImage;
@@ -325,7 +332,14 @@ export async function aggregateGames(
         game.platforms = igdb.platforms || game.platforms;
         game.releaseDate = igdb.releaseDate || game.releaseDate;
         game.developer = igdb.developer || game.developer;
-        game.developerGameCount = igdb.developerGameCount ?? game.developerGameCount;
+        // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
+        // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
+        game.developerGameCount = pickDeveloperGameCount(
+          game.developer,
+          game.developerGameCount,
+          igdb.developer,
+          igdb.developerGameCount
+        );
         game.publisher = igdb.publisher || game.publisher;
         game.developerCountry = igdb.developerCountry || game.developerCountry;
         game.coverImage = igdb.coverUrl || game.coverImage;
@@ -626,7 +640,17 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.platforms = primary.platforms.length ? primary.platforms : dup.platforms;
       primary.releaseDate = primary.releaseDate ?? dup.releaseDate;
       primary.developer = primary.developer ?? dup.developer;
-      primary.developerGameCount = primary.developerGameCount ?? dup.developerGameCount;
+      // developerGameCount は「マージ後の primary.developer」と dup 側の名前が一致する場合のみ
+      // dup の件数を採る（コードレビュー指摘）。primary が既に件数を持つならそのまま
+      // （pickDeveloperGameCount は currentCount が undefined のときだけ呼ばれる）。
+      primary.developerGameCount =
+        primary.developerGameCount ??
+        pickDeveloperGameCount(
+          primary.developer,
+          primary.developerGameCount,
+          dup.developer,
+          dup.developerGameCount
+        );
       primary.publisher = primary.publisher ?? dup.publisher;
       primary.developerCountry = primary.developerCountry ?? dup.developerCountry;
       primary.coverImage = primary.coverImage ?? dup.coverImage;
@@ -980,9 +1004,14 @@ const DEFAULT_INDIE_RELEASE_WINDOW_DAYS = 90;
  * 環境変数を数値として読む。未設定・空文字・数値でない場合のみ既定値にフォールバックする。
  *
  * 注意: `Number(process.env.X) || defaultValue` という書き方はしないこと。
- * `0`（＝窓なし、運用上の緊急スイッチ）が既定値に化けてしまう
- * （`0 || default` は default になる）。`Number.isFinite` で明示的に判定する。
+ * `0` が既定値（90日）に化けてしまう（`0 || default` は default になる）。
+ * `Number.isFinite` で明示的に判定する。
  * （indie-classifier.ts の readLargeStudioDevelopedThreshold と同じ方針）
+ *
+ * `INDIE_RELEASE_WINDOW_DAYS` は「窓を無効化するスイッチ」ではない点に注意。
+ * `0`（または負値）を指定すると windowStart が「今日」（またはそれより未来）になり、
+ * 発売日が今日ちょうどの候補しか通らない最も厳しい設定になる。窓を広げたい場合は
+ * 大きな値を指定すること。
  *
  * 呼び出し時（モジュール読み込み時ではない）に process.env を読む。
  * テストから `vi.stubEnv` で差し替えて検証できる必要があるため。

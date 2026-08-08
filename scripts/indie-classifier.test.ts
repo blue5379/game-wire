@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { normalizeDeveloperName, isLargeStudio, isIndieGame, pickNewReleaseLabelCompany } from './indie-classifier';
+import {
+  normalizeDeveloperName,
+  isLargeStudio,
+  isIndieGame,
+  pickNewReleaseLabelCompany,
+  pickDeveloperGameCount,
+} from './indie-classifier';
 import type { GameData } from './types';
 
 function makeGame(overrides: Partial<GameData>): GameData {
@@ -41,6 +47,41 @@ describe('normalizeDeveloperName', () => {
   it('removes LLC suffix', () => {
     expect(normalizeDeveloperName('Supergiant Games LLC')).toBe('supergiant games');
   });
+
+  // コードレビュー指摘（管理者実測で再現）: 「カンマ + Inc./Ltd./LLC」形式（"Co" を伴わない）
+  // でサフィックスを除去すると、末尾にカンマだけが残ってしまい、"Co., Ltd." 形式や
+  // カンマ無し形式と正規化結果が一致しなくなる不具合があった。
+  it('"カンマ + Inc." 形式でも末尾カンマが残らず、カンマ無し表記と同じ値に正規化される', () => {
+    expect(normalizeDeveloperName('Nippon Ichi Software, Inc.')).toBe(
+      normalizeDeveloperName('Nippon Ichi Software')
+    );
+    expect(normalizeDeveloperName('Nippon Ichi Software, Inc.')).toBe('nippon ichi software');
+  });
+
+  it('"NIS America, Inc." も末尾カンマが残らず正規化される', () => {
+    expect(normalizeDeveloperName('NIS America, Inc.')).toBe('nis america');
+  });
+
+  it('"カンマ + LLC" 形式でも末尾カンマが残らない', () => {
+    expect(normalizeDeveloperName('Foo, LLC')).toBe('foo');
+  });
+
+  it('"カンマ + Ltd." 形式でも末尾カンマが残らない', () => {
+    expect(normalizeDeveloperName('Bar, Ltd.')).toBe('bar');
+  });
+
+  it('語中のカンマは除去しない（末尾以外のカンマは保持する）', () => {
+    // サフィックス除去の対象にならない語中カンマは、末尾カンマの後処理でも消してはいけない
+    expect(normalizeDeveloperName('Foo, Bar Games')).toBe('foo, bar games');
+  });
+
+  it('既存の正常系は変わらない（回帰防止）: "Co., Ltd." 形式', () => {
+    expect(normalizeDeveloperName('Capcom Co., Ltd.')).toBe('capcom');
+  });
+
+  it('既存の正常系は変わらない（回帰防止）: カンマ無し "Inc." 形式', () => {
+    expect(normalizeDeveloperName('Marvelous Inc.')).toBe('marvelous');
+  });
 });
 
 describe('isLargeStudio', () => {
@@ -71,6 +112,12 @@ describe('isLargeStudio', () => {
 
   it('capcom co., ltd. is large', () => {
     expect(isLargeStudio('Capcom Co., Ltd.')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  // コードレビュー指摘: normalizeDeveloperName の「カンマ + Inc.」末尾カンマ残留バグにより、
+  // 静的リスト登録済み企業でもこの表記形式だと一致しなかった。修正後はヒットすること。
+  it('静的リスト登録済み企業を「カンマ + Inc.」形式で渡してもヒットする（末尾カンマ残留バグの修正確認）', () => {
+    expect(isLargeStudio('Nintendo, Inc.')).toMatchObject({ hit: true, list: 'large' });
   });
 
   it('株式会社カプコン is large', () => {
@@ -633,5 +680,71 @@ describe('pickNewReleaseLabelCompany（Issue #180: 大手新作枠のラベル�
 
   it('developer 未定義・publisher も大手でない → undefined（呼び出し側が「注目新作」にする）', () => {
     expect(pickNewReleaseLabelCompany(undefined, 'Small Publisher')).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// pickDeveloperGameCount — developer 名とペアでなければ developerGameCount を採らない
+// （コードレビュー指摘: 名前は Steam 由来の小規模スタジオ、件数は IGDB の共同開発会社という
+// 取り違えを防ぐガード）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('pickDeveloperGameCount — developer 名の一致をゲートにした developerGameCount 選択', () => {
+  it('名前が完全一致する場合、source の件数が採用される', () => {
+    expect(
+      pickDeveloperGameCount('Arc System Works', undefined, 'Arc System Works', 241)
+    ).toBe(241);
+  });
+
+  // コードレビュー指摘: normalizeDeveloperName の「カンマ + Inc.」末尾カンマ残留バグにより、
+  // このガード自体の有効性が損なわれていた（IGDB が実際に返す表記形式のため実害あり）。
+  it('名前が表記ゆれ（カンマ + Inc.）で一致する場合、source の件数が採用される（修正前は undefined になっていた）', () => {
+    expect(
+      pickDeveloperGameCount(
+        'Nippon Ichi Software, Inc.',
+        undefined,
+        'Nippon Ichi Software',
+        187
+      )
+    ).toBe(187);
+  });
+
+  it('名前が表記ゆれ（Co., Ltd.）で一致する場合、source の件数が採用される', () => {
+    expect(
+      pickDeveloperGameCount(
+        'Nippon Ichi Software Co., Ltd.',
+        undefined,
+        'Nippon Ichi Software',
+        187
+      )
+    ).toBe(187);
+  });
+
+  it('名前が食い違う場合、source の件数は採用されず current の件数が維持される', () => {
+    expect(pickDeveloperGameCount('Small Studio', undefined, 'Big Port House', 241)).toBeUndefined();
+    expect(pickDeveloperGameCount('Small Studio', 5, 'Big Port House', 241)).toBe(5);
+  });
+
+  it('current の名前が undefined の場合、source の件数は採用されない（current の件数をそのまま返す）', () => {
+    expect(pickDeveloperGameCount(undefined, undefined, 'Big Port House', 241)).toBeUndefined();
+    expect(pickDeveloperGameCount(undefined, 9, 'Big Port House', 241)).toBe(9);
+  });
+
+  it('source の名前が undefined の場合、source の件数は採用されない（current の件数をそのまま返す）', () => {
+    expect(pickDeveloperGameCount('Small Studio', undefined, undefined, 241)).toBeUndefined();
+    expect(pickDeveloperGameCount('Small Studio', 5, undefined, 241)).toBe(5);
+  });
+
+  it('どちらの名前も undefined の場合、件数も採らない（current の件数のみ）', () => {
+    expect(pickDeveloperGameCount(undefined, undefined, undefined, 241)).toBeUndefined();
+  });
+
+  it('名前が一致し current の件数が既にある場合、source の件数（0 でも）で更新される（?? の優先順）', () => {
+    // 呼び出し側が「source 優先」で使うケース（enrichGameFromIgdb 等）を想定した挙動確認。
+    // 0 は「持っている」として扱われることを検証（|| だと欠損する回帰防止）。
+    expect(pickDeveloperGameCount('Studio A', 99, 'Studio A', 0)).toBe(0);
+  });
+
+  it('名前が一致するが source の件数が undefined の場合、current の件数にフォールバックする', () => {
+    expect(pickDeveloperGameCount('Studio A', 99, 'Studio A', undefined)).toBe(99);
   });
 });
