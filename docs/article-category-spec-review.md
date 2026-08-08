@@ -1885,7 +1885,7 @@ J-1-c（記事中でリメイクであることを明記）を採る場合は、
 | 4 | `isQualifiedGame()` の `metascore` 経路が死んでいる事実の解消 | §2.3 | 論点D の結論待ちだが、「死んだ経路を残したまま運用する」状態は解消すべき | 未着手（論点 D の結論待ち） |
 | 5 | **Steam 経路で DLC が除外されていない**（`fetch-steam.ts` の `getAppDetails` が `appData.type` を読んでいない） | §8.1 | vol.13 の DJMAX DLC・vol.15 の GRANBLUE アップグレードキット・vol.17 の Grim Dawn 拡張の混入が止まる。**現に Top Sellers 10 件中 2 件が DLC** | ✅ **完了**（2026-08-08。PR #226 = PR-A。実装時に**サウンドトラック `type=music` の混入も新たに発見**し同時に塞いだ） |
 | 6 | 未発売作の `first_release_date` が確定日でない（`date_format != 0`） | §8.2 | 「Q3 2026」のような曖昧日付を「発売日」として記事に書く事故を防ぐ | §11.1 の未発売クエリに `date_format = 0` 条件として組み込む |
-| 7 | **Issue #208: `searchGameByName` に `where` 句が無い**（特集の LLM 提案検証経路が全フィルタを迂回） | §7 論点J-4 | 成人向けが記事に載る状態が止まる。**実測で Erotic 7/10 が通り、DLC も `game_type=2` が 2/2 通った。この経路の唯一の防御は 1 件しかないブロックリスト** | ✅ **方針決定**（2026-08-01。(J-4-a) を採用）・**単独 PR で最優先** |
+| 7 | **Issue #208: `searchGameByName` に `where` 句が無い**（特集の LLM 提案検証経路が全フィルタを迂回） | §7 論点J-4 | 成人向けが記事に載る状態が止まる。**実測で Erotic 7/10 が通り、DLC も `game_type=2` が 2/2 通った。この経路の唯一の防御は 1 件しかないブロックリスト** | ✅ **完了**（2026-08-08。PR #219 = PR-0 で `where` 句を追加、PR #220 = PR-0.1 で特集経路にも AI 成人向けスクリーニングを適用。**Issue #208 はクローズ済み**。方針は 2026-08-01 に (J-4-a) を採用） |
 
 ### 8.1 【新規・重大】Steam 経路で DLC が除外されていない
 
@@ -1930,16 +1930,18 @@ appId 2138330  type=dlc  fullgame=1091500  サイバーパンク2077：仮初め
 **実装時のライブ実測（2026-08-08）で、本節に記載の無い混入経路を発見した**:
 
 ```
-top_sellers（10 件中 2 件。発見時点の記録を再現）:
-appId 4412690  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 アルティメットパス
-appId 4412680  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 キャラクターパス
+top_sellers（生 10 件中 2 件。slice(0,20) なので全件が候補処理に到達する）:
+順位 4   appId 4412690  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 アルティメットパス
+順位 6   appId 4412680  type=dlc    fullgame={1364780, "Street Fighter 6"}  Year 4 キャラクターパス
 
-coming_soon（10 件中 2 件。★本節に記載が無かった）:
-appId 4713630  type=music  fullgame={2682270, "Pight"}             Pight Soundtrack
-appId 4990990  type=music                                          Lord of Kensai Soundtrack
+coming_soon（生 10 件中 2 件。★本節に記載が無かった。ただし slice(0,5) で上位 5 件のみ処理）:
+順位 1   appId 4713630  type=music  fullgame={2682270, "Pight"}   Pight Soundtrack           ← 到達
+順位 10  appId 4990990  type=music                                Lord of Kensai Soundtrack  ← slice の外
 ```
 
 **サウンドトラック（`type=music`）が `coming_soon` 経由で混入していた。** `fetchNewReleases` の結果は `fetchSteamData` 内で `topSellers` にマージされるため DLC と同じ穴である。判定を「dlc の除外」ではなく「**game 以外の除外**」としたため同時に塞がった。
+
+⚠️ **「10 件中 2 件」は生レスポンスに対する測定値である。** `coming_soon` は `fetch-steam.ts:314` の `slice(0, 5)` で上位 5 件しか `getAppDetails` に渡らないため、**実際に候補プールへ入っていた `music` は 1 件**（`Pight Soundtrack`、1 位）。当初この節は 2 件が混入していたかのように書いていたが、順位を実測データで確認して訂正した（レビュー指摘）。混入経路が実在することは 1 件でも変わらない。
 
 **混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）。
 
