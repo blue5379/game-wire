@@ -555,6 +555,7 @@ async function verifyProposedGames(
 
     const igdb = await enrichGameWithIGDB(proposal.title, {
       expectedYear: proposal.expectedYear,
+      mainGameOnly: true,
     });
 
     if (!igdb) {
@@ -1405,6 +1406,12 @@ async function main(): Promise<void> {
 
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
+
+// テスト用にエクスポート（Issue #208: verifyProposedGames が enrichGameWithIGDB に
+// mainGameOnly: true を渡していることを検証するため）
+export const __test = {
+  verifyProposedGames,
+};
 
 // スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -6,7 +6,13 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { __test, searchGameBySteamAppId, fetchIGDBData } from './fetch-igdb.js';
+import {
+  __test,
+  searchGameBySteamAppId,
+  searchGameByName,
+  enrichGameWithIGDB,
+  fetchIGDBData,
+} from './fetch-igdb.js';
 
 const {
   isRelevantSearchResult,
@@ -274,6 +280,236 @@ describe('searchGameBySteamAppId', () => {
 
     const result = await searchGameBySteamAppId(1087090, 'client-id', 'token');
     expect(result).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// searchGameByName — mainGameOnly オプションで呼び出し元がフィルタ適用を切り替える（Issue #208）
+//
+// 設計変更の経緯: 当初 searchGameByName に無条件でフィルタ（成人向け除外 & Main Game 限定）を
+// 適用したが、この関数は特集経路以外（メタデータ補完）からも呼ばれる。補完経路に
+// game_type = 0 を強制すると DLC/エディションの正規メタデータ取得が壊れる
+// （実測: Gothic 1 Remake, ARK: Survival Ascended 等が0件化）。
+// そのため既定 false（フィルタ無し = 修正前と同一挙動）、mainGameOnly: true を渡した
+// 呼び出し元（特集記事の実在検証経路）のみフィルタを適用する方式に変更した。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('searchGameByName (Issue #208)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function mockIgdbResponse(games: unknown[]): void {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(games),
+    }) as unknown as typeof fetch;
+  }
+
+  it('mainGameOnly 未指定（既定）のとき where 句を付けず、修正前と同形のクエリになる', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain('/games');
+    const body = String((init as { body: string }).body);
+    // where 句そのものが出ない（空の `where ;` も出さない）
+    expect(body).not.toContain('where');
+    // search / fields / limit のみで構成される
+    expect(body).toMatch(/search\s+"[^"]*"\s*;/);
+    expect(body).toMatch(/fields\s+[^;]+;/);
+    expect(body).toMatch(/limit\s+\d+\s*;/);
+  });
+
+  it('mainGameOnly: false を明示指定したときも where 句を付けない（境界値）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: false });
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).not.toContain('where');
+  });
+
+  it('mainGameOnly: true のとき buildIgdbCommonFilters() 由来の where 句を付ける', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: true });
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('where');
+    expect(body).toContain(__test.buildIgdbCommonFilters());
+  });
+
+  it('mainGameOnly: true のとき where 句が game_type = 0 と themes != (42) を含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: true });
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('game_type = 0');
+    expect(body).toContain('themes != (42)');
+  });
+
+  it('回帰防止: searchGameBySteamAppId のクエリには where フィルタを含めない（フィールド選択とは区別する）', async () => {
+    // IGDB_GAME_FIELDS は searchGameByName と共有されており、後続 PR で game_type を
+    // フィールドとして追加すると `not.toContain('game_type')` は誤って失敗する。
+    // ここでは「where 句としてのフィルタ」の有無だけを見る。
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameBySteamAppId(1087090, 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).not.toContain('where game_type');
+    expect(body).not.toContain('game_type = 0');
+    expect(body).not.toContain('themes != (42)');
+  });
+
+  it('mainGameOnly: true のときクエリ構文が search / fields / where / limit の各句を ; 区切りで含む', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: true });
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toMatch(/search\s+"[^"]*"\s*;/);
+    expect(body).toMatch(/fields\s+[^;]+;/);
+    expect(body).toMatch(/where\s+[^;]+;/);
+    expect(body).toMatch(/limit\s+\d+\s*;/);
+  });
+
+  it('検索語にダブルクォートを含む場合もエスケープを保ったまま where 句が残る（mainGameOnly: true）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve([]),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Baldur"s Gate 3', 'client-id', 'token', { mainGameOnly: true });
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('Baldur\\"s Gate 3');
+    expect(body).toContain('game_type = 0');
+    expect(body).toContain('themes != (42)');
+  });
+
+  it('フィルタ適用後に0件が返る場合は null を返す（既存の0件パスの回帰防止）', async () => {
+    mockIgdbResponse([]);
+    const result = await searchGameByName('Elden Ring', 'client-id', 'token', { mainGameOnly: true });
+    expect(result).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// enrichGameWithIGDB — mainGameOnly の伝播範囲（Issue #208）
+//
+// mainGameOnly は searchGameByName にのみ伝播し、searchGameBySteamAppId（appId 逆引き）
+// には絶対に伝播しない。appId は名前より強い同一性シグナルであり、DLC の appId 逆引きが
+// フィルタで壊れると救済経路が失われるため。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('enrichGameWithIGDB — mainGameOnly propagation (Issue #208)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('steamAppId 指定時、mainGameOnly: true を渡しても appId 逆引きクエリにはフィルタが乗らない', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      // appId 逆引きが1件ヒットするようにする（見つかれば名前検索は呼ばれない）
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            { id: 1, name: 'Some Game', slug: 'some-game' },
+          ]),
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await enrichGameWithIGDB('Some Game', {
+      steamAppId: 123456,
+      mainGameOnly: true,
+    });
+
+    expect(result).not.toBeNull();
+    const igdbCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('api.igdb.com')
+    );
+    // appId 逆引きヒット時は名前検索を呼ばないため IGDB 呼び出しは1回のみ
+    expect(igdbCalls.length).toBe(1);
+    const body = String((igdbCalls[0][1] as { body: string }).body);
+    expect(body).toContain('external_games.uid = "123456"');
+    expect(body).not.toContain('where game_type');
+    expect(body).not.toContain('game_type = 0');
+    expect(body).not.toContain('themes != (42)');
+  });
+
+  it('mainGameOnly: true を渡すと名前検索フォールバック経路にはフィルタが乗る', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      // appId 逆引きは0件 → 名前検索へフォールバック
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve([]),
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await enrichGameWithIGDB('Some Game', {
+      steamAppId: 123456,
+      mainGameOnly: true,
+    });
+
+    const igdbCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('api.igdb.com')
+    );
+    // appId 逆引き(0件) + 名前検索フォールバックで2回
+    expect(igdbCalls.length).toBe(2);
+    const nameSearchBody = String((igdbCalls[1][1] as { body: string }).body);
+    expect(nameSearchBody).toContain('where');
+    expect(nameSearchBody).toContain('game_type = 0');
+    expect(nameSearchBody).toContain('themes != (42)');
   });
 });
 
