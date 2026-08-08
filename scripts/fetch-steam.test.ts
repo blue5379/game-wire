@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isSameSteamApp, fetchSteamAppName } from './fetch-steam';
+import { isSameSteamApp, fetchSteamAppName, fetchSteamData } from './fetch-steam';
 
 describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
   // Vol.12 動作確認で実際に観測された取り違えケース
@@ -184,5 +184,346 @@ describe('fetchSteamAppName - Issue #108 多言語クロスチェック', () => 
     await vi.runAllTimersAsync();
     const result = await promise;
     expect(result).toBeNull();
+  });
+});
+
+describe('fetchSteamData - Steam 経路の DLC 除外（PR-A）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  type FeaturedItem = {
+    id: number;
+    name: string;
+    final_price?: number;
+    discount_percent?: number;
+  };
+
+  type AppDetailsFixture = {
+    name: string;
+    type?: string;
+    content_descriptors?: { ids: number[] };
+  } | null; // null は success:false（appdetails 取得失敗）を表す
+
+  /**
+   * global.fetch を URL ベースで分岐させるモック。
+   * - featuredcategories → top_sellers / new_releases / coming_soon
+   * - GetMostPlayedGames → Top Played のランキング
+   * - appdetails?appids=N → appId ごとの詳細（type, content_descriptors 等）
+   */
+  function mockSteamFetch(opts: {
+    topSellers?: FeaturedItem[];
+    newReleases?: FeaturedItem[];
+    comingSoon?: FeaturedItem[];
+    ranks?: { appid: number; rank: number; peak_in_game: number }[];
+    appDetails: Record<number, AppDetailsFixture>;
+  }) {
+    vi.spyOn(global, 'fetch').mockImplementation((input: any) => {
+      const url = String(input);
+
+      if (url.includes('featuredcategories')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              top_sellers: opts.topSellers ? { items: opts.topSellers } : undefined,
+              new_releases: opts.newReleases ? { items: opts.newReleases } : undefined,
+              coming_soon: opts.comingSoon ? { items: opts.comingSoon } : undefined,
+            }),
+        } as Response);
+      }
+
+      if (url.includes('GetMostPlayedGames')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ response: { ranks: opts.ranks ?? [] } }),
+        } as Response);
+      }
+
+      if (url.includes('appdetails')) {
+        const match = url.match(/appids=(\d+)/);
+        const appId = match ? Number(match[1]) : NaN;
+        const fixture = opts.appDetails[appId];
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              [appId]: fixture ? { success: true, data: fixture } : { success: false },
+            }),
+        } as Response);
+      }
+
+      // 未知の URL は空レスポンス（テスト対象外のパスを誤って踏んだ場合に気づけるようにする）
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({}),
+      } as Response);
+    });
+  }
+
+  /**
+   * fetchSteamData() を fake timer 上で実行する共通ヘルパー。
+   * 各ループ内の 200ms レート制限待機を実時間で消化すると
+   * このスイートだけで数秒かかるため、fetchSteamAppName の既存テスト
+   * （:177-187）と同じパターンで fake timer + runAllTimersAsync に乗せる。
+   */
+  async function runFetchSteamData() {
+    vi.useFakeTimers();
+    const promise = fetchSteamData();
+    await vi.runAllTimersAsync();
+    return promise;
+  }
+
+  // 2026-08-08 ライブ実測データ（appId/name/type はすべて実データ）
+  const HONOGURASHI_NO_NIWA = { appId: 3934250, name: 'ほの暮しの庭' }; // top_sellers, type=game
+  const SF6_YEAR4_ULTIMATE_PASS = {
+    appId: 4412690,
+    name: 'Street Fighter 6 - Year 4 アルティメットパス',
+  }; // top_sellers, type=dlc
+  const SF6_YEAR4_CHARACTER_PASS = {
+    appId: 4412680,
+    name: 'Street Fighter 6 - Year 4 キャラクターパス',
+  }; // top_sellers, type=dlc
+  const PALWORLD = { appId: 1623730, name: 'Palworld / パルワールド' }; // top_sellers/top_played, type=game
+  const TIANLIANG_ZHIHOU = { appId: 4838500, name: '天亮之后' }; // new_releases, type=game
+  const PIGHT = { appId: 2682270, name: 'Pight' }; // coming_soon, type=game
+  const PIGHT_SOUNDTRACK = { appId: 4713630, name: 'Pight Soundtrack' }; // coming_soon, type=music (fullgame=Pight)
+
+  it('type=game の Top Sellers 項目が採用される（appId・name が入る）', async () => {
+    mockSteamFetch({
+      topSellers: [
+        { id: HONOGURASHI_NO_NIWA.appId, name: HONOGURASHI_NO_NIWA.name, final_price: 500 },
+      ],
+      appDetails: {
+        [HONOGURASHI_NO_NIWA.appId]: {
+          name: HONOGURASHI_NO_NIWA.name,
+          type: 'game',
+          content_descriptors: { ids: [5] },
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.success).toBe(true);
+    const game = result.data!.topSellers.find((g) => g.appId === HONOGURASHI_NO_NIWA.appId);
+    expect(game).toBeDefined();
+    expect(game!.name).toBe(HONOGURASHI_NO_NIWA.name);
+  });
+
+  it('type=dlc の項目は除外され、同居する type=game は採用される（回帰: 実測「top_sellers 10件中2件がDLC」構成 = ほの暮しの庭 + SF6 Year4 パス2件）', async () => {
+    mockSteamFetch({
+      topSellers: [
+        { id: HONOGURASHI_NO_NIWA.appId, name: HONOGURASHI_NO_NIWA.name, final_price: 500 },
+        {
+          id: SF6_YEAR4_ULTIMATE_PASS.appId,
+          name: SF6_YEAR4_ULTIMATE_PASS.name,
+          final_price: 0,
+        },
+        {
+          id: SF6_YEAR4_CHARACTER_PASS.appId,
+          name: SF6_YEAR4_CHARACTER_PASS.name,
+          final_price: 0,
+        },
+      ],
+      appDetails: {
+        [HONOGURASHI_NO_NIWA.appId]: { name: HONOGURASHI_NO_NIWA.name, type: 'game' },
+        [SF6_YEAR4_ULTIMATE_PASS.appId]: {
+          name: SF6_YEAR4_ULTIMATE_PASS.name,
+          type: 'dlc',
+        },
+        [SF6_YEAR4_CHARACTER_PASS.appId]: {
+          name: SF6_YEAR4_CHARACTER_PASS.name,
+          type: 'dlc',
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    // ポジティブコントロール: ループが生きていて game は採用されることを確認した上で DLC 除外を見る
+    const adoptedGame = result.data!.topSellers.find((g) => g.appId === HONOGURASHI_NO_NIWA.appId);
+    expect(adoptedGame).toBeDefined();
+    expect(adoptedGame!.name).toBe(HONOGURASHI_NO_NIWA.name);
+    expect(
+      result.data!.topSellers.find((g) => g.appId === SF6_YEAR4_ULTIMATE_PASS.appId)
+    ).toBeUndefined();
+    expect(
+      result.data!.topSellers.find((g) => g.appId === SF6_YEAR4_CHARACTER_PASS.appId)
+    ).toBeUndefined();
+  });
+
+  it('type=music の項目は除外され、同居する type=game は採用される（回帰: 実際の親子関係 Pight ⇔ Pight Soundtrack, coming_soon 経由）', async () => {
+    mockSteamFetch({
+      comingSoon: [
+        { id: PIGHT.appId, name: PIGHT.name },
+        { id: PIGHT_SOUNDTRACK.appId, name: PIGHT_SOUNDTRACK.name },
+      ],
+      appDetails: {
+        [PIGHT.appId]: { name: PIGHT.name, type: 'game' },
+        [PIGHT_SOUNDTRACK.appId]: { name: PIGHT_SOUNDTRACK.name, type: 'music' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    // ポジティブコントロール: coming_soon の処理ループが生きていて Pight 本編は
+    // fetchSteamData 内で topSellers に統合されることを確認した上で Soundtrack 除外を見る
+    const adopted = result.data!.topSellers.find((g) => g.appId === PIGHT.appId);
+    expect(adopted).toBeDefined();
+    expect(adopted!.name).toBe(PIGHT.name);
+    expect(
+      result.data!.topSellers.find((g) => g.appId === PIGHT_SOUNDTRACK.appId)
+    ).toBeUndefined();
+  });
+
+  it('type=demo の項目は除外され、同居する type=game は採用される（境界値: game 以外の別種別）', async () => {
+    // 観測実データに demo の実例はないため、appId は非衝突の合成値を使用する
+    const DEMO_APP_ID = 5555550;
+    mockSteamFetch({
+      topSellers: [
+        { id: HONOGURASHI_NO_NIWA.appId, name: HONOGURASHI_NO_NIWA.name },
+        { id: DEMO_APP_ID, name: 'テストゲーム 体験版' },
+      ],
+      appDetails: {
+        [HONOGURASHI_NO_NIWA.appId]: { name: HONOGURASHI_NO_NIWA.name, type: 'game' },
+        [DEMO_APP_ID]: { name: 'テストゲーム 体験版', type: 'demo' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === HONOGURASHI_NO_NIWA.appId)).toBeDefined();
+    expect(result.data!.topSellers.find((g) => g.appId === DEMO_APP_ID)).toBeUndefined();
+  });
+
+  it('境界値: data.type フィールドが存在しない場合は除外され、同居する type=game は採用される', async () => {
+    const NO_TYPE_APP_ID = 5555551;
+    mockSteamFetch({
+      topSellers: [
+        { id: HONOGURASHI_NO_NIWA.appId, name: HONOGURASHI_NO_NIWA.name },
+        { id: NO_TYPE_APP_ID, name: 'type欠損アプリ' },
+      ],
+      appDetails: {
+        [HONOGURASHI_NO_NIWA.appId]: { name: HONOGURASHI_NO_NIWA.name, type: 'game' },
+        // type フィールド自体が無い（success:true だが type 未定義）
+        [NO_TYPE_APP_ID]: { name: 'type欠損アプリ' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === HONOGURASHI_NO_NIWA.appId)).toBeDefined();
+    expect(result.data!.topSellers.find((g) => g.appId === NO_TYPE_APP_ID)).toBeUndefined();
+  });
+
+  it('境界値: appdetails が success:false を返す場合は除外され、同居する type=game は採用される（挙動変更: 従来は Featured 側 name で採用されていた）', async () => {
+    const NOT_FOUND_APP_ID = 5555552;
+    mockSteamFetch({
+      topSellers: [
+        { id: HONOGURASHI_NO_NIWA.appId, name: HONOGURASHI_NO_NIWA.name },
+        { id: NOT_FOUND_APP_ID, name: '取得失敗アプリ' },
+      ],
+      appDetails: {
+        [HONOGURASHI_NO_NIWA.appId]: { name: HONOGURASHI_NO_NIWA.name, type: 'game' },
+        [NOT_FOUND_APP_ID]: null, // success:false
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === HONOGURASHI_NO_NIWA.appId)).toBeDefined();
+    expect(result.data!.topSellers.find((g) => g.appId === NOT_FOUND_APP_ID)).toBeUndefined();
+  });
+
+  it('Top Played 経路: type=dlc は除外され、type=game は採用される', async () => {
+    mockSteamFetch({
+      ranks: [
+        { appid: PALWORLD.appId, rank: 1, peak_in_game: 100000 },
+        { appid: SF6_YEAR4_ULTIMATE_PASS.appId, rank: 2, peak_in_game: 50000 },
+      ],
+      appDetails: {
+        [PALWORLD.appId]: { name: PALWORLD.name, type: 'game' },
+        [SF6_YEAR4_ULTIMATE_PASS.appId]: {
+          name: SF6_YEAR4_ULTIMATE_PASS.name,
+          type: 'dlc',
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    const adopted = result.data!.topPlayed.find((g) => g.appId === PALWORLD.appId);
+    expect(adopted).toBeDefined();
+    expect(adopted!.name).toBe(PALWORLD.name);
+    expect(
+      result.data!.topPlayed.find((g) => g.appId === SF6_YEAR4_ULTIMATE_PASS.appId)
+    ).toBeUndefined();
+  });
+
+  it('new_releases 経路: type=dlc は除外され、同居する type=game は採用される（ポジティブコントロール: 天亮之后）', async () => {
+    mockSteamFetch({
+      newReleases: [
+        { id: TIANLIANG_ZHIHOU.appId, name: TIANLIANG_ZHIHOU.name },
+        {
+          id: SF6_YEAR4_ULTIMATE_PASS.appId,
+          name: SF6_YEAR4_ULTIMATE_PASS.name,
+          final_price: 0,
+        },
+      ],
+      appDetails: {
+        [TIANLIANG_ZHIHOU.appId]: { name: TIANLIANG_ZHIHOU.name, type: 'game' },
+        [SF6_YEAR4_ULTIMATE_PASS.appId]: {
+          name: SF6_YEAR4_ULTIMATE_PASS.name,
+          type: 'dlc',
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === TIANLIANG_ZHIHOU.appId)).toBeDefined();
+    expect(
+      result.data!.topSellers.find((g) => g.appId === SF6_YEAR4_ULTIMATE_PASS.appId)
+    ).toBeUndefined();
+  });
+
+  it('既存挙動の回帰: type=game でも content_descriptors.ids に成人向けIDが含まれる場合は除外される', async () => {
+    const ADULT_APP_ID = 5555553;
+    mockSteamFetch({
+      topSellers: [{ id: ADULT_APP_ID, name: '成人向けタイトル' }],
+      appDetails: {
+        [ADULT_APP_ID]: {
+          name: '成人向けタイトル',
+          type: 'game',
+          content_descriptors: { ids: [3] },
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === ADULT_APP_ID)).toBeUndefined();
+  });
+
+  it('既存挙動の回帰: type=game でも Featured name と Storefront name が乖離していれば isSameSteamApp で除外される', async () => {
+    const MISMATCH_APP_ID = 32470;
+    mockSteamFetch({
+      topSellers: [
+        { id: MISMATCH_APP_ID, name: 'サイバーパンク2077 アルティメットエディション' },
+      ],
+      appDetails: {
+        // Issue #102 で観測された実際の取り違えペア
+        [MISMATCH_APP_ID]: {
+          name: 'STAR WARS™ Empire at War - Gold Pack',
+          type: 'game',
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    expect(result.data!.topSellers.find((g) => g.appId === MISMATCH_APP_ID)).toBeUndefined();
   });
 });
