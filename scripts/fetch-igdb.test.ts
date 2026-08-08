@@ -13,6 +13,7 @@ import {
   enrichGameWithIGDB,
   fetchIGDBData,
   pickSteamUrlFromWebsites,
+  getJstDayStartUnixSec,
 } from './fetch-igdb.js';
 
 const {
@@ -657,7 +658,8 @@ describe('buildIgdbCommonFilters (Issue #207)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// fetchIGDBData — 3つの母集団クエリが確実にフィルタを使用することを検証（Issue #207 統合テスト）
+// fetchIGDBData — 4つの母集団クエリが確実にフィルタを使用することを検証（Issue #207 統合テスト。
+// Issue #241 で fetchUpcomingGames が追加され 3→4 クエリになった）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
   afterEach(() => {
@@ -701,8 +703,8 @@ describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
       return body;
     });
 
-    // 3つの母集団クエリが投げられたこと
-    expect(igdbBodies.length).toBe(3);
+    // 4つの母集団クエリが投げられたこと（recent / upcoming / classic / indie）
+    expect(igdbBodies.length).toBe(4);
 
     // すべてのクエリが成人向け除外を含むこと（全体チェック）
     for (const body of igdbBodies) {
@@ -797,7 +799,7 @@ describe('IGDB additional fields (game_type / aggregated_rating / keywords)', ()
     expect(body).toContain('keywords.slug');
   });
 
-  it('fetchIGDBData: 3母集団クエリすべてが game_type / aggregated_rating / aggregated_rating_count / keywords.slug を fields に含む', async () => {
+  it('fetchIGDBData: 4母集団クエリすべてが game_type / aggregated_rating / aggregated_rating_count / keywords.slug を fields に含む', async () => {
     process.env.IGDB_CLIENT_ID = 'test-client-id';
     process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
 
@@ -818,7 +820,7 @@ describe('IGDB additional fields (game_type / aggregated_rating / keywords)', ()
       .filter(([url]) => String(url).includes('api.igdb.com'))
       .map(([, init]) => String((init as { body?: string })?.body ?? ''));
 
-    expect(igdbBodies.length).toBe(3);
+    expect(igdbBodies.length).toBe(4);
     for (const body of igdbBodies) {
       expect(body).toContain('game_type');
       expect(body).toContain('aggregated_rating');
@@ -907,7 +909,7 @@ describe('IGDB developerGameCount (§3.4 開発本数による規模判定)', ()
     expect(body).toContain('involved_companies.company.developed');
   });
 
-  it('fetchIGDBData: 3母集団クエリすべてが involved_companies.company.developed を fields に含む（枠によって挙動が変わらないこと）', async () => {
+  it('fetchIGDBData: 4母集団クエリすべてが involved_companies.company.developed を fields に含む（枠によって挙動が変わらないこと）', async () => {
     process.env.IGDB_CLIENT_ID = 'test-client-id';
     process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
 
@@ -928,7 +930,7 @@ describe('IGDB developerGameCount (§3.4 開発本数による規模判定)', ()
       .filter(([url]) => String(url).includes('api.igdb.com'))
       .map(([, init]) => String((init as { body?: string })?.body ?? ''));
 
-    expect(igdbBodies.length).toBe(3);
+    expect(igdbBodies.length).toBe(4);
     for (const body of igdbBodies) {
       expect(body).toContain('involved_companies.company.developed');
     }
@@ -1062,7 +1064,7 @@ describe('IGDB fields に websites.type が含まれる（§3.6, PR-I その2）
     expect(body).toContain('websites.type');
   });
 
-  it('fetchIGDBData: 3母集団クエリすべてが websites.type を fields に含む', async () => {
+  it('fetchIGDBData: 4母集団クエリすべてが websites.type を fields に含む', async () => {
     process.env.IGDB_CLIENT_ID = 'test-client-id';
     process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
 
@@ -1083,9 +1085,221 @@ describe('IGDB fields に websites.type が含まれる（§3.6, PR-I その2）
       .filter(([url]) => String(url).includes('api.igdb.com'))
       .map(([, init]) => String((init as { body?: string })?.body ?? ''));
 
-    expect(igdbBodies.length).toBe(3);
+    expect(igdbBodies.length).toBe(4);
     for (const body of igdbBodies) {
       expect(body).toContain('websites.type');
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #241: 新作枠の母集団クエリを「発売済み」と「未発売」に分割する
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getJstDayStartUnixSec (§11.1 確定事項 #6)', () => {
+  it('UTC 2026-08-09T14:59:59Z（JST 8/9 23:59:59）と UTC 2026-08-09T15:00:00Z（JST 8/10 00:00:00）で日境界が1日ずれる', () => {
+    const before = getJstDayStartUnixSec(new Date('2026-08-09T14:59:59Z'));
+    const after = getJstDayStartUnixSec(new Date('2026-08-09T15:00:00Z'));
+
+    // UTC 基準の実装だと両者とも同じ UTC 日（8/9）に属するため差が 0 になり、このテストは落ちる。
+    // JST 基準では 8/9 の 23:59:59 と 8/10 の 00:00:00 で日をまたぐため、差は丸 1 日（86400 秒）。
+    expect(after - before).toBe(86400);
+
+    // JST 8/9 00:00:00 は UTC 8/8 15:00:00、JST 8/10 00:00:00 は UTC 8/9 15:00:00
+    expect(before).toBe(Date.UTC(2026, 7, 8, 15, 0, 0) / 1000);
+    expect(after).toBe(Date.UTC(2026, 7, 9, 15, 0, 0) / 1000);
+  });
+});
+
+describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Issue #241)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  function setupFetchMock(
+    overrides: {
+      recent?: unknown[];
+      upcoming?: unknown[];
+      classic?: unknown[];
+      indie?: unknown[];
+    } = {}
+  ): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      const body = String((init as { body?: string })?.body ?? '');
+      if (body.includes('sort first_release_date asc')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.upcoming ?? []) });
+      }
+      if (body.includes('hypes > 5')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.recent ?? []) });
+      }
+      if (body.includes('hypes > 100')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.classic ?? []) });
+      }
+      if (body.includes('rating_count > 5')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.indie ?? []) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  function igdbBodiesOf(fetchMock: ReturnType<typeof vi.fn>): string[] {
+    return fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('api.igdb.com'))
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''));
+  }
+
+  it('発売済みクエリ（recent）: 上限（JST当日0時未満）・下限（60日前）・limit 50 を含む', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-09T03:00:00Z'));
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = setupFetchMock();
+    await fetchIGDBData();
+
+    const dayStart = getJstDayStartUnixSec(new Date());
+    const sixtyDaysAgo = dayStart - 60 * 86400;
+
+    const recentQuery = igdbBodiesOf(fetchMock).find((b) => b.includes('hypes > 5'));
+    expect(recentQuery).toBeDefined();
+    expect(recentQuery).toContain(`first_release_date >= ${sixtyDaysAgo}`);
+    expect(recentQuery).toContain(`first_release_date < ${dayStart}`);
+    expect(recentQuery).toContain('limit 50');
+    expect(recentQuery).toContain('sort hypes desc');
+  });
+
+  it('未発売クエリ（upcoming）: 下限（JST当日0時）・上限（+90日）・hypes>20・sort first_release_date asc・limit 20・game_type=(0) を含む', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-09T03:00:00Z'));
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = setupFetchMock();
+    await fetchIGDBData();
+
+    const dayStart = getJstDayStartUnixSec(new Date());
+    const ninetyDaysLater = dayStart + 90 * 86400;
+
+    const upcomingQuery = igdbBodiesOf(fetchMock).find((b) =>
+      b.includes('sort first_release_date asc')
+    );
+    expect(upcomingQuery).toBeDefined();
+    expect(upcomingQuery).toContain(`first_release_date >= ${dayStart}`);
+    expect(upcomingQuery).toContain(`first_release_date <= ${ninetyDaysLater}`);
+    expect(upcomingQuery).toContain('hypes > 20');
+    expect(upcomingQuery).toContain('limit 20');
+    expect(upcomingQuery).toContain('game_type = (0)');
+    // 新作枠と違い、未発売クエリは Remake/Remaster を含めない（Main Game のみ）
+    expect(upcomingQuery).not.toContain('game_type = (0,8,9)');
+  });
+
+  it('4つの母集団クエリすべてが同じ fields を持つ（枠によってフィールドが欠けない、PR-B/PR-I の教訓）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = setupFetchMock();
+    await fetchIGDBData();
+
+    const bodies = igdbBodiesOf(fetchMock);
+    expect(bodies.length).toBe(4);
+
+    const recentQuery = bodies.find((b) => b.includes('hypes > 5'));
+    const classicQuery = bodies.find((b) => b.includes('hypes > 100'));
+    const indieQuery = bodies.find((b) => b.includes('rating_count > 5'));
+    const upcomingQuery = bodies.find((b) => b.includes('sort first_release_date asc'));
+
+    expect(recentQuery).toBeDefined();
+    expect(classicQuery).toBeDefined();
+    expect(indieQuery).toBeDefined();
+    expect(upcomingQuery).toBeDefined();
+
+    const requiredFields = [
+      'involved_companies.company.developed',
+      'websites.type',
+      'keywords.slug',
+      'game_type',
+      'aggregated_rating',
+    ];
+
+    for (const field of requiredFields) {
+      expect(recentQuery, `recentQuery should contain ${field}`).toContain(field);
+    }
+    for (const field of requiredFields) {
+      expect(classicQuery, `classicQuery should contain ${field}`).toContain(field);
+    }
+    for (const field of requiredFields) {
+      expect(indieQuery, `indieQuery should contain ${field}`).toContain(field);
+    }
+    for (const field of requiredFields) {
+      expect(upcomingQuery, `upcomingQuery should contain ${field}`).toContain(field);
+    }
+  });
+
+  it('4回 IGDB を叩き、結果をマージする。同一 id が複数クエリから返っても1件になる', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = setupFetchMock({
+      recent: [
+        { id: 9001, name: 'Dup Game', slug: 'dup-game' },
+        { id: 9002, name: 'Recent Only', slug: 'recent-only' },
+      ],
+      upcoming: [
+        { id: 9001, name: 'Dup Game', slug: 'dup-game' }, // recent と同一 id
+        { id: 9003, name: 'Upcoming Only', slug: 'upcoming-only' },
+      ],
+    });
+
+    const result = await fetchIGDBData();
+
+    expect(result.success).toBe(true);
+    const igdbCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('api.igdb.com'));
+    expect(igdbCalls.length).toBe(4);
+
+    const ids = result.data!.games.map((g) => g.id);
+    expect(ids.filter((id) => id === 9001).length).toBe(1); // 重複除去されて1件
+    expect(ids).toContain(9002);
+    expect(ids).toContain(9003);
+  });
+
+  it('未発売クエリ（upcoming）の mapper が steamUrl と developerGameCount を埋める（既存3クエリと同じ挙動）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = setupFetchMock({
+      upcoming: [
+        {
+          id: 9101,
+          name: 'Upcoming Pool Game',
+          slug: 'upcoming-pool-game',
+          websites: [{ url: 'https://store.steampowered.com/app/9101', type: 13 }],
+          involved_companies: [
+            {
+              company: { name: 'Dev Studio', developed: Array.from({ length: 12 }, (_, i) => i) },
+              developer: true,
+              publisher: false,
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await fetchIGDBData();
+    const game = result.data!.games.find((g) => g.id === 9101);
+    expect(game).toBeDefined();
+    expect(game!.steamUrl).toBe('https://store.steampowered.com/app/9101');
+    expect(game!.developer).toBe('Dev Studio');
+    expect(game!.developerGameCount).toBe(12);
   });
 });

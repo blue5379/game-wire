@@ -458,6 +458,21 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
   };
 }
 
+/**
+ * JST（日本時間）当日 0 時の Unix 秒を算出する（§11.1 確定事項 #6）。
+ *
+ * 発売済み／未発売の境界として使う純関数。`now` を引数で注入できるようにし、
+ * テストで日境界をまたぐ挙動を検証できるようにする（既定値は `new Date()`）。
+ *
+ * 算出式は `docs/article-category-spec-review.md` §11.1 確定事項 #6 で確定済み:
+ * `Math.floor((nowSec + 9*3600) / 86400) * 86400 - 9*3600`
+ */
+export function getJstDayStartUnixSec(now: Date = new Date()): number {
+  const nowSec = Math.floor(now.getTime() / 1000);
+  const JST_OFFSET_SEC = 9 * 3600;
+  return Math.floor((nowSec + JST_OFFSET_SEC) / 86400) * 86400 - JST_OFFSET_SEC;
+}
+
 // テスト用にエクスポート
 export const __test = {
   isRelevantSearchResult,
@@ -686,32 +701,188 @@ export async function searchMultipleGames(
   return results;
 }
 
-/**
- * 最近リリースされた人気ゲームを取得
- */
-async function fetchRecentPopularGames(
-  clientId: string,
-  accessToken: string
-): Promise<IGDBGame[]> {
-  try {
-    // 過去3ヶ月以内にリリースされた高評価ゲーム
-    const threeMonthsAgo = Math.floor(
-      (Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000
-    );
-
-    const query = `
-      fields name, slug, summary, genres.name, platforms.name,
+// 母集団クエリ（fetchRecentPopularGames / fetchUpcomingGames / fetchClassicGames /
+// fetchIndieGames）で共有する fields 一覧。4クエリすべてが同じ内容を持つことで
+// 枠によってフィールドが欠けて下流の挙動が変わる事故を防ぐ（PR-B / PR-I の教訓）。
+const IGDB_POOL_QUERY_FIELDS = `name, slug, summary, genres.name, platforms.name,
              first_release_date, involved_companies.company.name,
              involved_companies.developer, involved_companies.publisher,
              involved_companies.company.developed,
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
              websites.url, websites.category, websites.type,
-             game_type, aggregated_rating, aggregated_rating_count, keywords.slug;
-      where first_release_date > ${threeMonthsAgo} & hypes > 5 & ${buildIgdbCommonFilters({
+             game_type, aggregated_rating, aggregated_rating_count, keywords.slug`;
+
+/**
+ * 母集団クエリ（IGDBRawGame）から IGDBGame への変換ロジック（fetchRecentPopularGames /
+ * fetchUpcomingGames / fetchClassicGames / fetchIndieGames の4クエリで共通）。
+ * developerGameCount の拾い方・pickSteamUrlFromWebsites による steamUrl 抽出・
+ * websites の正規化を含む。
+ */
+function mapPoolRawGameToIGDBGame(game: {
+  id: number;
+  name: string;
+  slug: string;
+  summary?: string;
+  genres?: { name: string }[];
+  platforms?: { name: string }[];
+  first_release_date?: number;
+  involved_companies?: {
+    company: { name: string; developed?: number[] };
+    developer: boolean;
+    publisher: boolean;
+  }[];
+  cover?: { url: string };
+  screenshots?: { url: string }[];
+  rating?: number;
+  rating_count?: number;
+  game_localizations?: { name: string; region?: number }[];
+  websites?: { url: string; category?: number; type?: number }[];
+  game_type?: number;
+  aggregated_rating?: number;
+  aggregated_rating_count?: number;
+  keywords?: { id: number; slug: string }[];
+}): IGDBGame {
+  let developer: string | undefined;
+  let publisher: string | undefined;
+  // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
+  let developerGameCount: number | undefined;
+
+  if (game.involved_companies) {
+    for (const ic of game.involved_companies) {
+      if (ic.developer && !developer) {
+        developer = ic.company.name;
+        developerGameCount = ic.company.developed?.length;
+      }
+      if (ic.publisher && !publisher) publisher = ic.company.name;
+    }
+  }
+
+  const formatImageUrl = (url?: string): string | undefined => {
+    if (!url) return undefined;
+    return url.replace('t_thumb', 't_cover_big').replace('//', 'https://');
+  };
+
+  return {
+    id: game.id,
+    name: game.name,
+    titleJa: extractJapaneseLocalization(game.game_localizations),
+    slug: game.slug,
+    summary: game.summary,
+    genres: game.genres?.map((g) => g.name),
+    platforms: game.platforms?.map((p) => p.name),
+    releaseDate: game.first_release_date
+      ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
+      : undefined,
+    developer,
+    publisher,
+    developerGameCount,
+    coverUrl: formatImageUrl(game.cover?.url),
+    screenshotUrls: game.screenshots
+      ?.map((s) =>
+        s.url?.replace('t_thumb', 't_screenshot_big').replace('//', 'https://')
+      )
+      .filter((url): url is string => url !== undefined),
+    rating: game.rating,
+    ratingCount: game.rating_count,
+    steamUrl: pickSteamUrlFromWebsites(game.websites),
+    websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
+    gameType: game.game_type,
+    aggregatedRating: game.aggregated_rating,
+    aggregatedRatingCount: game.aggregated_rating_count,
+    keywords: game.keywords?.map((k) => k.slug),
+  };
+}
+
+/**
+ * 【発売済みのみ】直近60日以内に発売された人気ゲームを取得する（§2.3）。
+ *
+ * 母集団の条件（§2.3）: 発売日が JST 当日 0 時の 60 日前 以上・JST 当日 0 時 未満
+ * （= 発売済みのみ。未発売は fetchUpcomingGames が別途担当する）。
+ *
+ * `hypes > 5` は §2.3 に規定の無い実装独自の条件。外すと候補が激増するため残しているが、
+ * 外すかどうかは別途判断する（Issue #241 のスコープ外）。
+ */
+async function fetchRecentPopularGames(
+  clientId: string,
+  accessToken: string
+): Promise<IGDBGame[]> {
+  try {
+    const dayStart = getJstDayStartUnixSec();
+    const sixtyDaysAgo = dayStart - 60 * 24 * 60 * 60;
+
+    const query = `
+      fields ${IGDB_POOL_QUERY_FIELDS};
+      where first_release_date >= ${sixtyDaysAgo} & first_release_date < ${dayStart} & hypes > 5 & ${buildIgdbCommonFilters({
         gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
       })};
       sort hypes desc;
+      limit 50;
+    `;
+
+    interface IGDBRawGame {
+      id: number;
+      name: string;
+      slug: string;
+      summary?: string;
+      genres?: { name: string }[];
+      platforms?: { name: string }[];
+      first_release_date?: number;
+      involved_companies?: {
+        company: { name: string; developed?: number[] };
+        developer: boolean;
+        publisher: boolean;
+      }[];
+      cover?: { url: string };
+      screenshots?: { url: string }[];
+      rating?: number;
+      rating_count?: number;
+      game_localizations?: { name: string; region?: number }[];
+      websites?: { url: string; category?: number; type?: number }[];
+      game_type?: number;
+      aggregated_rating?: number;
+      aggregated_rating_count?: number;
+      keywords?: { id: number; slug: string }[];
+    }
+
+    const games = await igdbRequest<IGDBRawGame>(
+      'games',
+      query,
+      clientId,
+      accessToken
+    );
+
+    return games.map(mapPoolRawGameToIGDBGame);
+  } catch (error) {
+    console.error('Failed to fetch recent popular games:', error);
+    return [];
+  }
+}
+
+/**
+ * 【未発売のみ】これから発売されるゲームを取得する（§2.4）。
+ *
+ * 母集団の条件（§2.4）: 発売日が JST 当日 0 時 以上・JST 当日 0 時 + 90 日 以下、
+ * `hypes > 20`（注目度のフロア）、Main Game のみ（DLC・拡張・バンドル・移植・
+ * リメイク・リマスターを除外。fetchRecentPopularGames と異なり Remake/Remaster は含めない）。
+ * 並び順は発売日の昇順（hypes はソート軸に使わない。§2.4）。
+ *
+ * ⚠️ §2.4 が規定する「確定日のみ」フィルタ（`release_dates.date_format`）はここでは
+ * 実装しない。担当は PR-C（別 PR）。このクエリは曖昧な発売日（「2026年Q3」等）の
+ * タイトルも含んだままになる。
+ */
+async function fetchUpcomingGames(
+  clientId: string,
+  accessToken: string
+): Promise<IGDBGame[]> {
+  try {
+    const dayStart = getJstDayStartUnixSec();
+    const ninetyDaysLater = dayStart + 90 * 24 * 60 * 60;
+
+    const query = `
+      fields ${IGDB_POOL_QUERY_FIELDS};
+      where first_release_date >= ${dayStart} & first_release_date <= ${ninetyDaysLater} & hypes > 20 & ${buildIgdbCommonFilters()};
+      sort first_release_date asc;
       limit 20;
     `;
 
@@ -747,59 +918,9 @@ async function fetchRecentPopularGames(
       accessToken
     );
 
-    return games.map((game) => {
-      let developer: string | undefined;
-      let publisher: string | undefined;
-      // developer 側の developed 件数のみ拾う（規模判定用、§3.4）。publisher 側は拾わない。
-      let developerGameCount: number | undefined;
-
-      if (game.involved_companies) {
-        for (const ic of game.involved_companies) {
-          if (ic.developer && !developer) {
-            developer = ic.company.name;
-            developerGameCount = ic.company.developed?.length;
-          }
-          if (ic.publisher && !publisher) publisher = ic.company.name;
-        }
-      }
-
-      const formatImageUrl = (url?: string): string | undefined => {
-        if (!url) return undefined;
-        return url.replace('t_thumb', 't_cover_big').replace('//', 'https://');
-      };
-
-      return {
-        id: game.id,
-        name: game.name,
-        titleJa: extractJapaneseLocalization(game.game_localizations),
-        slug: game.slug,
-        summary: game.summary,
-        genres: game.genres?.map((g) => g.name),
-        platforms: game.platforms?.map((p) => p.name),
-        releaseDate: game.first_release_date
-          ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
-          : undefined,
-        developer,
-        publisher,
-        developerGameCount,
-        coverUrl: formatImageUrl(game.cover?.url),
-        screenshotUrls: game.screenshots
-          ?.map((s) =>
-            s.url?.replace('t_thumb', 't_screenshot_big').replace('//', 'https://')
-          )
-          .filter((url): url is string => url !== undefined),
-        rating: game.rating,
-        ratingCount: game.rating_count,
-        steamUrl: pickSteamUrlFromWebsites(game.websites),
-        websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
-        gameType: game.game_type,
-        aggregatedRating: game.aggregated_rating,
-        aggregatedRatingCount: game.aggregated_rating_count,
-        keywords: game.keywords?.map((k) => k.slug),
-      };
-    });
+    return games.map(mapPoolRawGameToIGDBGame);
   } catch (error) {
-    console.error('Failed to fetch recent popular games:', error);
+    console.error('Failed to fetch upcoming games:', error);
     return [];
   }
 }
@@ -1057,18 +1178,20 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
     // アクセストークン取得
     const accessToken = await getAccessToken(clientId, clientSecret);
 
-    // 最近の人気ゲーム・名作・インディーゲームを並列取得
-    const [recentGames, classicGames, indieGames] = await Promise.all([
+    // 最近の人気ゲーム（発売済み）・これから発売されるゲーム（未発売）・名作・
+    // インディーゲームを並列取得（Issue #241: 新作枠の母集団を発売済み/未発売に分割）
+    const [recentGames, upcomingGames, classicGames, indieGames] = await Promise.all([
       fetchRecentPopularGames(clientId, accessToken),
+      fetchUpcomingGames(clientId, accessToken),
       fetchClassicGames(clientId, accessToken),
       fetchIndieGames(clientId, accessToken),
     ]);
 
-    // 重複除去してマージ
+    // 重複除去してマージ（recent → upcoming → classic → indie の順）
     const seenIds = new Set<number>();
     const allGames: IGDBGame[] = [];
 
-    for (const game of [...recentGames, ...classicGames, ...indieGames]) {
+    for (const game of [...recentGames, ...upcomingGames, ...classicGames, ...indieGames]) {
       if (!seenIds.has(game.id)) {
         allGames.push(game);
         seenIds.add(game.id);
@@ -1080,7 +1203,11 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
       fetchedAt: new Date().toISOString(),
     };
 
-    console.log(`IGDB data fetched: ${allGames.length} games`);
+    console.log(
+      `IGDB data fetched: ${allGames.length} games ` +
+        `(recent=${recentGames.length}, upcoming=${upcomingGames.length}, ` +
+        `classic=${classicGames.length}, indie=${indieGames.length})`
+    );
 
     return { success: true, data: igdbData };
   } catch (error) {
