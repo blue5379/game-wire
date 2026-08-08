@@ -535,6 +535,34 @@ describe('buildIgdbCommonFilters (Issue #207)', () => {
     // & で連結された条件式であること（クエリに埋め込み可能）
     expect(filters).toMatch(/game_type\s*=\s*0\s*&\s*themes\s*!=\s*\(\s*42\s*\)/);
   });
+
+  it('gameTypes を複数指定すると括弧付きリストになり、成人向け除外は維持される', () => {
+    const filters = buildIgdbCommonFilters({ gameTypes: [0, 8, 9] });
+    expect(filters).toContain('game_type = (0,8,9)');
+    expect(filters).toContain('themes != (42)');
+  });
+
+  it('境界値: gameTypes 要素1個（既定値）は括弧なしの game_type = 0 になる', () => {
+    const filters = buildIgdbCommonFilters({ gameTypes: [0] });
+    expect(filters).toContain('game_type = 0');
+    expect(filters).not.toContain('game_type = (0)');
+  });
+
+  it('境界値: gameTypes 要素1個（既定と異なる値）でも括弧なしになる', () => {
+    const filters = buildIgdbCommonFilters({ gameTypes: [8] });
+    expect(filters).toContain('game_type = 8');
+    expect(filters).not.toContain('game_type = (8)');
+  });
+
+  it('引数なし呼び出しと { gameTypes: [0] } の出力は文字列として完全一致する', () => {
+    expect(buildIgdbCommonFilters({ gameTypes: [0] })).toBe(buildIgdbCommonFilters());
+  });
+
+  it('gameTypes に空配列を渡すと例外を投げる（無音で壊れたクエリを生成しない）', () => {
+    expect(() => buildIgdbCommonFilters({ gameTypes: [] })).toThrow(
+      /gameTypes must not be empty/
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
