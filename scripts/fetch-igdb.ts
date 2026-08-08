@@ -487,7 +487,7 @@ export async function searchGameByName(
   name: string,
   clientId: string,
   accessToken: string,
-  options?: { expectedYear?: number }
+  options?: { expectedYear?: number; mainGameOnly?: boolean }
 ): Promise<IGDBGame | null> {
   try {
     // 無効な検索クエリはスキップ
@@ -505,11 +505,15 @@ export async function searchGameByName(
       return null;
     }
 
-    // ゲーム検索（成人向け除外 & Main Game 限定を共通ヘルパで適用）
+    // ゲーム検索。mainGameOnly: true のときのみ成人向け除外 & Main Game 限定を
+    // 共通ヘルパで適用する（Issue #208: この関数は特集経路以外（メタデータ補完）
+    // からも呼ばれるため、既定ではフィルタを付けない＝修正前と同一挙動を維持する）。
+    const whereClause = options?.mainGameOnly
+      ? `\n      where ${buildIgdbCommonFilters()};`
+      : '';
     const query = `
       search "${searchName.replace(/"/g, '\\"')}";
-      fields ${IGDB_GAME_FIELDS};
-      where ${buildIgdbCommonFilters()};
+      fields ${IGDB_GAME_FIELDS};${whereClause}
       limit 1;
     `;
 
@@ -987,7 +991,7 @@ export async function fetchIGDBData(): Promise<FetchResult<IGDBData>> {
 // 逆引きヒット時 1 回、フォールバック時のみ 2 回で、常に名前検索と逆引きを両方は呼ばない）。
 export async function enrichGameWithIGDB(
   gameName: string,
-  options?: { expectedYear?: number; steamAppId?: number }
+  options?: { expectedYear?: number; steamAppId?: number; mainGameOnly?: boolean }
 ): Promise<IGDBGame | null> {
   const clientId = process.env.IGDB_CLIENT_ID;
   const clientSecret = process.env.IGDB_CLIENT_SECRET;
@@ -999,7 +1003,9 @@ export async function enrichGameWithIGDB(
   try {
     const accessToken = await getAccessToken(clientId, clientSecret);
 
-    // appId 逆引きを優先（安定した外部IDによる同一性解決）
+    // appId 逆引きを優先（安定した外部IDによる同一性解決）。
+    // mainGameOnly はここには絶対に伝播させない。appId は名前より強い同一性シグナルであり、
+    // DLC の appId 逆引きに game_type = 0 を強制すると救済経路が壊れるため（Issue #208）。
     if (options?.steamAppId !== undefined) {
       const byAppId = await searchGameBySteamAppId(
         options.steamAppId,
