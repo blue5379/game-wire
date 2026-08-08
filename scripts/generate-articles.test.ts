@@ -215,24 +215,28 @@ describe('generateFeatureArticle — スクリーニングが本数警告より�
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const { article, context } = await generateFeatureArticle(
-      new Date('2026-08-08'),
-      999,
-      [gameA, gameB, adultGame],
-      []
-    );
+    try {
+      const { article, context } = await generateFeatureArticle(
+        new Date('2026-08-08'),
+        999,
+        [gameA, gameB, adultGame],
+        []
+      );
 
-    // スクリーニングで "Screened Out Game" が除外され、残り2本（< FEATURE_MIN_GAMES=3）になる
-    expect(context.featureGames.map((g) => g.title)).toEqual(['Game A', 'Game B']);
-    expect(article.category).toBe('feature');
+      // スクリーニングで "Screened Out Game" が除外され、残り2本（< FEATURE_MIN_GAMES=3）になる
+      expect(context.featureGames.map((g) => g.title)).toEqual(['Game A', 'Game B']);
+      expect(article.category).toBe('feature');
 
-    // 本数不足の警告が出ていること = screenOutAdultGames が FEATURE_MIN_GAMES 判定より
-    // 前に実行され、その結果（2本）が警告に反映されたことの証拠
-    const warnedShortfall = warnSpy.mock.calls.some(
-      (call) => typeof call[0] === 'string' && call[0].includes('Feature article has only 2 game(s)')
-    );
-    expect(warnedShortfall).toBe(true);
-
-    warnSpy.mockRestore();
+      // 本数不足の警告が出ていること = screenOutAdultGames が FEATURE_MIN_GAMES 判定より
+      // 前に実行され、その結果（2本）が警告に反映されたことの証拠
+      const warnedShortfall = warnSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === 'string' && call[0].includes('Feature article has only 2 game(s)')
+      );
+      expect(warnedShortfall).toBe(true);
+    } finally {
+      // アサーション失敗時に console.warn のスタブが後続テストへ漏れないよう finally で復元する
+      warnSpy.mockRestore();
+    }
   });
 });
