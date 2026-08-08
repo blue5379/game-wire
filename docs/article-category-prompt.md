@@ -5,7 +5,7 @@
 | PR | ブランチ | 状態 | Issue/PR | 依存関係・備考 |
 |---|---|---|---|---|
 | PR-0 | `fix/issue-208-search-filter` | ✅ **マージ済み**（2026-08-08。`ad5b916`） | #208（`Refs`。未クローズ）/ PR #219 | **ブランチ名は当初案の `fix/issue-208-searchgamebyname-filter` から短縮**。**レビューで初回実装が差し戻され、無条件適用 → `mainGameOnly` オプションによる呼び出し元切り替えに設計変更**（コミット 2 本）。24 ファイル / 736 テスト全通過（着手前 23 / 724） |
-| PR-0.1 | `fix/issue-208-feature-ai-screening` | ✅ **マージ済み**（2026-08-08。`0c07ba1`。**#208 クローズ済み**） | #208（Closed）/ PR #220 | **PR-0 の残タスク**。24ファイル / 744テスト（着手前 736）。レビュー指摘4件のうち1件を本PRで修正、3件を **#221 / #222** に分離。Issue #208 の「想定される修正」2項目目＝特集経路への `isAdultContentByAI` 適用（他 3 カテゴリは適用済み: `generate-articles.ts:1229` / `:1250` / `:1330`。feature のみ適用箇所が無い）。**適用位置は「選定確定後・本数警告の前」に決定済み**（2026-08-08。下記 PR-0.1 節に根拠）。**これで #208 をクローズする**。PR-0 の後・PR-0.5 の前。#219 はマージ済みなので `main` から切ればリベース不要 |
+| PR-0.1 | `fix/issue-208-feature-ai-screening` | ✅ **マージ済み**（2026-08-08。`0c07ba1`。**#208 クローズ済み**） | #208（Closed）/ PR #220 | **PR-0 の残タスク**。24ファイル / 744テスト（着手前 736）。レビュー指摘4件のうち1件を本PRで修正、3件を **#221 / #222** に分離。Issue #208 の「想定される修正」2項目目＝特集経路への `isAdultContentByAI` 適用（他 3 カテゴリは適用済み: `generate-articles.ts:1251` / `:1272` / `:1352`。feature のみ適用箇所が無い）。**適用位置は「選定確定後・本数警告の前」に決定済み**（2026-08-08。下記 PR-0.1 節に根拠）。**これで #208 をクローズする**。PR-0 の後・PR-0.5 の前。#219 はマージ済みなので `main` から切ればリベース不要 |
 | PR-0.5 | `refactor/parameterize-igdb-filters` | 未着手（**次はこれ**） | - | PR-0 の後、PR-A / PR-B / 名作枠PR より前。**PR-0 で `mainGameOnly?: boolean` を導入済み**（`fetch-igdb.ts:490` / `:994`）。`buildIgdbCommonFilters({ gameTypes })` の引数化と併せ、`mainGameOnly` を `gameTypes` に一般化するか検討する（着手時にユーザー確認） |
 | PR-A | `fix/steam-dlc-exclusion` | 未着手 | - | 他PRと独立。PR-0.5 の後が望ましい |
 | PR-B | `feat/newrelease-score-and-remake` | 未着手 | #210（初期パラメータ再調整） | PR-0.5 の後 |
@@ -48,8 +48,14 @@
 
 - main への直接コミットは禁止。必ずブランチを切る
 - PR本文に `Closes #<番号>`（Issueがある場合）
-- PR作成後、`/code-review` の実行をユーザーに依頼する
-（このコマンドはユーザーの明示呼び出し専用で、Claude からは起動できない）
+- PR作成後、**`/code-review` を自分で実行する**（`Skill` ツールで `code-review`、引数に PR 番号）。
+CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている。
+指摘は鵜呑みにせず、**採否を管理者が判断してユーザーに提示する**
+  - 当初この節は「Claude からは起動できない」と書いていたが**誤り**（2026-08-08 に実行して確認）。
+  ユーザーの明示呼び出しが必要なのは `/code-review ultra`（クラウド多エージェント版）のみ
+  - スコープ外の指摘は**別Issueに分離する**（前例: PR-0.1 → #221 / #222）
+  - **レビューの提案をそのまま採用しないこと。** PR-0.1 では提案どおり直すと
+  #208 で塞いだ穴が再び開く指摘があった（#221 に記録）
 
 ## 品質ゲート（コミット前に必須）
 
@@ -84,10 +90,15 @@
 - 実データ検証は `DEV_MODE=true npm run build-issue:dev`。
 本番ディレクトリ（`issues/`, `features/`）には書き込まない
 
-## 注意
+## 行番号は必ず自分で確認する
 
-- `docs/spec-live-api-verification` ブランチに未マージのPR #218 がある（仕様書のみ）。
-マージ後は `git checkout main && git pull` で同期すること
+**本ファイル中の行番号は全て「記載時点」のもので、PR がマージされるたびにずれる。**
+実際に PR-0 / PR-0.1 のマージで `fetch-igdb.ts` が約+5行、`generate-articles.ts` が
+約+22行ずれ、複数の参照が陳腐化した。
+
+- 行番号は**目印であって根拠ではない**。着手時に必ず `grep` でシンボル名を引き直すこと
+- 特に「呼び出し元は N 箇所」という記述は、**件数ごと** grep で再確認する
+  （PR-0.5 の `buildIgdbCommonFilters` が 3→4 箇所に増えていた実例がある）
 
 ---
 
@@ -122,7 +133,7 @@
 
 ## 絶対に守ること
 
-- `searchGameBySteamAppId()`**（同ファイル :567）には追加してはならない。**
+- `searchGameBySteamAppId()`**（同ファイル :572）には追加してはならない。**
 appId 経由のメタデータ補完が壊れる（検討資料 §10.3(d)）
 - ~~すり替わり対策（`limit 1` で1位が落ちると2位が繰り上がる問題）は
 **このPRに含めない**。既存バグとして別途扱うと決着済み~~
@@ -166,12 +177,12 @@ const whereClause = options?.mainGameOnly
 
 - `enrichGameWithIGDB`（:994）にも同オプションを追加し `searchGameByName` へ素通し
 - **`searchGameBySteamAppId` へは伝播させない**（:1007 にコメントで明記）
-- `mainGameOnly: true` を渡すのは `verifyProposedGames`（`generate-articles.ts:558`）**だけ**
+- `mainGameOnly: true` を渡すのは `verifyProposedGames`（`generate-articles.ts:562`）**だけ**
 - 補完経路 4 箇所は既定のまま**挙動不変**:
   `fetch-data.ts:404` / `:869`、`generate-articles.ts:914`、`finalize-game-metadata.ts:48`
 - 既定パスの生成クエリが `0eee33d^`（修正前）と**空白含めて完全同一**であることを実比較で確認済み
-- `generate-articles.ts:1410` に `__test = { verifyProposedGames }` を追加（テスト用エクスポート。
-  `fetch-igdb.ts:411` の既存 `__test` パターンに倣う）
+- `generate-articles.ts:1434` に `__test = { verifyProposedGames }` を追加（テスト用エクスポート。
+  `fetch-igdb.ts:409` の既存 `__test` パターンに倣う）
 
 ### ⚠️ 初回実装（`0eee33d`）はレビューで差し戻された — 教訓
 
@@ -244,7 +255,7 @@ appId 逆引きクエリにフィルタが乗らないこと（伝播禁止の�
 - `themes = null` の件数は **156,733 でフィルタ前後不変**。`game_type = null` は **0 件**
   → `themes != (42)` が themes 無しのゲームを巻き込む事故は起きない（決着ブロックの主張は正しい）
 - `search "Baldur\"s Gate 3"` は IGDB が実際に受け付ける（200、`Baldur's Gate III` を返す）
-- **`fetchGameImageAndUrl`（`fetch-igdb.ts:1023`）は呼び出し元ゼロの死んだコード**
+- **`fetchGameImageAndUrl`（`fetch-igdb.ts:1029`）は呼び出し元ゼロの死んだコード**
   → 未フィルタで放置しても実害なし。削除候補として別途扱える
 
 ### スコープから外した判断（管理者判断）
@@ -284,9 +295,9 @@ Issue #208 の「想定される修正」は 2 項目あるが、**本 PR は 1 
 
 | カテゴリ | 適用 | 行 |
 |---|---|---|
-| newReleases | ✅ | `:1229` |
-| indies | ✅ | `:1250` |
-| classic | ✅ | `:1330` |
+| newReleases | ✅ | `:1251` |
+| indies | ✅ | `:1272` |
+| classic | ✅ | `:1352` |
 | **feature** | ❌ なし | — |
 
 PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入ったが、特集枠の事後防御は
@@ -297,12 +308,12 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 - **PR #219 は 2026-08-08 にマージ済み**（マージコミット `ad5b916`）。ローカル main も同期済み。
   `main` から切ればリベースは不要
 - PR-0 は最終的に `scripts/generate-articles.ts` も触った
-  （`:558` の `mainGameOnly: true`、`:1411` の `__test` 追加）。行番号がずれている前提で読むこと
+  （`:562` の `mainGameOnly: true`、`:1434` の `__test` 追加）。行番号がずれている前提で読むこと
 - **`scripts/generate-articles.test.ts` は PR-0 で新設済み。** `vi.mock('./fetch-igdb.js')` だけで
   `verifyProposedGames` をテストできることを実証した（Bedrock は実行パスに含まれず、
   `main()` は `import.meta.url` ガードで守られているため import 時副作用なし）。
   PR-0.1 のテストもこのファイルに足せる
-- **`__test = { verifyProposedGames }` が `generate-articles.ts:1411` に既にある。**
+- **`__test = { verifyProposedGames }` が `generate-articles.ts:1434` に既にある。**
   `isAdultContentByAI` や特集生成関数をテストから触るなら同じ `__test` に足す
 - **PR-0 で塞がったのは LLM 提案経路（`verifyProposedGames`）の IGDB クエリだけ**。
   `relatedGames` 経路（`aggregated.json` 由来）には届いていない
@@ -314,7 +325,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 > **`selectedGameData` が確定した直後、`FEATURE_MIN_GAMES` の本数警告（`:876` 付近）の前**に
 > `isAdultContentByAI` で除外するループを入れる。`verifyProposedGames` 内には置かない。
 
-適用位置は既存 3 箇所（`:1229` / `:1250` / `:1330`）の呼び出し方（除外時の `console.warn` +
+適用位置は既存 3 箇所（`:1251` / `:1272` / `:1352`）の呼び出し方（除外時の `console.warn` +
 スキップ）に倣う。
 
 ### この位置を選んだ根拠（4 点。コード実読で確認済み）
@@ -432,7 +443,14 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
     return `game_type = ${IGDB_GAME_TYPE_MAIN} & themes != (${IGDB_THEME_EROTIC})`;
   }
 
-  呼び出し元は3箇所（:651, :746, :845）。**このPRでは全て既定値のまま**にする。
+  呼び出し元は**4箇所**（`:512`, `:656`, `:751`, `:849`。2026-08-08 に grep で実測）。
+  **このPRでは全て既定値のまま**にする。
+
+  ⚠️ **`:512` は PR-0 が `searchGameByName` 内の `mainGameOnly` 分岐に追加した新しい呼び出し元**。
+  当初この節は「3箇所（:651, :746, :845）」と書いていたが誤りだった。
+  `gameTypes` を必須引数にすると `:512` だけが漏れて型エラーにならず素通りする危険があるため、
+  **着手時に必ず自分で `grep -n "buildIgdbCommonFilters()" scripts/fetch-igdb.ts` を実行して
+  件数を確認すること。**
 
 ## 制約
 
@@ -551,9 +569,19 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
 ### 4. 号内重複の比較を正規化タイトルに（小改修・相乗り）
 
-  `fetch-data.ts:971` と `:1032` がタイトル完全一致で比較している。
-  `normalizedTitle` 比較に変更する（『Slay the Spire II』と『Slay the Spire 2』が
-  別扱いになるため）。
+  `fetch-data.ts` がタイトル完全一致で比較している箇所を `normalizedTitle` 比較に変更する
+  （『Slay the Spire II』と『Slay the Spire 2』が別扱いになるため）。
+
+  ⚠️ **対象は2箇所ではなく4箇所**（2026-08-08 に実読で確認）:
+
+  - `:971` — indie 候補から newReleases を除外
+  - `:1032` — classic 候補から newReleases を除外
+  - `:1033` — classic 候補から **indies** を除外
+  - `:1034` — classic 候補から **featured** を除外（`g.title !== featured?.title`）
+
+  当初この節は `:971` と `:1032` の2箇所と書いていたが誤りだった。
+  `:1033` / `:1034` を直さないと、名作枠と indie / 特集の間で表記ゆれが素通りする
+  （＝この項目が塞ごうとしている経路そのものが残る）。
 
 ## 受け入れ条件
 
@@ -811,7 +839,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
   抽出していない。抽出しているのは `mapRawGameToIGDBGame`（`fetch-igdb.ts:399`、
   検索経路用）だけ。
 
-  そのため `fetch-data.ts:151` の appId 補完（`if (igdbGame.steamUrl)`）が
+  そのため `fetch-data.ts:149` の appId 補完（`if (igdbGame.steamUrl)`）が
   母集団由来の候補では**一度も発火せず**、`steamAppId` が埋まらない。
   `steamRecommendations` は `steamAppId` を前提に取得されるため（`fetch-data.ts:431`
   の early continue）、連鎖して並び順キーが欠落する。
@@ -886,7 +914,7 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 - `PUBLISH_DATE` は `workflow_dispatch` の `inputs.publish_date` にしか
 渡っていない（`.github/workflows/weekly-build.yml:66`）ため
 **schedule実行では空**になる
-- その場合 `scripts/generate-articles.ts:1197` の
+- その場合 `scripts/generate-articles.ts:1219` の
 `new Date().toISOString().split('T')[0]` が **UTC基準の日付＝金曜**を返す
 
 ## 実装
@@ -922,7 +950,15 @@ PR-0 で IGDB 側の一次フィルタ（LLM 提案経路のみ）は入った�
 
 - 記念日データは `data/japanese-events.json`（127件）
 - 通常の探索窓は未来方向7日（`getEventsInRange` の既定値）
-- 固定文言は `bedrock-client.ts:615-617` 付近、`generate-articles.ts:714-715` 付近
+- 固定文言 `'今週の注目ゲーム特集'` は **`bedrock-client.ts` の2箇所のみ**
+  （2026-08-08 に `grep -rn "今週の注目ゲーム特集" scripts/` で実測）:
+  - `:616` — フォールバック本体。**こちらが修正対象**
+  - `:1043` — `determineFeatureTheme` 内。**呼び出し元ゼロの死んだコードなので変更不要**
+    （調べ直す手間を省くため記載。削除するなら別PR）
+
+  ⚠️ 当初この節は `generate-articles.ts:714-715` も挙げていたが誤り。
+  同ファイルにこの文字列は存在しない（`:714-715` は `getEventsInRange(publishDate, 7)`
+  ＝探索窓の指定で、フォールバック文言とは別物）
 
   **探索窓を常時広げる案は採らない**（窓を10日にすると隣接号で同じ記念日を使う
   危険が51週中1週→38週に激増する）。段階的フォールバックである必要がある。
