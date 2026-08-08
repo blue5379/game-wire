@@ -526,4 +526,39 @@ describe('fetchSteamData - Steam 経路の DLC 除外（PR-A）', () => {
 
     expect(result.data!.topSellers.find((g) => g.appId === MISMATCH_APP_ID)).toBeUndefined();
   });
+
+  it('観測性の回帰: appId 取り違え かつ 実体が dlc の場合、type 除外より先に isSameSteamApp の mismatch 警告が出る（PR-A レビュー対応: 判定順序を isSameSteamApp → type に変更）', async () => {
+    const MISMATCH_DLC_APP_ID = 5555554;
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockSteamFetch({
+      topSellers: [
+        { id: MISMATCH_DLC_APP_ID, name: 'Featured側の別タイトル名' },
+      ],
+      appDetails: {
+        // Featured Categories の name と Storefront の実体名が乖離しており、
+        // かつ実体の type が dlc であるケース（Issue #102 型の取り違え + PR-A の DLC 除外が重なる境界）
+        [MISMATCH_DLC_APP_ID]: {
+          name: '全く無関係なDLC名',
+          type: 'dlc',
+        },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    // 除外される結果自体は変わらない
+    expect(result.data!.topSellers.find((g) => g.appId === MISMATCH_DLC_APP_ID)).toBeUndefined();
+
+    // 診断価値の高い appId/name mismatch 警告が出ること（type 除外より先に判定されるため）
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `appId/name mismatch in top_sellers: featured="Featured側の別タイトル名" storefront="全く無関係なDLC名" (appId: ${MISMATCH_DLC_APP_ID})`
+      )
+    );
+    // type 除外側の「非ゲーム」ログはこの appId については出ない（mismatch で先に continue するため）
+    expect(logSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining(`Skipping non-game app`)
+    );
+  });
 });

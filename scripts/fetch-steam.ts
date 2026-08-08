@@ -63,18 +63,18 @@ async function fetchTopSellers(): Promise<SteamGame[]> {
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
-        if (type !== STEAM_APP_TYPE_GAME) {
-          console.log(
-            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
-          );
-          await new Promise((r) => setTimeout(r, 200));
-          continue;
-        }
         // appId と Featured Categories の name が乖離している場合は除外
         if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
           console.warn(
             `  [Steam] appId/name mismatch in top_sellers: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+          );
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
@@ -282,17 +282,17 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
-        if (type !== STEAM_APP_TYPE_GAME) {
-          console.log(
-            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
+        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
+          console.warn(
+            `  [Steam] appId/name mismatch in new_releases: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
-          console.warn(
-            `  [Steam] appId/name mismatch in new_releases: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
@@ -318,17 +318,17 @@ async function fetchNewReleases(): Promise<SteamGame[]> {
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
-        if (type !== STEAM_APP_TYPE_GAME) {
-          console.log(
-            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
+        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
+          console.warn(
+            `  [Steam] appId/name mismatch in coming_soon: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
         }
-        if (storefrontName && !isSameSteamApp(item.name, storefrontName)) {
-          console.warn(
-            `  [Steam] appId/name mismatch in coming_soon: featured="${item.name}" storefront="${storefrontName}" (appId: ${item.id}) — skipping`
+        // DLC / demo / music 等（type !== 'game'）は候補から除外する（PR-A）
+        if (type !== STEAM_APP_TYPE_GAME) {
+          console.log(
+            `  [Steam] Skipping non-game app (type=${type ?? 'unknown'}): "${item.name}" (appId: ${item.id})`
           );
           await new Promise((r) => setTimeout(r, 200));
           continue;
