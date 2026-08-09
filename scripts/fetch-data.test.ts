@@ -19,6 +19,7 @@ import {
   deduplicateGames,
   isRemakeOrRemaster,
   isClassicRemakeAllowed,
+  isClassicPoolGameType,
   isWithinIndieReleaseWindow,
   aggregateGames,
   toPersistableSelectedGames,
@@ -1166,6 +1167,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'not cooldown classic',
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/cover2.jpg',
       summary: 'summary',
     });
@@ -1193,6 +1195,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'at threshold',
       totalRating: 90,
       totalRatingCount: 200,
+      gameType: 0,
       coverImage: 'https://example.com/cover2.jpg',
       summary: 'summary',
     });
@@ -1220,6 +1223,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'at rating threshold',
       totalRating: 85,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/cover2.jpg',
       summary: 'summary',
     });
@@ -1246,6 +1250,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'has rating data',
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/cover2.jpg',
       summary: 'summary',
     });
@@ -1315,6 +1320,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'untouched classic',
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/4.jpg',
       summary: 's',
     });
@@ -1340,6 +1346,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'should survive',
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/cover.jpg',
       summary: 'summary',
     });
@@ -1358,6 +1365,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'lower count',
       totalRating: 86,
       totalRatingCount: 300,
+      gameType: 0,
       coverImage: 'https://example.com/1.jpg',
       summary: 's',
     });
@@ -1366,6 +1374,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'higher count',
       totalRating: 86,
       totalRatingCount: 5000,
+      gameType: 0,
       coverImage: 'https://example.com/2.jpg',
       summary: 's',
     });
@@ -1384,6 +1393,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'first in array',
       totalRating: 86,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/1.jpg',
       summary: 's',
     });
@@ -1392,6 +1402,7 @@ describe('buildClassicCandidates', () => {
       normalizedTitle: 'second in array',
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
       coverImage: 'https://example.com/2.jpg',
       summary: 's',
     });
@@ -1588,6 +1599,7 @@ describe('deduplicateGames — totalRating/totalRatingCount/classicRemakeEligibl
       source: ['igdb'],
       totalRating: 90,
       totalRatingCount: 400,
+      gameType: 0,
     });
 
     const belowSteam = makeGame({
@@ -2347,6 +2359,145 @@ describe('isClassicRemakeAllowed — J-3-e ベースのリメイク許可判定�
 
   it('境界値: gameType=11（Port）は Remake/Remaster ではないため true', () => {
     expect(isClassicRemakeAllowed(makeGame({ gameType: 11, classicRemakeEligible: undefined }))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isClassicPoolGameType — 名作枠 game_type ゲート（§5.4決着、code-review 指摘対応）
+//
+// buildClassicCandidates は数値条件（totalRating/totalRatingCount）しか §5.4 の母集団条件を
+// 再現していなかった。isClassicRemakeAllowed は gameType が 8/9 のときだけ判定するため、
+// Expansion(2)/Bundle(3)/Standalone Expansion(4)/Mod(5)/Expanded Game(10)/Port(11) が
+// 素通りしてしまう欠陥があった（第2層エンリッチ enrichGameWithIGDB が mainGameOnly 無しで
+// searchGameByName を呼ぶため、任意の gameType のエントリが totalRating/totalRatingCount 付きで
+// GameData に転記されうる）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('isClassicPoolGameType — 名作枠 game_type ゲート（§5.4決着）', () => {
+  it('gameType が 0/8/9 なら true（同じテストで3種類とも確認）', () => {
+    expect(isClassicPoolGameType(makeGame({ gameType: 0 }))).toBe(true);
+    expect(isClassicPoolGameType(makeGame({ gameType: 8 }))).toBe(true);
+    expect(isClassicPoolGameType(makeGame({ gameType: 9 }))).toBe(true);
+  });
+
+  it('gameType が 0/8/9 以外（Expansion=2, Bundle=3, Standalone Expansion=4, Mod=5, Expanded Game=10, Port=11）なら false', () => {
+    for (const gameType of [2, 3, 4, 5, 10, 11]) {
+      expect(isClassicPoolGameType(makeGame({ gameType }))).toBe(false);
+    }
+  });
+
+  it('境界値: gameType が undefined なら false（meetsClassicPoolThresholds と同じ「undefined は母集団に含めない」立場に揃える）', () => {
+    expect(isClassicPoolGameType(makeGame({}))).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildClassicCandidates — game_type ゲートの統合（§5.4決着、code-review 指摘対応の回帰テスト）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildClassicCandidates — game_type ゲート（DLC・拡張版・拡張ゲームの混入防止）', () => {
+  it('The Witcher 3: Wild Hunt（gameType=0）は採用される。同じテストで GOTY Edition（gameType=3）と Blood and Wine（gameType=2）が除外されることを確認する', () => {
+    // 実測値（管理者が本日ライブAPIで確認、PR #254 code-review指摘）。
+    // ⚠️ GOTY Edition / Blood and Wine はどちらも totalRating/totalRatingCount が
+    // 数値条件を余裕で満たす。gameType を見て初めて落とせる点がこのテストの肝。
+    const witcher3 = makeGame({
+      title: 'The Witcher 3: Wild Hunt',
+      normalizedTitle: 'the witcher 3 wild hunt',
+      gameType: 0,
+      totalRating: 92.8,
+      totalRatingCount: 5426,
+      coverImage: 'https://example.com/witcher3.jpg',
+      summary: 's',
+    });
+    const gotyEdition = makeGame({
+      title: 'The Witcher 3: Wild Hunt - Game of the Year Edition',
+      normalizedTitle: 'the witcher 3 wild hunt game of the year edition',
+      gameType: 3, // Bundle
+      totalRating: 90,
+      totalRatingCount: 569,
+      coverImage: 'https://example.com/witcher3-goty.jpg',
+      summary: 's',
+    });
+    const bloodAndWine = makeGame({
+      title: 'The Witcher 3: Wild Hunt - Blood and Wine',
+      normalizedTitle: 'the witcher 3 wild hunt blood and wine',
+      gameType: 2, // Expansion
+      totalRating: 91,
+      totalRatingCount: 482,
+      coverImage: 'https://example.com/witcher3-baw.jpg',
+      summary: 's',
+    });
+
+    const result = buildClassicCandidates([witcher3, gotyEdition, bloodAndWine], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    const titles = result.map((g) => g.title);
+    expect(titles).toContain('The Witcher 3: Wild Hunt');
+    expect(titles).not.toContain('The Witcher 3: Wild Hunt - Game of the Year Edition');
+    expect(titles).not.toContain('The Witcher 3: Wild Hunt - Blood and Wine');
+  });
+
+  it('gameType=10（Expanded Game。Final Fantasy VII の実測値 totalRating=87.8, totalRatingCount=1630）は除外される', () => {
+    const ff7 = makeGame({
+      title: 'Final Fantasy VII',
+      normalizedTitle: 'final fantasy vii',
+      gameType: 10,
+      totalRating: 87.8,
+      totalRatingCount: 1630,
+      coverImage: 'https://example.com/ff7.jpg',
+      summary: 's',
+    });
+
+    const result = buildClassicCandidates([ff7], { cooldown: new Set(), alreadySelected: [] });
+
+    expect(result.map((g) => g.title)).not.toContain('Final Fantasy VII');
+  });
+
+  it('境界値: gameType が undefined で数値条件は満たす候補は除外される。ポジティブコントロールとして gameType=0 の候補は残る', () => {
+    const undefinedType = makeGame({
+      title: 'Undefined Type Game',
+      normalizedTitle: 'undefined type game',
+      // gameType 未設定
+      totalRating: 90,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/undef.jpg',
+      summary: 's',
+    });
+    const mainGame = makeGame({
+      title: 'Main Game Control',
+      normalizedTitle: 'main game control',
+      gameType: 0,
+      totalRating: 90,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/main.jpg',
+      summary: 's',
+    });
+
+    const result = buildClassicCandidates([undefinedType, mainGame], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    const titles = result.map((g) => g.title);
+    expect(titles).not.toContain('Undefined Type Game');
+    expect(titles).toContain('Main Game Control');
+  });
+
+  it('gameType=8/9 は classicRemakeEligible===true なら引き続き採用される（新ゲートが既存の J-3-e 判定と矛盾しないこと）', () => {
+    const allowedRemake = makeGame({
+      title: 'Allowed Remake',
+      normalizedTitle: 'allowed remake',
+      gameType: 8,
+      classicRemakeEligible: true,
+      totalRating: 90,
+      totalRatingCount: 500,
+      coverImage: 'https://example.com/remake.jpg',
+      summary: 's',
+    });
+
+    const result = buildClassicCandidates([allowedRemake], { cooldown: new Set(), alreadySelected: [] });
+
+    expect(result.map((g) => g.title)).toContain('Allowed Remake');
   });
 });
 

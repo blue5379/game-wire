@@ -1065,6 +1065,14 @@ async function fetchUpcomingGames(
  * 旧実装（`hypes > 100` & `sort hypes desc` & `limit 30`、Main Game のみ）は廃止した。
  * 旧実装は実質「発売前フォロー数」で母集団が決まり、§5.4/§5.5 が要求する評価母数ベースの
  * 母集団と無関係だった。
+ *
+ * ⚠️ `CLASSIC_TOTAL_RATING_COUNT_MIN` は**引き上げ方向にしか効かない**（code-review 指摘）。
+ * `limit 200`（§5.4決定事項）が `sort total_rating_count desc` と組み合わさっているため、
+ * 閾値を既定の 200 より下げても返る結果は変わらない（母集団は既定閾値で約268件あり、
+ * 常に評価母数上位200件がそのまま返るため）。一方 `buildClassicCandidates`
+ * （`meetsClassicPoolThresholds`）は選定側で下げた閾値をそのまま数値比較に使うので、
+ * クエリ側と選定側で閾値の意味が食い違う非対称がある。この非対称は `limit 200` という
+ * §5.4 の決定事項に由来する構造的な性質であり、意図的に挙動は変えていない。
  */
 async function fetchClassicGames(
   clientId: string,

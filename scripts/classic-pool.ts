@@ -40,6 +40,12 @@ export function readClassicTotalRatingMin(): number {
  * 名作枠の評価母数下限を読む（環境変数 `CLASSIC_TOTAL_RATING_COUNT_MIN` で上書き可能）。
  * 呼び出し時（モジュール読み込み時ではない）に process.env を読むため、
  * `vi.stubEnv` でテストから差し替えて検証できる。
+ *
+ * ⚠️ 母集団クエリ（`fetch-igdb.ts` の `fetchClassicGames`）側では、この値を**引き上げる**方向
+ * にしか実際の効果が無い（`limit 200` と `sort total_rating_count desc` の組み合わせにより、
+ * 既定値より下げても常に評価母数上位200件がそのまま返るため）。一方、選定側
+ * （`meetsClassicPoolThresholds` 経由の `buildClassicCandidates`）はこの値を下げた場合でも
+ * そのまま数値比較に使う。クエリ側と選定側で閾値の意味が食い違う非対称があることに注意。
  */
 export function readClassicTotalRatingCountMin(): number {
   return readEnvNumber('CLASSIC_TOTAL_RATING_COUNT_MIN', DEFAULT_CLASSIC_TOTAL_RATING_COUNT_MIN);
