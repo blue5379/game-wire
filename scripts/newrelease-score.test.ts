@@ -13,6 +13,7 @@ import {
   type NewReleaseScoreParams,
 } from './newrelease-score.js';
 import type { GameData } from './types.js';
+import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
 
 // テスト用 GameData ファクトリ（必須フィールドのみ設定）
 function makeGame(overrides: Partial<GameData> = {}): GameData {
@@ -35,6 +36,7 @@ describe('loadNewReleaseScoreParams - 環境変数からのパラメータ読み
     vi.stubEnv('NEWRELEASE_SCORE_WEIGHT_CRITIC', '');
     vi.stubEnv('NEWRELEASE_SCORE_WEIGHT_VOTES', '');
     vi.stubEnv('NEWRELEASE_SCORE_WEIGHT_STEAM', '');
+    vi.stubEnv('NEWRELEASE_SCORE_WEIGHT_DOMESTIC', '');
     vi.stubEnv('NEWRELEASE_SCORE_CRITIC_COUNT_MIN', '');
     vi.stubEnv('NEWRELEASE_SCORE_CRITIC_COUNT_FULL', '');
     vi.stubEnv('NEWRELEASE_SCORE_VOTES_MIN', '');
@@ -45,6 +47,7 @@ describe('loadNewReleaseScoreParams - 環境変数からのパラメータ読み
     expect(params.weightCritic).toBe(1.0);
     expect(params.weightVotes).toBe(1.0);
     expect(params.weightSteam).toBe(1.0);
+    expect(params.weightDomestic).toBe(1.0);
     expect(params.criticCountMin).toBe(2);
     expect(params.criticCountFull).toBe(4);
     expect(params.votesMin).toBe(15);
@@ -207,6 +210,72 @@ describe('computeNewReleaseScore - Steam軸(steam)', () => {
   });
 });
 
+describe('computeNewReleaseScore - 国内販売軸(domestic)（§2.3 PR-B2）', () => {
+  it('1位→100点、50位→2点、25位→52点（分母はAMAZON_RANKING_SLOT_COUNT=50固定。フィクスチャはリテラルで検証し定数は参照しない）', () => {
+    const rank1 = makeGame({ title: 'Rank1' });
+    const rank50 = makeGame({ title: 'Rank50' });
+    const rank25 = makeGame({ title: 'Rank25' });
+
+    const r1 = computeNewReleaseScore(rank1, { steamSlotCount: 20, amazonRank: 1 });
+    const r50 = computeNewReleaseScore(rank50, { steamSlotCount: 20, amazonRank: 50 });
+    const r25 = computeNewReleaseScore(rank25, { steamSlotCount: 20, amazonRank: 25 });
+
+    expect(r1.axes.find((a) => a.axis === 'domestic')!.raw).toBeCloseTo(100, 5);
+    expect(r50.axes.find((a) => a.axis === 'domestic')!.raw).toBeCloseTo(2, 5);
+    expect(r25.axes.find((a) => a.axis === 'domestic')!.raw).toBeCloseTo(52, 5);
+  });
+
+  it('amazonRank 未指定なら domestic 軸は axes に含まれない（棄権であって0点ではない）。同じテスト内で、指定すれば含まれることも確認する', () => {
+    const game = makeGame({ title: 'NoRank' });
+
+    const withoutRank = computeNewReleaseScore(game, { steamSlotCount: 20 });
+    expect(withoutRank.axes.find((a) => a.axis === 'domestic')).toBeUndefined();
+
+    const withRank = computeNewReleaseScore(game, { steamSlotCount: 20, amazonRank: 10 });
+    expect(withRank.axes.find((a) => a.axis === 'domestic')).toBeDefined();
+  });
+
+  it('domestic だけが突出しているゲームで topAxis === "domestic" になる（4軸の最大値集約）', () => {
+    // votes: rc=15（保有条件ちょうど）→ raw = 100*log10(15)/log10(500) ≈ 43.58
+    // domestic: amazonRank=1 → raw = 100
+    // 100 > 43.58 なので domestic が勝つ
+    const game = makeGame({ title: 'DomesticDominant', igdbRatingCount: 15 });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, amazonRank: 1 });
+    expect(result.topAxis).toBe('domestic');
+    expect(result.score).toBeCloseTo(100, 5);
+  });
+
+  it('NEWRELEASE_SCORE_WEIGHT_DOMESTIC=0 で domestic の weighted が 0 になる（Number(x)||default だと0が既定値に化けるバグの回帰防止）', () => {
+    vi.stubEnv('NEWRELEASE_SCORE_WEIGHT_DOMESTIC', '0');
+    const game = makeGame({ title: 'ZeroWeight' });
+    const result = computeNewReleaseScore(game, { steamSlotCount: 20, amazonRank: 1 });
+    const domestic = result.axes.find((a) => a.axis === 'domestic');
+    expect(domestic).toBeDefined();
+    expect(domestic!.raw).toBeCloseTo(100, 5); // 素点自体は0のまま変わらない
+    expect(domestic!.weighted).toBe(0); // 重みだけが0になる
+  });
+});
+
+describe('sortByNewReleaseScore - amazonRanks', () => {
+  it('amazonRanks を渡すと Amazon 上位のゲームが上に来る', () => {
+    const top = makeGame({ title: 'AmazonTop' });
+    const low = makeGame({ title: 'AmazonLow' });
+    const none = makeGame({ title: 'NoAmazon' });
+
+    const amazonRanks: AmazonRankIndex = {
+      lookup: (g) => {
+        if (g.title === 'AmazonTop') return 1;
+        if (g.title === 'AmazonLow') return 50;
+        return undefined;
+      },
+      size: 2,
+    };
+
+    const sorted = sortByNewReleaseScore([low, none, top], { steamSlotCount: 20, amazonRanks });
+    expect(sorted.map((g) => g.title)).toEqual(['AmazonTop', 'AmazonLow', 'NoAmazon']);
+  });
+});
+
 describe('computeNewReleaseScore - 集約は max（Σ ではない）', () => {
   it('2軸保有時に最大値が採られる（合計だと異なる値になるフィクスチャで検証）', () => {
     // critic: agg=84, n=4 → raw=84
@@ -239,6 +308,7 @@ describe('computeNewReleaseScore - 棄権の扱い', () => {
       weightCritic: 1.0,
       weightVotes: 1.0,
       weightSteam: 0, // Steam軸を無効化
+      weightDomestic: 1.0,
       criticCountMin: 2,
       criticCountFull: 4,
       votesMin: 15,
@@ -316,6 +386,7 @@ describe('computeNewReleaseScore - votesFull の安全ガード（修正4）', (
     weightCritic: 1.0,
     weightVotes: 1.0,
     weightSteam: 1.0,
+    weightDomestic: 1.0,
     criticCountMin: 2,
     criticCountFull: 4,
     votesMin: 15,
@@ -351,6 +422,7 @@ describe('computeNewReleaseScore - criticCountFull の安全ガード（修正4�
       weightCritic: 1.0,
       weightVotes: 1.0,
       weightSteam: 1.0,
+      weightDomestic: 1.0,
       criticCountMin: 0,
       criticCountFull: 0,
       votesMin: 15,

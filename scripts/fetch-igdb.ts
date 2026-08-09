@@ -927,9 +927,22 @@ async function fetchRecentPopularGamesByRatingCount(
  * 【未発売のみ】これから発売されるゲームを取得する（§2.4）。
  *
  * 母集団の条件（§2.4）: 発売日が JST 当日 0 時 以上・JST 当日 0 時 + 90 日 以下、
- * `hypes > 20`（注目度のフロア）、Main Game のみ（DLC・拡張・バンドル・移植・
- * リメイク・リマスターを除外。fetchRecentPopularGames と異なり Remake/Remaster は含めない）。
+ * `hypes > 20`（注目度のフロア）、Main Game / Remake / Remaster
+ * （DLC・拡張・バンドル・移植は除外。発売済みクエリ fetchRecentPopularGames /
+ * fetchRecentPopularGamesByRatingCount と同じ gameTypes を許可する）。
  * 並び順は発売日の昇順（hypes はソート軸に使わない。§2.4）。
+ *
+ * Issue #244: §6.2（新作紹介）はリメイク・リマスターを許可しているのに、旧実装の
+ * このクエリは Main Game のみに絞っていたため、未発売のリメイク・リマスターが
+ * 発売済みクエリにも未発売クエリにも入らない仕様矛盾があった（例: 発売前の
+ * Rayman Legends Retold）。§2.4 側を緩めて発売済みクエリと揃える方針でユーザー
+ * 判断確定済み。
+ *
+ * ⚠️ 管理者が実測済み（2026-08-09）: この変更は当日の実データでは取得結果を変えない。
+ * where 句合致は 33件→34件に増えるが、`sort first_release_date asc; limit 20` の
+ * 先頭20件は変わらず、Rayman Legends Retold は緩和後も34件中23番目で limit に
+ * 切られたまま。これは想定どおりであり、目的は仕様矛盾の解消であって取得結果を
+ * 増やすことではない。
  *
  * ⚠️ §2.4 が規定する「確定日のみ」フィルタ（`release_dates.date_format`）はここでは
  * 実装しない。担当は PR-C（別 PR）。このクエリは曖昧な発売日（「2026年Q3」等）の
@@ -945,7 +958,9 @@ async function fetchUpcomingGames(
 
     const query = `
       fields ${IGDB_POOL_QUERY_FIELDS};
-      where first_release_date >= ${dayStart} & first_release_date <= ${ninetyDaysLater} & hypes > 20 & ${buildIgdbCommonFilters()};
+      where first_release_date >= ${dayStart} & first_release_date <= ${ninetyDaysLater} & hypes > 20 & ${buildIgdbCommonFilters({
+        gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
+      })};
       sort first_release_date asc;
       limit 20;
     `;

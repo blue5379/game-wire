@@ -758,7 +758,7 @@ export async function generateFeatureArticle(
   const allCandidates = deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified]);
 
   // 品質フィルタ: qualified / fringe に分割
-  const qualified = allCandidates.filter(isQualifiedGame);
+  const qualified = allCandidates.filter((g) => isQualifiedGame(g));
   const fringe = allCandidates.filter((g) => !isQualifiedGame(g));
   console.log(`  Feature candidates: ${qualified.length} qualified, ${fringe.length} fringe`);
 

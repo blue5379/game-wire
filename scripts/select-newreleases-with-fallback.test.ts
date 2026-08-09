@@ -79,6 +79,13 @@ describe('hasExistenceEvidence', () => {
     const g = makeGame({ steamRank: 5, igdbRatingCount: 10, youtubePopularity: 5000 });
     expect(hasExistenceEvidence(g)).toBe(true);
   });
+
+  // §2.3 PR-B2: Amazon 国内ランキング掲載自体を実存の強い裏付けとして扱う経路を追加。
+  it('amazonRanked: true だけで true になる。同じテスト内で、シグナルなし＋optionsなしなら false であることも確認する', () => {
+    const g = makeGame({});
+    expect(hasExistenceEvidence(g)).toBe(false);
+    expect(hasExistenceEvidence(g, { amazonRanked: true })).toBe(true);
+  });
 });
 
 // ────────────────────────────────────────────────

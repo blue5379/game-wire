@@ -24,6 +24,7 @@ import {
 import { isFanGame } from './game-filter.js';
 import { isIndieGame } from './indie-classifier.js';
 import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData, MetacriticData } from './types.js';
+import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
 function makeIgdbGame(overrides: Partial<IGDBGame> = {}): IGDBGame {
@@ -960,6 +961,75 @@ describe('buildNewReleaseCandidates', () => {
     });
 
     expect(result).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildNewReleaseCandidates — Amazon 経路（§2.3 PR-B2、第4軸「国内販売」の配線）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {
+  const releasedAfter = new Date('2026-05-01');
+
+  it('amazonRanks を渡すと、Amazon掲載のみで品質・実存条件を満たすゲームが候補に入る。渡さなければ同じゲームは候補に入らない（ポジティブコントロール）', () => {
+    // 他のシグナル（steamRank/steamPlayers/igdbRatingCount/metascore/aggregatedRatingCount）を
+    // 一切持たない国内専用タイトルを想定
+    const amazonOnly = makeGame({
+      title: 'Amazon Only Game',
+      normalizedTitle: 'amazon only game',
+      releaseDate: '2026-06-01',
+    });
+
+    const amazonRanks: AmazonRankIndex = {
+      lookup: (g) => (g.title === 'Amazon Only Game' ? 10 : undefined),
+      size: 1,
+    };
+
+    const withAmazon = buildNewReleaseCandidates([amazonOnly], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+      amazonRanks,
+    });
+    expect(withAmazon.map((g) => g.title)).toContain('Amazon Only Game');
+
+    // ポジティブコントロール: amazonRanks を渡さなければ同じゲームは候補に入らない
+    const withoutAmazon = buildNewReleaseCandidates([amazonOnly], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+    });
+    expect(withoutAmazon.map((g) => g.title)).not.toContain('Amazon Only Game');
+  });
+
+  it('amazonRanks を渡した場合に候補の並びが Amazon 順位を反映する', () => {
+    const amazonTop = makeGame({
+      title: 'Amazon Top',
+      normalizedTitle: 'amazon top',
+      releaseDate: '2026-06-01',
+    });
+    const amazonLow = makeGame({
+      title: 'Amazon Low',
+      normalizedTitle: 'amazon low',
+      releaseDate: '2026-06-01',
+    });
+
+    const amazonRanks: AmazonRankIndex = {
+      lookup: (g) => {
+        if (g.title === 'Amazon Top') return 1;
+        if (g.title === 'Amazon Low') return 40;
+        return undefined;
+      },
+      size: 2,
+    };
+
+    const result = buildNewReleaseCandidates([amazonLow, amazonTop], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+      amazonRanks,
+    });
+
+    expect(result.map((g) => g.title)).toEqual(['Amazon Top', 'Amazon Low']);
   });
 });
 

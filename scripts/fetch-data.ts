@@ -14,6 +14,7 @@ import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
+import { fetchAmazonRanking, type AmazonRankIndex } from './fetch-amazon-ranking.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
@@ -962,12 +963,19 @@ export function isAlreadySelected(
 }
 
 /**
- * 新作枠の候補を絞り込み、3軸スコア降順に並べる（§2.3）。
+ * 新作枠の候補を絞り込み、4軸スコア降順に並べる（§2.3。第4軸=国内販売は PR-B2）。
  * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
+ *
+ * amazonRanks 省略時は Amazon 経路が無効になるだけで、従来（3軸・Amazon非考慮）どおり動く。
  */
 export function buildNewReleaseCandidates(
   games: GameData[],
-  options: { releasedAfter: Date; cooldown: Set<string>; steamTopSellersCount: number }
+  options: {
+    releasedAfter: Date;
+    cooldown: Set<string>;
+    steamTopSellersCount: number;
+    amazonRanks?: AmazonRankIndex;
+  }
 ): GameData[] {
   const filtered = games
     .filter((g) => {
@@ -975,12 +983,20 @@ export function buildNewReleaseCandidates(
       return new Date(g.releaseDate) > options.releasedAfter;
     })
     .filter((g) => !isFanGame(g))
-    .filter((g) => isQualifiedGame(g))
+    .filter((g) => {
+      // Amazon 掲載の有無は品質ゲート（isQualifiedGame）と実存フィルタ（hasExistenceEvidence）
+      // の両方で使うため、lookup は1回だけ呼んで結果（真偽値）を使い回す。順位そのものは
+      // 変数に保持しない（ライセンス制約 §2.3。掲載の有無 boolean のみ扱う）。
+      const amazonRanked = options.amazonRanks?.lookup(g) !== undefined;
+      return isQualifiedGame(g, { amazonRanked }) && hasExistenceEvidence(g, { amazonRanked });
+    })
     .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => hasExistenceEvidence(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle));
 
-  return sortByNewReleaseScore(filtered, { steamSlotCount: options.steamTopSellersCount });
+  return sortByNewReleaseScore(filtered, {
+    steamSlotCount: options.steamTopSellersCount,
+    amazonRanks: options.amazonRanks,
+  });
 }
 
 // 新作枠以外の枠から除外するゲーム種別（IGDB game_type、§6.2）
@@ -1139,7 +1155,7 @@ export function buildClassicCandidates(
  */
 async function selectGamesForArticles(
   games: GameData[],
-  options: { steamTopSellersCount: number }
+  options: { steamTopSellersCount: number; amazonRanks: AmazonRankIndex }
 ): Promise<SelectedGames> {
   const now = new Date();
 
@@ -1171,13 +1187,25 @@ async function selectGamesForArticles(
     releasedAfter: threeMonthsAgo,
     cooldown: newReleaseCooldown,
     steamTopSellersCount: options.steamTopSellersCount,
+    amazonRanks: options.amazonRanks,
   });
 
   console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
   for (const g of recentGamesCandidates) {
-    const score = computeNewReleaseScore(g, { steamSlotCount: options.steamTopSellersCount });
-    const axesSummary = score.axes.map((a) => `${a.axis}=${a.raw.toFixed(1)}`).join(', ');
-    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, score=${score.score.toFixed(1)}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
+    const score = computeNewReleaseScore(g, {
+      steamSlotCount: options.steamTopSellersCount,
+      amazonRank: options.amazonRanks.lookup(g),
+    });
+    // domestic 軸の raw は Amazon 順位から逆算できる値のため、他の軸と違って伏せる
+    // （§2.3 ライセンス制約: 順位・順位から逆算できる値は console に出さない。掲載の有無まで）
+    const axesSummary = score.axes
+      .map((a) => (a.axis === 'domestic' ? 'domestic=***' : `${a.axis}=${a.raw.toFixed(1)}`))
+      .join(', ');
+    const amazonRanked = score.axes.some((a) => a.axis === 'domestic');
+    // topAxis が domestic のとき、集約スコア（score.score）は domestic の weighted 値と
+    // 一致し、そのまま Amazon 順位を逆算できてしまうため、この場合だけ score も伏せる
+    const scoreDisplay = score.topAxis === 'domestic' ? '***' : score.score.toFixed(1);
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, amazon=${amazonRanked ? 'yes' : 'no'}, score=${scoreDisplay}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
   }
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
@@ -1282,12 +1310,13 @@ async function main(): Promise<void> {
 
   // 各データソースから並列でデータ取得
   console.log('Fetching data from all sources...');
-  const [steamResult, youtubeResult, igdbResult, metacriticResult] =
+  const [steamResult, youtubeResult, igdbResult, metacriticResult, amazonRanks] =
     await Promise.all([
       fetchSteamData(),
       fetchYouTubeData(),
       fetchIGDBData(),
       fetchMetacriticData(),
+      fetchAmazonRanking(),
     ]);
 
   // エラーチェック
@@ -1338,6 +1367,7 @@ async function main(): Promise<void> {
   console.log('Selecting games for articles...');
   const selectedGames = await selectGamesForArticles(games, {
     steamTopSellersCount: steamData.topSellers.length,
+    amazonRanks,
   });
   console.log(`New Releases: ${selectedGames.newReleases.length}`);
   console.log(`Indies: ${selectedGames.indies.length}`);
