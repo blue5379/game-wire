@@ -14,7 +14,7 @@
 | **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
-| 名作枠PR | `feat/classic-slot-redesign` | 未着手 | 関連 **#238** | PR-D と直列。⚠️ **スコープ明記が必要**（#238）: 母集団クエリだけでなく**選定側 `buildClassicCandidates`（`fetch-data.ts`）も評価母数ベースに変更する**こと。現在は `igdbRating >= 85` だけで通すため、他クエリ経由でプールに入った発売直後のタイトル（実測: 『Splatoon Raiders』`total_rating_count=7`）を拾ってしまう。PR-B の教訓（3クエリの結果は1プールに平坦化される）と同型 |
+| 名作枠PR | `feat/issue-classic-slot-population` | ✅ **マージ済み**（2026-08-09。`0a2b025`。merge commit） | 関連 **#238** / PR #254 | **ブランチ名は当初案の `feat/classic-slot-redesign` から変更**。29ファイル / **1106テスト**（着手前 27 / 1021）。コミット2本（実装 → レビュー対応）。母集団条件を評価母数ベース（`total_rating >= 85 & total_rating_count >= 200`）に変更し、選定側 `buildClassicCandidates` も同条件に一本化。実測: **名作枠選定が `Splatoon Raiders` → `The Witcher 3: Wild Hunt` に変化**、他枠は不変。**着手前検証で `parent_game` が展開可能なことを発見**し、決着ブロックが前提としていた ID 集合照合が不要になった（`igdbId` 追加も不要）。**レビューで欠陥1件を検出・修正**（親の `game_type` を見ずに `Final Fantasy VII Remake` を誤除外）。**`/code-review` 指摘4件のうち2件を本PRで対応**（選定側の `game_type` ゲート欠落・`limit 200` の非対称）、**2件を #255 / #256 に分離**（Creator's Eye の影響記述要求・特集プレフィルタのプロンプト肥大） |
 | PR-I | `feat/indie-scale-classification` | ✅ **マージ済み**（2026-08-09。`7a2a0da`。squash） | #231（Closed）/ 関連 #175（`Refs`）/ PR #237 | 26ファイル / **960テスト**（着手前 26 / 865）。コミット2本（実装 → レビュー対応）。**着手後に「決着済みだが未実装」の論点A（新作枠の企業規模ゲート撤廃）を発見し、同PRで実装**（下記「実施結果」）。Issue #231 が提案していた方針は決着で棄却された A-3 相当だった。**分離した Issue は 7 件**（#234 / #235 / #236 / #238 / #239 / #240 / #241） |
 | PR-E | `fix/prompt-excerpt-length` | 未着手 | - | PR-C と同じ箇所を触る。どちらか先に入れてリベース |
 | PR-F0 | `fix/publish-date-jst` | 未着手 | - | PR-F の直前に入れる |
@@ -263,7 +263,48 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 `AMAZON_RANKING_SLOT_COUNT` :17 / `isNonGameProduct` :63 / `normalizeAmazonProductTitle` :94 /
 `buildAmazonRankIndex` :164 / `fetchAmazonRanking` :228
 
-⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
+⚠️ **さらに名作枠PR（#254）で `fetch-igdb.ts` / `fetch-data.ts` / `types.ts` / `fetch-web-search.ts` の行番号がずれ、
+`scripts/classic-pool.ts` が新設された。ずれ幅は一様ではない。** マージ後の実測値（2026-08-09。`434e660` → `0a2b025`）:
+
+| シンボル（ファイル） | 名作枠PR 前 | 名作枠PR マージ後 | ずれ |
+|---|---|---|---|
+| `IGDB_GAME_FIELDS`（`fetch-igdb.ts`） | :404 | :411 | +7 |
+| `mapRawGameToIGDBGame`（`fetch-igdb.ts`） | :420 | :475 | +55 |
+| `IGDB_WEBSITE_TYPE`（`fetch-igdb.ts`） | :309 | :310 | +1 |
+| `computeClassicRemakeEligible`（`fetch-igdb.ts`。本PRで新設） | — | :455 | 新設 |
+| `IGDB_POOL_QUERY_FIELDS`（`fetch-igdb.ts`） | :738 | :796 | +58 |
+| `mapPoolRawGameToIGDBGame`（`fetch-igdb.ts`） | :783 | :849 | +66 |
+| `fetchRecentPopularGames`（`fetch-igdb.ts`） | :850 | :919 | +69 |
+| `fetchRecentPopularGamesByRatingCount`（`fetch-igdb.ts`） | :895 | :964 | +69 |
+| `fetchUpcomingGames`（`fetch-igdb.ts`） | :951 | :1020 | +69 |
+| `fetchClassicGames`（`fetch-igdb.ts`） | :985 | :1077 | +92 |
+| `fetchIndieGames`（`fetch-igdb.ts`） | :1015 | :1116 | +101 |
+| `fetchIGDBData`（`fetch-igdb.ts`） | :1049 | :1150 | +101 |
+| `buildNewReleaseCandidates`（`fetch-data.ts`） | :971 | :984 | +13 |
+| `isRemakeOrRemaster`（`fetch-data.ts`） | :1013 | :1037 | +24 |
+| `isClassicRemakeAllowed`（`fetch-data.ts`。本PRで新設） | — | :1055 | 新設 |
+| `isClassicPoolGameType`（`fetch-data.ts`。本PRで新設。`/code-review` 対応） | — | :1078 | 新設 |
+| `buildIndieCandidates`（`fetch-data.ts`） | :1109 | :1173 | +64 |
+| `buildClassicCandidates`（`fetch-data.ts`） | :1132 | :1226 | +94 |
+| `selectGamesForArticles`（`fetch-data.ts`） | :1156 | :1245 | +89 |
+| `toPersistableSelectedGames`（`fetch-data.ts`） | :1328 | :1417 | +89 |
+| `IGDBGame` 型（`types.ts`） | :42 | :42 | 0 |
+| `GameData` 型（`types.ts`） | :94 | :111 | +17 |
+| `PromptTemplates.classicSystem`（`bedrock-client.ts`） | :306 | :306 | 0（文字列内部のみ変更） |
+| `searchGameHistory`（`fetch-web-search.ts`） | :130 | :133 | +3 |
+| `searchGameInfo`（`fetch-web-search.ts`） | :141 | :149 | +8 |
+| `generateClassicArticle`（`generate-articles.ts`） | :1035 | :1035 | 0 |
+| `finalizeGameMetadata`（`finalize-game-metadata.ts`） | :39 | :39 | 0 |
+
+**特筆すべき点**: `fetch-igdb.ts` 内で `mapRawGameToIGDBGame` 以降は +55〜+58、母集団クエリ群は +66〜+101 と**後ろほど大きい**。
+`fetch-data.ts` の `isRemakeOrRemaster`（+24）は直前の `buildNewReleaseCandidates`（+13）より大きくずれており、
+**同じファイル内でも隣接シンボル間でずれ幅が単調ではない。**
+
+新設ファイル `scripts/classic-pool.ts` の主要シンボル（新規なので「ずれ」ではなく初出の位置として別記）:
+`DEFAULT_CLASSIC_TOTAL_RATING_MIN` :10 / `DEFAULT_CLASSIC_TOTAL_RATING_COUNT_MIN` :13 /
+`readClassicTotalRatingMin` :35 / `readClassicTotalRatingCountMin` :50 / `meetsClassicPoolThresholds` :60。
+
+⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I / 名作枠PR）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
 **PR-0 / PR-0.5 の「当初の指示」節および PR-0 の「実施結果」節の行番号は記載時点のまま**
 （例: `:124` の `searchGameByName:486` は現在 `:498`、`:172` の `:490` は現在 `:502`、
 `:187` の `__test :409` は現在 `:421`、`:451` の呼び出し元 `:512/:656/:751/:849` は現在
@@ -1317,7 +1358,10 @@ Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
 
 # 名作枠PR: 母集団条件の変更 + リメイク条件 + 📜プロンプト修正
 
-- ブランチ: `feat/classic-slot-redesign`
+> ✅ **実装完了・レビュー対応済み（2026-08-09）。PR #254（マージ `0a2b025`）。** 以下は当初の指示だが、
+> 実装時に決着ブロックの前提が変わった点（`parent_game` 展開）があるため、**「実施結果」節を必ず読むこと。**
+
+- ブランチ: `feat/issue-classic-slot-population`（**当初案の `feat/classic-slot-redesign` から変更**）
 - 仕様: §5.4、§5.5、§5.6、§5.8（並び順）
 - 決着ブロック: `grep -n "論点B\|J-3\|論点G" docs/article-category-spec-review.md`
 - **PR-D と直列**
@@ -1366,6 +1410,84 @@ Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
   正当な名作6件のみで、これはクールダウンの本来の目的どおりの動作。
 
   ⚠️  `history.json` **を直接編集しないこと。** 過去に破損・履歴消失の事故がある。
+
+## 実施結果（2026-08-09）
+
+**PR #254。マージコミット `0a2b025`（merge commit）。コミット 2 本（実装 → `/code-review` 対応）。**
+Issue #238 を `Refs` で参照した（#238 自体は PR #249 でクローズ済みで、本 PR は名作枠側の残タスク）。
+実装は Sonnet に委譲し、diff を管理者が検証した。
+**ブランチ名は当初案の `feat/classic-slot-redesign` ではなく `feat/issue-classic-slot-population` を使った。**
+
+### 0. 触った関数（一覧）
+
+| 関数・ファイル | 変更 |
+|---|---|
+| `classic-pool.ts`（**新設**） | `meetsClassicPoolThresholds` / `readClassicTotalRatingMin` / `readClassicTotalRatingCountMin`。母集団の数値条件をクエリ側・選定側で共有 |
+| `computeClassicRemakeEligible`（`fetch-igdb.ts`。**新設**） | J-3-e 判定。**親の `game_type`/`total_rating`/`total_rating_count` を展開フィールドだけで自己完結的に判定**（後述） |
+| `mapRawGameToIGDBGame` / `mapPoolRawGameToIGDBGame`（`fetch-igdb.ts`） | `totalRating` / `totalRatingCount` / `classicRemakeEligible` を転記 |
+| `fetchClassicGames`（`fetch-igdb.ts`） | `where`/`sort`/`limit` を全面書き換え（`hypes > 100` 廃止 → §5.4 の条件）+ J-3-e 後段フィルタ |
+| `isClassicRemakeAllowed`（`fetch-data.ts`。**新設**） | J-3-e ベースのリメイク許可判定。`isRemakeOrRemaster` の一律除外を置き換え（インディー枠は `isRemakeOrRemaster` を継続使用） |
+| `isClassicPoolGameType`（`fetch-data.ts`。**新設。`/code-review` 対応で追加**） | 選定側の `game_type` ゲート（0/8/9 のみ許可）。下記「レビュー指摘」参照 |
+| `buildClassicCandidates`（`fetch-data.ts`） | `metascore`/`igdbRating`/Steam・YouTube 人気条件を廃止し `meetsClassicPoolThresholds` に一本化。並び順を `totalRatingCount` 降順に変更 |
+| `enrichGameFromIgdb` / `aggregateGames`（2ブランチ） / `deduplicateGames`（`fetch-data.ts`）、`finalizeGameMetadata`（`finalize-game-metadata.ts`） | `totalRating` / `totalRatingCount` / `classicRemakeEligible` の転記（**6 箇所すべて**。`??` 演算子で統一） |
+| `IGDBGame` / `GameData`（`types.ts`） | 上記 3 フィールドを追加 |
+| `PromptTemplates.classicSystem`（`bedrock-client.ts`） | 禁止リストの重複項目を削除 + 📜 の指示を強化（§5.6 修正1） |
+| `searchGameHistory` / `searchGameInfo`（`fetch-web-search.ts`） | 発売年を省略可能な引数として追加（§5.6 修正3。他カテゴリの挙動は不変） |
+| `generateClassicArticle`（`generate-articles.ts`） | `releaseDate` から発売年を抽出して渡す |
+
+### 1. 決着ブロックの前提が実装で変わった点 — `parent_game` の展開
+
+論点J-3 の決着（`spec-review.md:1749`）は「`game_type=0` の ID 集合を作り、`t8/t9` の `parent_game` がその集合に無いものだけを残す」という**ID 集合照合**を前提にしていた。
+
+**着手前のライブ API 実測で、`parent_game` はそのまま `parent_game.game_type` / `parent_game.total_rating` / `parent_game.total_rating_count` まで展開できることが判明した。** これにより J-3-e の判定は**1 ゲーム単位で自己完結**し、ID 集合照合が不要になった。決着ブロックが「`GameData` への `igdbId` 追加も `HistoryEntry` の拡張も不要」としていた点はそのまま成り立つが、**実装方法自体が決着ブロックの想定と異なる**（母集団プールを保持して都度突き合わせる必要がない）。
+
+両方式が一致することは、母集団の t8/t9 全 23 件で実測確認済み（不一致 0 件）。
+
+### 2. レビューで見つけて直した欠陥（初回実装）
+
+初回実装の `computeClassicRemakeEligible` は**親の `game_type` を見ておらず**、`total_rating`/`total_rating_count` の数値条件だけで親が母集団に居るかを判定していた。このため `Final Fantasy VII Remake` を誤って除外していた（親 FF VII は `total_rating=87.8, total_rating_count=1630` と数値は超えるが `game_type=10` で母集団外。**§5.5 の表・決着ブロックが名指しで「意図的に許可される」としているケース**）。
+
+母集団の t8/t9 全 23 件で両方式を突き合わせ、ずれるのはこの 1 件だけであることを実測で確定させたうえで修正した。⚠️ Sonnet 自身の初回実測（「23件で不一致0件」）は**親の `game_type` を含めた条件での測定**であり、その JSDoc の記述（「親自身の `game_type` は見ない」）自体が誤っていた。管理者が独立に再測定して初めて発覚した。
+
+### 3. `/code-review` 指摘の採否（4 件）
+
+| 指摘 | 採否 | 根拠 |
+|---|---|---|
+| 選定側 `buildClassicCandidates` に `game_type` ゲートが無く、第2層エンリッチ（`mainGameOnly` 無しの `searchGameByName`）経由で非 Main Game が数値条件だけで混入する（medium） | **本PRで修正** | 実測で該当 **39 件**（`Final Fantasy VII`(t10)/`Mass Effect Trilogy`(t3)/`The Witcher 3: Wild Hunt - Game of the Year Edition`(t3)/`Blood and Wine`(t2) 等）。**本PRの実行で選ばれた `The Witcher 3: Wild Hunt` の GOTY 版・拡張がまさに混入候補だった。** PR-B の教訓（クエリ側の条件だけでは枠は分離されない）そのものへの取りこぼしのため、別Issueに送らず本PRで直した。新設 `isClassicPoolGameType` で 0/8/9 のみ許可、`undefined` は除外 |
+| `CLASSIC_TOTAL_RATING_COUNT_MIN` が引き上げ方向にしか効かない（`limit 200` 固定のため）（low） | **本PRで JSDoc に明記**（挙動は変えず） | `limit 200` は §5.4 の決定事項（ユーザー確認済み）に由来する構造的な性質 |
+| `classicSystem` の Creator's Eye が「後世に影響を与えた革新的な要素」を要求し続けている（low） | **#255 に分離** | 論点G の決着が §2（📜）の矛盾しか分析しておらず §5（Creator's Eye）の同じ矛盾を見落としていた。実効性・要否は仕様判断が必要 |
+| 特集のテーマ別プレフィルタが候補リストを無制限にプロンプトへ載せている（low） | **#256 に分離** | 実測 **+118K 文字 ≒ +34K トークン/号**。キャップ値の決定は §4 の仕様判断が必要 |
+
+### 4. 実データでの効果（DEV_MODE 実行、2026-08-09）
+
+| 項目 | before | after |
+|---|---|---|
+| 名作枠クエリの取得結果 | 30 件 | **192 件**（`limit 200` のうち J-3-e で t8/t9 が 8 件脱落） |
+| IGDB プール全体 | 123 件 | 288 件 |
+| **名作枠の選定** | **Splatoon Raiders** | **The Witcher 3: Wild Hunt** |
+| 新作枠 | ほの暮しの庭 / Rhythm Heaven Groove | 変化なし |
+| インディー枠 | Palworld / Scrap Mechanic | 変化なし |
+
+母集団の実測: `game_type=0` で 257 件、J-3-e 適用後 **268 件**（§5.4 記載の 266 件とは IGDB 側の漂動範囲内）。`limit 200` による J-3-e の誤許可は実測で **0 件**（親は常にリメイクより評価母数が多く上位に来るため）。
+
+**副次的な変化 2 件**（機序を確認済み）:
+
+- 特集枠は同一エントリのまま表示名が「グランド・セフト・オートV レガシー」→「Grand Theft Auto V」に変化。GTA V が母集団に入り `aggregateGames` の既存挙動（`game.title = igdb.name`）が発火したもの。`titleJa` は保持される
+- `Grand Theft Auto VI`（2026-11-19 発売）が母集団から消えた。未発売クエリの窓は +90 日なので**旧名作クエリ（`hypes > 100`・日付条件なし）が唯一の流入経路だった**＝§5.2 の「定義上これから出る話題作リスト」という診断が実データで裏付けられた
+
+### 5. ⚠️ §5.4 の供給根拠と実装の食い違い（申し送り）
+
+§5.4 は供給の根拠に「266 件 = 5.1 年分」を挙げているが、`limit 200`（§5.4 自身が決定事項として明記）により**実際に候補になるのは 200 件 = 3.8 年分**である。#250（未発売クエリの `limit 20` が母集団を切る問題）と同型の乖離。挙動は仕様どおりなので変更していないが、記録として残す。
+
+### 6. 引き継ぎ事項
+
+- **`Black Mesa` は `isFanGame()` に落とされる**（`keywords` に `fangame` を実測確認済み）。J-3-e は `classicRemakeEligible=true` と正しく判定するが（親 Half-Life が `total_rating=84.2` で母集団外）、後段の `isFanGame` フィルタで除外される。`spec-review.md:1839` が「実装時に確認が必要」としていた点で、**ファンメイド・リメイクを名作枠で扱うかは仕様判断が必要**。本PRでは挙動を変えていない
+- 成人向けテーマ（`themes != (42)`）は選定側では再現していない（第2層エンリッチ経路に同じ抜け道がある）。ただし実測では成人向けテーマ 10,292 件のうち §5.4 の数値条件を満たすものは 0 件で、現状実害は無い（IGDBデータが変わった場合は要再検証）
+
+### 7. 教訓（次回以降）
+
+- **サブエージェントの実測検証は「何を含み何を含まない条件で測定したか」を自分で確認すること。** 報告の結論だけでなく前提を検証しないと、報告自体が誤った前提に基づいている可能性がある
+- **`/code-review` の指摘は実データで規模を測ってから採否を決める。** 4 件中 2 件が実データで確定し、うち 1 件は「別Issueに送らず同PRで直すべき」規模だった（本PRの主旨そのものへの取りこぼし）
 
 ---
 
