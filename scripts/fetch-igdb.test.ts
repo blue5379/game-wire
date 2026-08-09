@@ -1297,7 +1297,7 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
     expect(recentQuery).toContain('sort hypes desc');
   });
 
-  it('未発売クエリ（upcoming）: 下限（JST当日0時）・上限（+90日）・hypes>20・sort first_release_date asc・limit 20・game_type=(0) を含む', async () => {
+  it('未発売クエリ（upcoming）: 下限（JST当日0時）・上限（+90日）・hypes>20・sort first_release_date asc・limit 20・game_type=(0,8,9) を含む（Issue #244）', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-09T03:00:00Z'));
     process.env.IGDB_CLIENT_ID = 'test-client-id';
@@ -1317,9 +1317,10 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
     expect(upcomingQuery).toContain(`first_release_date <= ${ninetyDaysLater}`);
     expect(upcomingQuery).toContain('hypes > 20');
     expect(upcomingQuery).toContain('limit 20');
-    expect(upcomingQuery).toContain('game_type = (0)');
-    // 新作枠と違い、未発売クエリは Remake/Remaster を含めない（Main Game のみ）
-    expect(upcomingQuery).not.toContain('game_type = (0,8,9)');
+    // Issue #244: §6.2（新作紹介）はリメイク・リマスターを許可しているのに、旧実装は
+    // Main Game のみに絞っており、未発売のリメイク・リマスターがどちらのクエリにも
+    // 入らない仕様矛盾だった。発売済みクエリと同じ gameTypes を許可するよう緩和した。
+    expect(upcomingQuery).toContain('game_type = (0,8,9)');
   });
 
   // レビュー対応: fetchRecentPopularGames（クエリA、hypes > 5）は「発売前フォロー数」で

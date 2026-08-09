@@ -11,13 +11,35 @@ export const QUALITY_IGDB_RC_MIN = 15;
 export const QUALITY_IGDB_RATING_STRONG = 85;
 // 救済経路での最低評価数
 export const QUALITY_IGDB_RC_FLOOR = 8;
+/** 批評軸の保有条件（§2.3「批評媒体数が2以上」）。newrelease-score の criticCountMin と同値だが、
+ *  こちらは品質ゲート、あちらはスコア軸の保有条件で用途が異なるため独立に定義する */
+export const QUALITY_CRITIC_COUNT_MIN = 2;
 
 /**
  * ゲームが品質基準を満たすかを判定する。
  * 複数の経路でいずれか1つを満たせば qualified とする（OR判定）。
  * 評価数が少なく信頼性の低いタイトル（ファンゲーム等）を除外するために使用。
+ *
+ * §2.3 の品質条件（4つ）との対応:
+ *   1. 批評媒体数が2以上       → aggregatedRatingCount >= QUALITY_CRITIC_COUNT_MIN
+ *   2. IGDBユーザー投票数が15以上 → igdbRatingCount >= QUALITY_IGDB_RC_MIN
+ *   3. Steam Top Sellers 掲載   → steamRank != null
+ *   4. Amazon国内ランキング掲載 → options.amazonRanked（AmazonRankIndex の lookup 結果、§2.3 PR-B2）
+ *
+ * 以下の経路は §2.3 に規定が無いが、削除は別対応の担当のため本PRでは維持する
+ * （管理者判断・ユーザー確認済み）:
+ *   - metascore != null 経路（削除は PR-D の担当）
+ *   - steamPlayers > 0 経路
+ *   - igdbRating >= QUALITY_IGDB_RATING_STRONG && igdbRatingCount >= QUALITY_IGDB_RC_FLOOR の救済経路
+ *
+ * options 省略時は Amazon 経路が無効になるだけで、既存呼び出し元の挙動は変わらない。
  */
-export function isQualifiedGame(g: GameData): boolean {
+export function isQualifiedGame(
+  g: GameData,
+  options?: { amazonRanked?: boolean }
+): boolean {
+  if (options?.amazonRanked) return true;
+  if (g.aggregatedRatingCount != null && g.aggregatedRatingCount >= QUALITY_CRITIC_COUNT_MIN) return true;
   if (g.igdbRatingCount != null && g.igdbRatingCount >= QUALITY_IGDB_RC_MIN) return true;
   // Steam Charts 掲載ゲームはチャート存在自体を品質シグナルとして扱う
   if (g.steamRank != null) return true;

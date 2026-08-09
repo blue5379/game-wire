@@ -1,5 +1,5 @@
 /**
- * 新作枠の3軸スコア（N-6 決着・§2.3）
+ * 新作枠の4軸スコア（N-6 決着・§2.3。第4軸「国内販売」は PR-B2 で実装済み）
  *
  * score(g) = max over axes a of ( w_a × f_a(g) )
  *
@@ -10,13 +10,17 @@
  *     min(100, 100 × log10(rc) / log10(votesFull)) を素点とする
  *   - Steam (steam): steamRank が存在することを保有条件とし、
  *     100 × (1 - (順位 - 1) / steamSlotCount) を 0〜100 にクランプした値を素点とする
+ *   - 国内販売 (domestic): ファミ通経由 Amazon 国内ランキングの順位（amazonRank）が
+ *     存在することを保有条件とし、100 × (1 - (順位 - 1) / AMAZON_RANKING_SLOT_COUNT) を
+ *     0〜100 にクランプした値を素点とする。分母は AMAZON_RANKING_SLOT_COUNT（掲載枠数=50）
+ *     の固定値で、Steam 軸と異なり環境変数にしない（§2.3: 掲載枠は常に50件で測定条件に
+ *     依存しない定数のため。実取得件数を分母にする Steam 軸との非対称は意図的）。
+ *     順位は amazonRank / amazonRanks として引数で受け取るのみで GameData には持たせない
+ *     （ライセンス制約。scripts/fetch-amazon-ranking.ts 参照）
  *
  * 保有しない軸は「棄権」であって 0 点ではない。集約対象から除外する（0 点として
  * max に混ぜない）。集約は Σ ではなく max を採る（Σ は「どの軸も凡庸だが軸を
  * 多く持っているだけのタイトル」を押し上げるため。11.4.9 の実測）。
- *
- * 第4軸（国内販売・ファミ通経由 Amazon ランキング）は PR-B2 の担当。本モジュールでは
- * 実装しない（3軸版）。
  *
  * 票数軸の 100 点クリップは必須: 対数式は 500 票超で 100 を超え
  * （1,000票で約111、5,000票で約137）、最大値集約のもとでこの軸だけが
@@ -24,6 +28,7 @@
  */
 
 import type { GameData } from './types.js';
+import { AMAZON_RANKING_SLOT_COUNT, type AmazonRankIndex } from './fetch-amazon-ranking.js';
 
 export interface NewReleaseScoreParams {
   /** 批評軸の重み */
@@ -32,6 +37,8 @@ export interface NewReleaseScoreParams {
   weightVotes: number;
   /** Steam 軸の重み */
   weightSteam: number;
+  /** 国内販売軸の重み */
+  weightDomestic: number;
   /** 批評軸の保有条件（媒体数） */
   criticCountMin: number;
   /** 批評軸が満点になる媒体数 */
@@ -46,6 +53,7 @@ const DEFAULT_PARAMS: NewReleaseScoreParams = {
   weightCritic: 1.0,
   weightVotes: 1.0,
   weightSteam: 1.0,
+  weightDomestic: 1.0,
   criticCountMin: 2,
   criticCountFull: 4,
   votesMin: 15,
@@ -80,6 +88,7 @@ export function loadNewReleaseScoreParams(): NewReleaseScoreParams {
     weightCritic: readNumberEnv('NEWRELEASE_SCORE_WEIGHT_CRITIC', DEFAULT_PARAMS.weightCritic),
     weightVotes: readNumberEnv('NEWRELEASE_SCORE_WEIGHT_VOTES', DEFAULT_PARAMS.weightVotes),
     weightSteam: readNumberEnv('NEWRELEASE_SCORE_WEIGHT_STEAM', DEFAULT_PARAMS.weightSteam),
+    weightDomestic: readNumberEnv('NEWRELEASE_SCORE_WEIGHT_DOMESTIC', DEFAULT_PARAMS.weightDomestic),
     criticCountMin: readNumberEnv('NEWRELEASE_SCORE_CRITIC_COUNT_MIN', DEFAULT_PARAMS.criticCountMin),
     criticCountFull: readNumberEnv('NEWRELEASE_SCORE_CRITIC_COUNT_FULL', DEFAULT_PARAMS.criticCountFull),
     votesMin: readNumberEnv('NEWRELEASE_SCORE_VOTES_MIN', DEFAULT_PARAMS.votesMin),
@@ -88,7 +97,7 @@ export function loadNewReleaseScoreParams(): NewReleaseScoreParams {
 }
 
 export interface NewReleaseScoreAxis {
-  axis: 'critic' | 'votes' | 'steam';
+  axis: 'critic' | 'votes' | 'steam' | 'domestic';
   /** 重み適用前の 0〜100 の素点 */
   raw: number;
   /** 重み適用後の点数 */
@@ -101,7 +110,7 @@ export interface NewReleaseScore {
   /** 保有している軸だけが入る（棄権した軸は含まない） */
   axes: NewReleaseScoreAxis[];
   /** score を決めた軸。保有軸が無ければ undefined */
-  topAxis?: 'critic' | 'votes' | 'steam';
+  topAxis?: 'critic' | 'votes' | 'steam' | 'domestic';
 }
 
 /**
@@ -154,11 +163,25 @@ function computeSteamAxis(
 }
 
 /**
- * ゲーム1件の3軸スコアを計算する。
+ * 国内販売軸の素点を計算する。保有条件を満たさなければ undefined（棄権）。
+ * amazonRank は GameData のフィールドではなく引数で渡される（ライセンス制約により
+ * GameData に持たせない。scripts/fetch-amazon-ranking.ts の AmazonRankIndex 参照）。
+ * 分母は AMAZON_RANKING_SLOT_COUNT 固定（環境変数にしない。§2.3）。異常値でも
+ * 0〜100 にクランプする（computeSteamAxis と同じ流儀）。
+ */
+function computeDomesticAxis(amazonRank: number | undefined): number | undefined {
+  if (amazonRank === undefined) return undefined;
+
+  const raw = 100 * (1 - (amazonRank - 1) / AMAZON_RANKING_SLOT_COUNT);
+  return Math.min(100, Math.max(0, raw));
+}
+
+/**
+ * ゲーム1件の4軸スコアを計算する。
  */
 export function computeNewReleaseScore(
   game: GameData,
-  options: { steamSlotCount: number; params?: NewReleaseScoreParams }
+  options: { steamSlotCount: number; params?: NewReleaseScoreParams; amazonRank?: number }
 ): NewReleaseScore {
   const params = options.params ?? loadNewReleaseScoreParams();
   const axes: NewReleaseScoreAxis[] = [];
@@ -178,6 +201,11 @@ export function computeNewReleaseScore(
     axes.push({ axis: 'steam', raw: steamRaw, weighted: steamRaw * params.weightSteam });
   }
 
+  const domesticRaw = computeDomesticAxis(options.amazonRank);
+  if (domesticRaw !== undefined) {
+    axes.push({ axis: 'domestic', raw: domesticRaw, weighted: domesticRaw * params.weightDomestic });
+  }
+
   if (axes.length === 0) {
     return { score: 0, axes: [], topAxis: undefined };
   }
@@ -188,15 +216,21 @@ export function computeNewReleaseScore(
 
 /**
  * score 降順に並べ替えた新しい配列を返す。同点は入力順を保つ（安定ソート）。
+ * amazonRanks を渡すと、各ゲームについて lookup した順位を国内販売軸に反映する
+ * （渡さなければ従来どおり3軸で計算される）。
  */
 export function sortByNewReleaseScore(
   games: GameData[],
-  options: { steamSlotCount: number; params?: NewReleaseScoreParams }
+  options: { steamSlotCount: number; params?: NewReleaseScoreParams; amazonRanks?: AmazonRankIndex }
 ): GameData[] {
   const params = options.params ?? loadNewReleaseScoreParams();
   const scored = games.map((game) => ({
     game,
-    score: computeNewReleaseScore(game, { steamSlotCount: options.steamSlotCount, params }).score,
+    score: computeNewReleaseScore(game, {
+      steamSlotCount: options.steamSlotCount,
+      params,
+      amazonRank: options.amazonRanks?.lookup(game),
+    }).score,
   }));
   scored.sort((a, b) => b.score - a.score);
   return scored.map((s) => s.game);

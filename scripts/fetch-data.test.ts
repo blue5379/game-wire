@@ -20,10 +20,12 @@ import {
   isRemakeOrRemaster,
   isWithinIndieReleaseWindow,
   aggregateGames,
+  toPersistableSelectedGames,
 } from './fetch-data.js';
 import { isFanGame } from './game-filter.js';
 import { isIndieGame } from './indie-classifier.js';
 import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData, MetacriticData } from './types.js';
+import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
 function makeIgdbGame(overrides: Partial<IGDBGame> = {}): IGDBGame {
@@ -964,6 +966,75 @@ describe('buildNewReleaseCandidates', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// buildNewReleaseCandidates — Amazon 経路（§2.3 PR-B2、第4軸「国内販売」の配線）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {
+  const releasedAfter = new Date('2026-05-01');
+
+  it('amazonRanks を渡すと、Amazon掲載のみで品質・実存条件を満たすゲームが候補に入る。渡さなければ同じゲームは候補に入らない（ポジティブコントロール）', () => {
+    // 他のシグナル（steamRank/steamPlayers/igdbRatingCount/metascore/aggregatedRatingCount）を
+    // 一切持たない国内専用タイトルを想定
+    const amazonOnly = makeGame({
+      title: 'Amazon Only Game',
+      normalizedTitle: 'amazon only game',
+      releaseDate: '2026-06-01',
+    });
+
+    const amazonRanks: AmazonRankIndex = {
+      lookup: (g) => (g.title === 'Amazon Only Game' ? 10 : undefined),
+      size: 1,
+    };
+
+    const withAmazon = buildNewReleaseCandidates([amazonOnly], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+      amazonRanks,
+    });
+    expect(withAmazon.map((g) => g.title)).toContain('Amazon Only Game');
+
+    // ポジティブコントロール: amazonRanks を渡さなければ同じゲームは候補に入らない
+    const withoutAmazon = buildNewReleaseCandidates([amazonOnly], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+    });
+    expect(withoutAmazon.map((g) => g.title)).not.toContain('Amazon Only Game');
+  });
+
+  it('amazonRanks を渡した場合に候補の並びが Amazon 順位を反映する', () => {
+    const amazonTop = makeGame({
+      title: 'Amazon Top',
+      normalizedTitle: 'amazon top',
+      releaseDate: '2026-06-01',
+    });
+    const amazonLow = makeGame({
+      title: 'Amazon Low',
+      normalizedTitle: 'amazon low',
+      releaseDate: '2026-06-01',
+    });
+
+    const amazonRanks: AmazonRankIndex = {
+      lookup: (g) => {
+        if (g.title === 'Amazon Top') return 1;
+        if (g.title === 'Amazon Low') return 40;
+        return undefined;
+      },
+      size: 2,
+    };
+
+    const result = buildNewReleaseCandidates([amazonLow, amazonTop], {
+      releasedAfter,
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+      amazonRanks,
+    });
+
+    expect(result.map((g) => g.title)).toEqual(['Amazon Top', 'Amazon Low']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // buildClassicCandidates — 名作枠の候補構築（§5 / §6.1 / §6.3）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildClassicCandidates', () => {
@@ -1816,5 +1887,40 @@ describe('enrichGameFromIgdb — keywords 空配列で既存値を潰さない�
 
     expect(applied2).toBe(true);
     expect(gameWithKeywords2.keywords).toEqual(['dark-fantasy']);
+  });
+});
+
+describe('toPersistableSelectedGames — newReleasesReserves を直列化対象から除外する（PR #249 レビュー指摘1）', () => {
+  it('newReleasesReserves は除外され、indieReserves と他フィールドはすべて保持される', () => {
+    const newReleaseGame = makeGame({ title: 'Big Studio New Game', normalizedTitle: 'big studio new game' });
+    const newReleaseReserveGame = makeGame({
+      title: 'Reserve New Game (Amazon順位を漏らしうる)',
+      normalizedTitle: 'reserve new game',
+    });
+    const indieGame = makeGame({ title: 'Cozy Indie Game', normalizedTitle: 'cozy indie game' });
+    const indieReserveGame = makeGame({ title: 'Indie Reserve Game', normalizedTitle: 'indie reserve game' });
+    const featuredGame = makeGame({ title: 'Featured Sports Game', normalizedTitle: 'featured sports game' });
+    const classicGame = makeGame({ title: 'Classic Masterpiece', normalizedTitle: 'classic masterpiece' });
+
+    const selected = makeSelected({
+      newReleases: [newReleaseGame],
+      newReleasesReserves: [newReleaseReserveGame],
+      indies: [indieGame],
+      indieReserves: [indieReserveGame],
+      featured: featuredGame,
+      classic: classicGame,
+    });
+
+    const persistable = toPersistableSelectedGames(selected);
+
+    // newReleasesReserves は直列化対象から除外される（Amazon順位の逆算経路を断つ）
+    expect('newReleasesReserves' in persistable).toBe(false);
+
+    // ポジティブコントロール: indieReserves および他のフィールドはすべて保持される
+    expect(persistable.indieReserves).toEqual([indieReserveGame]);
+    expect(persistable.newReleases).toEqual([newReleaseGame]);
+    expect(persistable.indies).toEqual([indieGame]);
+    expect(persistable.featured).toEqual(featuredGame);
+    expect(persistable.classic).toEqual(classicGame);
   });
 });

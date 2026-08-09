@@ -14,6 +14,7 @@ import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
+import { fetchAmazonRanking, type AmazonRankIndex } from './fetch-amazon-ranking.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
@@ -962,12 +963,19 @@ export function isAlreadySelected(
 }
 
 /**
- * 新作枠の候補を絞り込み、3軸スコア降順に並べる（§2.3）。
+ * 新作枠の候補を絞り込み、4軸スコア降順に並べる（§2.3。第4軸=国内販売は PR-B2）。
  * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
+ *
+ * amazonRanks 省略時は Amazon 経路が無効になるだけで、従来（3軸・Amazon非考慮）どおり動く。
  */
 export function buildNewReleaseCandidates(
   games: GameData[],
-  options: { releasedAfter: Date; cooldown: Set<string>; steamTopSellersCount: number }
+  options: {
+    releasedAfter: Date;
+    cooldown: Set<string>;
+    steamTopSellersCount: number;
+    amazonRanks?: AmazonRankIndex;
+  }
 ): GameData[] {
   const filtered = games
     .filter((g) => {
@@ -975,12 +983,20 @@ export function buildNewReleaseCandidates(
       return new Date(g.releaseDate) > options.releasedAfter;
     })
     .filter((g) => !isFanGame(g))
-    .filter((g) => isQualifiedGame(g))
+    .filter((g) => {
+      // Amazon 掲載の有無は品質ゲート（isQualifiedGame）と実存フィルタ（hasExistenceEvidence）
+      // の両方で使うため、lookup は1回だけ呼んで結果（真偽値）を使い回す。順位そのものは
+      // 変数に保持しない（ライセンス制約 §2.3。掲載の有無 boolean のみ扱う）。
+      const amazonRanked = options.amazonRanks?.lookup(g) !== undefined;
+      return isQualifiedGame(g, { amazonRanked }) && hasExistenceEvidence(g, { amazonRanked });
+    })
     .filter((g) => !isInvalidGameTitle(g.title))
-    .filter((g) => hasExistenceEvidence(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle));
 
-  return sortByNewReleaseScore(filtered, { steamSlotCount: options.steamTopSellersCount });
+  return sortByNewReleaseScore(filtered, {
+    steamSlotCount: options.steamTopSellersCount,
+    amazonRanks: options.amazonRanks,
+  });
 }
 
 // 新作枠以外の枠から除外するゲーム種別（IGDB game_type、§6.2）
@@ -1139,7 +1155,7 @@ export function buildClassicCandidates(
  */
 async function selectGamesForArticles(
   games: GameData[],
-  options: { steamTopSellersCount: number }
+  options: { steamTopSellersCount: number; amazonRanks: AmazonRankIndex }
 ): Promise<SelectedGames> {
   const now = new Date();
 
@@ -1171,13 +1187,35 @@ async function selectGamesForArticles(
     releasedAfter: threeMonthsAgo,
     cooldown: newReleaseCooldown,
     steamTopSellersCount: options.steamTopSellersCount,
+    amazonRanks: options.amazonRanks,
   });
 
   console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
-  for (const g of recentGamesCandidates) {
-    const score = computeNewReleaseScore(g, { steamSlotCount: options.steamTopSellersCount });
-    const axesSummary = score.axes.map((a) => `${a.axis}=${a.raw.toFixed(1)}`).join(', ');
-    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, score=${score.score.toFixed(1)}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
+  // ログ出力用にタイトル昇順へ並べ替えたコピーを使う（PR #249 レビュー指摘）。
+  // recentGamesCandidates 自体（4軸スコア降順）は選定処理に使うため一切変更しない —
+  // ここで並べ替えるのはログの出力順序のみ。
+  // スコア降順のまま出力すると、domestic=***/score=*** でマスクした行が前後の
+  // 実数値行に挟まれ、行位置とdomestic軸の2点刻み素点（100 − 2×(順位−1)）から
+  // Amazon 順位が逆算できてしまう（§2.3 ライセンス制約）。位置がスコアの情報を
+  // 持たなくなれば、この挟み撃ちによる逆算は成立しなくなる。
+  const candidatesForLog = [...recentGamesCandidates].sort((a, b) =>
+    a.title.localeCompare(b.title)
+  );
+  for (const g of candidatesForLog) {
+    const score = computeNewReleaseScore(g, {
+      steamSlotCount: options.steamTopSellersCount,
+      amazonRank: options.amazonRanks.lookup(g),
+    });
+    // domestic 軸の raw は Amazon 順位から逆算できる値のため、他の軸と違って伏せる
+    // （§2.3 ライセンス制約: 順位・順位から逆算できる値は console に出さない。掲載の有無まで）
+    const axesSummary = score.axes
+      .map((a) => (a.axis === 'domestic' ? 'domestic=***' : `${a.axis}=${a.raw.toFixed(1)}`))
+      .join(', ');
+    const amazonRanked = score.axes.some((a) => a.axis === 'domestic');
+    // topAxis が domestic のとき、集約スコア（score.score）は domestic の weighted 値と
+    // 一致し、そのまま Amazon 順位を逆算できてしまうため、この場合だけ score も伏せる
+    const scoreDisplay = score.topAxis === 'domestic' ? '***' : score.score.toFixed(1);
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, amazon=${amazonRanked ? 'yes' : 'no'}, score=${scoreDisplay}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
   }
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
@@ -1268,6 +1306,33 @@ async function selectGamesForArticles(
 }
 
 /**
+ * selected-games.json への書き出し直前に、Amazon 順位を漏らすフィールドを除外する（PR #249 レビュー指摘）。
+ *
+ * newReleasesReserves は sortByNewReleaseScore による4軸スコア降順の配列。他の3軸
+ * （Steam順位・IGDB票数・批評スコアと媒体数）は GameData に永続化されており再計算できるため、
+ * domestic 軸が topAxis のゲームについては配列内の位置から domestic 軸の寄与分だけが残り、
+ * それが Amazon 順位を数ランクの幅に絞り込む経路になる。selected-games.json は Git 追跡下で
+ * 恒久保存されるため、§2.3「24時間超の保存禁止」に正面から抵触する。
+ * generate-articles.ts は newReleasesReserves / indieReserves を読み込み時に
+ * `??= []` で正規化し、ファイル不在時のフォールバックを組むだけで、それ以降は一度も
+ * 参照しないため、除外しても記事生成に機能的な影響はない。
+ * newReleasesReserves は同一プロセス内では removeZombieGames / runCompletenessGate の
+ * 差し替えプールとして使われており、その利用はこの書き出しより前に完了している。
+ *
+ * indieReserves はあえて除外しない: インディー枠の選定には amazonRanks を渡しておらず
+ * Amazon 順位の信号を一切含まないため、デバッグ用途としての価値が残る。
+ *
+ * SelectedGames 型自体は変えない（fetch-data.ts の同一プロセス内では
+ * newReleasesReserves を引き続き使うため）。この関数は書き出し直前の直列化対象のみを絞る。
+ */
+export function toPersistableSelectedGames(
+  selectedGames: SelectedGames
+): Omit<SelectedGames, 'newReleasesReserves'> {
+  const { newReleasesReserves: _newReleasesReserves, ...persistable } = selectedGames;
+  return persistable;
+}
+
+/**
  * メインエントリーポイント
  */
 async function main(): Promise<void> {
@@ -1282,12 +1347,13 @@ async function main(): Promise<void> {
 
   // 各データソースから並列でデータ取得
   console.log('Fetching data from all sources...');
-  const [steamResult, youtubeResult, igdbResult, metacriticResult] =
+  const [steamResult, youtubeResult, igdbResult, metacriticResult, amazonRanks] =
     await Promise.all([
       fetchSteamData(),
       fetchYouTubeData(),
       fetchIGDBData(),
       fetchMetacriticData(),
+      fetchAmazonRanking(),
     ]);
 
   // エラーチェック
@@ -1338,6 +1404,7 @@ async function main(): Promise<void> {
   console.log('Selecting games for articles...');
   const selectedGames = await selectGamesForArticles(games, {
     steamTopSellersCount: steamData.topSellers.length,
+    amazonRanks,
   });
   console.log(`New Releases: ${selectedGames.newReleases.length}`);
   console.log(`Indies: ${selectedGames.indies.length}`);
@@ -1428,9 +1495,12 @@ async function main(): Promise<void> {
   console.log('');
   console.log(`Data saved to: ${outputPath}`);
 
-  // 選定結果も別ファイルに出力
+  // 選定結果も別ファイルに出力（newReleasesReserves は Amazon 順位を漏らすため除外。PR #249）
   const selectedPath = path.join(DATA_DIR, 'selected-games.json');
-  fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
+  fs.writeFileSync(
+    selectedPath,
+    JSON.stringify(toPersistableSelectedGames(selectedGames), null, 2)
+  );
   console.log(`Selected games saved to: ${selectedPath}`);
 
   if (gateMode === 'fail' && gateReport.unresolvedMutableViolations) {

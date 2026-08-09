@@ -14,9 +14,19 @@ const NEW_RELEASE_REQUIRED = { cover: true, developer: true, sourceUrl: true } a
 
 /**
  * ゲームが「実存の根拠」を持つか判定する。
- * Steam ランキング由来 / IGDB 評価数 / YouTube 人気度のいずれかを満たせば通過。
+ * Steam ランキング由来 / IGDB 評価数 / YouTube 人気度 / Amazon 国内ランキング掲載
+ * のいずれかを満たせば通過。
+ *
+ * options 省略時は Amazon 経路が無効になるだけで、既存呼び出し元の挙動は変わらない。
  */
-export function hasExistenceEvidence(g: GameData): boolean {
+export function hasExistenceEvidence(
+  g: GameData,
+  options?: { amazonRanked?: boolean }
+): boolean {
+  // 国内の全国的な販売ランキングに掲載されていること自体が実存の強い裏付けであるため。
+  // これが無いと「Amazon掲載で品質条件は通るが実存条件で落ちる」ゲーム（Steam非掲載・
+  // IGDB票数5未満の国内専用タイトル）が構造的に残ってしまう（§2.3 PR-B2）。
+  if (options?.amazonRanked) return true;
   if (g.steamRank != null) return true;
   if (g.steamPlayers != null && g.steamPlayers > 0) return true;
   if (g.igdbRatingCount != null && g.igdbRatingCount >= 5) return true;

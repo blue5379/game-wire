@@ -16,6 +16,7 @@ import {
   QUALITY_IGDB_RC_MIN,
   QUALITY_IGDB_RATING_STRONG,
   QUALITY_IGDB_RC_FLOOR,
+  QUALITY_CRITIC_COUNT_MIN,
 } from './game-filter.js';
 import type { GameData } from './types.js';
 
@@ -165,5 +166,49 @@ describe('isQualifiedGame — 境界値とOR条件の各経路', () => {
 
   it('どの条件も満たさない場合 false', () => {
     expect(isQualifiedGame(makeGame())).toBe(false);
+  });
+});
+
+describe('isQualifiedGame — Amazon経路・批評媒体数経路（§2.3 PR-B2）', () => {
+  // 実測に対応: 『スプラトゥーン レイダース』相当のゲーム（igdbRatingCount=6 で
+  // QUALITY_IGDB_RC_MIN=15 未満・igdbRating=95 は高いが igdbRatingCount=6 は
+  // QUALITY_IGDB_RC_FLOOR=8 未満のため救済経路も通らない・steamRank/metascore なし・
+  // aggregatedRatingCount=1 で QUALITY_CRITIC_COUNT_MIN=2 未満）は他の経路をすべて欠く。
+  it('amazonRanked: true だけで qualified になること（他のシグナルをすべて欠いたゲームで検証）', () => {
+    const game = makeGame({
+      igdbRatingCount: 6,
+      igdbRating: 95,
+      steamRank: undefined,
+      metascore: undefined,
+      aggregatedRatingCount: 1,
+    });
+
+    expect(isQualifiedGame(game)).toBe(false);
+    expect(isQualifiedGame(game, { amazonRanked: true })).toBe(true);
+  });
+
+  it(`境界値: aggregatedRatingCount が QUALITY_CRITIC_COUNT_MIN（${QUALITY_CRITIC_COUNT_MIN}）以上で qualified になる。同じテスト内で、${QUALITY_CRITIC_COUNT_MIN - 1}（他の経路も満たさない）では false になることも確認する`, () => {
+    const qualified = makeGame({
+      aggregatedRatingCount: QUALITY_CRITIC_COUNT_MIN,
+      igdbRatingCount: undefined,
+      steamRank: undefined,
+      metascore: undefined,
+    });
+    expect(isQualifiedGame(qualified)).toBe(true);
+
+    const notQualified = makeGame({
+      aggregatedRatingCount: QUALITY_CRITIC_COUNT_MIN - 1,
+      igdbRatingCount: undefined,
+      steamRank: undefined,
+      metascore: undefined,
+    });
+    expect(isQualifiedGame(notQualified)).toBe(false);
+  });
+
+  it('options 省略時は既存の挙動が変わらない（igdbRatingCount 経路が options なしでも従来どおり true を返す）', () => {
+    const game = makeGame({ igdbRatingCount: QUALITY_IGDB_RC_MIN });
+    expect(isQualifiedGame(game)).toBe(true);
+    // options を渡さない呼び出しと amazonRanked: false を渡す呼び出しが同じ結果になること
+    expect(isQualifiedGame(game, { amazonRanked: false })).toBe(true);
   });
 });
