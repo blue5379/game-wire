@@ -1103,6 +1103,19 @@ DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述
 Issue #238 / #244 の両方を Closes でクローズした。実装は Sonnet に委譲し、diff を管理者が検証した。
 **ブランチ名は当初案の `feat/domestic-sales-axis` ではなく `feat/issue-238-domestic-sales-axis` を使った。**
 
+### 0. 触った関数（一覧）
+
+| 関数・ファイル | 変更 |
+|---|---|
+| `fetchAmazonRanking` ほか（`fetch-amazon-ranking.ts`。**新設**） | ランキング取得・ノイズ除去・照合索引の構築 |
+| `computeDomesticAxis` / `computeNewReleaseScore` / `sortByNewReleaseScore`（`newrelease-score.ts`） | 第 4 軸 domestic を追加（3 軸 → 4 軸） |
+| `isQualifiedGame`（`game-filter.ts`） | 批評媒体数 2 以上 / Amazon 掲載の 2 経路を追加（分岐 5 → 7） |
+| `hasExistenceEvidence`（`select-newreleases-with-fallback.ts`） | **Amazon 経路を追加。**⚠️ 品質条件だけ通しても実存フィルタで落ちる構造（Steam 非掲載・IGDB 票数 5 未満の国内専用タイトル）が残るため。**§2.4 の「カバー画像がある／開発元が判明している」とは別レイヤーの短絡**である点に注意 |
+| `buildNewReleaseCandidates` / `selectGamesForArticles` / `toPersistableSelectedGames`（`fetch-data.ts`） | 索引の配線と、書き出し対象からの reserves 除外 |
+| `fetchUpcomingGames`（`fetch-igdb.ts`） | `game_type` を `(0,8,9)` に緩和（#244） |
+
+⚠️ **`isQualifiedGame` には §2.3 に規定が無い経路が 3 つ残っている**（本PRでは削除しない）: `metascore`（削除は PR-D 担当）/ **`steamPlayers > 0`**（§2.3 が挙げるのは Top Sellers であって Top Played ではない。**担当 PR が未割り当て**）/ `igdbRating >= 85 && rc >= 8` の救済。
+
 ### 1. 照合方式の決着（§9.2-4）— 当初想定と違った
 
 - **IGDB の `alternative_names` は日本語照合に使えない。** 実測: 発売済み 60 日窓の母集団 17 件のうち
