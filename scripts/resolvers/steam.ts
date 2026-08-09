@@ -118,7 +118,7 @@ export interface SteamResolverInput {
   titleJa?: string;
   igdbSlug?: string;
   releaseDate?: string;
-  igdbWebsites?: { url: string; category?: number }[];
+  igdbWebsites?: { url: string; category?: number; type?: number }[];
   knownSteamAppId?: number;
 }
 

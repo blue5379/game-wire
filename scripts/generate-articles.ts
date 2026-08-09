@@ -945,6 +945,15 @@ export async function generateFeatureArticle(
         if (igdbFallback?.officialUrl) {
           console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
           officialUrl = igdbFallback.officialUrl;
+          // 上の Tavily 分岐と同じく game.sourceUrls にも書き戻して由来を残す。
+          // Issue #234 以前はこの分岐が構造的に到達不能だったため由来の欠落が表面化して
+          // いなかったが、由来が無いと信頼済みソース判定（build-issue.ts）が働かない。
+          game.sourceUrls = {
+            ...game.sourceUrls,
+            official: officialUrl,
+            officialUrlSource: igdbFallback.officialUrlSource,
+            officialVerifyReason: undefined,
+          };
         }
       }
     } catch (error) {
