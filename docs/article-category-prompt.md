@@ -196,8 +196,11 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `fetchIndieGames` | :922 | **:971** |
 | `fetchIGDBData`（5 クエリを並列取得） | :982 付近 | **:1005** |
 
-⚠️ **さらに #234 対応（#246）で `fetch-igdb.ts` の行番号が全体に +28〜29 ずれた。**
-`IGDB_WEBSITE_TYPE` 定数と JSDoc を上部に追加したため。マージ後の実測値（2026-08-09。`bd71e4f`）:
+⚠️ **さらに #234 対応（#246）で `fetch-igdb.ts` の行番号がずれた。ずれ幅は一様ではない。**
+`IGDB_WEBSITE_TYPE` 定数を追加したうえ、`pickOfficialUrlFromWebsites` /
+`pickSteamUrlFromWebsites` の JSDoc も伸びたため、**上部（この 2 関数）で +24〜26、
+`mapRawGameToIGDBGame` 以降で +28、`IGDB_POOL_QUERY_FIELDS` 以降で +29** と段階的に増える。
+**一律のオフセットを当てると 4〜6 行ずれる。** マージ後の実測値（2026-08-09。`bd71e4f`）:
 
 | シンボル | #241 マージ後 | #234 マージ後 |
 |---|---|---|
@@ -206,8 +209,8 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `pickSteamUrlFromWebsites` | :332 | **:358** |
 | `mapRawGameToIGDBGame` | :392 | **:420** |
 | `getJstDayStartUnixSec` | :471 | **:499** |
-| `IGDB_POOL_QUERY_FIELDS` | — | **:738** |
-| `mapPoolRawGameToIGDBGame` | — | **:783** |
+| `IGDB_POOL_QUERY_FIELDS`（#241 で新設） | :709 | **:738** |
+| `mapPoolRawGameToIGDBGame`（#241 で新設） | :754 | **:783** |
 | `fetchRecentPopularGames`（発売済み・hypes 版） | :821 | **:850** |
 | `fetchRecentPopularGamesByRatingCount`（発売済み・票数版） | :866 | **:895** |
 | `fetchUpcomingGames`（未発売） | :909 | **:938** |
