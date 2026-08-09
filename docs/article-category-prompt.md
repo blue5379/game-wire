@@ -11,6 +11,7 @@
 | PR-B | `feat/newrelease-score-and-remake` | ✅ **マージ済み**（2026-08-08。`1bb61e6`。squash） | #210（`Refs`。未クローズ）/ PR #230 | 26ファイル / 865テスト（着手前 24 / 760）。コミット2本（実装 → レビュー対応）。**`/code-review` の指摘5件は全件が実在し、全件を本PRで修正**（別Issue分離なし）。**着手前測定（§9.3-9）で新作枠0本の原因を特定 → #231**。名作枠に `isFanGame` 未適用だったことも実測で発覚し本PRで修正 |
 | PR-B2 | `feat/domestic-sales-axis` | 未着手 | 関連 **#238** | PR-B / PR-I の後。⚠️ **スコープ追加が必要**（#238）: ①Amazon 掲載を `isQualifiedGame` の経路として通す（順位を `GameData` に載せない制約と両立する設計が要る）②「スプラトゥーン レイダース」↔「Splatoon Raiders」の照合成立を受け入れ条件にする。**ただし #241（母集団クエリの上限欠落）を先に直さないと、Amazon 軸を入れても候補プールに入らない** |
 | **#241 対応** | `fix/issue-241-newrelease-population-window` | ✅ **マージ済み**（2026-08-09。`31770bc`。squash） | **#241**（Closed）/ 関連 #238・**#244** / PR #243 | 26ファイル / **968テスト**（着手前 960）。コミット2本（実装 → レビュー対応）。発売済みクエリに上限を追加 + 未発売クエリ `fetchUpcomingGames` を新設 + レビュー指摘を受けて発売済みを **2 本立て**（`hypes desc` / `rating_count desc` の和集合）に。実測: プール内の 60 日窓の発売済み **4 → 73 件**、未発売 16 → 23 件（供給維持）、実行時間 2:39 → 2:45。**選定結果は今週のデータでは不変**（下流の品質条件が Steam 依存のため。→ #238）。**仕様の矛盾を 1 件発見 → #244** |
+| **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
 | 名作枠PR | `feat/classic-slot-redesign` | 未着手 | 関連 **#238** | PR-D と直列。⚠️ **スコープ明記が必要**（#238）: 母集団クエリだけでなく**選定側 `buildClassicCandidates`（`fetch-data.ts`）も評価母数ベースに変更する**こと。現在は `igdbRating >= 85` だけで通すため、他クエリ経由でプールに入った発売直後のタイトル（実測: 『Splatoon Raiders』`total_rating_count=7`）を拾ってしまう。PR-B の教訓（3クエリの結果は1プールに平坦化される）と同型 |
@@ -195,6 +196,29 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 | `fetchIndieGames` | :922 | **:971** |
 | `fetchIGDBData`（5 クエリを並列取得） | :982 付近 | **:1005** |
 
+⚠️ **さらに #234 対応（#246）で `fetch-igdb.ts` の行番号がずれた。ずれ幅は一様ではない。**
+`IGDB_WEBSITE_TYPE` 定数を追加したうえ、`pickOfficialUrlFromWebsites` /
+`pickSteamUrlFromWebsites` の JSDoc も伸びたため、**上部（この 2 関数）で +24〜26、
+`mapRawGameToIGDBGame` 以降で +28、`IGDB_POOL_QUERY_FIELDS` 以降で +29** と段階的に増える。
+**一律のオフセットを当てると 4〜6 行ずれる。** マージ後の実測値（2026-08-09。`bd71e4f`）:
+
+| シンボル | #241 マージ後 | #234 マージ後 |
+|---|---|---|
+| `IGDB_WEBSITE_TYPE`（新設。OFFICIAL=1 / STEAM=13） | — | **`fetch-igdb.ts:309`** |
+| `pickOfficialUrlFromWebsites` | :306 | **:330** |
+| `pickSteamUrlFromWebsites` | :332 | **:358** |
+| `mapRawGameToIGDBGame` | :392 | **:420** |
+| `getJstDayStartUnixSec` | :471 | **:499** |
+| `IGDB_POOL_QUERY_FIELDS`（#241 で新設） | :709 | **:738** |
+| `mapPoolRawGameToIGDBGame`（#241 で新設） | :754 | **:783** |
+| `fetchRecentPopularGames`（発売済み・hypes 版） | :821 | **:850** |
+| `fetchRecentPopularGamesByRatingCount`（発売済み・票数版） | :866 | **:895** |
+| `fetchUpcomingGames`（未発売） | :909 | **:938** |
+| `fetchClassicGames` | :941 | **:970** |
+| `fetchIndieGames` | :971 | **:1000** |
+| `fetchIGDBData`（5 クエリを並列取得） | :1005 | **:1034** |
+| ~~`fetchGameImageAndUrl`~~ | :1119 | **削除**（#246。上記「レビューで確認されクリアだった点」を参照） |
+
 **母集団クエリは 3 本 → 5 本になった。** 「3 つの母集団クエリ」という記述が本ファイル中に複数残っているが、
 **現在は 5 本**である（発売済み 2 + 未発売 1 + 名作 1 + インディー 1）。`fields` と mapper は
 `IGDB_POOL_QUERY_FIELDS` / `mapPoolRawGameToIGDBGame` に一元化済みなので、
@@ -368,6 +392,11 @@ appId 逆引きクエリにフィルタが乗らないこと（伝播禁止の�
 - `search "Baldur\"s Gate 3"` は IGDB が実際に受け付ける（200、`Baldur's Gate III` を返す）
 - **`fetchGameImageAndUrl`（`fetch-igdb.ts:1041`。PR-0.5 マージ後の値）は呼び出し元ゼロの死んだコード**
   → 未フィルタで放置しても実害なし。削除候補として別途扱える
+  → **#234 対応（PR #246）で削除済み。** 死んでいただけでなく、**#117 で廃止したはずの
+  ブロックリスト方式フォールバック**（非SNS・非ストアの先頭URLを機械採用＝`theminesa.studio`
+  事故の原因）を保持したままだった。`category` が返らなくなった以降は、復活させれば
+  必ずこの欠陥経路を通る状態だった。**「死んでいるから無害」と判断した当時の評価は不十分**で、
+  死んだコードが**廃止済みの設計を温存する**リスクを見落としていた
 
 ### スコープから外した判断（管理者判断）
 
@@ -1335,7 +1364,7 @@ DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述
 
 | Issue | 内容 |
 |---|---|
-| **#234** | `websites.category` → `type` 改名で `officialUrl` 抽出が全経路で機能していない |
+| **#234** | `websites.category` → `type` 改名で `officialUrl` 抽出が全経路で機能していない → ✅ **完了**（2026-08-09。PR #246。マージ `bd71e4f`） |
 | **#235** | §3.5 の「話題性ルートから YouTube を外す」決定が未実装・PR 未割り当て |
 | **#236** | IGDB の会社レコード重複で `developed` 判定が取りこぼす |
 | **#238** | 話題の国内新作『Splatoon Raiders』が新作枠に載らず名作深掘り枠に選ばれる |
