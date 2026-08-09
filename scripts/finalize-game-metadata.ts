@@ -99,6 +99,9 @@ export async function finalizeGameMetadata(
           game.aggregatedRatingCount = game.aggregatedRatingCount ?? igdb.aggregatedRatingCount;
           // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
           game.keywords = game.keywords?.length ? game.keywords : (igdb.keywords ?? game.keywords);
+          game.totalRating = game.totalRating ?? igdb.totalRating;
+          game.totalRatingCount = game.totalRatingCount ?? igdb.totalRatingCount;
+          game.classicRemakeEligible = game.classicRemakeEligible ?? igdb.classicRemakeEligible;
           if (igdb.slug) {
             game.igdbSlug = game.igdbSlug ?? igdb.slug;
             game.sourceUrls = game.sourceUrls ?? {};

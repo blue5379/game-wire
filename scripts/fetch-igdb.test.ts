@@ -766,7 +766,7 @@ describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
     delete process.env.IGDB_CLIENT_SECRET;
   });
 
-  it('新作クエリ（hypes版・rating_count版とも）のみ game_type = (0,8,9)、名作・インディークエリは game_type = (0) を使う（新作枠だけリメイク/リマスターを含める）', async () => {
+  it('新作クエリ・名作クエリは game_type = (0,8,9)、インディークエリのみ game_type = (0) を使う（名作枠は J-3-e でリメイク許可、§5.5決着）', async () => {
     process.env.IGDB_CLIENT_ID = 'test-client-id';
     process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
 
@@ -816,7 +816,7 @@ describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
     const recentByRatingCountQuery = igdbBodies.find(
       (b) => b.includes('rating_count > 5') && b.includes('game_type = (0,8,9)')
     );
-    const classicQuery = igdbBodies.find((b) => b.includes('hypes > 100'));
+    const classicQuery = igdbBodies.find((b) => b.includes('sort total_rating_count desc'));
     const indieQuery = igdbBodies.find(
       (b) => b.includes('rating_count > 5') && b.includes('game_type = (0)') && !b.includes('game_type = (0,8,9)')
     );
@@ -830,12 +830,13 @@ describe('fetchIGDBData - pool queries use filters (Issue #207 / PR-B)', () => {
     expect(recentByRatingCountQuery).toContain('game_type = (0,8,9)');
     expect(recentByRatingCountQuery).toContain('themes != (42)');
 
-    // 名作枠・インディー枠は Main Game のみ（絶対に変更しない、仕様 §6.2）
+    // 名作枠は J-3-e により game_type=(0,8,9) を許可する（§5.5決着。t8/9 は選定側 or
+    // fetchClassicGames の後段フィルタで parent_game 条件により絞られる）
     expect(classicQuery).toBeDefined();
-    expect(classicQuery).toContain('game_type = (0)');
-    expect(classicQuery).not.toContain('game_type = (0,8,9)');
+    expect(classicQuery).toContain('game_type = (0,8,9)');
     expect(classicQuery).toContain('themes != (42)');
 
+    // インディー枠は Main Game のみ（絶対に変更しない、仕様 §6.2）
     expect(indieQuery).toBeDefined();
     expect(indieQuery).toContain('game_type = (0)');
     expect(indieQuery).not.toContain('game_type = (0,8,9)');
@@ -1076,7 +1077,7 @@ describe('母集団クエリの steamUrl 抽出（§3.6, PR-I その2）', () =>
       if (body.includes('hypes > 5')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.recent ?? []) });
       }
-      if (body.includes('hypes > 100')) {
+      if (body.includes('total_rating >=')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.classic ?? []) });
       }
       // indie（game_type=(0)）と発売済みクエリB（rating_count版、game_type=(0,8,9)）は
@@ -1254,7 +1255,7 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
       if (body.includes('hypes > 5')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.recent ?? []) });
       }
-      if (body.includes('hypes > 100')) {
+      if (body.includes('total_rating >=')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.classic ?? []) });
       }
       // 発売済みクエリB（rating_count版）は game_type=(0,8,9)、indie は game_type=(0) で区別する
@@ -1399,7 +1400,7 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
     const recentRatingCountQuery = bodies.find(
       (b) => b.includes('rating_count > 5') && b.includes('game_type = (0,8,9)')
     );
-    const classicQuery = bodies.find((b) => b.includes('hypes > 100'));
+    const classicQuery = bodies.find((b) => b.includes('total_rating >='));
     const indieQuery = bodies.find(
       (b) => b.includes('rating_count > 5') && b.includes('game_type = (0)') && !b.includes('game_type = (0,8,9)')
     );
@@ -1487,5 +1488,326 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
     expect(game!.steamUrl).toBe('https://store.steampowered.com/app/9101');
     expect(game!.developer).toBe('Dev Studio');
     expect(game!.developerGameCount).toBe(12);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 名作枠 J-3-e: total_rating / total_rating_count / parent_game の取得と
+// classicRemakeEligible 判定（§5.4 / §5.5決着, Issue classic-slot-population）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('IGDB_POOL_QUERY_FIELDS / IGDB_GAME_FIELDS に total_rating・parent_game を含む（§5.4/§5.5）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('IGDB_POOL_QUERY_FIELDS が total_rating / total_rating_count / parent_game.game_type / parent_game.total_rating / parent_game.total_rating_count を含む', () => {
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('total_rating');
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('total_rating_count');
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('parent_game.game_type');
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('parent_game.total_rating');
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('parent_game.total_rating_count');
+  });
+
+  it('searchGameByName（IGDB_GAME_FIELDS）が total_rating / total_rating_count / parent_game.* を含む（検索経路にも同じ3種を追加）', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await searchGameByName('Elden Ring', 'client-id', 'token');
+
+    const body = String((fetchMock.mock.calls[0][1] as { body: string }).body);
+    expect(body).toContain('total_rating');
+    expect(body).toContain('total_rating_count');
+    expect(body).toContain('parent_game.game_type');
+    expect(body).toContain('parent_game.total_rating');
+    expect(body).toContain('parent_game.total_rating_count');
+  });
+
+  it('fetchIGDBData: 5母集団クエリすべてが total_rating / total_rating_count / parent_game.* を fields に含む', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    const igdbBodies = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes('api.igdb.com'))
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''));
+
+    expect(igdbBodies.length).toBe(5);
+    for (const body of igdbBodies) {
+      expect(body).toContain('parent_game.game_type');
+      expect(body).toContain('parent_game.total_rating');
+      expect(body).toContain('parent_game.total_rating_count');
+    }
+  });
+});
+
+describe('mapRawGameToIGDBGame / mapPoolRawGameToIGDBGame: totalRating / totalRatingCount の転記（§5.4）', () => {
+  it('mapRawGameToIGDBGame: total_rating / total_rating_count を totalRating / totalRatingCount に転記する', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 1,
+      name: 'The Witcher 3',
+      slug: 'the-witcher-3',
+      total_rating: 92.4,
+      total_rating_count: 3548,
+    } as any);
+    expect(result.totalRating).toBe(92.4);
+    expect(result.totalRatingCount).toBe(3548);
+  });
+
+  it('mapPoolRawGameToIGDBGame: total_rating / total_rating_count を totalRating / totalRatingCount に転記する', () => {
+    const result = mapPoolRawGameToIGDBGame({
+      id: 2,
+      name: 'GTA V',
+      slug: 'gta-v',
+      total_rating: 94.1,
+      total_rating_count: 5890,
+    } as any);
+    expect(result.totalRating).toBe(94.1);
+    expect(result.totalRatingCount).toBe(5890);
+  });
+
+  it('境界値: total_rating / total_rating_count が未指定でも undefined になる（両マッパーで確認）', () => {
+    const raw = mapRawGameToIGDBGame({ id: 3, name: 'Minimal', slug: 'minimal' } as any);
+    const pool = mapPoolRawGameToIGDBGame({ id: 4, name: 'Minimal Pool', slug: 'minimal-pool' } as any);
+    expect(raw.totalRating).toBeUndefined();
+    expect(raw.totalRatingCount).toBeUndefined();
+    expect(pool.totalRating).toBeUndefined();
+    expect(pool.totalRatingCount).toBeUndefined();
+  });
+});
+
+describe('classicRemakeEligible 判定（J-3-e, §5.5決着）— mapRawGameToIGDBGame / mapPoolRawGameToIGDBGame 共通', () => {
+  // mapPoolRawGameToIGDBGame・mapRawGameToIGDBGame の両方で同じ判定になることを
+  // 確認する（判定ロジックは共通ヘルパに切り出す規約）。
+  const mappers: [string, (g: any) => { classicRemakeEligible?: boolean }][] = [
+    ['mapRawGameToIGDBGame', mapRawGameToIGDBGame],
+    ['mapPoolRawGameToIGDBGame', mapPoolRawGameToIGDBGame],
+  ];
+
+  for (const [label, mapper] of mappers) {
+    describe(label, () => {
+      it('game_type が 0（Main Game）なら classicRemakeEligible は undefined（リメイクではないので無関係）', () => {
+        const result = mapper({
+          id: 10,
+          name: 'Main Game',
+          slug: 'main-game',
+          game_type: 0,
+          parent_game: { id: 1, game_type: 8, total_rating: 50, total_rating_count: 5 },
+        });
+        expect(result.classicRemakeEligible).toBeUndefined();
+      });
+
+      it('game_type が undefined（判定不能）なら classicRemakeEligible は undefined', () => {
+        const result = mapper({ id: 11, name: 'No Type', slug: 'no-type' });
+        expect(result.classicRemakeEligible).toBeUndefined();
+      });
+
+      it('game_type=8（Remake）で parent_game が無い場合は true（原作を特定できない）', () => {
+        const result = mapper({ id: 12, name: 'Orphan Remake', slug: 'orphan-remake', game_type: 8 });
+        expect(result.classicRemakeEligible).toBe(true);
+      });
+
+      it('game_type=8 で親が §5.4 の母集団条件を満たさない（Resident Evil 2 実測値: 親 total=69.4, n=593）場合は true', () => {
+        const result = mapper({
+          id: 13,
+          name: 'Resident Evil 2',
+          slug: 'resident-evil-2',
+          game_type: 8,
+          parent_game: { id: 100, game_type: 0, total_rating: 69.4, total_rating_count: 593 },
+        });
+        expect(result.classicRemakeEligible).toBe(true);
+      });
+
+      it('game_type=9 で親が §5.4 の母集団条件を満たす（The Last of Us Remastered 実測値: 親 total=92.2, n=3548）場合は false', () => {
+        const result = mapper({
+          id: 14,
+          name: 'The Last of Us Remastered',
+          slug: 'the-last-of-us-remastered',
+          game_type: 9,
+          parent_game: { id: 101, game_type: 0, total_rating: 92.2, total_rating_count: 3548 },
+        });
+        expect(result.classicRemakeEligible).toBe(false);
+      });
+
+      it('境界値: 親が total_rating=85 & total_rating_count=200 ちょうど（母集団条件を満たす）なら false', () => {
+        const result = mapper({
+          id: 15,
+          name: 'Boundary Remake',
+          slug: 'boundary-remake',
+          game_type: 8,
+          parent_game: { id: 102, game_type: 0, total_rating: 85, total_rating_count: 200 },
+        });
+        expect(result.classicRemakeEligible).toBe(false);
+      });
+
+      it('境界値: 親が total_rating=84（1点未満）なら母集団条件を満たさず true（Black Mesa 実測値: 親Half-Life total=84.2, n=2897）', () => {
+        const result = mapper({
+          id: 16,
+          name: 'Black Mesa',
+          slug: 'black-mesa',
+          game_type: 8,
+          parent_game: { id: 103, game_type: 0, total_rating: 84.2, total_rating_count: 2897 },
+        });
+        expect(result.classicRemakeEligible).toBe(true);
+      });
+
+      it('親の game_type を無視すると誤判定する実測ケース（Final Fantasy VII Remake, レビュー指摘バグの回帰テスト）: 親 FF VII は total_rating=87.8, total_rating_count=1630 と閾値を超えるが game_type=10（拡張版扱い）のため母集団外 → true（許可）。ポジティブコントロールとして親 game_type=0 で同じく閾値超えの The Last of Us Remastered は false（除外）', () => {
+        // このケースの肝: 親の total_rating / total_rating_count は両方とも§5.4の閾値を
+        // 超えている。game_type を見て初めて「拡張版なので母集団に入らない」と判定できる。
+        // game_type を見ない実装だと誤って false（除外）を返してしまう
+        // （docs/article-category-spec-review.md:1581, :1821 / spec.md:661 が名指しするケース）。
+        const ff7Remake = mapper({
+          id: 17,
+          name: 'Final Fantasy VII Remake',
+          slug: 'final-fantasy-vii-remake',
+          game_type: 8,
+          parent_game: { id: 104, game_type: 10, total_rating: 87.8, total_rating_count: 1630 },
+        });
+        expect(ff7Remake.classicRemakeEligible).toBe(true);
+
+        // ポジティブコントロール: 親が同じく閾値を超えていて、かつ game_type=0（Main Game）
+        // なら母集団内 → false（除外）のまま
+        const tlouRemastered = mapper({
+          id: 18,
+          name: 'The Last of Us Remastered',
+          slug: 'the-last-of-us-remastered-2',
+          game_type: 9,
+          parent_game: { id: 105, game_type: 0, total_rating: 92.2, total_rating_count: 3548 },
+        });
+        expect(tlouRemastered.classicRemakeEligible).toBe(false);
+      });
+
+      it('境界値: 親の game_type が undefined（閾値は超えている）なら true（game_type=0 と確認できない以上、母集団に居ると断定できない）', () => {
+        const result = mapper({
+          id: 19,
+          name: 'Unknown Parent Type Remake',
+          slug: 'unknown-parent-type-remake',
+          game_type: 8,
+          parent_game: { id: 106, total_rating: 90, total_rating_count: 1000 }, // game_type 無し
+        });
+        expect(result.classicRemakeEligible).toBe(true);
+      });
+    });
+  }
+});
+
+describe('fetchClassicGames（§5.4/§5.5決着後）: where/sort/limit の書き換えと J-3-e 後段フィルタ', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+    vi.unstubAllEnvs();
+  });
+
+  function mockClassicQuery(classicGames: unknown[]): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      const body = String((init as { body?: string })?.body ?? '');
+      if (body.includes('total_rating >=')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(classicGames) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  it('名作クエリの where/sort/limit が §5.4 決着どおり（total_rating>=85 & total_rating_count>=200 & game_type=(0,8,9) & themes!=(42), sort total_rating_count desc, limit 200）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+    const fetchMock = mockClassicQuery([]);
+
+    await fetchIGDBData();
+
+    const classicQuery = fetchMock.mock.calls
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''))
+      .find((b) => b.includes('total_rating >='));
+
+    expect(classicQuery).toBeDefined();
+    expect(classicQuery).toContain('total_rating >= 85');
+    expect(classicQuery).toContain('total_rating_count >= 200');
+    expect(classicQuery).toContain('game_type = (0,8,9)');
+    expect(classicQuery).toContain('themes != (42)');
+    expect(classicQuery).toContain('sort total_rating_count desc');
+    expect(classicQuery).toContain('limit 200');
+    // 旧仕様（hypes > 100 での絞り込み・hypes desc ソート・limit 30）は完全に廃止されていること。
+    // fields 列には共有定数により hypes 自体は残るため、where/sort/limit の内容だけを見る。
+    expect(classicQuery).not.toContain('hypes > 100');
+    expect(classicQuery).not.toContain('sort hypes desc');
+    expect(classicQuery).not.toContain('limit 30');
+  });
+
+  it('閾値は classic-pool.ts の環境変数上書きに従う（ハードコード禁止の検証）', async () => {
+    vi.stubEnv('CLASSIC_TOTAL_RATING_MIN', '90');
+    vi.stubEnv('CLASSIC_TOTAL_RATING_COUNT_MIN', '300');
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+    const fetchMock = mockClassicQuery([]);
+
+    await fetchIGDBData();
+
+    const classicQuery = fetchMock.mock.calls
+      .map(([, init]) => String((init as { body?: string })?.body ?? ''))
+      .find((b) => b.includes('total_rating >='));
+
+    expect(classicQuery).toContain('total_rating >= 90');
+    expect(classicQuery).toContain('total_rating_count >= 300');
+  });
+
+  it('取得後フィルタ（J-3-e）: game_type=0 は classicRemakeEligible に関係なく残り、game_type=8/9 は classicRemakeEligible===true のみ残る。undefined は除外される（同じテストで許可・除外の両方を確認）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = mockClassicQuery([
+      { id: 201, name: 'Main Game Kept', slug: 'main-game-kept', game_type: 0 },
+      {
+        id: 202,
+        name: 'Remake Allowed',
+        slug: 'remake-allowed',
+        game_type: 8,
+        parent_game: { id: 900, game_type: 0, total_rating: 69.4, total_rating_count: 593 },
+      },
+      {
+        id: 203,
+        name: 'Remake Rejected (parent in pool)',
+        slug: 'remake-rejected',
+        game_type: 8,
+        parent_game: { id: 901, game_type: 0, total_rating: 92.2, total_rating_count: 3548 },
+      },
+      {
+        id: 204,
+        name: 'Remaster No Parent Field',
+        slug: 'remaster-no-parent-field',
+        game_type: 9,
+        // parent_game を意図的に省略 = 転記漏れ相当。classicRemakeEligible は
+        // mapper上は true になるが、この後段フィルタでは true のときのみ残す。
+      },
+    ]);
+
+    const result = await fetchIGDBData();
+    const ids = result.data!.games.map((g) => g.id);
+
+    expect(ids).toContain(201); // Main Game は無条件で残る
+    expect(ids).toContain(202); // 親が母集団条件を満たさない → 許可
+    expect(ids).not.toContain(203); // 親が母集団条件を満たす → 除外
+    expect(ids).toContain(204); // parent_game 無し → mapper が true を返すため残る
   });
 });

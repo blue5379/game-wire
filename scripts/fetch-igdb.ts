@@ -4,6 +4,7 @@
  */
 
 import type { IGDBGame, IGDBData, FetchResult } from './types.js';
+import { meetsClassicPoolThresholds, readClassicTotalRatingMin, readClassicTotalRatingCountMin } from './classic-pool.js';
 
 const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/token';
 const IGDB_API_URL = 'https://api.igdb.com/v4';
@@ -398,6 +399,12 @@ interface IGDBRawGame {
   aggregated_rating_count?: number;
   /** IGDB キーワード（ファンゲーム判定に使う、§6.1） */
   keywords?: { id: number; slug: string }[];
+  /** 総合評価（批評+ユーザーの合成値）。名作枠の母集団条件に使う（§5.4） */
+  total_rating?: number;
+  /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
+  total_rating_count?: number;
+  /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
+  parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
 }
 
 // searchGameByName / searchGameBySteamAppId 共通で使う fields 一覧
@@ -409,7 +416,55 @@ const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        involved_companies.company.country,
        game_localizations.name, game_localizations.region,
        websites.url, websites.category, websites.type,
-       game_type, aggregated_rating, aggregated_rating_count, keywords.slug`;
+       game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
+       total_rating, total_rating_count,
+       parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count`;
+
+/**
+ * J-3-e（§5.5決着）: game_type が 8（Remake）/9（Remaster）のリメイク・リマスターについて、
+ * 名作枠の母集団に含めてよいか（classicRemakeEligible）を判定する共通ヘルパ。
+ * mapRawGameToIGDBGame（検索経路）と mapPoolRawGameToIGDBGame（母集団クエリ5種共通）の
+ * 両方から呼ばれる。
+ *
+ * 判定ルール:
+ * - `gameType` が 8 または 9 **でない**場合は `undefined`（リメイクではないので無関係）
+ * - `gameType` が 8/9 の場合: **親（parent_game）が §5.4 の母集団条件
+ *   （total_rating >= 閾値 & total_rating_count >= 閾値 & game_type = 0）を満たさない**なら
+ *   `true`（原作が母集団に居ない＝リメイクを許可）、満たすなら `false`（原作が母集団に居る＝
+ *   リメイクは不要）
+ * - 親の情報が取れない場合（`parent_game` 自体が無い）は `true`
+ *   （原作が特定できない＝母集団に原作が居ることを示せないため許可する）
+ *
+ * 親の判定は `total_rating` / `total_rating_count` に加えて **`game_type === IGDB_GAME_TYPE_MAIN`
+ * （0）も見る**。§5.4 の母集団条件は `total_rating >= 閾値 & total_rating_count >= 閾値 &
+ * game_type = 0 & themes != (42)` であり、`game_type = 0` を落とすと誤判定する
+ * （実測: `Final Fantasy VII Remake` の親 `Final Fantasy VII` は `total_rating=87.8,
+ * total_rating_count=1630` と閾値を超えるが `game_type=10`（拡張版扱い）で母集団外。
+ * `game_type` を見ずに判定すると誤って「母集団内」＝リメイク除外と判定してしまう。
+ * レビューで検出・修正）。
+ *
+ * `themes != (42)` は判定に含めない（親が `themes=42`（成人向け）を含む t8/t9 は実測 0 件で
+ * 判定結果に影響しないことを管理者が確認済み）。
+ *
+ * ⚠️ 非対称性の注意: この関数自体は「わからない場合は true」（許可側）に倒れるが、
+ * **選定側（fetch-data.ts の isClassicRemakeAllowed）では `undefined` を「除外」として扱う**。
+ * これは、この関数が正しく呼ばれた前提での「原作を特定できないなら許可」という判定と、
+ * 選定側でフィールドの転記漏れ（バグ）が起きた場合に安全側（リメイクを載せない方向）に
+ * 倒すための判定は目的が異なるため。転記漏れが起きても記事に出ないようにするのが選定側の責務。
+ */
+function computeClassicRemakeEligible(
+  gameType: number | undefined,
+  parentGame: { game_type?: number; total_rating?: number; total_rating_count?: number } | undefined
+): boolean | undefined {
+  if (gameType !== IGDB_GAME_TYPE_REMAKE && gameType !== IGDB_GAME_TYPE_REMASTER) {
+    return undefined;
+  }
+  if (!parentGame) return true;
+  const parentInPool =
+    parentGame.game_type === IGDB_GAME_TYPE_MAIN &&
+    meetsClassicPoolThresholds(parentGame.total_rating, parentGame.total_rating_count);
+  return !parentInPool;
+}
 
 /**
  * IGDB games の生レスポンスを IGDBGame に変換する共通ロジック
@@ -484,6 +539,9 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     aggregatedRating: game.aggregated_rating,
     aggregatedRatingCount: game.aggregated_rating_count,
     keywords: game.keywords?.map((k) => k.slug),
+    totalRating: game.total_rating,
+    totalRatingCount: game.total_rating_count,
+    classicRemakeEligible: computeClassicRemakeEligible(game.game_type, game.parent_game),
   };
 }
 
@@ -742,7 +800,9 @@ export const IGDB_POOL_QUERY_FIELDS = `name, slug, summary, genres.name, platfor
              cover.url, screenshots.url, rating, rating_count, hypes,
              game_localizations.name, game_localizations.region,
              websites.url, websites.category, websites.type,
-             game_type, aggregated_rating, aggregated_rating_count, keywords.slug`;
+             game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
+             total_rating, total_rating_count,
+             parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count`;
 
 /**
  * 母集団クエリの生レスポンス（IGDB_POOL_QUERY_FIELDS に対応する形）。
@@ -771,6 +831,12 @@ interface IGDBPoolRawGame {
   aggregated_rating?: number;
   aggregated_rating_count?: number;
   keywords?: { id: number; slug: string }[];
+  /** 総合評価（批評+ユーザーの合成値）。名作枠の母集団条件に使う（§5.4） */
+  total_rating?: number;
+  /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
+  total_rating_count?: number;
+  /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
+  parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
 }
 
 /**
@@ -829,6 +895,9 @@ function mapPoolRawGameToIGDBGame(game: IGDBPoolRawGame): IGDBGame {
     aggregatedRating: game.aggregated_rating,
     aggregatedRatingCount: game.aggregated_rating_count,
     keywords: game.keywords?.map((k) => k.slug),
+    totalRating: game.total_rating,
+    totalRatingCount: game.total_rating_count,
+    classicRemakeEligible: computeClassicRemakeEligible(game.game_type, game.parent_game),
   };
 }
 
@@ -980,19 +1049,46 @@ async function fetchUpcomingGames(
 }
 
 /**
- * 高評価の名作ゲームを取得
+ * 【名作深掘り】評価が高く、かつ評価が十分に定着しているゲームを取得する（§5.4/§5.5決着）。
+ *
+ * 母集団の条件（§5.4）: `total_rating >= 閾値`（既定85） & `total_rating_count >= 閾値`
+ * （既定200） & Main Game(0) / Remake(8) / Remaster(9)、成人向け除外。閾値は
+ * classic-pool.ts の関数から取得する（呼び出し時に環境変数を読むためハードコードしない）。
+ *
+ * 並び順は評価母数（total_rating_count）の降順、取得件数は 200 件（§5.4決着。母集団268件のうち
+ * 68件が切られるが仕様どおり）。
+ *
+ * J-3-e（§5.5決着）: game_type が 8/9 のリメイク・リマスターは、取得後に
+ * `classicRemakeEligible === true`（原作が母集団に存在しない）のものだけを残す。
+ * Main Game(0) は classicRemakeEligible が undefined でも無条件で残す。
+ *
+ * 旧実装（`hypes > 100` & `sort hypes desc` & `limit 30`、Main Game のみ）は廃止した。
+ * 旧実装は実質「発売前フォロー数」で母集団が決まり、§5.4/§5.5 が要求する評価母数ベースの
+ * 母集団と無関係だった。
+ *
+ * ⚠️ `CLASSIC_TOTAL_RATING_COUNT_MIN` は**引き上げ方向にしか効かない**（code-review 指摘）。
+ * `limit 200`（§5.4決定事項）が `sort total_rating_count desc` と組み合わさっているため、
+ * 閾値を既定の 200 より下げても返る結果は変わらない（母集団は既定閾値で約268件あり、
+ * 常に評価母数上位200件がそのまま返るため）。一方 `buildClassicCandidates`
+ * （`meetsClassicPoolThresholds`）は選定側で下げた閾値をそのまま数値比較に使うので、
+ * クエリ側と選定側で閾値の意味が食い違う非対称がある。この非対称は `limit 200` という
+ * §5.4 の決定事項に由来する構造的な性質であり、意図的に挙動は変えていない。
  */
 async function fetchClassicGames(
   clientId: string,
   accessToken: string
 ): Promise<IGDBGame[]> {
   try {
-    // 期待度の高いゲーム（名作候補）。where/sort/limit は変更しない。
+    const totalRatingMin = readClassicTotalRatingMin();
+    const totalRatingCountMin = readClassicTotalRatingCountMin();
+
     const query = `
       fields ${IGDB_POOL_QUERY_FIELDS};
-      where hypes > 100 & ${buildIgdbCommonFilters()};
-      sort hypes desc;
-      limit 30;
+      where total_rating >= ${totalRatingMin} & total_rating_count >= ${totalRatingCountMin} & ${buildIgdbCommonFilters({
+        gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
+      })};
+      sort total_rating_count desc;
+      limit 200;
     `;
 
     const games = await igdbRequest<IGDBPoolRawGame>(
@@ -1002,7 +1098,12 @@ async function fetchClassicGames(
       accessToken
     );
 
-    return games.map(mapPoolRawGameToIGDBGame);
+    return games.map(mapPoolRawGameToIGDBGame).filter((g) => {
+      if (g.gameType === IGDB_GAME_TYPE_REMAKE || g.gameType === IGDB_GAME_TYPE_REMASTER) {
+        return g.classicRemakeEligible === true;
+      }
+      return true;
+    });
   } catch (error) {
     console.error('Failed to fetch classic games:', error);
     return [];

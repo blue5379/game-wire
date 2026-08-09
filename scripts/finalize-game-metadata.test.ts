@@ -459,6 +459,126 @@ describe('finalizeGameMetadata - 新規フィールド補完（gameType/aggregat
   });
 });
 
+describe('finalizeGameMetadata - totalRating/totalRatingCount/classicRemakeEligible の補完（§5.4/§5.5決着, Issue classic-slot-population）', () => {
+  const REQUIRED_NO_REC = { cover: true, developer: true, sourceUrl: true } as const;
+
+  it('IGDB再検索結果からtotalRating/totalRatingCount/classicRemakeEligibleが補完される（appId確証済み）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      totalRating: 92.4,
+      totalRatingCount: 3548,
+      classicRemakeEligible: true,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.totalRating).toBe(92.4);
+    expect(result.game.totalRatingCount).toBe(3548);
+    expect(result.game.classicRemakeEligible).toBe(true);
+  });
+
+  it('既存値がある場合は上書きしない（?? の挙動）', async () => {
+    const game = makeGame({
+      steamAppId: 12345,
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
+      totalRating: 90,
+      totalRatingCount: 400,
+      classicRemakeEligible: false,
+    });
+    mockEnrich.mockResolvedValue({
+      id: 1, name: 'Test Game', slug: 'test-game',
+      coverUrl: 'https://images.igdb.com/igdb/image/upload/t_cover_big/exists.jpg',
+      steamUrl: 'https://store.steampowered.com/app/12345',
+      totalRating: 50,
+      totalRatingCount: 1,
+      classicRemakeEligible: true,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.totalRating).toBe(90);
+    expect(result.game.totalRatingCount).toBe(400);
+    expect(result.game.classicRemakeEligible).toBe(false);
+  });
+
+  it('igdbConfirmedがfalse（appId不一致）のときは補完されない。appId一致時には補完される（ポジティブコントロール）', async () => {
+    const gameMismatch = makeGame({
+      title: 'Old Game',
+      steamAppId: 1087090,
+      coverImage: 'https://example.com/cdn-cover.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1087090' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 999, name: 'Old Game', slug: 'old-game',
+      totalRating: 90,
+      totalRatingCount: 400,
+      classicRemakeEligible: true,
+      // steamUrl なし → appId 未確証
+    } as any);
+
+    const resultMismatch = await finalizeGameMetadata(gameMismatch, REQUIRED_NO_REC);
+
+    expect(resultMismatch.game.totalRating).toBeUndefined();
+    expect(resultMismatch.game.totalRatingCount).toBeUndefined();
+    expect(resultMismatch.game.classicRemakeEligible).toBeUndefined();
+
+    // ポジティブコントロール: appId 一致時は補完される
+    const gameMatch = makeGame({
+      title: 'New Game',
+      steamAppId: 555,
+      coverImage: 'https://example.com/cdn-cover2.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/555' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 2, name: 'New Game', slug: 'new-game',
+      steamUrl: 'https://store.steampowered.com/app/555',
+      totalRating: 90,
+      totalRatingCount: 400,
+      classicRemakeEligible: true,
+    } as any);
+
+    const resultMatch = await finalizeGameMetadata(gameMatch, REQUIRED_NO_REC);
+
+    expect(resultMatch.game.totalRating).toBe(90);
+    expect(resultMatch.game.totalRatingCount).toBe(400);
+    expect(resultMatch.game.classicRemakeEligible).toBe(true);
+  });
+
+  it('境界値: totalRating/totalRatingCount が 0、classicRemakeEligible が false でも ?? により正しく採用される（|| だと欠損する回帰防止）', async () => {
+    const game = makeGame({
+      steamAppId: 777,
+      coverImage: 'https://example.com/cover.jpg',
+      developer: 'Existing Dev',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/777' },
+    });
+    mockEnrich.mockResolvedValue({
+      id: 3, name: 'Test Game', slug: 'test-game',
+      steamUrl: 'https://store.steampowered.com/app/777',
+      totalRating: 0,
+      totalRatingCount: 0,
+      classicRemakeEligible: false,
+    } as any);
+
+    const result = await finalizeGameMetadata(game, REQUIRED_NO_REC);
+
+    expect(result.game.totalRating).toBe(0);
+    expect(result.game.totalRatingCount).toBe(0);
+    expect(result.game.classicRemakeEligible).toBe(false);
+  });
+});
+
 describe('finalizeGameMetadata - developerGameCount の補完（§3.4 開発本数による規模判定, Issue #231・PR-I その1）', () => {
   const REQUIRED_NO_REC = { cover: true, developer: true, sourceUrl: true } as const;
 

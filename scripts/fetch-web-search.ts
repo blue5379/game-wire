@@ -126,22 +126,31 @@ export async function searchSteamReviews(
 /**
  * ゲームの歴史・影響を検索
  * 用途: 名作深掘り「ゲームの歴史」
+ *
+ * releaseYear（発売年）は省略可能。渡された場合のみクエリに含める
+ * （docs/article-category-spec.md §5.6 修正3。効果は不安定なため補助対策）。
  */
 export async function searchGameHistory(
-  gameTitle: string
+  gameTitle: string,
+  releaseYear?: number
 ): Promise<WebSearchResult[]> {
-  const query = `"${gameTitle}" 歴史 影響 名作 ゲーム業界`;
+  const yearPart = releaseYear !== undefined ? ` ${releaseYear}` : '';
+  const query = `"${gameTitle}"${yearPart} 歴史 影響 名作 ゲーム業界`;
   console.log(`  Searching game history: ${gameTitle}`);
   return search(query, { maxResults: 3, searchDepth: 'advanced' });
 }
 
 /**
  * ゲームに関する全ての必要な情報を検索
+ *
+ * releaseYear（発売年）は省略可能。classic カテゴリの歴史検索にのみ使用し、
+ * 他カテゴリの検索挙動には影響しない。
  */
 export async function searchGameInfo(
   gameTitle: string,
   category: 'newRelease' | 'indie' | 'classic' | 'feature',
-  developerName?: string
+  developerName?: string,
+  releaseYear?: number
 ): Promise<GameWebSearchResults> {
   console.log(`Searching web for: ${gameTitle} (${category})`);
 
@@ -172,7 +181,7 @@ export async function searchGameInfo(
       // 名作: レビュー + 歴史
       results.reviews = await searchReviews(gameTitle);
       await delay(500);
-      results.history = await searchGameHistory(gameTitle);
+      results.history = await searchGameHistory(gameTitle, releaseYear);
       break;
 
     case 'feature':

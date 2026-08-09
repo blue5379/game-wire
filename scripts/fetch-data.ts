@@ -29,6 +29,7 @@ import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
 import { normalizeTitle } from './normalize.js';
 import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
+import { meetsClassicPoolThresholds } from './classic-pool.js';
 import {
   isInvalidGameTitle,
   extractYearFromDate,
@@ -151,6 +152,9 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.aggregatedRatingCount = igdbGame.aggregatedRatingCount ?? game.aggregatedRatingCount;
   // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
   game.keywords = igdbGame.keywords?.length ? igdbGame.keywords : game.keywords;
+  game.totalRating = igdbGame.totalRating ?? game.totalRating;
+  game.totalRatingCount = igdbGame.totalRatingCount ?? game.totalRatingCount;
+  game.classicRemakeEligible = igdbGame.classicRemakeEligible ?? game.classicRemakeEligible;
   if (!game.source.includes('igdb')) {
     game.source.push('igdb');
   }
@@ -353,6 +357,9 @@ export async function aggregateGames(
         game.aggregatedRatingCount = igdb.aggregatedRatingCount ?? game.aggregatedRatingCount;
         // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
         game.keywords = igdb.keywords?.length ? igdb.keywords : game.keywords;
+        game.totalRating = igdb.totalRating ?? game.totalRating;
+        game.totalRatingCount = igdb.totalRatingCount ?? game.totalRatingCount;
+        game.classicRemakeEligible = igdb.classicRemakeEligible ?? game.classicRemakeEligible;
         if (igdb.websites?.length) {
           game.igdbWebsites = igdb.websites;
         }
@@ -392,6 +399,9 @@ export async function aggregateGames(
         aggregatedRating: igdb.aggregatedRating,
         aggregatedRatingCount: igdb.aggregatedRatingCount,
         keywords: igdb.keywords,
+        totalRating: igdb.totalRating,
+        totalRatingCount: igdb.totalRatingCount,
+        classicRemakeEligible: igdb.classicRemakeEligible,
         igdbWebsites: igdb.websites?.length ? igdb.websites : undefined,
         source: ['igdb'],
         sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
@@ -671,6 +681,9 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.aggregatedRatingCount = primary.aggregatedRatingCount ?? dup.aggregatedRatingCount;
       // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
       primary.keywords = primary.keywords?.length ? primary.keywords : dup.keywords;
+      primary.totalRating = primary.totalRating ?? dup.totalRating;
+      primary.totalRatingCount = primary.totalRatingCount ?? dup.totalRatingCount;
+      primary.classicRemakeEligible = primary.classicRemakeEligible ?? dup.classicRemakeEligible;
       // source リストをマージ
       for (const s of dup.source) {
         if (!primary.source.includes(s)) primary.source.push(s);
@@ -1000,19 +1013,70 @@ export function buildNewReleaseCandidates(
 }
 
 // 新作枠以外の枠から除外するゲーム種別（IGDB game_type、§6.2）
+const GAME_TYPE_MAIN = 0;
 const GAME_TYPE_REMAKE = 8;
 const GAME_TYPE_REMASTER = 9;
+
+// 名作枠の母集団に含めてよい game_type（§5.4決着）。Main Game(0) と、J-3-e の対象になる
+// Remake(8)/Remaster(9)。実際に 8/9 を許可するかどうかは isClassicRemakeAllowed が別途決める。
+const CLASSIC_POOL_GAME_TYPES: ReadonlySet<number> = new Set([
+  GAME_TYPE_MAIN,
+  GAME_TYPE_REMAKE,
+  GAME_TYPE_REMASTER,
+]);
 
 /**
  * 新作枠以外の枠から除外するゲーム種別（リメイク=8 / リマスター=9）かを判定する（§6.2）。
  * gameType が未取得（undefined）の候補は除外しない（判定材料が無いため従来どおり通す）。
  *
- * 本PRでは名作枠・インディー枠から一律除外する（保守的な対応）。名作枠での
- * 「原作が母集団にいないリメイクだけ条件付き許可」（§5.5）は名作枠PRの担当。
+ * インディー枠（buildIndieCandidates）はこの関数で一律除外する（保守的な対応。
+ * 小規模開発のリメイクは稀であり、この枠の主目的は DLC 混入防止のため）。
+ * 名作枠（buildClassicCandidates）は §5.5 決着（J-3-e）により、この関数の一律除外ではなく
+ * `isClassicRemakeAllowed` で「原作が母集団にいないリメイクだけ条件付き許可」する。
  */
 export function isRemakeOrRemaster(game: GameData): boolean {
   if (game.gameType === undefined) return false;
   return game.gameType === GAME_TYPE_REMAKE || game.gameType === GAME_TYPE_REMASTER;
+}
+
+/**
+ * 名作枠専用のリメイク許可判定（J-3-e, §5.5決着）。
+ *
+ * `isRemakeOrRemaster` と異なり、リメイク・リマスターを一律には除外しない。
+ * `gameType` が Remake(8)/Remaster(9) でない場合は無条件で true（リメイクではないので無関係）。
+ * 8/9 の場合は `game.classicRemakeEligible === true`（親=原作が §5.4 の母集団条件を
+ * 満たさない＝原作が母集団に居ない）のときだけ true。
+ *
+ * ⚠️ `classicRemakeEligible` が `undefined`（フィールドの転記漏れ等）の場合は false（除外）。
+ * `classicRemakeEligible` 自体の意味（IGDB 側の判定）は「わからなければ許可」だが、
+ * ここでは選定側の安全策として非対称に「わからなければ除外」に倒す
+ * （転記漏れが起きても誤ってリメイクを名作枠に載せないようにするため）。
+ */
+export function isClassicRemakeAllowed(game: GameData): boolean {
+  if (game.gameType !== GAME_TYPE_REMAKE && game.gameType !== GAME_TYPE_REMASTER) return true;
+  return game.classicRemakeEligible === true;
+}
+
+/**
+ * 名作枠の母集団条件のうち `game_type` 軸を判定する（§5.4決着、code-review 指摘対応）。
+ *
+ * §5.4 の母集団条件は「Main Game(0)、または『原作が母集団に存在しないリメイク・リマスター
+ * (8/9)』」であり、これ以外の種別（Expansion=2 / Bundle=3 / Standalone Expansion=4 / Mod=5 /
+ * Expanded Game=10 / Port=11 等）は母集団に含まれない。この関数はその粗いゲート（0/8/9 かどうか）
+ * だけを判定する。8/9 のうちどれを実際に許可するか（原作が母集団に居ないリメイクだけ）は
+ * `isClassicRemakeAllowed`（J-3-e）が別途決めるので、責務を重複させない。
+ *
+ * ⚠️ `gameType` が `undefined` の場合は **false（除外）**。これは `isRemakeOrRemaster`
+ * （`undefined` は除外しない＝除外シグナルが無いので通す）とは逆の立場だが、目的が違う:
+ * `isRemakeOrRemaster` は「リメイクだと確認できたものだけを除外する」除外シグナルであり、
+ * 対してこちらは「母集団に含まれる game_type だと確認できたものだけを通す」母集団の
+ * positive な条件（`meetsClassicPoolThresholds` が `totalRating`/`totalRatingCount` の
+ * `undefined` を「母集団に含めない」としている立場と揃える）。
+ * なお `gameType` は `totalRating`/`totalRatingCount` と同じ IGDB マッピング処理で同時に
+ * 埋まるフィールドのため、数値条件を通過したのに `gameType` だけ欠けるケースは実質発生しない。
+ */
+export function isClassicPoolGameType(game: GameData): boolean {
+  return game.gameType !== undefined && CLASSIC_POOL_GAME_TYPES.has(game.gameType);
 }
 
 const DEFAULT_INDIE_RELEASE_WINDOW_DAYS = 90;
@@ -1127,7 +1191,37 @@ export function buildIndieCandidates(
 }
 
 /**
- * 名作枠の候補を絞り込む（§5 / §6.1 / §6.3）。副作用を持たない純関数。
+ * 名作枠の候補を絞り込む（§5.4/§5.5/§5.8決着 / §6.1 / §6.3）。副作用を持たない純関数。
+ *
+ * §5.4 の母集団条件は 4 つ（数値条件2つ・game_type・成人向けテーマ除外）で構成される。
+ * このうち選定側で再現しているのは:
+ * - 数値条件（`total_rating >= 閾値 & total_rating_count >= 閾値`）→ `meetsClassicPoolThresholds`
+ * - game_type（Main Game、または J-3-e で許可されたリメイク・リマスターのみ）→
+ *   `isClassicPoolGameType`（粗いゲート） + `isClassicRemakeAllowed`（8/9 の許可判定）
+ *
+ * 旧仕様の `metascore`/`igdbRating` によるスコア条件、Steam/YouTube 人気条件は廃止した
+ * （PR-D で `metascore` 経路自体を削除する前に、本PRで先に置き換える方針をユーザーが承認済み）。
+ *
+ * `isClassicPoolGameType` を追加した経緯（code-review指摘）: 第2層エンリッチ
+ * （`aggregateGames` の `enrichGameWithIGDB` 呼び出し）は `mainGameOnly` 無しで
+ * `searchGameByName` を呼ぶため、任意の `game_type`（Expansion/Bundle/Standalone
+ * Expansion/Expanded Game/Port 等）のエントリが `totalRating`/`totalRatingCount` 付きで
+ * `GameData` に転記されうる。`isClassicRemakeAllowed` は `game_type` が 8/9 のときしか
+ * 判定しないため、これを追加するまでは 8/9 以外の非 Main-Game エントリ（例:
+ * 『The Witcher 3: Wild Hunt - Game of the Year Edition』(Bundle) や
+ * 『Final Fantasy VII』(Expanded Game)）が数値条件だけで素通りしていた。
+ *
+ * ⚠️ 成人向けテーマ（`themes != (42)`）は選定側では再現していない。母集団クエリ
+ * （`fetchClassicGames` 等）側では `buildIgdbCommonFilters` が塞いでいるが、第2層エンリッチ
+ * 経路には同じ抜け道がある。ただし実測（2026-08-10、`total_rating >= 85 & total_rating_count
+ * >= 200 & themes = (42)` で 0 件）では、成人向けテーマを持つゲームが数値条件を満たす例が
+ * 現状存在しないため実害は無いと考えられる。将来 IGDB データが変わった場合は要再検証。
+ *
+ * リメイク・リマスターの扱いは §5.5（J-3-e）。`isRemakeOrRemaster` による一律除外ではなく、
+ * `isClassicRemakeAllowed` で「原作が母集団にいないリメイクだけ許可」する。
+ *
+ * 並び順は評価母数（totalRatingCount）の降順（§5.8決着）。`Array.prototype.sort` は
+ * 安定ソートのため、同値時は元の配列順を保つ。
  */
 export function buildClassicCandidates(
   games: GameData[],
@@ -1136,18 +1230,13 @@ export function buildClassicCandidates(
   return games
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => !isFanGame(g))
-    .filter((g) => !isRemakeOrRemaster(g))
+    .filter((g) => isClassicPoolGameType(g))
+    .filter((g) => isClassicRemakeAllowed(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle))
-    .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
-    .filter((g) => {
-      // スコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
-      if ((g.metascore && g.metascore >= 85) || (g.igdbRating && g.igdbRating >= 85)) return true;
-      // それ以外は Steam/YouTube での人気が必要
-      return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
-    })
+    .filter((g) => meetsClassicPoolThresholds(g.totalRating, g.totalRatingCount))
     .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
     .filter((g) => !isAlreadySelected(g, options.alreadySelected))
-    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+    .sort((a, b) => (b.totalRatingCount ?? 0) - (a.totalRatingCount ?? 0));
 }
 
 /**

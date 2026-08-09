@@ -60,15 +60,19 @@ vi.mock('./generate-feature-image.js', () => ({
 vi.mock('./fetch-web-search.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./fetch-web-search.js')>()),
   isTavilyAvailable: vi.fn().mockReturnValue(false),
+  searchGameInfo: vi.fn(),
 }));
 
 import { __test, generateFeatureArticle } from './generate-articles.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { invokeClaudeModel, selectFeatureGames } from './bedrock-client.js';
+import { isTavilyAvailable, searchGameInfo } from './fetch-web-search.js';
 
 const mockEnrich = vi.mocked(enrichGameWithIGDB);
 const mockInvoke = vi.mocked(invokeClaudeModel);
 const mockSelectFeatureGames = vi.mocked(selectFeatureGames);
+const mockIsTavilyAvailable = vi.mocked(isTavilyAvailable);
+const mockSearchGameInfo = vi.mocked(searchGameInfo);
 
 // テスト用 GameData ファクトリ（必須フィールドのみ設定）
 function makeGame(overrides: Partial<GameData> = {}): GameData {
@@ -238,5 +242,45 @@ describe('generateFeatureArticle — スクリーニングが本数警告より�
       // アサーション失敗時に console.warn のスタブが後続テストへ漏れないよう finally で復元する
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('generateClassicArticle — 歴史検索クエリへの発売年の伝播 (docs/article-category-spec.md §5.6 修正3)', () => {
+  beforeEach(() => {
+    // このブロックの各テストでのみ Web 検索を有効化する。1回目の isTavilyAvailable() 呼び出し
+    // （§5.6 の歴史検索分岐）だけ true を返し、2回目以降（公式ページ取得分岐）はデフォルトの
+    // false に戻るため、fetchOfficialPageContents は起動しない。
+    mockIsTavilyAvailable.mockReturnValueOnce(true);
+    mockSearchGameInfo.mockResolvedValue({
+      gameTitle: 'dummy',
+      searchedAt: '2026-08-09T00:00:00.000Z',
+    });
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+  });
+
+  it('releaseDate が "YYYY-MM-DD" 形式のとき、年だけを取り出して searchGameInfo に渡す', async () => {
+    const game = makeGame({
+      title: 'Chrono Trigger',
+      developer: 'Square',
+      releaseDate: '1995-03-11',
+    });
+
+    await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    expect(mockSearchGameInfo).toHaveBeenCalledTimes(1);
+    expect(mockSearchGameInfo).toHaveBeenCalledWith('Chrono Trigger', 'classic', 'Square', 1995);
+  });
+
+  it('境界値: releaseDate が undefined のとき、年を渡さない（第4引数が undefined）', async () => {
+    const game = makeGame({
+      title: 'Chrono Trigger',
+      developer: 'Square',
+      releaseDate: undefined,
+    });
+
+    await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    expect(mockSearchGameInfo).toHaveBeenCalledTimes(1);
+    expect(mockSearchGameInfo).toHaveBeenCalledWith('Chrono Trigger', 'classic', 'Square', undefined);
   });
 });

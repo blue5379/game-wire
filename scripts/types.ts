@@ -69,6 +69,23 @@ export interface IGDBGame {
   keywords?: string[];
   /** 開発元（developer）の IGDB `developed` 件数。規模判定に使う（§3.4）。生件数で Main Game への数え直しはしない */
   developerGameCount?: number;
+  /** 総合評価（批評+ユーザーの合成値）。名作枠の母集団条件に使う（§5.4） */
+  totalRating?: number;
+  /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
+  totalRatingCount?: number;
+  /**
+   * J-3-e（§5.5決着）: game_type が 8（Remake）/9（Remaster）のリメイク・リマスターについて、
+   * 名作枠の母集団に含めてよいかを表す。`gameType` が 0（Main Game）や未指定など 8/9 以外の
+   * 場合は無関係なので `undefined`。8/9 の場合は「原作（parent_game）が §5.4 の母集団条件
+   * （`total_rating >= 閾値 & total_rating_count >= 閾値 & game_type = 0`。親の `game_type`
+   * も含む）を満たさない」なら `true`、満たすなら `false`。親の情報が取れない場合は `true`
+   * （原作が特定できない＝母集団に原作が居ることを示せないため許可する）。
+   * 実測例: `Final Fantasy VII Remake` の親 `Final Fantasy VII` は total_rating/total_rating_count
+   * が閾値を超えるが `game_type=10`（拡張版扱い）のため母集団外 → `true`（許可）。
+   * ⚠️ 選定側では `undefined` を「除外」として扱う（この値そのものの意味とは非対称。
+   * フィールドの転記漏れが起きたときに安全側＝リメイクを載せない方向に倒すため）。
+   */
+  classicRemakeEligible?: boolean;
 }
 
 export interface IGDBData {
@@ -136,6 +153,16 @@ export interface GameData {
   keywords?: string[];
   /** 開発元（developer）の IGDB `developed` 件数。規模判定に使う（§3.4）。生件数で Main Game への数え直しはしない */
   developerGameCount?: number;
+  /** 総合評価（批評+ユーザーの合成値）。名作枠の母集団条件に使う（§5.4） */
+  totalRating?: number;
+  /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
+  totalRatingCount?: number;
+  /**
+   * J-3-e（§5.5決着）: game_type が 8（Remake）/9（Remaster）のリメイク・リマスターについて、
+   * 名作枠の母集団に含めてよいかを表す。IGDBGame.classicRemakeEligible の説明を参照。
+   * ⚠️ 選定側（isClassicRemakeAllowed）では `undefined` を「除外」として扱う。
+   */
+  classicRemakeEligible?: boolean;
 }
 
 // 統合データ出力
