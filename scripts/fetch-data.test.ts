@@ -18,6 +18,7 @@ import {
   isAlreadySelected,
   deduplicateGames,
   isRemakeOrRemaster,
+  isClassicRemakeAllowed,
   isWithinIndieReleaseWindow,
   aggregateGames,
   toPersistableSelectedGames,
@@ -643,6 +644,85 @@ describe('enrichGameFromIgdb — 新規フィールド（gameType/aggregatedRati
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// enrichGameFromIgdb — totalRating/totalRatingCount/classicRemakeEligible の転記
+// （§5.4/§5.5決着, Issue classic-slot-population）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('enrichGameFromIgdb — totalRating/totalRatingCount/classicRemakeEligible の転記', () => {
+  it('totalRating/totalRatingCount/classicRemakeEligible を GameData に転記する', () => {
+    const game = makeGame({
+      title: 'Black Mesa',
+      normalizedTitle: 'black mesa',
+      steamAppId: 362890,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Black Mesa',
+      steamUrl: 'https://store.steampowered.com/app/362890',
+      totalRating: 87.7,
+      totalRatingCount: 550,
+      classicRemakeEligible: true,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.totalRating).toBe(87.7);
+    expect(game.totalRatingCount).toBe(550);
+    expect(game.classicRemakeEligible).toBe(true);
+  });
+
+  it('境界値: igdbGame 側に新規フィールドが無い場合、既存の game 側の値を保持する（?? 演算子の挙動）', () => {
+    const game = makeGame({
+      title: 'Black Mesa',
+      normalizedTitle: 'black mesa',
+      steamAppId: 362890,
+      platforms: ['PC'],
+      genres: [],
+      totalRating: 87.7,
+      totalRatingCount: 550,
+      classicRemakeEligible: true,
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Black Mesa',
+      steamUrl: 'https://store.steampowered.com/app/362890',
+      // totalRating 等を指定しない
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.totalRating).toBe(87.7);
+    expect(game.totalRatingCount).toBe(550);
+    expect(game.classicRemakeEligible).toBe(true);
+  });
+
+  it('境界値: totalRating/totalRatingCount が 0、classicRemakeEligible が false でも ?? により正しく採用される（|| だと欠損する回帰防止）', () => {
+    const game = makeGame({
+      title: 'Some Game',
+      normalizedTitle: 'some game',
+      steamAppId: 1,
+      platforms: ['PC'],
+      genres: [],
+    });
+    const igdbGame = makeIgdbGame({
+      name: 'Some Game',
+      steamUrl: 'https://store.steampowered.com/app/1',
+      totalRating: 0,
+      totalRatingCount: 0,
+      classicRemakeEligible: false,
+    });
+
+    const applied = enrichGameFromIgdb(game, igdbGame);
+
+    expect(applied).toBe(true);
+    expect(game.totalRating).toBe(0);
+    expect(game.totalRatingCount).toBe(0);
+    expect(game.classicRemakeEligible).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // enrichGameFromIgdb — developerGameCount の転記（§3.4 開発本数による規模判定, Issue #231・PR-I その1）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('enrichGameFromIgdb — developerGameCount の転記（§3.4, Issue #231）', () => {
@@ -1035,17 +1115,20 @@ describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// buildClassicCandidates — 名作枠の候補構築（§5 / §6.1 / §6.3）
+// buildClassicCandidates — 名作枠の候補構築（§5.4/§5.5/§5.8決着, Issue classic-slot-population）
+//
+// 旧仕様（metascore>80 or igdbRating>=80、igdbRating>=85なら無条件、それ以外はSteam/YouTube人気）
+// は§5.4の母集団条件（total_rating>=85 & total_rating_count>=200）に一本化された。
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildClassicCandidates', () => {
-  it('ファンゲームが落ち、同じフィクスチャ内の通常の名作候補は残る（ポジティブコントロール・実測値ベース）', () => {
-    // 実測値: Pokémon Infinite Fusion は他の全条件（スコア・人気・cover/summary）を通過して
+  it('ファンゲームが落ち、同じフィクスチャ内の通常の名作候補（母集団条件を満たす）は残る（ポジティブコントロール・実測値ベース）', () => {
+    // 実測値: Pokémon Infinite Fusion は他の全条件（人気・cover/summary）を通過して
     // 実際に選ばれていた（管理者が本日ライブ実測）。isFanGame 追加が無いと落ちないことの回帰防止。
     const infiniteFusion = makeGame({
       title: 'Pokémon Infinite Fusion',
       normalizedTitle: 'pokemon infinite fusion',
-      igdbRating: 98.4,
-      igdbRatingCount: 23,
+      totalRating: 98.4,
+      totalRatingCount: 250,
       keywords: ['unofficial', 'turn-based-combat', 'fangame', 'turn-based-rpg', 'fanmade'],
       coverImage: 'https://example.com/cover.jpg',
       summary: 'A Pokémon fan game.',
@@ -1053,7 +1136,9 @@ describe('buildClassicCandidates', () => {
     const normalClassic = makeGame({
       title: 'The Witcher 3',
       normalizedTitle: 'the witcher 3',
-      igdbRating: 92,
+      totalRating: 92,
+      totalRatingCount: 5423,
+      gameType: 0,
       coverImage: 'https://example.com/witcher3.jpg',
       summary: 'An open world RPG.',
     });
@@ -1067,52 +1152,127 @@ describe('buildClassicCandidates', () => {
     expect(result.map((g) => g.title)).toContain('The Witcher 3');
   });
 
-  it('クールダウン中のタイトルは除外される', () => {
-    const game = makeGame({
+  it('クールダウン中のタイトルは除外される。同じテストでクールダウン外の候補（母集団条件を満たす）が残ることも確認する', () => {
+    const onCooldown = makeGame({
       title: 'Cooldown Classic',
       normalizedTitle: 'cooldown classic',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/cover.jpg',
       summary: 'summary',
     });
+    const notOnCooldown = makeGame({
+      title: 'Not Cooldown Classic',
+      normalizedTitle: 'not cooldown classic',
+      totalRating: 90,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/cover2.jpg',
+      summary: 'summary',
+    });
 
-    const result = buildClassicCandidates([game], {
+    const result = buildClassicCandidates([onCooldown, notOnCooldown], {
       cooldown: new Set(['cooldown classic']),
       alreadySelected: [],
     });
 
-    expect(result).toHaveLength(0);
+    expect(result.map((g) => g.title)).not.toContain('Cooldown Classic');
+    expect(result.map((g) => g.title)).toContain('Not Cooldown Classic');
   });
 
-  it('スコア条件を満たさない（igdbRating<80 かつ metascore無し）候補は除外される', () => {
-    const game = makeGame({
-      title: 'Low Score Game',
-      normalizedTitle: 'low score game',
-      igdbRating: 70,
+  it('母集団条件を満たさない（total_rating_count<200）候補は除外される。境界値199/200を同じテストで確認する', () => {
+    const below = makeGame({
+      title: 'Below Threshold',
+      normalizedTitle: 'below threshold',
+      totalRating: 90,
+      totalRatingCount: 199,
       coverImage: 'https://example.com/cover.jpg',
       summary: 'summary',
     });
+    const atThreshold = makeGame({
+      title: 'At Threshold',
+      normalizedTitle: 'at threshold',
+      totalRating: 90,
+      totalRatingCount: 200,
+      coverImage: 'https://example.com/cover2.jpg',
+      summary: 'summary',
+    });
 
-    const result = buildClassicCandidates([game], {
+    const result = buildClassicCandidates([below, atThreshold], {
       cooldown: new Set(),
       alreadySelected: [],
     });
 
-    expect(result).toHaveLength(0);
+    expect(result.map((g) => g.title)).not.toContain('Below Threshold');
+    expect(result.map((g) => g.title)).toContain('At Threshold');
   });
 
-  it('coverImage または summary が欠落した候補は除外される', () => {
+  it('母集団条件を満たさない（total_rating<85）候補は除外される。境界値84/85を同じテストで確認する', () => {
+    const below = makeGame({
+      title: 'Below Rating Threshold',
+      normalizedTitle: 'below rating threshold',
+      totalRating: 84,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/cover.jpg',
+      summary: 'summary',
+    });
+    const atThreshold = makeGame({
+      title: 'At Rating Threshold',
+      normalizedTitle: 'at rating threshold',
+      totalRating: 85,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/cover2.jpg',
+      summary: 'summary',
+    });
+
+    const result = buildClassicCandidates([below, atThreshold], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('Below Rating Threshold');
+    expect(result.map((g) => g.title)).toContain('At Rating Threshold');
+  });
+
+  it('totalRating/totalRatingCountが未定義の候補は除外される。同じテストで定義済みの候補が残ることも確認する', () => {
+    const undefinedRating = makeGame({
+      title: 'No Rating Data',
+      normalizedTitle: 'no rating data',
+      coverImage: 'https://example.com/cover.jpg',
+      summary: 'summary',
+      // totalRating / totalRatingCount 未設定
+    });
+    const withRating = makeGame({
+      title: 'Has Rating Data',
+      normalizedTitle: 'has rating data',
+      totalRating: 90,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/cover2.jpg',
+      summary: 'summary',
+    });
+
+    const result = buildClassicCandidates([undefinedRating, withRating], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('No Rating Data');
+    expect(result.map((g) => g.title)).toContain('Has Rating Data');
+  });
+
+  it('coverImage または summary が欠落した候補は除外される（母集団条件は満たすフィクスチャで検証）', () => {
     const noCover = makeGame({
       title: 'No Cover',
       normalizedTitle: 'no cover',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       summary: 'summary',
       // coverImage なし
     });
     const noSummary = makeGame({
       title: 'No Summary',
       normalizedTitle: 'no summary',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/cover.jpg',
       // summary なし
     });
@@ -1129,28 +1289,32 @@ describe('buildClassicCandidates', () => {
     const inNewReleases = makeGame({
       title: 'Already New Release',
       normalizedTitle: 'already new release',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/1.jpg',
       summary: 's',
     });
     const inIndies = makeGame({
       title: 'Already Indie',
       normalizedTitle: 'already indie',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/2.jpg',
       summary: 's',
     });
     const isFeatured = makeGame({
       title: 'Already Featured',
       normalizedTitle: 'already featured',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/3.jpg',
       summary: 's',
     });
     const untouchedCandidate = makeGame({
       title: 'Untouched Classic',
       normalizedTitle: 'untouched classic',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/4.jpg',
       summary: 's',
     });
@@ -1174,7 +1338,8 @@ describe('buildClassicCandidates', () => {
     const game = makeGame({
       title: 'Should Survive',
       normalizedTitle: 'should survive',
-      igdbRating: 90,
+      totalRating: 90,
+      totalRatingCount: 400,
       coverImage: 'https://example.com/cover.jpg',
       summary: 'summary',
     });
@@ -1187,18 +1352,20 @@ describe('buildClassicCandidates', () => {
     expect(result.map((g) => g.title)).toContain('Should Survive');
   });
 
-  it('スコア降順に並ぶ', () => {
+  it('評価母数（totalRatingCount）降順に並ぶ（§5.8決着。metascore/igdbRatingによるソートは廃止）', () => {
     const lower = makeGame({
-      title: 'Lower Score',
-      normalizedTitle: 'lower score',
-      igdbRating: 86,
+      title: 'Lower Count',
+      normalizedTitle: 'lower count',
+      totalRating: 86,
+      totalRatingCount: 300,
       coverImage: 'https://example.com/1.jpg',
       summary: 's',
     });
     const higher = makeGame({
-      title: 'Higher Score',
-      normalizedTitle: 'higher score',
-      igdbRating: 95,
+      title: 'Higher Count',
+      normalizedTitle: 'higher count',
+      totalRating: 86,
+      totalRatingCount: 5000,
       coverImage: 'https://example.com/2.jpg',
       summary: 's',
     });
@@ -1208,7 +1375,68 @@ describe('buildClassicCandidates', () => {
       alreadySelected: [],
     });
 
-    expect(result.map((g) => g.title)).toEqual(['Higher Score', 'Lower Score']);
+    expect(result.map((g) => g.title)).toEqual(['Higher Count', 'Lower Count']);
+  });
+
+  it('totalRatingCountが同値の場合は元の配列順を保つ（安定ソート）', () => {
+    const first = makeGame({
+      title: 'First In Array',
+      normalizedTitle: 'first in array',
+      totalRating: 86,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/1.jpg',
+      summary: 's',
+    });
+    const second = makeGame({
+      title: 'Second In Array',
+      normalizedTitle: 'second in array',
+      totalRating: 90,
+      totalRatingCount: 400,
+      coverImage: 'https://example.com/2.jpg',
+      summary: 's',
+    });
+
+    const result = buildClassicCandidates([first, second], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).toEqual(['First In Array', 'Second In Array']);
+  });
+
+  it('Splatoon Raiders の実測値（誤選定の回帰防止）は新条件で確実に落ちる。同じテストでポジティブコントロール（Main Game・評価母数十分）が採用されることも確認する', () => {
+    // 実測値そのもの（管理者が本日ライブAPIで確認済み）:
+    // totalRating=91, totalRatingCount=7, igdbRating=95, igdbRatingCount=6, gameType=0
+    // 現行の buildClassicCandidates は igdbRating>=85 経路で無条件通過させていたため誤選定していた。
+    const splatoonRaiders = makeGame({
+      title: 'Splatoon Raiders',
+      normalizedTitle: 'splatoon raiders',
+      totalRating: 91,
+      totalRatingCount: 7,
+      igdbRating: 95,
+      igdbRatingCount: 6,
+      gameType: 0,
+      coverImage: 'https://example.com/splatoon-raiders.jpg',
+      summary: 'summary',
+    });
+    // ポジティブコントロール: Main Game で評価母数が十分な候補
+    const mainGameHighCount = makeGame({
+      title: 'Well-Established Classic',
+      normalizedTitle: 'well-established classic',
+      totalRating: 92,
+      totalRatingCount: 3548,
+      gameType: 0,
+      coverImage: 'https://example.com/classic.jpg',
+      summary: 'summary',
+    });
+
+    const result = buildClassicCandidates([splatoonRaiders, mainGameHighCount], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('Splatoon Raiders');
+    expect(result.map((g) => g.title)).toContain('Well-Established Classic');
   });
 });
 
@@ -1309,6 +1537,107 @@ describe('deduplicateGames — 新規フィールドのマージ（修正1）', 
     const result = deduplicateGames([primaryWithKeywords, dupEmptyKeywords]);
 
     expect(result[0].keywords).toEqual(['open-world']);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deduplicateGames — totalRating/totalRatingCount/classicRemakeEligible のマージ
+// （§5.4/§5.5決着, Issue classic-slot-population。「忘れやすい」と明記された転記箇所）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deduplicateGames — totalRating/totalRatingCount/classicRemakeEligible のマージ', () => {
+  it('Steam側がprimaryに選ばれるとき、IGDB側の重複からtotalRating/totalRatingCount/classicRemakeEligibleを引き継ぐ', () => {
+    const steamEntry = makeGame({
+      title: 'Black Mesa',
+      normalizedTitle: 'black mesa',
+      steamAppId: 362890,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const igdbEntry = makeGame({
+      title: 'Black Mesa',
+      normalizedTitle: 'black mesa',
+      steamAppId: 362890,
+      source: ['igdb'],
+      totalRating: 87.7,
+      totalRatingCount: 550,
+      classicRemakeEligible: true,
+    });
+
+    const result = deduplicateGames([steamEntry, igdbEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].totalRating).toBe(87.7);
+    expect(result[0].totalRatingCount).toBe(550);
+    expect(result[0].classicRemakeEligible).toBe(true);
+  });
+
+  it('回帰の実害: マージ後の primary が buildClassicCandidates の母集団条件を通過する。ポジティブコントロールとして母集団条件を満たさない重複ペアは通過しない', () => {
+    const qualifiesSteam = makeGame({
+      title: 'Qualifies Game',
+      normalizedTitle: 'qualifies game',
+      steamAppId: 111,
+      steamRank: 1,
+      source: ['steam'],
+      coverImage: 'https://example.com/q.jpg',
+      summary: 's',
+    });
+    const qualifiesIgdb = makeGame({
+      title: 'Qualifies Game',
+      normalizedTitle: 'qualifies game',
+      steamAppId: 111,
+      source: ['igdb'],
+      totalRating: 90,
+      totalRatingCount: 400,
+    });
+
+    const belowSteam = makeGame({
+      title: 'Below Threshold Game',
+      normalizedTitle: 'below threshold game',
+      steamAppId: 222,
+      steamRank: 2,
+      source: ['steam'],
+      coverImage: 'https://example.com/b.jpg',
+      summary: 's',
+    });
+    const belowIgdb = makeGame({
+      title: 'Below Threshold Game',
+      normalizedTitle: 'below threshold game',
+      steamAppId: 222,
+      source: ['igdb'],
+      totalRating: 90,
+      totalRatingCount: 100, // < 200
+    });
+
+    const merged = deduplicateGames([qualifiesSteam, qualifiesIgdb, belowSteam, belowIgdb]);
+    const result = buildClassicCandidates(merged, { cooldown: new Set(), alreadySelected: [] });
+
+    expect(result.map((g) => g.title)).toContain('Qualifies Game');
+    expect(result.map((g) => g.title)).not.toContain('Below Threshold Game');
+  });
+
+  it('境界値: dup.totalRatingCount が 0 でも primary の値が未設定なら採用される（?? の挙動、|| だと欠損する回帰防止）', () => {
+    const primaryNoRating = makeGame({
+      title: 'Zero Count Game',
+      normalizedTitle: 'zero count game',
+      steamAppId: 333,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const dupZeroRating = makeGame({
+      title: 'Zero Count Game',
+      normalizedTitle: 'zero count game',
+      steamAppId: 333,
+      source: ['igdb'],
+      totalRating: 0,
+      totalRatingCount: 0,
+      classicRemakeEligible: false,
+    });
+
+    const result = deduplicateGames([primaryNoRating, dupZeroRating]);
+
+    expect(result[0].totalRating).toBe(0);
+    expect(result[0].totalRatingCount).toBe(0);
+    expect(result[0].classicRemakeEligible).toBe(false);
   });
 });
 
@@ -1415,6 +1744,193 @@ describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #2
     const result = deduplicateGames([primary, dup]);
 
     expect(result[0].developerGameCount).toBe(5);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// aggregateGames — totalRating/totalRatingCount/classicRemakeEligible の転記
+// （§5.4/§5.5決着, Issue classic-slot-population。マッチ時ブランチと新規エントリ生成の2箇所）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible の転記', () => {
+  const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
+  const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
+  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
+
+  it('新規エントリ生成: IGDB 単独ゲームに totalRating/totalRatingCount/classicRemakeEligible が転記される', async () => {
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 30,
+          name: 'Solo Classic Game',
+          slug: 'solo-classic-game',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-classic.jpg',
+          totalRating: 92.4,
+          totalRatingCount: 3548,
+          classicRemakeEligible: undefined,
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+
+    const game = games.find((g) => g.title === 'Solo Classic Game');
+    expect(game).toBeDefined();
+    expect(game!.totalRating).toBe(92.4);
+    expect(game!.totalRatingCount).toBe(3548);
+  });
+
+  it('新規エントリ生成: classicRemakeEligible=true が転記される（リメイク許可の実データ）', async () => {
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 31,
+          name: 'Allowed Remake Game',
+          slug: 'allowed-remake-game',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-remake.jpg',
+          gameType: 8,
+          totalRating: 90,
+          totalRatingCount: 667,
+          classicRemakeEligible: true,
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+
+    const game = games.find((g) => g.title === 'Allowed Remake Game');
+    expect(game).toBeDefined();
+    expect(game!.classicRemakeEligible).toBe(true);
+  });
+
+  it('aggregateGames → buildClassicCandidates の統合: Final Fantasy VII Remake（親 game_type=10 で母集団外、レビュー指摘バグの回帰）が名作枠候補として残る。ポジティブコントロールとして The Last of Us Remastered（親 game_type=0 で母集団内）は落ちる', async () => {
+    // classicRemakeEligible はここでは「修正済みの computeClassicRemakeEligible が実測データで
+    // 計算する値」を直接与える（IGDBData は mapPoolRawGameToIGDBGame 通過後の形なので、
+    // parent_game 自体はこの層には残らない）。fetch-igdb.test.ts 側で computeClassicRemakeEligible
+    // 自体が game_type=10 の親を正しく「母集団外」と判定することは別途検証済み。
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 50,
+          name: 'Final Fantasy VII Remake',
+          slug: 'final-fantasy-vii-remake',
+          genres: ['RPG'],
+          coverUrl: 'https://images.igdb.com/cover-ff7r.jpg',
+          summary: 'A remake of a classic RPG.',
+          gameType: 8,
+          totalRating: 89,
+          totalRatingCount: 501,
+          // 親 Final Fantasy VII: total_rating=87.8, total_rating_count=1630（閾値超え）だが
+          // game_type=10（拡張版扱い）で母集団外 → 修正済みロジックでは true（許可）
+          classicRemakeEligible: true,
+        },
+        {
+          id: 51,
+          name: 'The Last of Us Remastered',
+          slug: 'the-last-of-us-remastered-3',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-tlour.jpg',
+          summary: 'A remastered version of a classic game.',
+          gameType: 9,
+          totalRating: 95,
+          totalRatingCount: 1693,
+          // 親 The Last of Us: total_rating=92.2, total_rating_count=3548, game_type=0 で母集団内
+          // → false（除外）
+          classicRemakeEligible: false,
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+    const result = buildClassicCandidates(games, { cooldown: new Set(), alreadySelected: [] });
+
+    const titles = result.map((g) => g.title);
+    expect(titles).toContain('Final Fantasy VII Remake');
+    expect(titles).not.toContain('The Last of Us Remastered');
+  });
+
+  it('マッチ時ブランチ: Steam 由来の既存エントリに IGDB マッチで totalRating/totalRatingCount/classicRemakeEligible が転記される', async () => {
+    const steamData: SteamData = {
+      topSellers: [{ appId: 600, name: 'Matched Classic Game' }],
+      topPlayed: [],
+      fetchedAt: '',
+    };
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 40,
+          name: 'Matched Classic Game',
+          slug: 'matched-classic-game',
+          genres: ['RPG'],
+          coverUrl: 'https://images.igdb.com/cover-matched.jpg',
+          steamUrl: 'https://store.steampowered.com/app/600',
+          totalRating: 92,
+          totalRatingCount: 5423,
+          classicRemakeEligible: undefined,
+        },
+      ],
+      fetchedAt: '',
+    };
+    const metacriticData: MetacriticData = {
+      scores: [{ title: 'Matched Classic Game', platform: 'PC', metascore: null, userScore: null }],
+      fetchedAt: '',
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
+    try {
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const game = games.find((g) => g.title === 'Matched Classic Game');
+      expect(game).toBeDefined();
+      expect(game!.totalRating).toBe(92);
+      expect(game!.totalRatingCount).toBe(5423);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it('マッチ時ブランチ: classicRemakeEligible=false が転記される（親が母集団内＝リメイク不要の実データ）', async () => {
+    const steamData: SteamData = {
+      topSellers: [{ appId: 601, name: 'Matched Rejected Remake' }],
+      topPlayed: [],
+      fetchedAt: '',
+    };
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 41,
+          name: 'Matched Rejected Remake',
+          slug: 'matched-rejected-remake',
+          genres: ['Action'],
+          coverUrl: 'https://images.igdb.com/cover-rejected.jpg',
+          steamUrl: 'https://store.steampowered.com/app/601',
+          gameType: 9,
+          totalRating: 95,
+          totalRatingCount: 1693,
+          classicRemakeEligible: false,
+        },
+      ],
+      fetchedAt: '',
+    };
+    const metacriticData: MetacriticData = {
+      scores: [{ title: 'Matched Rejected Remake', platform: 'PC', metascore: null, userScore: null }],
+      fetchedAt: '',
+    };
+
+    const originalFetch = global.fetch;
+    global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
+    try {
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const game = games.find((g) => g.title === 'Matched Rejected Remake');
+      expect(game).toBeDefined();
+      expect(game!.classicRemakeEligible).toBe(false);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });
 
@@ -1801,46 +2317,130 @@ describe('isRemakeOrRemaster — リメイク/リマスター判定（修正2, �
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// buildClassicCandidates — リメイク/リマスター除外（修正2）
+// isClassicRemakeAllowed — J-3-e ベースのリメイク許可判定（§5.5決着, Issue classic-slot-population）
 // ─────────────────────────────────────────────────────────────────────────────
-describe('buildClassicCandidates — リメイク/リマスター除外（修正2）', () => {
-  it('gameType=8のリメイクは落ち、gameType=0の通常候補とgameType未設定の候補は残る（ポジティブコントロール・実測値ベース）', () => {
-    // 実測値: Assassin's Creed Black Flag Resynced は gameType=8 だが
-    // buildClassicCandidates の他の全条件（スコア・cover/summary）を通過する（管理者が本日実測）。
-    const acbfResynced = makeGame({
-      title: "Assassin's Creed Black Flag Resynced",
-      normalizedTitle: "assassin's creed black flag resynced",
+describe('isClassicRemakeAllowed — J-3-e ベースのリメイク許可判定（§5.5決着）', () => {
+  it('gameType が 0（Main Game）なら classicRemakeEligible に関係なく true', () => {
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 0, classicRemakeEligible: undefined }))).toBe(true);
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 0, classicRemakeEligible: false }))).toBe(true);
+  });
+
+  it('gameType が未設定なら true（リメイクではないので無関係）', () => {
+    expect(isClassicRemakeAllowed(makeGame({}))).toBe(true);
+  });
+
+  it('gameType=8（Remake）で classicRemakeEligible=true なら true、false なら false（同じテストで両方確認）', () => {
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 8, classicRemakeEligible: true }))).toBe(true);
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 8, classicRemakeEligible: false }))).toBe(false);
+  });
+
+  it('gameType=9（Remaster）で classicRemakeEligible=true なら true、false なら false（同じテストで両方確認）', () => {
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 9, classicRemakeEligible: true }))).toBe(true);
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 9, classicRemakeEligible: false }))).toBe(false);
+  });
+
+  it('境界値: gameType=8/9 で classicRemakeEligible が undefined（転記漏れ相当）なら false（安全側に倒す非対称）。ポジティブコントロールとして classicRemakeEligible=true の候補は true', () => {
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 8, classicRemakeEligible: undefined }))).toBe(false);
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 9, classicRemakeEligible: undefined }))).toBe(false);
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 8, classicRemakeEligible: true }))).toBe(true);
+  });
+
+  it('境界値: gameType=11（Port）は Remake/Remaster ではないため true', () => {
+    expect(isClassicRemakeAllowed(makeGame({ gameType: 11, classicRemakeEligible: undefined }))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildClassicCandidates — J-3-e 統合テスト（§5.5決着の実測データに基づく, Issue classic-slot-population）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildClassicCandidates — J-3-e リメイク許可の統合（§5.5決着）', () => {
+  // 母集団条件（totalRating>=85 & totalRatingCount>=200）を満たすフィクスチャ共通ベース
+  const BASE = { totalRating: 90, totalRatingCount: 500, coverImage: 'https://example.com/x.jpg', summary: 's' };
+
+  it('許可される実測例（Resident Evil 2 / Black Mesa / FF VII Remake）が残り、除外される実測例（TLOU Remastered / Dark Souls Remastered）は落ちる（同じテストで許可・除外の両方を確認）', () => {
+    // classicRemakeEligible は fetch-igdb.ts の computeClassicRemakeEligible が実測データに基づき
+    // 計算する値（このテストでは選定側の filter ロジックのみを検証するため、既に計算済みの値を
+    // フィクスチャに直接与える）。
+    const residentEvil2 = makeGame({
+      ...BASE,
+      title: 'Resident Evil 2',
+      normalizedTitle: 'resident evil 2',
       gameType: 8,
-      igdbRating: 85.24,
-      igdbRatingCount: 25,
-      coverImage: 'https://example.com/acbf.jpg',
-      summary: 'A resynced version of Assassin\'s Creed Black Flag.',
+      classicRemakeEligible: true, // 親(1998年版) total=69.4, n=593 で母集団外
     });
-    const normalClassic = makeGame({
-      title: 'Normal Classic',
-      normalizedTitle: 'normal classic',
-      gameType: 0,
-      igdbRating: 90,
-      coverImage: 'https://example.com/normal.jpg',
-      summary: 'A normal classic game.',
+    const blackMesa = makeGame({
+      ...BASE,
+      title: 'Black Mesa',
+      normalizedTitle: 'black mesa',
+      gameType: 9,
+      classicRemakeEligible: true, // 親(Half-Life) total=84.2, n=2896 で母集団外（あと1点）
     });
-    const unknownTypeClassic = makeGame({
-      title: 'Unknown Type Classic',
-      normalizedTitle: 'unknown type classic',
-      // gameType 未設定（Steam 由来など）
-      igdbRating: 88,
-      coverImage: 'https://example.com/unknown.jpg',
-      summary: 'summary',
+    const ff7Remake = makeGame({
+      ...BASE,
+      title: 'Final Fantasy VII Remake',
+      normalizedTitle: 'final fantasy vii remake',
+      gameType: 8,
+      classicRemakeEligible: true, // 親(FF VII) game_type=10 で母集団外
+    });
+    const tlouRemastered = makeGame({
+      ...BASE,
+      title: 'The Last of Us Remastered',
+      normalizedTitle: 'the last of us remastered',
+      gameType: 9,
+      classicRemakeEligible: false, // 親 total=92.2, n=3548 で母集団内
+    });
+    const darkSoulsRemastered = makeGame({
+      ...BASE,
+      title: 'Dark Souls: Remastered',
+      normalizedTitle: 'dark souls remastered',
+      gameType: 8,
+      classicRemakeEligible: false, // 親 total=88.6, n=1706 で母集団内
     });
 
-    const result = buildClassicCandidates([acbfResynced, normalClassic, unknownTypeClassic], {
+    const result = buildClassicCandidates(
+      [residentEvil2, blackMesa, ff7Remake, tlouRemastered, darkSoulsRemastered],
+      { cooldown: new Set(), alreadySelected: [] }
+    );
+
+    const titles = result.map((g) => g.title);
+    expect(titles).toContain('Resident Evil 2');
+    expect(titles).toContain('Black Mesa');
+    expect(titles).toContain('Final Fantasy VII Remake');
+    expect(titles).not.toContain('The Last of Us Remastered');
+    expect(titles).not.toContain('Dark Souls: Remastered');
+  });
+
+  it('gameType=8/9で classicRemakeEligible が undefined（転記漏れ）の候補は除外される。ポジティブコントロールとして classicRemakeEligible=true の候補（gameType=0 も）は残る', () => {
+    const missingEligibility = makeGame({
+      ...BASE,
+      title: 'Missing Eligibility Remake',
+      normalizedTitle: 'missing eligibility remake',
+      gameType: 8,
+      // classicRemakeEligible 未設定（転記漏れ相当）
+    });
+    const eligibleRemake = makeGame({
+      ...BASE,
+      title: 'Eligible Remake',
+      normalizedTitle: 'eligible remake',
+      gameType: 8,
+      classicRemakeEligible: true,
+    });
+    const mainGame = makeGame({
+      ...BASE,
+      title: 'Ordinary Main Game',
+      normalizedTitle: 'ordinary main game',
+      gameType: 0,
+    });
+
+    const result = buildClassicCandidates([missingEligibility, eligibleRemake, mainGame], {
       cooldown: new Set(),
       alreadySelected: [],
     });
 
-    expect(result.map((g) => g.title)).not.toContain("Assassin's Creed Black Flag Resynced");
-    expect(result.map((g) => g.title)).toContain('Normal Classic');
-    expect(result.map((g) => g.title)).toContain('Unknown Type Classic');
+    const titles = result.map((g) => g.title);
+    expect(titles).not.toContain('Missing Eligibility Remake');
+    expect(titles).toContain('Eligible Remake');
+    expect(titles).toContain('Ordinary Main Game');
   });
 });
 

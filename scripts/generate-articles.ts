@@ -1059,7 +1059,15 @@ async function generateClassicArticle(
     // Web検索で追加情報を取得
     try {
       console.log(`    Searching web for additional info...`);
-      const searchResults = await searchGameInfo(game.title, 'classic', game.developer);
+      // §5.6 修正3（補助対策）: releaseDate（YYYY-MM-DD）から年だけを取り出し、
+      // 歴史検索のクエリに加える。releaseDate が無ければ渡さない。
+      const releaseYear = game.releaseDate ? Number(game.releaseDate.slice(0, 4)) : undefined;
+      const searchResults = await searchGameInfo(
+        game.title,
+        'classic',
+        game.developer,
+        releaseYear !== undefined && !isNaN(releaseYear) ? releaseYear : undefined
+      );
       const webSearchContext = formatSearchResultsForPrompt(searchResults);
       if (webSearchContext) {
         contextParts.push(webSearchContext);
@@ -1442,10 +1450,12 @@ async function main(): Promise<void> {
 
 // テスト用にエクスポート（Issue #208: verifyProposedGames が enrichGameWithIGDB に
 // mainGameOnly: true を渡していることを検証するため。screenOutAdultGames は特集記事の
-// AI スクリーニング挙動を検証するため）
+// AI スクリーニング挙動を検証するため。generateClassicArticle は §5.6 修正3
+// （歴史検索クエリへの発売年の伝播）を検証するため）
 export const __test = {
   verifyProposedGames,
   screenOutAdultGames,
+  generateClassicArticle,
 };
 
 // スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）

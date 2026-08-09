@@ -29,6 +29,7 @@ import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
 import { normalizeTitle } from './normalize.js';
 import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
+import { meetsClassicPoolThresholds } from './classic-pool.js';
 import {
   isInvalidGameTitle,
   extractYearFromDate,
@@ -151,6 +152,9 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.aggregatedRatingCount = igdbGame.aggregatedRatingCount ?? game.aggregatedRatingCount;
   // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
   game.keywords = igdbGame.keywords?.length ? igdbGame.keywords : game.keywords;
+  game.totalRating = igdbGame.totalRating ?? game.totalRating;
+  game.totalRatingCount = igdbGame.totalRatingCount ?? game.totalRatingCount;
+  game.classicRemakeEligible = igdbGame.classicRemakeEligible ?? game.classicRemakeEligible;
   if (!game.source.includes('igdb')) {
     game.source.push('igdb');
   }
@@ -353,6 +357,9 @@ export async function aggregateGames(
         game.aggregatedRatingCount = igdb.aggregatedRatingCount ?? game.aggregatedRatingCount;
         // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
         game.keywords = igdb.keywords?.length ? igdb.keywords : game.keywords;
+        game.totalRating = igdb.totalRating ?? game.totalRating;
+        game.totalRatingCount = igdb.totalRatingCount ?? game.totalRatingCount;
+        game.classicRemakeEligible = igdb.classicRemakeEligible ?? game.classicRemakeEligible;
         if (igdb.websites?.length) {
           game.igdbWebsites = igdb.websites;
         }
@@ -392,6 +399,9 @@ export async function aggregateGames(
         aggregatedRating: igdb.aggregatedRating,
         aggregatedRatingCount: igdb.aggregatedRatingCount,
         keywords: igdb.keywords,
+        totalRating: igdb.totalRating,
+        totalRatingCount: igdb.totalRatingCount,
+        classicRemakeEligible: igdb.classicRemakeEligible,
         igdbWebsites: igdb.websites?.length ? igdb.websites : undefined,
         source: ['igdb'],
         sourceUrls: igdbUrl ? { igdb: igdbUrl } : undefined,
@@ -671,6 +681,9 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.aggregatedRatingCount = primary.aggregatedRatingCount ?? dup.aggregatedRatingCount;
       // keywords は除外シグナル（isFanGame）なので、空配列で既存値を潰さない
       primary.keywords = primary.keywords?.length ? primary.keywords : dup.keywords;
+      primary.totalRating = primary.totalRating ?? dup.totalRating;
+      primary.totalRatingCount = primary.totalRatingCount ?? dup.totalRatingCount;
+      primary.classicRemakeEligible = primary.classicRemakeEligible ?? dup.classicRemakeEligible;
       // source リストをマージ
       for (const s of dup.source) {
         if (!primary.source.includes(s)) primary.source.push(s);
@@ -1007,12 +1020,32 @@ const GAME_TYPE_REMASTER = 9;
  * 新作枠以外の枠から除外するゲーム種別（リメイク=8 / リマスター=9）かを判定する（§6.2）。
  * gameType が未取得（undefined）の候補は除外しない（判定材料が無いため従来どおり通す）。
  *
- * 本PRでは名作枠・インディー枠から一律除外する（保守的な対応）。名作枠での
- * 「原作が母集団にいないリメイクだけ条件付き許可」（§5.5）は名作枠PRの担当。
+ * インディー枠（buildIndieCandidates）はこの関数で一律除外する（保守的な対応。
+ * 小規模開発のリメイクは稀であり、この枠の主目的は DLC 混入防止のため）。
+ * 名作枠（buildClassicCandidates）は §5.5 決着（J-3-e）により、この関数の一律除外ではなく
+ * `isClassicRemakeAllowed` で「原作が母集団にいないリメイクだけ条件付き許可」する。
  */
 export function isRemakeOrRemaster(game: GameData): boolean {
   if (game.gameType === undefined) return false;
   return game.gameType === GAME_TYPE_REMAKE || game.gameType === GAME_TYPE_REMASTER;
+}
+
+/**
+ * 名作枠専用のリメイク許可判定（J-3-e, §5.5決着）。
+ *
+ * `isRemakeOrRemaster` と異なり、リメイク・リマスターを一律には除外しない。
+ * `gameType` が Remake(8)/Remaster(9) でない場合は無条件で true（リメイクではないので無関係）。
+ * 8/9 の場合は `game.classicRemakeEligible === true`（親=原作が §5.4 の母集団条件を
+ * 満たさない＝原作が母集団に居ない）のときだけ true。
+ *
+ * ⚠️ `classicRemakeEligible` が `undefined`（フィールドの転記漏れ等）の場合は false（除外）。
+ * `classicRemakeEligible` 自体の意味（IGDB 側の判定）は「わからなければ許可」だが、
+ * ここでは選定側の安全策として非対称に「わからなければ除外」に倒す
+ * （転記漏れが起きても誤ってリメイクを名作枠に載せないようにするため）。
+ */
+export function isClassicRemakeAllowed(game: GameData): boolean {
+  if (game.gameType !== GAME_TYPE_REMAKE && game.gameType !== GAME_TYPE_REMASTER) return true;
+  return game.classicRemakeEligible === true;
 }
 
 const DEFAULT_INDIE_RELEASE_WINDOW_DAYS = 90;
@@ -1127,7 +1160,18 @@ export function buildIndieCandidates(
 }
 
 /**
- * 名作枠の候補を絞り込む（§5 / §6.1 / §6.3）。副作用を持たない純関数。
+ * 名作枠の候補を絞り込む（§5.4/§5.5/§5.8決着 / §6.1 / §6.3）。副作用を持たない純関数。
+ *
+ * 母集団条件は §5.4（`total_rating >= 閾値 & total_rating_count >= 閾値`。
+ * `meetsClassicPoolThresholds` で判定）に一本化されている。旧仕様の
+ * `metascore`/`igdbRating` によるスコア条件、Steam/YouTube 人気条件は廃止した
+ * （PR-D で `metascore` 経路自体を削除する前に、本PRで先に置き換える方針をユーザーが承認済み）。
+ *
+ * リメイク・リマスターの扱いは §5.5（J-3-e）。`isRemakeOrRemaster` による一律除外ではなく、
+ * `isClassicRemakeAllowed` で「原作が母集団にいないリメイクだけ許可」する。
+ *
+ * 並び順は評価母数（totalRatingCount）の降順（§5.8決着）。`Array.prototype.sort` は
+ * 安定ソートのため、同値時は元の配列順を保つ。
  */
 export function buildClassicCandidates(
   games: GameData[],
@@ -1136,18 +1180,12 @@ export function buildClassicCandidates(
   return games
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => !isFanGame(g))
-    .filter((g) => !isRemakeOrRemaster(g))
+    .filter((g) => isClassicRemakeAllowed(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle))
-    .filter((g) => (g.metascore && g.metascore > 80) || (g.igdbRating && g.igdbRating >= 80))
-    .filter((g) => {
-      // スコアが非常に高い（85以上）場合は Steam/YouTube データなしでも選定
-      if ((g.metascore && g.metascore >= 85) || (g.igdbRating && g.igdbRating >= 85)) return true;
-      // それ以外は Steam/YouTube での人気が必要
-      return g.steamPlayers || g.steamRank || (g.youtubePopularity && g.youtubePopularity > 100000);
-    })
+    .filter((g) => meetsClassicPoolThresholds(g.totalRating, g.totalRatingCount))
     .filter((g) => g.coverImage && g.summary) // 記事に必要な情報があるもの
     .filter((g) => !isAlreadySelected(g, options.alreadySelected))
-    .sort((a, b) => (b.metascore || b.igdbRating || 0) - (a.metascore || a.igdbRating || 0));
+    .sort((a, b) => (b.totalRatingCount ?? 0) - (a.totalRatingCount ?? 0));
 }
 
 /**
