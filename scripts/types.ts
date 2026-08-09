@@ -7,7 +7,6 @@ export interface SteamGame {
   appId: number;
   name: string;
   rank?: number;
-  currentPlayers?: number;
   peakPlayers?: number;
   priceFormatted?: string;
   discount?: number;
@@ -93,20 +92,6 @@ export interface IGDBData {
   fetchedAt: string;
 }
 
-// Metacritic から取得するスコアデータ
-export interface MetacriticScore {
-  title: string;
-  platform: string;
-  metascore: number | null;
-  userScore: number | null;
-  url?: string;
-}
-
-export interface MetacriticData {
-  scores: MetacriticScore[];
-  fetchedAt: string;
-}
-
 // 統合されたゲームデータ
 export interface GameData {
   title: string;
@@ -125,12 +110,9 @@ export interface GameData {
   summary?: string;
   igdbRating?: number;
   igdbRatingCount?: number;
-  metascore?: number | null;
-  userScore?: number | null;
   steamRank?: number;
-  steamPlayers?: number;
   youtubePopularity?: number;
-  source: ('steam' | 'youtube' | 'igdb' | 'metacritic')[];
+  source: ('steam' | 'youtube' | 'igdb')[];
   sourceUrls?: SourceUrls; // 参照元URL
   /** Steam Storefront から取得した生の developer 文字列（isQualifiedCompanyName で弾かれる前の値） */
   steamRawDeveloper?: string;
@@ -171,7 +153,6 @@ export interface AggregatedData {
   steamData: SteamData;
   youtubeData: YouTubeData;
   igdbData: IGDBData;
-  metacriticData: MetacriticData;
   fetchedAt: string;
 }
 

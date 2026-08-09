@@ -343,7 +343,7 @@ describe('validateNumericClaims', () => {
     expect(warnings.some((w) => w.type === 'numeric-vehicle-count')).toBe(true);
   });
 
-  it('提供データに含まれる数値は警告しない（Metacritic 90 等）', () => {
+  it('採点系の裸の数値はパターンにマッチしないため警告しない', () => {
     const article = makeArticle({
       title: 'Test',
       content: 'Metacriticスコアは90点。',
@@ -351,11 +351,10 @@ describe('validateNumericClaims', () => {
         title: 'Test',
         genre: [],
         platforms: ['PC'],
-        metascore: 90,
       },
     });
 
-    // 90単独はパターンにマッチしないため空、年度検査も入らない
+    // 90単独はどのNUMERIC_PATTERNSにもマッチしないため空、年度検査も入らない
     const warnings = validateNumericClaims(article);
     expect(warnings).toHaveLength(0);
   });

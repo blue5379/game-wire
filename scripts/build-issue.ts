@@ -239,14 +239,6 @@ async function formatArticleForFrontmatter(
       }
     }
 
-    if (article.game.metascore !== undefined) {
-      lines.push(`      metascore: ${article.game.metascore ?? 'null'}`);
-    }
-
-    if (article.game.userScore !== undefined) {
-      lines.push(`      userScore: ${article.game.userScore ?? 'null'}`);
-    }
-
     // AI推測フラグ
     if (article.game.isAiInferred) {
       lines.push(`      isAiInferred: true`);
@@ -421,10 +413,6 @@ function generateArticleContent(article: GeneratedArticle): string {
 
     if (article.game.publisher) {
       lines.push(`- **発売元**: ${article.game.publisher}`);
-    }
-
-    if (article.game.metascore) {
-      lines.push(`- **Metacritic**: ${article.game.metascore}`);
     }
 
     lines.push('');

@@ -28,7 +28,6 @@ export function hasExistenceEvidence(
   // IGDB票数5未満の国内専用タイトル）が構造的に残ってしまう（§2.3 PR-B2）。
   if (options?.amazonRanked) return true;
   if (g.steamRank != null) return true;
-  if (g.steamPlayers != null && g.steamPlayers > 0) return true;
   if (g.igdbRatingCount != null && g.igdbRatingCount >= 5) return true;
   if (g.youtubePopularity != null && g.youtubePopularity > 0) return true;
   return false;

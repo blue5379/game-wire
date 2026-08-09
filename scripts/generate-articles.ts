@@ -134,8 +134,6 @@ export interface GeneratedArticle {
     coverImage?: string;
     coverImageOrientation?: 'portrait' | 'landscape';
     screenshots?: string[];
-    metascore?: number | null;
-    userScore?: number | null;
     isAiInferred?: boolean;
     aiInferredFields?: string[];
   };
@@ -360,8 +358,6 @@ async function generateNewReleaseArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
-      metascore: game.metascore,
-      userScore: game.userScore,
       gameType: game.gameType,
     },
     webSearchContext || undefined,
@@ -404,8 +400,6 @@ async function generateNewReleaseArticle(
       coverImage: game.coverImage,
       coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
-      metascore: game.metascore,
-      userScore: game.userScore,
     },
   };
 }
@@ -477,8 +471,6 @@ async function generateIndieArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
-      metascore: game.metascore,
-      userScore: game.userScore,
     },
     additionalContext,
     publishDate,
@@ -523,8 +515,6 @@ async function generateIndieArticle(
       coverImage: game.coverImage,
       coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
-      metascore: game.metascore,
-      userScore: game.userScore,
       isAiInferred: game.isAiInferred,
       aiInferredFields: game.aiInferredFields,
     },
@@ -544,9 +534,7 @@ function toFeatureCandidate(g: GameData): FeatureCandidateBase {
     summary: g.summary,
     igdbRating: g.igdbRating,
     igdbRatingCount: g.igdbRatingCount,
-    metascore: g.metascore,
     steamRank: g.steamRank,
-    steamPlayers: g.steamPlayers,
     youtubePopularity: g.youtubePopularity,
   };
 }
@@ -1043,9 +1031,6 @@ async function generateClassicArticle(
   // 基本の追加コンテキスト
   const contextParts: string[] = [];
   let webSearchSources: WebSearchSource[] = regenOpts?.cachedSearch?.sources ?? [];
-  if (game.steamPlayers) {
-    contextParts.push(`現在のSteam同時接続数: ${game.steamPlayers.toLocaleString()}人`);
-  }
   if (game.youtubePopularity) {
     contextParts.push(`YouTubeでの人気度: ${game.youtubePopularity.toLocaleString()}`);
   }
@@ -1107,8 +1092,6 @@ async function generateClassicArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
-      metascore: game.metascore,
-      userScore: game.userScore,
     },
     additionalContext,
     publishDate,
@@ -1144,8 +1127,6 @@ async function generateClassicArticle(
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
       screenshots: game.screenshots,
-      metascore: game.metascore,
-      userScore: game.userScore,
     },
   };
 }
@@ -1176,8 +1157,7 @@ function createFallbackGame(
       normalizedTitle: '名作ゲーム',
       genres: ['RPG'],
       platforms: ['PC', 'PS4', 'Nintendo Switch'],
-      metascore: 90,
-      source: ['steam', 'metacritic'],
+      source: ['steam'],
     },
   };
 

@@ -26,10 +26,9 @@ export const QUALITY_CRITIC_COUNT_MIN = 2;
  *   3. Steam Top Sellers 掲載   → steamRank != null
  *   4. Amazon国内ランキング掲載 → options.amazonRanked（AmazonRankIndex の lookup 結果、§2.3 PR-B2）
  *
- * 以下の経路は §2.3 に規定が無いが、削除は別対応の担当のため本PRでは維持する
- * （管理者判断・ユーザー確認済み）:
- *   - metascore != null 経路（削除は PR-D の担当）
- *   - steamPlayers > 0 経路
+ * 以下の経路は §2.3 に直接の規定は無いが、投票数条件（上記2.）の閾値緩和版という
+ * 位置づけで維持する（管理者判断・ユーザー確認済み。実データで高評価少数票タイトルを
+ * 正しく救済していることを確認済み）:
  *   - igdbRating >= QUALITY_IGDB_RATING_STRONG && igdbRatingCount >= QUALITY_IGDB_RC_FLOOR の救済経路
  *
  * options 省略時は Amazon 経路が無効になるだけで、既存呼び出し元の挙動は変わらない。
@@ -43,8 +42,6 @@ export function isQualifiedGame(
   if (g.igdbRatingCount != null && g.igdbRatingCount >= QUALITY_IGDB_RC_MIN) return true;
   // Steam Charts 掲載ゲームはチャート存在自体を品質シグナルとして扱う
   if (g.steamRank != null) return true;
-  if (g.steamPlayers != null && g.steamPlayers > 0) return true;
-  if (g.metascore != null) return true;
   if (
     g.igdbRating != null && g.igdbRating >= QUALITY_IGDB_RATING_STRONG &&
     g.igdbRatingCount != null && g.igdbRatingCount >= QUALITY_IGDB_RC_FLOOR

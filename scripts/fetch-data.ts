@@ -13,7 +13,6 @@ import * as path from 'node:path';
 import { fetchSteamData } from './fetch-steam.js';
 import { fetchYouTubeData } from './fetch-youtube.js';
 import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
-import { fetchMetacriticData, getGameScore } from './fetch-metacritic.js';
 import { fetchAmazonRanking, type AmazonRankIndex } from './fetch-amazon-ranking.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
@@ -41,7 +40,6 @@ import type {
   SteamData,
   YouTubeData,
   IGDBData,
-  MetacriticData,
   GameData,
   IGDBGame,
   AggregatedData,
@@ -180,8 +178,7 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
 export async function aggregateGames(
   steamData: SteamData,
   youtubeData: YouTubeData,
-  igdbData: IGDBData,
-  metacriticData: MetacriticData
+  igdbData: IGDBData
 ): Promise<GameData[]> {
   const gameMap = new Map<string, GameData>();
 
@@ -234,13 +231,11 @@ export async function aggregateGames(
         steamAppId: steam.appId,
         genres: [],
         platforms: ['PC'],
-        steamPlayers: steam.currentPlayers,
         source: ['steam'],
         sourceUrls: { steam: steamUrl },
       });
     } else {
       const existing = gameMap.get(normalized)!;
-      existing.steamPlayers = steam.currentPlayers;
       existing.sourceUrls = existing.sourceUrls || {};
       if (!existing.sourceUrls.steam) {
         existing.sourceUrls.steam = steamUrl;
@@ -409,28 +404,6 @@ export async function aggregateGames(
     }
   }
 
-  // Metacritic スコアを追加
-  for (const score of metacriticData.scores) {
-    const normalized = normalizeTitle(score.title);
-
-    for (const [, game] of gameMap.entries()) {
-      // Metacritic 側に発売年情報がないため、年照合は適用されずタイトル一致で通る
-      if (isSameGameIdentity({ title: game.title, releaseDate: game.releaseDate }, { title: normalized }, 'aggregation')) {
-        game.metascore = score.metascore;
-        game.userScore = score.userScore;
-        if (!game.source.includes('metacritic')) {
-          game.source.push('metacritic');
-        }
-        // Metacritic URLを追加
-        if (score.url) {
-          game.sourceUrls = game.sourceUrls || {};
-          game.sourceUrls.metacritic = score.url;
-        }
-        break;
-      }
-    }
-  }
-
   // 不足しているメタデータを IGDB から補完
   console.log('Enriching games with IGDB data...');
   let enrichedCount = 0;
@@ -550,25 +523,6 @@ export async function aggregateGames(
     `Enriched ${storefrontEnrichedCount} games with Steam Storefront (${storefrontFailedCount} failed)`
   );
 
-  // Metacritic スコアが不足しているゲームを補完
-  console.log('Enriching games with Metacritic scores...');
-  enrichedCount = 0;
-  for (const game of gameMap.values()) {
-    if (game.metascore === undefined && game.source.length > 1) {
-      const score = await getGameScore(game.title);
-      if (score) {
-        game.metascore = score.metascore;
-        game.userScore = score.userScore;
-        enrichedCount++;
-        // レート制限対策
-        if (enrichedCount % 3 === 0) {
-          await new Promise((r) => setTimeout(r, 500));
-        }
-      }
-    }
-  }
-  console.log(`Enriched ${enrichedCount} games with Metacritic scores`);
-
   return deduplicateGames(Array.from(gameMap.values()));
 }
 
@@ -670,10 +624,7 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       // スコア・人気指標は「より良い値」を採用
       primary.steamRank = Math.min(primary.steamRank ?? Infinity, dup.steamRank ?? Infinity);
       if (primary.steamRank === Infinity) primary.steamRank = undefined;
-      primary.steamPlayers = Math.max(primary.steamPlayers ?? 0, dup.steamPlayers ?? 0) || undefined;
       primary.youtubePopularity = Math.max(primary.youtubePopularity ?? 0, dup.youtubePopularity ?? 0) || undefined;
-      primary.metascore = primary.metascore ?? dup.metascore;
-      primary.userScore = primary.userScore ?? dup.userScore;
       primary.igdbRating = primary.igdbRating ?? dup.igdbRating;
       primary.igdbRatingCount = primary.igdbRatingCount ?? dup.igdbRatingCount;
       primary.gameType = primary.gameType ?? dup.gameType;
@@ -1199,8 +1150,8 @@ export function buildIndieCandidates(
  * - game_type（Main Game、または J-3-e で許可されたリメイク・リマスターのみ）→
  *   `isClassicPoolGameType`（粗いゲート） + `isClassicRemakeAllowed`（8/9 の許可判定）
  *
- * 旧仕様の `metascore`/`igdbRating` によるスコア条件、Steam/YouTube 人気条件は廃止した
- * （PR-D で `metascore` 経路自体を削除する前に、本PRで先に置き換える方針をユーザーが承認済み）。
+ * 旧仕様の批評スコア指標（Issue #253 で削除済み）/`igdbRating` によるスコア条件、
+ * Steam/YouTube 人気条件は廃止した。
  *
  * `isClassicPoolGameType` を追加した経緯（code-review指摘）: 第2層エンリッチ
  * （`aggregateGames` の `enrichGameWithIGDB` 呼び出し）は `mainGameOnly` 無しで
@@ -1304,7 +1255,7 @@ async function selectGamesForArticles(
     // topAxis が domestic のとき、集約スコア（score.score）は domestic の weighted 値と
     // 一致し、そのまま Amazon 順位を逆算できてしまうため、この場合だけ score も伏せる
     const scoreDisplay = score.topAxis === 'domestic' ? '***' : score.score.toFixed(1);
-    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, metascore=${g.metascore ?? '-'}, amazon=${amazonRanked ? 'yes' : 'no'}, score=${scoreDisplay}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
+    console.log(`    - ${g.title} (releaseDate=${g.releaseDate}, steamRank=${g.steamRank ?? '-'}, igdbRating=${g.igdbRating ?? '-'}, igdbRatingCount=${g.igdbRatingCount ?? '-'}, amazon=${amazonRanked ? 'yes' : 'no'}, score=${scoreDisplay}, topAxis=${score.topAxis ?? '-'}, axes=[${axesSummary}])`);
   }
 
   const newReleasesSelection = await selectNewReleasesWithFallback(recentGamesCandidates, 2);
@@ -1373,8 +1324,8 @@ async function selectGamesForArticles(
       (g) =>
         g.genres?.some((genre) =>
           ['sports', 'racing', 'simulation'].includes(genre.toLowerCase())
-        ) && ((g.metascore && g.metascore > 75) || (g.igdbRating && g.igdbRating >= 75))
-    ) || games.find((g) => g.steamPlayers && g.steamPlayers > 50000) || null;
+        ) && g.igdbRating && g.igdbRating >= 75
+    ) || null;
 
   // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い。§5 / §6.1 / §6.3）
   const classicCandidates = buildClassicCandidates(games, {
@@ -1436,12 +1387,11 @@ async function main(): Promise<void> {
 
   // 各データソースから並列でデータ取得
   console.log('Fetching data from all sources...');
-  const [steamResult, youtubeResult, igdbResult, metacriticResult, amazonRanks] =
+  const [steamResult, youtubeResult, igdbResult, amazonRanks] =
     await Promise.all([
       fetchSteamData(),
       fetchYouTubeData(),
       fetchIGDBData(),
-      fetchMetacriticData(),
       fetchAmazonRanking(),
     ]);
 
@@ -1450,8 +1400,6 @@ async function main(): Promise<void> {
   if (!steamResult.success) errors.push(`Steam: ${steamResult.error}`);
   if (!youtubeResult.success) errors.push(`YouTube: ${youtubeResult.error}`);
   if (!igdbResult.success) errors.push(`IGDB: ${igdbResult.error}`);
-  if (!metacriticResult.success)
-    errors.push(`Metacritic: ${metacriticResult.error}`);
 
   if (errors.length > 0) {
     console.warn('Some data sources failed:');
@@ -1472,10 +1420,6 @@ async function main(): Promise<void> {
     games: [],
     fetchedAt: new Date().toISOString(),
   };
-  const metacriticData: MetacriticData = metacriticResult.data || {
-    scores: [],
-    fetchedAt: new Date().toISOString(),
-  };
 
   // データ統合
   console.log('');
@@ -1483,8 +1427,7 @@ async function main(): Promise<void> {
   const games = await aggregateGames(
     steamData,
     youtubeData,
-    igdbData,
-    metacriticData
+    igdbData
   );
   console.log(`Total games aggregated: ${games.length}`);
 
@@ -1574,7 +1517,6 @@ async function main(): Promise<void> {
     steamData,
     youtubeData,
     igdbData,
-    metacriticData,
     fetchedAt: new Date().toISOString(),
   };
 
@@ -1604,7 +1546,6 @@ async function main(): Promise<void> {
   console.log(`Steam Top Played: ${steamData.topPlayed.length}`);
   console.log(`YouTube Videos: ${youtubeData.trendingVideos.length}`);
   console.log(`IGDB Games: ${igdbData.games.length}`);
-  console.log(`Metacritic Scores: ${metacriticData.scores.length}`);
   console.log(`Total Aggregated: ${games.length}`);
   console.log('');
   console.log(`Finished at: ${new Date().toISOString()}`);

@@ -598,8 +598,6 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
 
   // 提供データから既知の数値を集める（これらは警告対象外）
   const knownNumbers = new Set<string>();
-  if (article.game?.metascore != null) knownNumbers.add(String(article.game.metascore));
-  if (article.game?.userScore != null) knownNumbers.add(String(article.game.userScore));
   if (article.game?.releaseDate) {
     // 発売日に含まれる年・月・日を許容
     const parts = article.game.releaseDate.split(/[-/]/);
