@@ -18,7 +18,7 @@ export interface ResolveInput {
   titleJa?: string;
   igdbSlug?: string;
   releaseDate?: string;
-  igdbWebsites?: { url: string; category?: number }[];
+  igdbWebsites?: { url: string; category?: number; type?: number }[];
   knownSteamAppId?: number;
   /** ゲームが対応するプラットフォーム（iOS/Android resolver の実行判定に使用） */
   platforms?: string[];

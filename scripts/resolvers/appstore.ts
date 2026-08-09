@@ -36,7 +36,7 @@ export interface AppStoreResolverInput {
   title: string;
   titleJa?: string;
   releaseDate?: string;
-  igdbWebsites?: { url: string; category?: number }[];
+  igdbWebsites?: { url: string; category?: number; type?: number }[];
 }
 
 export interface AppStoreResolverResult {

@@ -586,7 +586,8 @@ async function verifyProposedGames(
       continue;
     }
 
-    // Issue #117: IGDB の category=1 タグ付き URL のみを採用する仕様（pickOfficialUrlFromWebsites）に
+    // Issue #117: IGDB の公式タグ付き URL のみを採用する仕様（pickOfficialUrlFromWebsites。
+    // Issue #234 以降のタグは type=1、旧 category=1 は後方互換）に
     // 変更したため、igdb.officialUrl は IGDB が公式サイトとして明示した URL のみとなる。
     // 機械フォールバック由来の不一致URLは構造的に発生しないので内容検証は省略する。
     const verifiedOfficialUrl = igdb.officialUrl;
@@ -938,11 +939,21 @@ export async function generateFeatureArticle(
           expectedYear: releaseYear ? parseInt(releaseYear, 10) : undefined,
           steamAppId: game.steamAppId,
         });
-        // Issue #117: igdbFallback.officialUrl は IGDB の category=1 タグ付き URL のみ
+        // Issue #117: igdbFallback.officialUrl は IGDB の公式タグ付き URL のみ
         // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。
+        // Issue #234: 公式タグは type=1（旧 category=1 は後方互換）。
         if (igdbFallback?.officialUrl) {
           console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
           officialUrl = igdbFallback.officialUrl;
+          // 上の Tavily 分岐と同じく game.sourceUrls にも書き戻して由来を残す。
+          // Issue #234 以前はこの分岐が構造的に到達不能だったため由来の欠落が表面化して
+          // いなかったが、由来が無いと信頼済みソース判定（build-issue.ts）が働かない。
+          game.sourceUrls = {
+            ...game.sourceUrls,
+            official: officialUrl,
+            officialUrlSource: igdbFallback.officialUrlSource,
+            officialVerifyReason: undefined,
+          };
         }
       }
     } catch (error) {

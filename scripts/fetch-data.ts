@@ -158,7 +158,7 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
     game.sourceUrls = game.sourceUrls || {};
     game.sourceUrls.igdb = `https://www.igdb.com/games/${igdbGame.slug}`;
   }
-  // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+  // IGDB websites(type=13。旧 category=13)の Steam URL から appId を引き継ぐ
   // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
   if (igdbGame.steamUrl) {
     const appId = extractSteamAppId(igdbGame.steamUrl);
@@ -921,8 +921,9 @@ async function enrichSelectedGamesWithOfficialUrl(
           : undefined,
         steamAppId: game.steamAppId,
       });
-      // Issue #117: igdbFallback.officialUrl は category=1 タグ付き URL のみ
+      // Issue #117: igdbFallback.officialUrl は公式タグ付き URL のみ
       // （pickOfficialUrlFromWebsites の挙動変更による）。内容検証は省略してそのまま採用する。
+      // Issue #234: 公式タグは type=1（旧 category=1 は後方互換）。
       if (igdbFallback?.officialUrl) {
         console.log(`    Using IGDB official URL as fallback: ${igdbFallback.officialUrl}`);
         game.sourceUrls = {

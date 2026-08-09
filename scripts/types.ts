@@ -57,8 +57,8 @@ export interface IGDBGame {
   ratingCount?: number;
   steamUrl?: string;
   officialUrl?: string; // IGDB websites から推定した公式サイトURL
-  officialUrlSource?: 'igdb-official'; // officialUrl の由来。category=1 タグ付きのみ採用（Issue #117）
-  websites?: { url: string; category: number }[]; // IGDB raw websites（Identity Resolver に引き渡すため）
+  officialUrlSource?: 'igdb-official'; // officialUrl の由来。公式タグ付きのみ採用（Issue #117 の allow-list 方針。タグは type=1、category=1 は後方互換: Issue #234）
+  websites?: { url: string; category?: number; type?: number }[]; // IGDB raw websites（Identity Resolver に引き渡すため）。Issue #234: type が正、category は後方互換
   /** IGDB のゲーム種別（0=Main Game, 8=Remake, 9=Remaster）。新作枠のリメイク明記に使う（§6.2） */
   gameType?: number;
   /** 批評スコア集計（Metacritic 相当）。新作枠スコアの批評軸（§2.3） */
@@ -124,8 +124,8 @@ export interface GameData {
   // AI推測情報
   isAiInferred?: boolean; // AIによる推測情報かどうか
   aiInferredFields?: string[]; // AIが推測したフィールド名のリスト
-  /** IGDB websites（Identity Resolver に渡すための中間保持用） */
-  igdbWebsites?: { url: string; category: number }[];
+  /** IGDB websites（Identity Resolver に渡すための中間保持用）。Issue #234: type が正、category は後方互換 */
+  igdbWebsites?: { url: string; category?: number; type?: number }[];
   /** IGDB のゲーム種別（0=Main Game, 8=Remake, 9=Remaster）。新作枠のリメイク明記に使う（§6.2） */
   gameType?: number;
   /** 批評スコア集計（Metacritic 相当）。新作枠スコアの批評軸（§2.3） */

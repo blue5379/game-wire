@@ -304,7 +304,8 @@ const OFFICIAL_PAGE_MAX_LENGTH = 3000;
  * 取得失敗時はスキップして警告ログのみ（ビルド継続）。
  *
  * Issue #117: 'igdb-fallback' ソースは廃止された（pickOfficialUrlFromWebsites が
- * category=1 限定になり、機械フォールバックを行わなくなった）。
+ * 公式タグ付き限定になり、機械フォールバックを行わなくなった）。
+ * Issue #234: 公式タグは type=1（旧 category=1 は後方互換で残す）。
  * generated-articles.json 等のキャッシュ互換で過去の値が来ても採用しないよう、
  * 'tavily' | 'igdb-official' のいずれかでない場合は extract をスキップする。
  */
