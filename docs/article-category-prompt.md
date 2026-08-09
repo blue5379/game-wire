@@ -9,7 +9,7 @@
 | PR-0.5 | `refactor/parameterize-igdb-filters` | ✅ **マージ済み**（2026-08-08。`28f835f`。squash） | - / PR #224 | 挙動不変の純リファクタ。24ファイル / 749テスト（着手前 744）。`/code-review` の**指摘ゼロ**。**ユーザー確認事項は「`mainGameOnly` を `gameTypes` に一般化しない」で確定**（別軸のため。下記 PR-0.5 節に根拠）。**このPRで `fetch-igdb.ts` の行番号が 21 行目以降すべて +12 ずれた** |
 | PR-A | `fix/steam-dlc-exclusion` | ✅ **マージ済み**（2026-08-08。`2011619`。squash） | - / PR #226 | 24ファイル / 760テスト（着手前 749）。**仕様書に無い新事実を実測で発見**: `coming_soon` からサウンドトラック（`type=music`）が混入していた。レビュー指摘4件の内訳は 1件を本PRで修正 / 2件を **#227 / #228** に分離 / 1件（進捗表の更新）は後続の docs PR #229 で対応。**このPRで `fetch-steam.ts` の行番号が大きくずれた**（下記「行番号は必ず自分で確認する」節） |
 | PR-B | `feat/newrelease-score-and-remake` | ✅ **マージ済み**（2026-08-08。`1bb61e6`。squash） | #210（`Refs`。未クローズ）/ PR #230 | 26ファイル / 865テスト（着手前 24 / 760）。コミット2本（実装 → レビュー対応）。**`/code-review` の指摘5件は全件が実在し、全件を本PRで修正**（別Issue分離なし）。**着手前測定（§9.3-9）で新作枠0本の原因を特定 → #231**。名作枠に `isFanGame` 未適用だったことも実測で発覚し本PRで修正 |
-| PR-B2 | `feat/domestic-sales-axis` | 未着手 | 関連 **#238** | PR-B / PR-I の後。⚠️ **スコープ追加が必要**（#238）: ①Amazon 掲載を `isQualifiedGame` の経路として通す（順位を `GameData` に載せない制約と両立する設計が要る）②「スプラトゥーン レイダース」↔「Splatoon Raiders」の照合成立を受け入れ条件にする。**ただし #241（母集団クエリの上限欠落）を先に直さないと、Amazon 軸を入れても候補プールに入らない** |
+| PR-B2 | `feat/issue-238-domestic-sales-axis` | ✅ **マージ済み**（2026-08-09。`0a304eb`。squash） | **#238 / #244**（両方 Closed）/ PR #249 | **ブランチ名は当初案の `feat/domestic-sales-axis` から `feat/issue-238-domestic-sales-axis` に変更**。27ファイル / **1021テスト**（着手前 26 / 973）。コミット2本（実装 → レビュー対応）。**新規スクリプト `scripts/fetch-amazon-ranking.ts` を追加**。`/code-review` の指摘6件の内訳は **3件を本PRで修正 / 1件を一部修正（投機的な部分は見送り） / 2件を別Issueに分離**（#250 / #251。うち #251 は実データで懸念が再現しなかったもの）。**#244 の受け入れ条件は実データで再現しなかった**（下記「実施結果」に詳述）。**ミュータント検証20種を管理者が実施し、全種でテストが検出することを確認した** |
 | **#241 対応** | `fix/issue-241-newrelease-population-window` | ✅ **マージ済み**（2026-08-09。`31770bc`。squash） | **#241**（Closed）/ 関連 #238・**#244** / PR #243 | 26ファイル / **968テスト**（着手前 960）。コミット2本（実装 → レビュー対応）。発売済みクエリに上限を追加 + 未発売クエリ `fetchUpcomingGames` を新設 + レビュー指摘を受けて発売済みを **2 本立て**（`hypes desc` / `rating_count desc` の和集合）に。実測: プール内の 60 日窓の発売済み **4 → 73 件**、未発売 16 → 23 件（供給維持）、実行時間 2:39 → 2:45。**選定結果は今週のデータでは不変**（下流の品質条件が Steam 依存のため。→ #238）。**仕様の矛盾を 1 件発見 → #244** |
 | **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
@@ -223,6 +223,45 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 **現在は 5 本**である（発売済み 2 + 未発売 1 + 名作 1 + インディー 1）。`fields` と mapper は
 `IGDB_POOL_QUERY_FIELDS` / `mapPoolRawGameToIGDBGame` に一元化済みなので、
 **フィールドを足すときは定数 1 箇所を直せば 5 本すべてに反映される**（テストで担保）。
+
+⚠️ **さらに PR-B2（#249）で `game-filter.ts` / `select-newreleases-with-fallback.ts` / `fetch-data.ts` /
+`newrelease-score.ts` / `fetch-igdb.ts` の行番号がずれた。ずれ幅は一様ではない。**
+マージ後の実測値（2026-08-09。`2f5da86` → `0a304eb`）:
+
+| シンボル（ファイル） | PR-B2 前 | PR-B2 マージ後 | ずれ |
+|---|---|---|---|
+| `QUALITY_IGDB_RC_MIN`（`game-filter.ts`） | :9 | :9 | 0 |
+| `QUALITY_CRITIC_COUNT_MIN`（`game-filter.ts`。本PRで新設） | — | :16 | 新設 |
+| `isQualifiedGame`（`game-filter.ts`） | :20 | :37 | +17 |
+| `hasExistenceEvidence`（`select-newreleases-with-fallback.ts`） | :19 | :22 | +3 |
+| `buildNewReleaseCandidates`（`fetch-data.ts`） | :968 | :971 | +3 |
+| `sortByNewReleaseScore` 呼び出し（`fetch-data.ts`） | :983 | :996 | +13 |
+| `buildIndieCandidates`（`fetch-data.ts`） | :1093 | :1109 | +16 |
+| `buildClassicCandidates`（`fetch-data.ts`） | :1116 | :1132 | +16 |
+| `selectGamesForArticles`（`fetch-data.ts`） | :1140 | :1156 | +16 |
+| `toPersistableSelectedGames`（`fetch-data.ts`。本PRで新設） | — | :1328 | 新設 |
+| `loadNewReleaseScoreParams`（`newrelease-score.ts`） | :78 | :86 | +8 |
+| `computeSteamAxis`（`newrelease-score.ts`） | :145 | :154 | +9 |
+| `computeDomesticAxis`（`newrelease-score.ts`。本PRで新設） | — | :172 | 新設 |
+| `computeNewReleaseScore`（`newrelease-score.ts`） | :159 | :182 | +23 |
+| `sortByNewReleaseScore`（`newrelease-score.ts`） | :192 | :222 | +30 |
+| `IGDB_WEBSITE_TYPE`（`fetch-igdb.ts`） | :309 | :309 | 0 |
+| `IGDB_POOL_QUERY_FIELDS`（`fetch-igdb.ts`） | :738 | :738 | 0 |
+| `mapPoolRawGameToIGDBGame`（`fetch-igdb.ts`） | :783 | :783 | 0 |
+| `fetchRecentPopularGames`（`fetch-igdb.ts`） | :850 | :850 | 0 |
+| `fetchRecentPopularGamesByRatingCount`（`fetch-igdb.ts`） | :895 | :895 | 0 |
+| `fetchUpcomingGames`（`fetch-igdb.ts`） | :938 | :951 | +13 |
+| `fetchClassicGames`（`fetch-igdb.ts`） | :970 | :985 | +15 |
+| `fetchIndieGames`（`fetch-igdb.ts`） | :1000 | :1015 | +15 |
+| `fetchIGDBData`（`fetch-igdb.ts`） | :1034 | :1049 | +15 |
+
+**特筆すべき点**: 同一ファイル `fetch-igdb.ts` の中でもずれ幅が **0 / 0 / +13 / +15** と段階的に変わっている
+（変更を入れたのが `fetchUpcomingGames` だけのため、それより前は 0、それ以降が +13〜+15）。
+`newrelease-score.ts` は +8 / +9 / +23 / +30 と後ろほど大きい。**一律のオフセットを当てると数行〜数十行ずれる。**
+
+新設ファイル `scripts/fetch-amazon-ranking.ts` の主要シンボル（新規なので「ずれ」ではなく初出の位置として別記）:
+`AMAZON_RANKING_SLOT_COUNT` :17 / `isNonGameProduct` :63 / `normalizeAmazonProductTitle` :94 /
+`buildAmazonRankIndex` :164 / `fetchAmazonRanking` :228
 
 ⚠️ **更新したのは後続PR（PR-B / PR-B2 / PR-I）が参照する行番号と PR-0.5 の「実施結果」節だけ**で、
 **PR-0 / PR-0.5 の「当初の指示」節および PR-0 の「実施結果」節の行番号は記載時点のまま**
@@ -1057,6 +1096,116 @@ DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述
   ファミ通の取得経路は 2026-08-01 と 2026-08-07 の実測に基づく。
   **着手時にもう一度叩いて構造が変わっていないか確認する**（`.claude-scratch/` に
   プローブを書く）。
+
+## 実施結果（2026-08-09）
+
+**PR #249。マージコミット `0a304eb`（squash）。コミット 2 本（実装 → レビュー対応）。**
+Issue #238 / #244 の両方を Closes でクローズした。実装は Sonnet に委譲し、diff を管理者が検証した。
+**ブランチ名は当初案の `feat/domestic-sales-axis` ではなく `feat/issue-238-domestic-sales-axis` を使った。**
+
+### 1. 照合方式の決着（§9.2-4）— 当初想定と違った
+
+- **IGDB の `alternative_names` は日本語照合に使えない。** 実測: 発売済み 60 日窓の母集団 17 件のうち
+  CJK の別名を持つのは 3 件で、**すべて中国語**（Palworld=幻兽帕鲁 / Rhythm Heaven Groove=節奏天國 奇蹟之星 /
+  Unrailed 2=一起开火车2）。『Splatoon Raiders』の別名は "Splatoon RAIDERS"（stylized）のみ
+- 代わりに**既に取得済みの `GameData.titleJa`**（IGDB `game_localizations` の `region === 3`）を照合キーに
+  使った。母集団クエリのフィールド（`IGDB_POOL_QUERY_FIELDS`）に既に含まれており、`deduplicateGames` を
+  含む集約経路すべてで転記されていることを確認済み
+- 『Splatoon Raiders』は region=3 に**「スプラトゥーン レイダース」**を持つ
+- 60 日窓の母集団での `titleJa` 保有率は **6/17**。ただし Amazon 上位に載る国内タイトルはほぼ保有していた
+  （リズム天国 / トモダチコレクション / ビースト オブ リンカネーション / プラグマタ / マーベル・闘魂 / エルデンリング等）
+- **誤照合ガード**: 索引側と `GameData` の発売日の差が **365 日超**なら不一致とする。実測で正しい 6 ペアの差は
+  すべて **0〜1 日**（DL 版とパッケージ版の差）だった
+
+### 2. ノイズ除去の実測（2026-08-09。仕様書 §2.3 の 2026-08-07 実測から変動）
+
+- 非ゲーム商品は **9 件**（§2.3 記載の実測は 7 件）。1 位がニンテンドープリペイド番号なのは同じ
+- 「スプラトゥーン レイダース」は **4 位（オンラインコード版）と 6 位（-Switch2）** に重複掲載
+  （§2.3 記載は 5 位と 6 位）
+- **`categoryName` はノイズ判定に使えない。** 実測で 5 種混在（ゲームソフト 38 / ダウンロード版ソフト/
+  コンテンツ 5 / ジャンル別 3 / PCゲーム 2 / ハンドル・ジョイスティック 2）で、**1 位のプリペイド番号が
+  `categoryName=ゲームソフト`**、逆に**本命の 4 位が `ダウンロード版ソフト/コンテンツ`**。判定はタイトル
+  ベースにした
+- 仕様書が挙げていない非ゲーム類型を実測で追加発見: **アップグレードパス / エキスパンションパス**
+  （『ぽこ あ ポケモン エキスパンションパス』5 位、『ゼノブレイド2 …アップグレードパス』33 位）。さらに
+  別スナップショットでは **Game Pass Ultimate のサブスク商品**と**ガラスフィルム（保護フィルム）**も
+  混入していた。キーワード方式は本質的にスナップショット依存であり網羅は保証できない。ただし本実装は
+  「母集団のゲーム側から索引を引く」方向なので、除去漏れの非ゲーム商品は索引に残るだけで実害が出ない
+  （fail-closed）
+- ⚠️ **ランキングは 1 時間単位のスナップショット**（`countingStartDate` / `countingEndDate` が 1 時間窓）。
+  **実行のたびに順位が変わり、選定結果は run 間で再現しない。**検証中にも、ある取得では未掲載だった
+  『ほの暮しの庭』が次の取得では 18 位に入った
+
+### 3. ライセンス制約への対応（§2.3）
+
+- 順位は `AmazonRankIndex` を**引数で渡すことだけ**で流通させ、`GameData` には載せない
+- ⚠️ **レビューで、順位が並び順から漏れる経路が 2 つ見つかった**（当初の grep によるフィールド名検査では
+  検出できなかった）:
+  - `SelectedGames.newReleasesReserves` は 4 軸スコア降順の配列で、`JSON.stringify(selectedGames)` により
+    `data/selected-games.json`（Git 追跡下）にそのまま書き出されていた。**他 3 軸は `GameData` に永続化済み
+    で再計算できるため、domestic が topAxis のゲームは配列内の位置から Amazon 順位が数ランクの幅に絞り込める。**
+    → 書き出し対象から `newReleasesReserves` を除外した（`toPersistableSelectedGames`）。`generate-articles.ts`
+    は reserves を読み込むだけで一度も参照していないため機能的影響なし。`indieReserves` はインディー枠に
+    `amazonRanks` を渡していないため残した
+  - 候補ログをスコア降順で出力すると、マスクした行が前後の実数値行に挟まれ、domestic 軸の素点が 2 点刻み
+    （`100 − 2×(順位−1)`）であることと合わせて順位が特定できた。→ **ログ出力のみタイトル昇順**に変更
+    （選定に使う配列の順序は不変）
+- **残る既知の漏れ（許容）**: 採用済み `newReleases`（2 件）の配列順序もスコア降順。要素が 2 つなので順位
+  そのものは特定できず両者の大小関係が分かるだけで、記事生成に必須のため除去できない
+
+### 4. 実データでの効果（DEV_MODE 実行）
+
+| 枠 | 変更前 | 変更後 |
+|---|---|---|
+| 新作枠 候補 | 20 件 | 27 件 |
+| 新作枠 採用 | ほの暮しの庭 / Big Walk | ほの暮しの庭 / Rhythm Heaven Groove |
+| インディー枠 候補 | 15 件 | 21 件 |
+| インディー枠 採用 | Palworld / Scrap Mechanic | 変化なし |
+| 名作枠 採用 | Splatoon Raiders | 変化なし |
+| 特集枠 | GTA V レガシー | 変化なし |
+
+Amazon 経路で新たに候補入りした国内タイトル: Splatoon Raiders / Rhythm Heaven Groove /
+Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
+
+### 5. ⚠️ 受け入れ条件のうち 2 件が未達
+
+- **『Splatoon Raiders』は候補には入ったが採用されなかった**（27 件中 4 位。枠は 2 つ）。ほの暮しの庭
+  （Steam 1 位 = 100 点）と Rhythm Heaven Groove（Amazon 2 位 = 98 点）に次ぐ。**構造的欠陥（全経路が
+  外れて候補にすら入らない）は解消したが、採用は競争結果に依存する。**重みの再調整は Issue #210 の担当
+  なので本PRでは触っていない
+- **名作枠には引き続き載っている。** `buildClassicCandidates` が `igdbRating >= 85` だけで通すため評価母数
+  7 件の本作を拾う。選定側を評価母数ベースに変えるのは名作枠 PR の担当（§8 の 8 行目）
+
+### 6. ⚠️ #244 の受け入れ条件は実データで再現しなかった（着手前検証で発覚）
+
+- `game_type` を `(0)` → `(0,8,9)` に緩めても **`Rayman Legends Retold` は母集団に入らない**
+- 実測: where 句合致は **33 件 → 34 件**に増えるが、`sort first_release_date asc; limit 20` の**先頭 20 件は
+  緩和前後で完全に同一**。20 番目が `Aniimo`（2026-09-30）、21 番目が `Neverway`（2026-10-01）で切れる。
+  **`Rayman Legends Retold` は 34 件中 23 番目**（game_type=8 / hypes=48 / 発売 2026-10-01 で 90 日窓の内側）
+- **本作を落としているのは `game_type` フィルタではなく `limit 20` と発売日昇順ソート。**§2.4 の緩和自体は
+  §6.2 との仕様矛盾を解消する正しい修正だが、**観測可能な効果は今日のデータではゼロ**
+- ユーザー判断により「仕様整合の修正のみ入れる」で確定。limit の問題は **#250** に分離
+
+### 7. レビュー指摘の採否（6 件）
+
+| 指摘 | 採否 | 根拠 |
+|---|---|---|
+| 順位のマスクが並び順で無効化される（**1 件の指摘だが経路は 2 つ**: ①`newReleasesReserves` のスコア降順 ②候補ログのスコア降順） | 本PRで修正（両経路とも） | 上記 3。**本PRが持ち込んだ、PR自身の主張に反する欠陥。**①は `selected-games.json` への書き出しから除外、②はログ出力をタイトル昇順に変更 |
+| `lookup` のガードが英語タイトルへのフォールバックを潰す | 本PRで修正 | `titleJa` がガードで弾かれると `title` を引かずに `undefined` を返していた |
+| `isNonGameProduct` が NFKC 正規化していない | 本PRで修正 | 実データでは半角カタカナ 0 件・全角ラテン文字 0 件で実害なし。同一ファイル内の不整合解消として予防的に対応 |
+| 全角 `｜` / `- PlayStation 5` 接尾辞 | 一部採用 | 全角 `｜` は実データ 0 件だが 1 行で対応できるため修正。**`PLATFORM_SUFFIX_RE` の拡張は見送り**（`- PlayStation 5` 等はライブデータに存在せず、唯一の `Xbox Series X\|S` は非ゲームのサブスク商品。投機的な拡張はしない） |
+| 批評経路が全枠に波及し評点のしきい値が無い | #251 に分離 | 「全枠に波及」は事実だが、懸念された「2 媒体で低評価」は**実データ 0 件**。批評経路だけで通るのは母集団 146 件中 **8 件**で評点は 74 / 76 / 79 / 81 / 82 / 84 / 84 / 87（媒体数 2〜4）。`isQualifiedGame` の通過数は 67/146（経路を外すと 59/146）。§2.3 は媒体数のみを規定しており評点しきい値の追加は仕様変更 |
+| `limit 20` でリメイクが Main Game を押し出す | #250 に分離 | 構造的指摘として正しいが、§6.2 は新作紹介でリメイクを許可しているため押し出し自体は意図した挙動。真の問題は `limit 20` による打ち切り |
+
+### 8. 教訓（次回以降）
+
+- **ライセンス制約の検証を「フィールド名の grep」だけで済ませてはいけない。** 並び順・配列の順序といった
+  **導出チャネル**から値が漏れる。永続化されるオブジェクト全体を、どのフィールドが何から計算されているか
+  まで遡って確認すること
+- **`data/` の測定値は復元より先に読む。** 本作業でも 1 度、測定前に `git checkout -- data/` してしまい
+  測り直した
+- **`scripts/fetch-data.ts` はモジュール読み込み時に `main()` が走る。** テスト以外から `import` すると
+  全パイプラインが起動するので、オフライン測定スクリプトから読み込んではいけない
 
 ---
 

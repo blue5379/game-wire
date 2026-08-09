@@ -822,6 +822,8 @@ function buildIgdbCommonFilters(allowedGameTypes: readonly number[] = [IGDB_GAME
 > ⚠️ **2026-08-09 追記: 本節は長らくどの PR にも割り当てられていなかった**（論点A と同じ構図）。同日付で `article-category-spec.md` §8 の実装計画表に **15 行目**として追加したので、論点D の結論と合わせて具体的な PR を切ること。
 >
 > また、**本節の素案（`aggregated_rating` 経路の追加）だけでは Issue #238 は解決しない**。『Splatoon Raiders』は `aggregated_rating_count = 1` なので「批評媒体数 2 以上」を満たさず、救うには §2.3 の 4 つ目の経路（**Amazon 国内ランキング掲載**）が要る。その経路は PR-B2 のスコープにも含まれていない。
+>
+> ✅ **実装（2026-08-09。PR #249）**: §2.3 の 4 条件のうち未実装だった 2 つ（批評媒体数 2 以上 / Amazon 掲載）を実装した。**素案の `aggregated_rating` 経路の追加だけでは #238 は解決しないという本節の指摘は正しかった。**『Splatoon Raiders』は `aggregated_rating_count = 1` で批評経路を満たさず、実際に Amazon 経路で救われた。Amazon 経路は `options` 引数で新作枠にのみ有効化し、インディー枠・名作枠・特集枠には渡していない。批評経路は全枠共通。`metascore` 経路（PR-D 担当）と `igdbRating >= 85 && rc >= 8` の救済経路は本 PR では残した。批評経路が全枠に波及する点と評点しきい値が無い点は **#251** に分離。実測では批評経路だけで通るのは 146 件中 8 件で評点 74〜87。
 
 現行（`scripts/game-filter.ts`）は OR ゲートで 6 経路あるが、実質 `igdbRatingCount >= 15` と `steamRank` の 2 経路しか生きていない（`metascore` 経路は §2.3 のとおり死んでいる）。
 
