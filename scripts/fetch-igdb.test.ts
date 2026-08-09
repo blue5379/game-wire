@@ -15,12 +15,14 @@ import {
   pickSteamUrlFromWebsites,
   getJstDayStartUnixSec,
   IGDB_POOL_QUERY_FIELDS,
+  IGDB_WEBSITE_TYPE,
 } from './fetch-igdb.js';
 
 const {
   isRelevantSearchResult,
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
+  mapPoolRawGameToIGDBGame,
   buildIgdbCommonFilters,
 } = __test;
 
@@ -94,11 +96,12 @@ describe('pickOfficialUrlFromWebsites', () => {
     expect(pickOfficialUrlFromWebsites(undefined)).toBeUndefined();
   });
 
-  // Issue #117: ブロックリスト方式から許可リスト方式（category=1 のみ）へ転換。
+  // Issue #117: ブロックリスト方式から許可リスト方式（公式タグ付きのみ）へ転換。
   // 過去のフォールバック（非SNS・非ストアの先頭URLを機械採用）は
   // 無関係なスタジオサイトを採用してしまう構造的欠陥があったため廃止。
-  it('Issue #117: category=1 が無ければ undefined（非SNS・非ストアURLでもフォールバック採用しない）', () => {
-    // 過去はこの並びで ioi.dk のURLを返していたが、現在は category=1 不在のため undefined。
+  // 公式タグは Issue #234 以降 type=1（旧 category=1 は後方互換）。
+  it('Issue #117: 公式タグが無ければ undefined（非SNS・非ストアURLでもフォールバック採用しない）', () => {
+    // 過去はこの並びで ioi.dk のURLを返していたが、現在は公式タグ不在のため undefined。
     expect(
       pickOfficialUrlFromWebsites([
         { url: 'https://x.com/foo' },
@@ -108,7 +111,7 @@ describe('pickOfficialUrlFromWebsites', () => {
     ).toBeUndefined();
   });
 
-  it('Issue #117: category=1 が無い無関係サイトは採用しない（theminesa.studio パターン回帰防止）', () => {
+  it('Issue #117: 公式タグが無い無関係サイトは採用しない（theminesa.studio パターン回帰防止）', () => {
     // Dungeon Blitz R の IGDB websites に theminesa.studio が登録されていた事象。
     // 旧フォールバックでは採用されていたが、新仕様では弾く。
     expect(
@@ -116,13 +119,61 @@ describe('pickOfficialUrlFromWebsites', () => {
     ).toBeUndefined();
   });
 
-  it('Issue #117: Wikipedia/Wiki/Fandom は category=1 が無ければ採用しない', () => {
+  it('Issue #117: Wikipedia/Wiki/Fandom は公式タグが無ければ採用しない', () => {
     expect(
       pickOfficialUrlFromWebsites([
         { url: 'https://en.wikipedia.org/wiki/Foo' },
         { url: 'https://foo.fandom.com/wiki/Bar' },
       ])
     ).toBeUndefined();
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Issue #234: IGDB API が websites.category を返さなくなり websites.type に
+  // 改名された（2026-08-09 実測）。type 対応の回帰テストを追加する。
+  // ─────────────────────────────────────────────────────────────────────
+
+  it('Issue #234: type === 1 のサイトを採用する（category キーを持たない実データ相当のフィクスチャ）', () => {
+    // 実測レスポンスは {"id":840858,"url":"https://discord.gg/cyberpunkgame","type":18} のように
+    // category キーを一切含まない（id は関数が参照しないためフィクスチャからは省略）。
+    // type は IGDB_WEBSITE_TYPE.OFFICIAL の実測値（1）をリテラルで固定する。定数参照だと
+    // 定数の値が変わった場合にフィクスチャも一緒にズレてテストが空虚になるため。
+    expect(
+      pickOfficialUrlFromWebsites([
+        { url: 'https://discord.gg/cyberpunkgame', type: 18 }, // Discord
+        { url: 'https://example.com/official', type: 1 },
+      ])
+    ).toBe('https://example.com/official');
+  });
+
+  it('Issue #234: category === 1 のみ（type を持たない）サイトも後方互換で採用する', () => {
+    // category しか返さなかった旧IGDBレスポンス相当。type キー自体が存在しないことを明示する。
+    // category もリテラル 1 を使う（理由は上のテストと同じ）。
+    expect(
+      pickOfficialUrlFromWebsites([
+        { url: 'https://en.wikipedia.org/wiki/Foo', category: 3 },
+        { url: 'https://example.com/official', category: 1 },
+      ])
+    ).toBe('https://example.com/official');
+  });
+
+  it('Issue #234: type も category も 1 でなければ undefined。type: 1 を1つ足すと採用される（ポジティブコントロール）', () => {
+    const nonOfficialOnly = [
+      { url: 'https://en.wikipedia.org/wiki/Foo', type: 3 }, // Wikipedia
+      { url: 'https://store.steampowered.com/app/123', type: IGDB_WEBSITE_TYPE.STEAM }, // Steam
+      { url: 'https://discord.gg/foo', type: 18 }, // Discord
+    ];
+    expect(pickOfficialUrlFromWebsites(nonOfficialOnly)).toBeUndefined();
+
+    // ポジティブコントロール: 同じ配列に type: 1（リテラル）のサイトを1つ足すと
+    // 採用されることを確認する。これにより上のケースが「常に undefined を返す
+    // 壊れた実装」でないことを担保する。
+    expect(
+      pickOfficialUrlFromWebsites([
+        ...nonOfficialOnly,
+        { url: 'https://example.com/official', type: 1 },
+      ])
+    ).toBe('https://example.com/official');
   });
 });
 
@@ -264,6 +315,51 @@ describe('mapRawGameToIGDBGame', () => {
     expect(result.coverUrl).toBeUndefined();
     expect(result.screenshotUrls).toBeUndefined();
     expect(result.releaseDate).toBeUndefined();
+  });
+
+  // Issue #234 回帰防止: websites の category を `?? 0` で握り潰し、type を落として
+  // いた過去のバグの再発防止。type をそのまま転記し、category は undefined のまま
+  // （0 に化けない）ことを検証する。
+  it('websites の type をそのまま転記し、category は undefined のまま 0 に化けない', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 42,
+      name: 'Type Passthrough Game',
+      slug: 'type-passthrough-game',
+      websites: [
+        { url: 'https://example.com/official', type: 1 }, // category キーを持たない実データ相当
+        { url: 'https://store.steampowered.com/app/999', category: 13 }, // category のみの旧形式
+      ],
+    });
+
+    expect(result.websites).toEqual([
+      { url: 'https://example.com/official', category: undefined, type: 1 },
+      { url: 'https://store.steampowered.com/app/999', category: 13, type: undefined },
+    ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mapPoolRawGameToIGDBGame — 母集団クエリ5種（発売済み×2・未発売・名作・インディー）共通の変換ロジック
+// ─────────────────────────────────────────────────────────────────────────────
+describe('mapPoolRawGameToIGDBGame', () => {
+  it('websites の type をそのまま転記し、category は undefined のまま 0 に化けない', () => {
+    // Issue #234 回帰防止: mapRawGameToIGDBGame と同じ `category ?? 0` バグが
+    // 母集団経路（mapPoolRawGameToIGDBGame）にも独立して存在していたため、こちらも個別に検証する。
+    const result = mapPoolRawGameToIGDBGame({
+      id: 43,
+      name: 'Pool Type Passthrough Game',
+      slug: 'pool-type-passthrough-game',
+      websites: [
+        { url: 'https://example.com/official', type: 1 },
+        { url: 'https://store.steampowered.com/app/998', category: 13 },
+      ],
+    });
+
+    expect(result.websites).toEqual([
+      { url: 'https://example.com/official', category: undefined, type: 1 },
+      { url: 'https://store.steampowered.com/app/998', category: 13, type: undefined },
+    ]);
+    expect(result.steamUrl).toBe('https://store.steampowered.com/app/998');
   });
 });
 

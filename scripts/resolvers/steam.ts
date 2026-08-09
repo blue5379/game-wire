@@ -3,7 +3,7 @@
  *
  * 3経路で Steam ストア URL を解決する:
  * 1. knownSteamAppId が既知 → 直接 URL を構築（appdetails で名前検証）
- * 2. IGDB websites[category=13] に Steam URL が含まれる
+ * 2. IGDB websites[type=13]（旧 category=13）に Steam URL が含まれる
  * 3. Steam Store Search API（storesearch）で title / titleJa / igdbSlug を検索
  */
 
@@ -92,14 +92,15 @@ async function verifyAppIdByName(
 }
 
 /**
- * IGDB websites から Steam URL (category=13) を抽出する
+ * IGDB websites から Steam URL を抽出する
  */
 function extractSteamUrlFromIgdb(
-  igdbWebsites?: { url: string; category?: number }[]
+  igdbWebsites?: { url: string; category?: number; type?: number }[]
 ): string | null {
   if (!igdbWebsites) return null;
-  // category=13 (Steam) が理想だが、category 1 (official site) や未設定で
-  // store.steampowered.com が登録されているケースも救済する
+  // Steam タグ（type=13。Issue #234 以前は category=13）が理想だが、公式サイト扱いや
+  // 未設定で store.steampowered.com が登録されているケースも救済するため URL 部分一致で拾う
+  // （タグ優先の 2 パス探索が必要な経路は fetch-igdb.ts の pickSteamUrlFromWebsites 側にある）
   const site = igdbWebsites.find((w) => w.url.includes('store.steampowered.com'));
   return site?.url ?? null;
 }
@@ -157,7 +158,7 @@ export async function resolveSteam(input: SteamResolverInput): Promise<SteamReso
     attempts.push({ method: 'known-appid', ok: false, reason: 'name mismatch or appdetails failed' });
   }
 
-  // ─── 経路2: IGDB websites[category=13] ────────────────────────────────────
+  // ─── 経路2: IGDB websites[type=13]（旧 category=13） ──────────────────────
   const igdbSteamUrl = extractSteamUrlFromIgdb(input.igdbWebsites);
   if (igdbSteamUrl) {
     const appId = extractAppId(igdbSteamUrl);

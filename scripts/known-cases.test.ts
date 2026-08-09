@@ -35,7 +35,7 @@ interface KnownCase {
     igdbSlug?: string;
     releaseDate?: string;
     platforms?: string[];
-    igdbWebsites?: { url: string; category?: number }[];
+    igdbWebsites?: { url: string; category?: number; type?: number }[];
     knownSteamAppId?: number;
   };
   steamSearchMock?: {

@@ -105,7 +105,7 @@ export async function finalizeGameMetadata(
             game.sourceUrls.igdb =
               game.sourceUrls.igdb ?? `https://www.igdb.com/games/${igdb.slug}`;
           }
-          // IGDB websites(category=13)の Steam URL から appId を引き継ぐ
+          // IGDB websites(type=13。旧 category=13)の Steam URL から appId を引き継ぐ
           // sourceUrls.steam の設定は reconcileSelectedGames（Identity Resolver）に委譲する
           if (igdb.steamUrl) {
             const appId = igdb.steamUrl.match(/\/app\/(\d+)/)?.[1];

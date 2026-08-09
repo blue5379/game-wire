@@ -294,20 +294,46 @@ function isRelevantSearchResult(query: string, resultName: string): boolean {
 }
 
 /**
+ * IGDB websites の種別コード（Issue #234）
+ *
+ * IGDB API は `websites.category` を返さなくなり `websites.type` に改名された。
+ * 2026-08-09 実測（website_types エンドポイント）:
+ * 1=Official Website, 2=Community Wiki, 3=Wikipedia, 4=Facebook, 5=Twitter,
+ * 6=Twitch, 8=Instagram, 9=YouTube, 10=App Store (iPhone), 11=App Store (iPad),
+ * 12=Google Play, 13=Steam, 14=Subreddit, 15=Itch, 16=Epic, 17=GOG, 18=Discord,
+ * 19=Bluesky, 22=Xbox, 23=Playstation, 24=Nintendo, 25=Meta, 26=GameJolt
+ * （7・20・21 は欠番）。
+ * 同日の母集団サンプル（直近発売50件）では type===1 あり=14件 / category===1 あり=0件で、
+ * `category` が実質的に返らなくなっていることを確認済み。
+ */
+export const IGDB_WEBSITE_TYPE = {
+  OFFICIAL: 1,
+  STEAM: 13,
+} as const;
+
+/**
  * IGDB websites 配列から公式サイトURLを推定
  *
  * Issue #117: 「block-list（怪しければ落とす）」から「allow-list（確証された場合のみ採用）」へ転換。
- * category=1 (Official website) フラグが付いた URL のみ採用する。
+ * type=1 (Official website) フラグが付いた URL のみ採用する。
+ *
+ * Issue #234: IGDB API が `websites.category` を返さなくなり `websites.type` に改名された
+ * （2026-08-09 実測）。`type` を主に見て、`category` は後方互換のため残す。
+ * pickSteamUrlFromWebsites と異なり、こちらは URL 部分一致によるフォールバックを持たない。
+ * `type`/`category` のどちらも「公式タグ」判定であり、タグ無しURLを拾う経路は存在しない
+ * （#117 の allow-list 方針を維持するため意図的に追加しない）。
  *
  * 過去のフォールバック（非SNS・非ストアの先頭URLを機械採用）は無関係なスタジオサイト
  * （例: Dungeon Blitz R に対する theminesa.studio）を採用してしまう構造的欠陥があったため廃止。
  * 公式URLが取得できない場合は undefined を返し、Tavily 経路（fetchOfficialJpUrl）に委ねる。
  */
 function pickOfficialUrlFromWebsites(
-  websites?: { url: string; category?: number }[]
+  websites?: { url: string; category?: number; type?: number }[]
 ): string | undefined {
   if (!websites?.length) return undefined;
-  return websites.find((w) => w.category === 1)?.url;
+  return websites.find(
+    (w) => w.type === IGDB_WEBSITE_TYPE.OFFICIAL || w.category === IGDB_WEBSITE_TYPE.OFFICIAL
+  )?.url;
 }
 
 /**
@@ -322,8 +348,8 @@ function pickOfficialUrlFromWebsites(
  * 発売済み(hypes版)・発売済み(rating_count版)・未発売・名作・インディーが共有する変換関数）の
  * 計2箇所（呼び出し元は実質5クエリ）で使用する。
  *
- * 2パスで探索する: ①まず type === 13 または category === 13 のタグ付き URL を探す
- * ②見つからなければ URL 部分一致（store.steampowered.com）でフォールバックする。
+ * 2パスで探索する: ①まず IGDB_WEBSITE_TYPE.STEAM（13）が type または category に付いた
+ * タグ付き URL を探す ②見つからなければ URL 部分一致（store.steampowered.com）でフォールバックする。
  * 1つの find で OR 判定すると配列の先頭に来た要素が無条件で勝ってしまい、無タグの
  * Steam ドメイン URL（バンドル・サウンドトラック・デモのページ等）が、後ろにある
  * タグ付きの正しいストア URL より先に拾われてしまう。2パスにすることで、タグ付き URL が
@@ -334,7 +360,9 @@ export function pickSteamUrlFromWebsites(
 ): string | undefined {
   if (!websites?.length) return undefined;
 
-  const tagged = websites.find((w) => w.type === 13 || w.category === 13);
+  const tagged = websites.find(
+    (w) => w.type === IGDB_WEBSITE_TYPE.STEAM || w.category === IGDB_WEBSITE_TYPE.STEAM
+  );
   if (tagged) return tagged.url;
 
   return websites.find((w) => w.url.includes('store.steampowered.com'))?.url;
@@ -451,7 +479,7 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     steamUrl: pickSteamUrlFromWebsites(game.websites),
     officialUrl,
     officialUrlSource: officialUrl ? 'igdb-official' : undefined,
-    websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
+    websites: game.websites?.map((w) => ({ url: w.url, category: w.category, type: w.type })),
     gameType: game.game_type,
     aggregatedRating: game.aggregated_rating,
     aggregatedRatingCount: game.aggregated_rating_count,
@@ -479,6 +507,7 @@ export const __test = {
   isRelevantSearchResult,
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
+  mapPoolRawGameToIGDBGame,
   buildIgdbCommonFilters,
 };
 
@@ -795,7 +824,7 @@ function mapPoolRawGameToIGDBGame(game: IGDBPoolRawGame): IGDBGame {
     rating: game.rating,
     ratingCount: game.rating_count,
     steamUrl: pickSteamUrlFromWebsites(game.websites),
-    websites: game.websites?.map((w) => ({ url: w.url, category: w.category ?? 0 })),
+    websites: game.websites?.map((w) => ({ url: w.url, category: w.category, type: w.type })),
     gameType: game.game_type,
     aggregatedRating: game.aggregated_rating,
     aggregatedRatingCount: game.aggregated_rating_count,
@@ -1109,111 +1138,6 @@ export async function enrichGameWithIGDB(
     return await searchGameByName(gameName, clientId, accessToken, options);
   } catch (error) {
     console.error(`Failed to enrich game "${gameName}":`, error);
-    return null;
-  }
-}
-
-/**
- * ゲーム名からカバー画像と公式サイトURLを取得（特集記事用）
- */
-export async function fetchGameImageAndUrl(
-  gameName: string
-): Promise<{ coverImage?: string; officialUrl?: string; platforms?: string[]; developer?: string; publisher?: string } | null> {
-  const clientId = process.env.IGDB_CLIENT_ID;
-  const clientSecret = process.env.IGDB_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    return null;
-  }
-
-  try {
-    const accessToken = await getAccessToken(clientId, clientSecret);
-    const searchName = sanitizeIgdbSearchTerm(translateToEnglish(gameName));
-
-    if (!searchName || searchName.length < 2 || isInvalidSearchQuery(searchName)) {
-      return null;
-    }
-
-    console.log(`    IGDB lookup: "${gameName}" -> "${searchName}"`);
-
-    interface IGDBGameWithWebsites {
-      id: number;
-      name: string;
-      cover?: { url: string };
-      websites?: { url: string; category: number }[];
-      platforms?: { name: string }[];
-      involved_companies?: {
-        company: { name: string };
-        developer: boolean;
-        publisher: boolean;
-      }[];
-    }
-
-    const query = `
-      search "${searchName.replace(/"/g, '\\"')}";
-      fields name, cover.url, websites.url, websites.category,
-             platforms.name,
-             involved_companies.company.name, involved_companies.developer, involved_companies.publisher;
-      limit 1;
-    `;
-
-    const games = await igdbRequest<IGDBGameWithWebsites>(
-      'games',
-      query,
-      clientId,
-      accessToken
-    );
-
-    if (games.length === 0) return null;
-
-    const game = games[0];
-
-    if (!isRelevantSearchResult(searchName, game.name)) {
-      console.log(`    IGDB result not relevant: "${gameName}" -> "${game.name}" (skipped)`);
-      return null;
-    }
-
-    const coverImage = game.cover?.url
-      ? game.cover.url.replace('t_thumb', 't_cover_big').replace('//', 'https://')
-      : undefined;
-
-    // category 1 = Official website (IGDB APIでcategoryが返らない場合のフォールバックあり)
-    const officialSite = game.websites?.find((w) => w.category === 1);
-    let officialUrl = officialSite?.url;
-
-    // categoryが取得できない場合、URLパターンから公式サイトを推定
-    if (!officialUrl && game.websites?.length) {
-      const nonOfficialPatterns = [
-        'facebook.com', 'twitter.com', 'x.com', 'instagram.com',
-        'youtube.com', 'twitch.tv', 'reddit.com', 'discord.gg', 'discord.com',
-        'store.steampowered.com', 'steampowered.com',
-        'store.playstation.com',        // PS Storeのみ除外
-        'store-jp.nintendo.com',        // 任天堂ストアのみ除外
-        'xbox.com/ja-jp/games/store', 'xbox.com/en-us/games/store',  // Xboxストアのみ除外
-        'microsoft.com',
-        'gog.com', 'epicgames.com', 'play.google.com', 'apps.apple.com', 'itunes.apple.com',
-        'wikipedia.org', 'fandom.com', 'wiki',
-      ];
-      const candidate = game.websites.find((w) =>
-        !nonOfficialPatterns.some((p) => w.url.toLowerCase().includes(p))
-      );
-      officialUrl = candidate?.url;
-    }
-
-    const platforms = game.platforms?.map((p) => p.name);
-
-    let developer: string | undefined;
-    let publisher: string | undefined;
-    if (game.involved_companies) {
-      for (const ic of game.involved_companies) {
-        if (ic.developer && !developer) developer = ic.company.name;
-        if (ic.publisher && !publisher) publisher = ic.company.name;
-      }
-    }
-
-    return { coverImage, officialUrl, platforms, developer, publisher };
-  } catch (error) {
-    console.error(`Failed to fetch image/url for "${gameName}":`, error);
     return null;
   }
 }
