@@ -27,8 +27,6 @@ interface FrontmatterArticle {
     releaseDate?: string;
     developer?: string;
     publisher?: string;
-    metascore?: number | null;
-    userScore?: number | null;
   };
   sourceUrls?: {
     steam?: string;

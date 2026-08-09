@@ -1327,7 +1327,7 @@ async function selectGamesForArticles(
         ) && g.igdbRating && g.igdbRating >= 75
     ) || null;
 
-  // 名作深掘り（高スコア + 人気、またはメタスコアが非常に高い。§5 / §6.1 / §6.3）
+  // 名作深掘り（評価母数ベースの母集団条件。詳細は buildClassicCandidates の JSDoc 参照。§5.4/§5.5/§5.8）
   const classicCandidates = buildClassicCandidates(games, {
     cooldown: classicCooldown,
     alreadySelected: [...newReleases, ...indies, featured],
