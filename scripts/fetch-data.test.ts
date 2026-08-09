@@ -20,6 +20,7 @@ import {
   isRemakeOrRemaster,
   isWithinIndieReleaseWindow,
   aggregateGames,
+  toPersistableSelectedGames,
 } from './fetch-data.js';
 import { isFanGame } from './game-filter.js';
 import { isIndieGame } from './indie-classifier.js';
@@ -1886,5 +1887,40 @@ describe('enrichGameFromIgdb — keywords 空配列で既存値を潰さない�
 
     expect(applied2).toBe(true);
     expect(gameWithKeywords2.keywords).toEqual(['dark-fantasy']);
+  });
+});
+
+describe('toPersistableSelectedGames — newReleasesReserves を直列化対象から除外する（PR #249 レビュー指摘1）', () => {
+  it('newReleasesReserves は除外され、indieReserves と他フィールドはすべて保持される', () => {
+    const newReleaseGame = makeGame({ title: 'Big Studio New Game', normalizedTitle: 'big studio new game' });
+    const newReleaseReserveGame = makeGame({
+      title: 'Reserve New Game (Amazon順位を漏らしうる)',
+      normalizedTitle: 'reserve new game',
+    });
+    const indieGame = makeGame({ title: 'Cozy Indie Game', normalizedTitle: 'cozy indie game' });
+    const indieReserveGame = makeGame({ title: 'Indie Reserve Game', normalizedTitle: 'indie reserve game' });
+    const featuredGame = makeGame({ title: 'Featured Sports Game', normalizedTitle: 'featured sports game' });
+    const classicGame = makeGame({ title: 'Classic Masterpiece', normalizedTitle: 'classic masterpiece' });
+
+    const selected = makeSelected({
+      newReleases: [newReleaseGame],
+      newReleasesReserves: [newReleaseReserveGame],
+      indies: [indieGame],
+      indieReserves: [indieReserveGame],
+      featured: featuredGame,
+      classic: classicGame,
+    });
+
+    const persistable = toPersistableSelectedGames(selected);
+
+    // newReleasesReserves は直列化対象から除外される（Amazon順位の逆算経路を断つ）
+    expect('newReleasesReserves' in persistable).toBe(false);
+
+    // ポジティブコントロール: indieReserves および他のフィールドはすべて保持される
+    expect(persistable.indieReserves).toEqual([indieReserveGame]);
+    expect(persistable.newReleases).toEqual([newReleaseGame]);
+    expect(persistable.indies).toEqual([indieGame]);
+    expect(persistable.featured).toEqual(featuredGame);
+    expect(persistable.classic).toEqual(classicGame);
   });
 });

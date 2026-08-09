@@ -61,7 +61,11 @@ const NON_GAME_KEYWORDS = [
 ];
 
 export function isNonGameProduct(title: string): boolean {
-  const lower = title.toLowerCase();
+  // commonNormalize と同じ NFKC 正規化を toLowerCase() の前に通す（PR #249 レビュー指摘）。
+  // これが無いと半角カタカナ（例「ﾆﾝﾃﾝﾄﾞｰﾌﾟﾘﾍﾟｲﾄﾞ番号」）や全角ラテン文字（例「ＲＯＢＵＸ」）
+  // の商品名がキーワード走査をすり抜ける。実測（2026-08-09時点のライブデータ）では該当0件で
+  // 実害は出ていないが、同一ファイル内の commonNormalize との正規化経路の不整合を解消する予防的修正。
+  const lower = title.normalize('NFKC').toLowerCase();
   return NON_GAME_KEYWORDS.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
@@ -88,8 +92,15 @@ const PLATFORM_SUFFIX_RE =
  * Amazon 商品名を照合キーに正規化する（§2.3 の索引構築専用。lookup 側は commonNormalize のみ使う）。
  */
 export function normalizeAmazonProductTitle(title: string): string {
-  // `|` の最初の出現以降を捨てる（`|オンラインコード版` `Windows版 | Minecraft…` 対策）
-  const pipeIdx = title.indexOf('|');
+  // `|`（ASCII）と `｜`（全角）のどちらか早い方以降を捨てる（`|オンラインコード版`
+  // `Windows版 | Minecraft…` 対策）。全角｜は実測（2026-08-09時点のライブデータ）では0件だが、
+  // 日本語商品名で使われうるため予防的に対応する（PR #249 レビュー指摘）。
+  // PLATFORM_SUFFIX_RE は変更しない: `- PlayStation 5` 等の表記はライブデータに存在せず
+  // （唯一の `Xbox Series X|S` は非ゲームのサブスク商品）、投機的な拡張はしない。
+  const asciiIdx = title.indexOf('|');
+  const fullWidthIdx = title.indexOf('｜');
+  const pipeIndexes = [asciiIdx, fullWidthIdx].filter((i) => i >= 0);
+  const pipeIdx = pipeIndexes.length > 0 ? Math.min(...pipeIndexes) : -1;
   let t = pipeIdx >= 0 ? title.slice(0, pipeIdx) : title;
 
   // 【…】（…）(…) を除去
@@ -164,33 +175,42 @@ export function buildAmazonRankIndex(entries: AmazonRankingEntry[]): AmazonRankI
     }
   }
 
+  // 誤照合ガード（§2.3）: 世代違いの同名作（例『スプラトゥーン3』2022年版）を弾く。
+  // どちらかの発売日が欠けている場合はガードを適用せず一致とみなす。
+  function passesReleaseDateGuard(
+    entry: { releaseDate?: string },
+    game: { releaseDate?: string }
+  ): boolean {
+    if (!entry.releaseDate || !game.releaseDate) return true;
+    const a = new Date(entry.releaseDate).getTime();
+    const b = new Date(game.releaseDate).getTime();
+    if (Number.isNaN(a) || Number.isNaN(b)) return true;
+    const diffDays = Math.abs(a - b) / (1000 * 60 * 60 * 24);
+    return diffDays <= RELEASE_DATE_GUARD_DAYS;
+  }
+
   function lookup(game: {
     title: string;
     titleJa?: string;
     releaseDate?: string;
   }): number | undefined {
-    let hit: IndexedEntry | undefined;
-
+    // titleJa → title の順に候補を引き、ガードは候補ごとに独立して適用する（PR #249 レビュー指摘）。
+    // 「hit確定後にガードでまとめて打ち切る」実装だと、titleJa が世代違いの別エントリに
+    // 衝突してガードで弾かれた場合、英語 title でキーされている正しいエントリに
+    // フォールバックできず「未掲載」になってしまう。
     if (game.titleJa) {
-      hit = byKey.get(commonNormalize(game.titleJa));
-    }
-    if (!hit) {
-      hit = byKey.get(commonNormalize(game.title));
-    }
-    if (!hit) return undefined;
-
-    // 誤照合ガード（§2.3）: 世代違いの同名作（例『スプラトゥーン3』2022年版）を弾く。
-    // どちらかの発売日が欠けている場合はガードを適用せず一致とみなす。
-    if (hit.releaseDate && game.releaseDate) {
-      const a = new Date(hit.releaseDate).getTime();
-      const b = new Date(game.releaseDate).getTime();
-      if (!Number.isNaN(a) && !Number.isNaN(b)) {
-        const diffDays = Math.abs(a - b) / (1000 * 60 * 60 * 24);
-        if (diffDays > RELEASE_DATE_GUARD_DAYS) return undefined;
+      const hitByTitleJa = byKey.get(commonNormalize(game.titleJa));
+      if (hitByTitleJa && passesReleaseDateGuard(hitByTitleJa, game)) {
+        return hitByTitleJa.ranking;
       }
     }
 
-    return hit.ranking;
+    const hitByTitle = byKey.get(commonNormalize(game.title));
+    if (hitByTitle && passesReleaseDateGuard(hitByTitle, game)) {
+      return hitByTitle.ranking;
+    }
+
+    return undefined;
   }
 
   return { lookup, size: byKey.size };

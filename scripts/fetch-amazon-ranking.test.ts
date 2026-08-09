@@ -153,6 +153,14 @@ describe('isNonGameProduct', () => {
     expect(isNonGameProduct('Roblox Gift Card 1000 robux')).toBe(true);
     expect(isNonGameProduct('ROBLOX GIFT CARD 1000 ROBUX')).toBe(true);
   });
+
+  it('NFKC正規化: 半角カタカナの商品名も非ゲームと判定し、実ゲームは false のまま（PR #249 レビュー指摘4）', () => {
+    // 半角カタカナ「ﾆﾝﾃﾝﾄﾞｰﾌﾟﾘﾍﾟｲﾄﾞ番号」（NFKC正規化で「ニンテンドープリペイド番号」になる）
+    expect(isNonGameProduct('ﾆﾝﾃﾝﾄﾞｰﾌﾟﾘﾍﾟｲﾄﾞ番号500円')).toBe(true);
+
+    // ポジティブコントロール: 実ゲーム名は NFKC 正規化後も false のまま
+    expect(isNonGameProduct('ドラゴンクエストIII そして伝説へ…')).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -208,6 +216,17 @@ describe('normalizeAmazonProductTitle', () => {
   it('空文字になった場合は空文字を返す', () => {
     expect(normalizeAmazonProductTitle('（予約特典）')).toBe('');
     expect(normalizeAmazonProductTitle('')).toBe('');
+  });
+
+  it('全角「｜」以降も捨てる。ASCII「|」も従来どおり動く（PR #249 レビュー指摘5、同一テスト内で両方確認）', () => {
+    expect(normalizeAmazonProductTitle('スプラトゥーン レイダース｜オンラインコード版')).toBe(
+      'スプラトゥーン レイダース'
+    );
+
+    // ポジティブコントロール: 既存の ASCII「|」も変わらず動く
+    expect(normalizeAmazonProductTitle('スプラトゥーン レイダース|オンラインコード版')).toBe(
+      'スプラトゥーン レイダース'
+    );
   });
 });
 
@@ -317,6 +336,37 @@ describe('lookup', () => {
     // 索引側エントリに発売日なし
     const indexB = buildAmazonRankIndex([{ ranking: 13, title: 'Test Game D' }]);
     expect(indexB.lookup({ title: 'Test Game D', releaseDate: '1999-05-05' })).toBe(13);
+  });
+
+  it('titleJa が世代違いでガードに弾かれても、英語 title で正しいエントリにフォールバックする（PR #249 レビュー指摘3）', () => {
+    const index = buildAmazonRankIndex([
+      // titleJa 側は世代違いの別エントリ（2022年版『スプラトゥーン3』相当）に衝突する想定
+      { ranking: 20, title: 'スプラトゥーン3', releaseDate: '2022-09-03' },
+      // title（英語表記）側は正しいエントリ
+      { ranking: 5, title: 'Splatoon 3 Raiders', releaseDate: '2025-11-01' },
+    ]);
+
+    const result = index.lookup({
+      title: 'Splatoon 3 Raiders',
+      titleJa: 'スプラトゥーン3',
+      releaseDate: '2025-11-01',
+    });
+
+    // titleJa 経由はガードで弾かれるが、title 経由でヒットし 5 が返る
+    expect(result).toBe(5);
+
+    // ポジティブコントロール: 英語 title 側の索引エントリまで削除すると、
+    // titleJa 側はガードで弾かれたままなので undefined になる
+    const indexWithoutTitleFallback = buildAmazonRankIndex([
+      { ranking: 20, title: 'スプラトゥーン3', releaseDate: '2022-09-03' },
+    ]);
+    expect(
+      indexWithoutTitleFallback.lookup({
+        title: 'Splatoon 3 Raiders',
+        titleJa: 'スプラトゥーン3',
+        releaseDate: '2025-11-01',
+      })
+    ).toBeUndefined();
   });
 });
 

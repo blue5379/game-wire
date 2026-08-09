@@ -1191,7 +1191,17 @@ async function selectGamesForArticles(
   });
 
   console.log(`  [newReleases] candidates after filter: ${recentGamesCandidates.length}件`);
-  for (const g of recentGamesCandidates) {
+  // ログ出力用にタイトル昇順へ並べ替えたコピーを使う（PR #249 レビュー指摘）。
+  // recentGamesCandidates 自体（4軸スコア降順）は選定処理に使うため一切変更しない —
+  // ここで並べ替えるのはログの出力順序のみ。
+  // スコア降順のまま出力すると、domestic=***/score=*** でマスクした行が前後の
+  // 実数値行に挟まれ、行位置とdomestic軸の2点刻み素点（100 − 2×(順位−1)）から
+  // Amazon 順位が逆算できてしまう（§2.3 ライセンス制約）。位置がスコアの情報を
+  // 持たなくなれば、この挟み撃ちによる逆算は成立しなくなる。
+  const candidatesForLog = [...recentGamesCandidates].sort((a, b) =>
+    a.title.localeCompare(b.title)
+  );
+  for (const g of candidatesForLog) {
     const score = computeNewReleaseScore(g, {
       steamSlotCount: options.steamTopSellersCount,
       amazonRank: options.amazonRanks.lookup(g),
@@ -1293,6 +1303,33 @@ async function selectGamesForArticles(
     featured,
     classic,
   };
+}
+
+/**
+ * selected-games.json への書き出し直前に、Amazon 順位を漏らすフィールドを除外する（PR #249 レビュー指摘）。
+ *
+ * newReleasesReserves は sortByNewReleaseScore による4軸スコア降順の配列。他の3軸
+ * （Steam順位・IGDB票数・批評スコアと媒体数）は GameData に永続化されており再計算できるため、
+ * domestic 軸が topAxis のゲームについては配列内の位置から domestic 軸の寄与分だけが残り、
+ * それが Amazon 順位を数ランクの幅に絞り込む経路になる。selected-games.json は Git 追跡下で
+ * 恒久保存されるため、§2.3「24時間超の保存禁止」に正面から抵触する。
+ * generate-articles.ts は newReleasesReserves / indieReserves を読み込み時に
+ * `??= []` で正規化し、ファイル不在時のフォールバックを組むだけで、それ以降は一度も
+ * 参照しないため、除外しても記事生成に機能的な影響はない。
+ * newReleasesReserves は同一プロセス内では removeZombieGames / runCompletenessGate の
+ * 差し替えプールとして使われており、その利用はこの書き出しより前に完了している。
+ *
+ * indieReserves はあえて除外しない: インディー枠の選定には amazonRanks を渡しておらず
+ * Amazon 順位の信号を一切含まないため、デバッグ用途としての価値が残る。
+ *
+ * SelectedGames 型自体は変えない（fetch-data.ts の同一プロセス内では
+ * newReleasesReserves を引き続き使うため）。この関数は書き出し直前の直列化対象のみを絞る。
+ */
+export function toPersistableSelectedGames(
+  selectedGames: SelectedGames
+): Omit<SelectedGames, 'newReleasesReserves'> {
+  const { newReleasesReserves: _newReleasesReserves, ...persistable } = selectedGames;
+  return persistable;
 }
 
 /**
@@ -1458,9 +1495,12 @@ async function main(): Promise<void> {
   console.log('');
   console.log(`Data saved to: ${outputPath}`);
 
-  // 選定結果も別ファイルに出力
+  // 選定結果も別ファイルに出力（newReleasesReserves は Amazon 順位を漏らすため除外。PR #249）
   const selectedPath = path.join(DATA_DIR, 'selected-games.json');
-  fs.writeFileSync(selectedPath, JSON.stringify(selectedGames, null, 2));
+  fs.writeFileSync(
+    selectedPath,
+    JSON.stringify(toPersistableSelectedGames(selectedGames), null, 2)
+  );
   console.log(`Selected games saved to: ${selectedPath}`);
 
   if (gateMode === 'fail' && gateReport.unresolvedMutableViolations) {
