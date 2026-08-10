@@ -247,9 +247,17 @@ describe('generateFeatureArticle — スクリーニングが本数警告より�
 
 describe('generateFeatureArticle — 候補が0件になった場合は記事生成を中断する (Issue #221)', () => {
   it('テーマに合う候補が最終的に0件になった場合、空リストのまま本文生成に進まず例外を投げる', async () => {
+    // vi.clearAllMocks()（beforeEach）は呼び出し履歴のみをクリアし、他テストが
+    // mockResolvedValue で設定した実装は引き継がれてしまう（vi.resetAllMocks ではないため）。
+    // 直前のIssue #208テストが selectFeatureGames に3件のタイトルを解決させたままだと、
+    // このテストは「qualified/fringeの候補が空でタイトル一致しない」という別経路で
+    // 偶然0件になり、本来検証したい「selectFeatureGames自体が0件を返すケース」を
+    // 検証しないまま緑になる。明示的に空配列へリセットして意図を保証する。
+    mockSelectFeatureGames.mockResolvedValue([]);
+
     // relatedGames を空にすると、proposeThemeGamesFromKnowledge（デフォルトモック:
     // { proposals: [] }）と合わせて allCandidates が空になり、qualified/fringe も
-    // 0件のまま最終選定（selectFeatureGames、デフォルトモック: 空配列）まで進む。
+    // 0件のまま最終選定（selectFeatureGames、上記で空配列に設定）まで進む。
     // fringe 補充ブロックも fringe.length === 0 のため発火せず、
     // screenOutAdultGames([]) も空配列を返すため、0件ガードに到達する。
     await expect(

@@ -894,8 +894,9 @@ export async function generateFeatureArticle(
     throw new Error(
       `Feature article generation aborted: no candidate games remain for theme "${theme}" ` +
         `after selection/screening (qualified: ${qualified.length}, fringe: ${fringe.length} ` +
-        'at pool stage, 0 after AI adult-content screening or title matching). ' +
-        'Skipping feature article for this issue instead of generating with an empty game list.'
+        'at pool stage, but 0 remained after LLM selection, title matching, and AI adult-content ' +
+        'screening combined). Skipping feature article for this issue instead of generating ' +
+        'with an empty game list.'
     );
   }
 
