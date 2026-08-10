@@ -1046,6 +1046,75 @@ describe('buildNewReleaseCandidates', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// buildNewReleaseCandidates — 新作枠の探索窓は60日（Issue #260: selectGamesForArticles が
+// 3ヶ月相当（setMonth(-3), 実測約91〜92日）で呼んでいたのを、仕様書§2.3・付録パラメータ表の
+// 60日に揃えた回帰防止テスト）。
+//
+// selectGamesForArticles 自身は export されておらず直接テストできないため、実際に production
+// が渡すのと同じ「releasedAfter = 今日から60日前」を releasedAfter に注入し、実装
+// （buildNewReleaseCandidates 内の `releaseDate > releasedAfter`）を実際に呼び出して検証する。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildNewReleaseCandidates — 新作枠の探索窓は60日（Issue #260）', () => {
+  // 実装のコピーではなく、独立した単純な暦計算（daysAgoStr と同じ発想）。
+  function sixtyDaysAgoFixture(): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - 60);
+    return d;
+  }
+
+  it('59日前に発売されたタイトルは60日窓に含まれる（ポジティブ）', () => {
+    const game = makeGame({
+      title: 'Released 59 Days Ago',
+      normalizedTitle: 'released 59 days ago',
+      releaseDate: daysAgoStr(59),
+      steamRank: 1,
+    });
+
+    const result = buildNewReleaseCandidates([game], {
+      releasedAfter: sixtyDaysAgoFixture(),
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+    });
+
+    expect(result.map((g) => g.title)).toContain('Released 59 Days Ago');
+  });
+
+  it('ちょうど60日前に発売されたタイトルは窓外（境界: releasedAfterと同日は含まれない）', () => {
+    const game = makeGame({
+      title: 'Released 60 Days Ago',
+      normalizedTitle: 'released 60 days ago',
+      releaseDate: daysAgoStr(60),
+      steamRank: 1,
+    });
+
+    const result = buildNewReleaseCandidates([game], {
+      releasedAfter: sixtyDaysAgoFixture(),
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('Released 60 Days Ago');
+  });
+
+  it('61日前に発売されたタイトルは窓外（ネガティブ。旧3ヶ月窓なら含まれてしまっていたケース）', () => {
+    const game = makeGame({
+      title: 'Released 61 Days Ago',
+      normalizedTitle: 'released 61 days ago',
+      releaseDate: daysAgoStr(61),
+      steamRank: 1,
+    });
+
+    const result = buildNewReleaseCandidates([game], {
+      releasedAfter: sixtyDaysAgoFixture(),
+      cooldown: new Set(),
+      steamTopSellersCount: 20,
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('Released 61 Days Ago');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // buildNewReleaseCandidates — Amazon 経路（§2.3 PR-B2、第4軸「国内販売」の配線）
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {

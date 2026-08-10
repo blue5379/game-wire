@@ -1214,9 +1214,10 @@ async function selectGamesForArticles(
     console.log(`  classic cooldown: ${[...classicCooldown].join(', ')}`);
   }
 
-  // 大手企業の新作: 品質ゲート・実存フィルタ適用後に3軸スコア降順で採用+予備差し替え（§2.3）
-  const threeMonthsAgo = new Date();
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  // 大手企業の新作: 品質ゲート・実存フィルタ適用後に3軸スコア降順で採用+予備差し替え（§2.3、
+  // 発売済みの探索窓は60日。付録パラメータ表と揃える）
+  const sixtyDaysAgo = new Date();
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
 
   const noReleaseDate = games.filter((g) => !g.releaseDate);
   if (noReleaseDate.length > 0) {
@@ -1224,7 +1225,7 @@ async function selectGamesForArticles(
   }
 
   const recentGamesCandidates = buildNewReleaseCandidates(games, {
-    releasedAfter: threeMonthsAgo,
+    releasedAfter: sixtyDaysAgo,
     cooldown: newReleaseCooldown,
     steamTopSellersCount: options.steamTopSellersCount,
     amazonRanks: options.amazonRanks,
