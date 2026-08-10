@@ -245,6 +245,33 @@ describe('generateFeatureArticle — スクリーニングが本数警告より�
   });
 });
 
+describe('generateFeatureArticle — 候補が0件になった場合は記事生成を中断する (Issue #221)', () => {
+  it('テーマに合う候補が最終的に0件になった場合、空リストのまま本文生成に進まず例外を投げる', async () => {
+    // vi.clearAllMocks()（beforeEach）は呼び出し履歴のみをクリアし、他テストが
+    // mockResolvedValue で設定した実装は引き継がれてしまう（vi.resetAllMocks ではないため）。
+    // 直前のIssue #208テストが selectFeatureGames に3件のタイトルを解決させたままだと、
+    // このテストは「qualified/fringeの候補が空でタイトル一致しない」という別経路で
+    // 偶然0件になり、本来検証したい「selectFeatureGames自体が0件を返すケース」を
+    // 検証しないまま緑になる。明示的に空配列へリセットして意図を保証する。
+    mockSelectFeatureGames.mockResolvedValue([]);
+
+    // relatedGames を空にすると、proposeThemeGamesFromKnowledge（デフォルトモック:
+    // { proposals: [] }）と合わせて allCandidates が空になり、qualified/fringe も
+    // 0件のまま最終選定（selectFeatureGames、上記で空配列に設定）まで進む。
+    // fringe 補充ブロックも fringe.length === 0 のため発火せず、
+    // screenOutAdultGames([]) も空配列を返すため、0件ガードに到達する。
+    await expect(
+      generateFeatureArticle(new Date('2026-08-08'), 999, [], [])
+    ).rejects.toThrow(/no candidate games remain for theme/);
+
+    // 0件ガードが本文生成（Bedrock 呼び出し）より前で止めていることの証拠として、
+    // invokeClaudeModel が一度も呼ばれていないことを確認する
+    // （呼ばれていれば、空の「紹介するゲーム」ブロックで LLM がハルシネーションする経路に
+    // 入ってしまっていたことになる）。
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
 describe('generateClassicArticle — 歴史検索クエリへの発売年の伝播 (docs/article-category-spec.md §5.6 修正3)', () => {
   beforeEach(() => {
     // このブロックの各テストでのみ Web 検索を有効化する。1回目の isTavilyAvailable() 呼び出し
