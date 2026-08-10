@@ -346,6 +346,27 @@ describe('PromptTemplates - 定量値ハルシネーション防止ルール', (
   });
 });
 
+describe('PromptTemplates.classicSystem - Creator\'s Eyeの根拠不要な影響記述要求を削除（Issue #255）', () => {
+  const REMOVED_INFLUENCE_CLAIM = '後世に影響を与えた革新的な要素';
+
+  // 維持すべき Creator's Eye の他の項目（ポジティブコントロール）。
+  // これが同時に消えていなければ「Creator's Eyeセクション全体を壊した」誤修正を検出できる。
+  const KEPT_CREATORS_EYE_ITEMS = [
+    'このゲームが名作と呼ばれる理由をゲームデザインの観点から分析',
+    '面白いゲームを作るためのヒントや学び',
+  ];
+
+  it('Creator\'s Eyeから「後世に影響を与えた革新的な要素」の要求が削除されている', () => {
+    expect(PromptTemplates.classicSystem).not.toContain(REMOVED_INFLUENCE_CLAIM);
+  });
+
+  it('ポジティブコントロール: Creator\'s Eyeの他の項目は削除されていない', () => {
+    for (const item of KEPT_CREATORS_EYE_ITEMS) {
+      expect(PromptTemplates.classicSystem).toContain(item);
+    }
+  });
+});
+
 describe('PromptTemplates.classicSystem - 📜ゲームの歴史セクションの矛盾解消（docs/article-category-spec.md §5.6 修正1）', () => {
   // 削除対象: 「📜ゲームの歴史」の要求（発売当時の背景・業界への影響を書く）と
   // 正面衝突していた禁止項目。
