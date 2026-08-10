@@ -991,6 +991,7 @@ export async function generateFeatureArticle(
       title: game.titleJa ?? game.title,
       coverImage: game.coverImage,
       officialUrl,
+      officialUrlSource: game.sourceUrls?.officialUrlSource,
       platforms: game.platforms,
       developer: game.developer,
       publisher: game.publisher,

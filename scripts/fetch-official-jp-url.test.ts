@@ -6,7 +6,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildSearchQueries, buildSelectUserMessage } from './fetch-official-jp-url.js';
+import {
+  buildSearchQueries,
+  buildSelectUserMessage,
+  isNonOfficialUrl,
+  NON_OFFICIAL_URL_PATTERNS,
+} from './fetch-official-jp-url.js';
 
 describe('buildSearchQueries (Issue #135 P2-1)', () => {
   it('developer がある場合、1st クエリに developer 名を含める', () => {
@@ -93,5 +98,34 @@ describe('buildSelectUserMessage (Issue #135 P2-2)', () => {
       candidates: ['https://example.com/'],
     });
     expect(msg).toContain('Hitman 3（ヒットマン3）');
+  });
+});
+
+describe('isNonOfficialUrl (Issue #247: bsky.app / discordapp.com の混入対策)', () => {
+  it('bsky.app（Bluesky）のURLを非公式と判定する', () => {
+    // 本番で "Slay the Spire II" 記事に誤って採用された実際のURL
+    expect(isNonOfficialUrl('https://bsky.app/profile/megacrit.com')).toBe(true);
+  });
+
+  it('discordapp.com（discord.com移行前の旧ドメイン）のURLを非公式と判定する', () => {
+    // 本番で誤って採用された実際のURL
+    expect(isNonOfficialUrl('https://discordapp.com/invite/qcNyHre')).toBe(true);
+  });
+
+  it('discord.com（現行ドメイン）のURLも引き続き非公式と判定する', () => {
+    expect(isNonOfficialUrl('https://discord.com/invite/example')).toBe(true);
+  });
+
+  it('大文字を含むURLでも非公式と判定する（小文字化して比較するため）', () => {
+    expect(isNonOfficialUrl('https://BSKY.APP/profile/megacrit.com')).toBe(true);
+  });
+
+  it('公式サイトらしきURLは非公式と判定しない', () => {
+    expect(isNonOfficialUrl('https://www.megacrit.com/games/')).toBe(false);
+  });
+
+  it('NON_OFFICIAL_URL_PATTERNS に bsky.app と discordapp.com が含まれる', () => {
+    expect(NON_OFFICIAL_URL_PATTERNS).toContain('bsky.app');
+    expect(NON_OFFICIAL_URL_PATTERNS).toContain('discordapp.com');
   });
 });
