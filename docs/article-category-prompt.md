@@ -13,7 +13,8 @@
 | **#241 対応** | `fix/issue-241-newrelease-population-window` | ✅ **マージ済み**（2026-08-09。`31770bc`。squash） | **#241**（Closed）/ 関連 #238・**#244** / PR #243 | 26ファイル / **968テスト**（着手前 960）。コミット2本（実装 → レビュー対応）。発売済みクエリに上限を追加 + 未発売クエリ `fetchUpcomingGames` を新設 + レビュー指摘を受けて発売済みを **2 本立て**（`hypes desc` / `rating_count desc` の和集合）に。実測: プール内の 60 日窓の発売済み **4 → 73 件**、未発売 16 → 23 件（供給維持）、実行時間 2:39 → 2:45。**選定結果は今週のデータでは不変**（下流の品質条件が Steam 依存のため。→ #238）。**仕様の矛盾を 1 件発見 → #244** |
 | **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
-| PR-D | `refactor/remove-metacritic-path` | 未着手 | - | 名作枠PR と直列（`fetch-data.ts` の名作枠選定部で競合） |
+| PR-D | `refactor/remove-metacritic-path` | ✅ **完了**（単独ブランチではなく PR #258 に吸収） | - | **このブランチ自体は使われなかった。** 実際の作業は下記 **`#253` 対応**行（PR #258）としてマージされた。名作枠PR（#254）マージ後に着手されたため、当初想定していた競合は発生しなかった |
+| **#253 対応** | `fix/issue-253-qualified-game-cleanup` | ✅ **マージ済み**（2026-08-09。マージコミット `0af2a36`。通常マージ、squashではない） | **#253**（Closed）/ 関連 **#251**（Open のまま。コード変更なし） / PR #258 | PR-D が担当する予定だった `metascore` 削除を吸収 + `steamPlayers` の恒常的デッドコードを発見して削除 + `igdbRating` レスキュー経路を維持して仕様書に明文化。29ファイル / **1101テスト**（着手前 1106）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`） |
 | 名作枠PR | `feat/issue-classic-slot-population` | ✅ **マージ済み**（2026-08-09。`0a2b025`。merge commit） | 関連 **#238** / PR #254 | **ブランチ名は当初案の `feat/classic-slot-redesign` から変更**。29ファイル / **1106テスト**（着手前 27 / 1021）。コミット2本（実装 → レビュー対応）。母集団条件を評価母数ベース（`total_rating >= 85 & total_rating_count >= 200`）に変更し、選定側 `buildClassicCandidates` も同条件に一本化。実測: **名作枠選定が `Splatoon Raiders` → `The Witcher 3: Wild Hunt` に変化**、他枠は不変。**着手前検証で `parent_game` が展開可能なことを発見**し、決着ブロックが前提としていた ID 集合照合が不要になった（`igdbId` 追加も不要）。**レビューで欠陥1件を検出・修正**（親の `game_type` を見ずに `Final Fantasy VII Remake` を誤除外）。**`/code-review` 指摘4件のうち2件を本PRで対応**（選定側の `game_type` ゲート欠落・`limit 200` の非対称）、**2件を #255 / #256 に分離**（Creator's Eye の影響記述要求・特集プレフィルタのプロンプト肥大） |
 | PR-I | `feat/indie-scale-classification` | ✅ **マージ済み**（2026-08-09。`7a2a0da`。squash） | #231（Closed）/ 関連 #175（`Refs`）/ PR #237 | 26ファイル / **960テスト**（着手前 26 / 865）。コミット2本（実装 → レビュー対応）。**着手後に「決着済みだが未実装」の論点A（新作枠の企業規模ゲート撤廃）を発見し、同PRで実装**（下記「実施結果」）。Issue #231 が提案していた方針は決着で棄却された A-3 相当だった。**分離した Issue は 7 件**（#234 / #235 / #236 / #238 / #239 / #240 / #241） |
 | PR-E | `fix/prompt-excerpt-length` | 未着手 | - | PR-C と同じ箇所を触る。どちらか先に入れてリベース |
@@ -310,6 +311,31 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 `:187` の `__test :409` は現在 `:421`、`:451` の呼び出し元 `:512/:656/:751/:849` は現在
 `:524/:668/:763/:861`）。これらは**歴史的記録として残してある**ので、
 そのまま使わず必ず grep で引き直すこと。
+
+⚠️ **さらに PR #258（Issue #253。マージ `0af2a36`）で `game-filter.ts` / `fetch-data.ts` / `types.ts` の行番号がずれ、
+`fetch-metacritic.ts` は全削除（260行）された。** `metascore`/`steamPlayers` 経路の削除に伴う純減で、
+新設シンボルは無い。マージ後の実測値（2026-08-09。`5c9e9b4^` → `0af2a36`）:
+
+| シンボル（ファイル） | PR #258 前 | PR #258 マージ後 | ずれ |
+|---|---|---|---|
+| `QUALITY_IGDB_RC_MIN`（`game-filter.ts`） | :9 | :9 | 0 |
+| `QUALITY_IGDB_RATING_STRONG`（`game-filter.ts`） | :11 | :11 | 0 |
+| `QUALITY_IGDB_RC_FLOOR`（`game-filter.ts`） | :13 | :13 | 0 |
+| `QUALITY_CRITIC_COUNT_MIN`（`game-filter.ts`） | :16 | :16 | 0 |
+| `isQualifiedGame`（`game-filter.ts`） | :37 | :36 | −1 |
+| `aggregateGames`（`fetch-data.ts`） | :180 | :178 | −2 |
+| `deduplicateGames`（`fetch-data.ts`） | :586 | :540 | −46 |
+| `buildClassicCandidates`（`fetch-data.ts`） | :1226 | :1177 | −49 |
+| `selectGamesForArticles`（`fetch-data.ts`） | :1245 | :1196 | −49 |
+| `GameData` 型（`types.ts`） | :111 | :96 | −15 |
+| ~~`fetch-metacritic.ts`~~（ファイル全体） | 260行 | **削除**（ファイル自体が存在しない） | — |
+
+**特筆すべき点**: `game-filter.ts` の定数群（`QUALITY_*`）は削除箇所より前にあるためずれが 0 だが、
+`isQualifiedGame` 本体は削除した2経路分のコード（コメント含む）が詰まって −1。
+`fetch-data.ts` は `metascore` の転記・並び順スコア参照・`fetchMetacriticData` の呼び出しが
+ファイル全体に分散していたため、後ろのシンボルほど大きく詰まっている（−2 → −46 → −49 → −49）。
+**`fetch-metacritic.ts` を参照する過去の行番号（例: `fetchMetacriticData` の位置）はすべて無効**——
+ファイルごと削除されたため、ファイル名自体が存在しない。
 
 - 行番号は**目印であって根拠ではない**。着手時に必ず `grep` でシンボル名を引き直すこと
 - 特に「呼び出し元は N 箇所」という記述は、**件数ごと** grep で再確認する
@@ -1488,6 +1514,77 @@ Issue #238 を `Refs` で参照した（#238 自体は PR #249 でクローズ�
 
 - **サブエージェントの実測検証は「何を含み何を含まない条件で測定したか」を自分で確認すること。** 報告の結論だけでなく前提を検証しないと、報告自体が誤った前提に基づいている可能性がある
 - **`/code-review` の指摘は実データで規模を測ってから採否を決める。** 4 件中 2 件が実データで確定し、うち 1 件は「別Issueに送らず同PRで直すべき」規模だった（本PRの主旨そのものへの取りこぼし）
+
+---
+
+  PR #258（Issue #253 対応。PR-D を吸収）
+
+  【共通ヘッダ】
+
+# PR #258: isQualifiedGame の仕様外経路を整理する（Issue #253）
+
+- ブランチ: `fix/issue-253-qualified-game-cleanup`
+- Issue: **#253**（Closed）。関連 **#251**（Open のまま。コード変更なし。判断内容は本PRのdocs更新で記録する）
+- 仕様: §2.3
+- 吸収したタスク: PR-D（`refactor/remove-metacritic-path`。未着手のまま §8 に残っていた `metascore` 削除作業）
+
+## 問題
+
+`isQualifiedGame`（`scripts/game-filter.ts`）には、§2.3 の品質条件表に規定が無いのに残っていた経路が 3 つあった（§8 実装計画・行15 で発覚済み、担当PR未割り当てのまま残っていた）。
+
+1. `metascore != null`
+2. `steamPlayers > 0`
+3. `igdbRating >= QUALITY_IGDB_RATING_STRONG(85) && igdbRatingCount >= QUALITY_IGDB_RC_FLOOR(8)`
+
+## 実施結果（2026-08-09）
+
+**PR #258。マージコミット `0af2a36`（通常マージ、squashではない）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`）。**
+実装は Sonnet に委譲し、diff を管理者が検証した。
+
+### 0. 触った関数・ファイルの一覧
+
+| ファイル | 変更 |
+|---|---|
+| `game-filter.ts` | `isQualifiedGame` から `metascore`/`steamPlayers` 経路を削除。`igdbRating`/`igdbRatingCount` の救済経路は維持 |
+| `fetch-metacritic.ts` | **全削除**（260行）。`fetchMetacriticData` / `getGameScore` を含む |
+| `types.ts` | `GameData` / 別インターフェースの `metascore?` / `userScore?` フィールドを削除 |
+| `bedrock-client.ts` | `metascore`/`userScore` を参照していた箇所を削除 |
+| `build-issue.ts` | 同上 |
+| `fetch-data.ts` | `fetchMetacriticData` の呼び出し・`metascore` の転記・並び順スコアでの参照を削除。`buildClassicCandidates` 直前のコメント「メタスコアが非常に高い」を「評価母数ベースの母集団条件、§5.4/§5.5/§5.8」に更新（`/code-review` 対応、後述） |
+| `generate-articles.ts` | `metascore`/`userScore` を参照していた箇所を削除 |
+| `select-newreleases-with-fallback.ts` | 同上 |
+| `validate-article.ts` | 同上 |
+| `validate-existing-issue.ts` | `FrontmatterArticle` インターフェースの `metascore?`/`userScore?` フィールドを削除（`/code-review` 対応、後述） |
+| `.env.example` | `OPENCRITIC_API_KEY` の行を削除 |
+
+### 1. `steamPlayers` バグの発見経緯
+
+§2.3 に規定の無い経路を精査する過程で、`steamPlayers > 0` 経路が**単に「未仕様」なだけでなく、恒常的なデッドコードだったこと**を発見した。`fetch-steam.ts` は `SteamData` に `peakPlayers` フィールドしか設定しない。ところが `fetch-data.ts` の `aggregateGames` は `GameData.steamPlayers` への代入時に `SteamData` 上に存在しない `currentPlayers` というフィールドを読んでいた。フィールド名の不一致により、`GameData.steamPlayers` は本番で常に `undefined` だった。したがって本経路は一度も発火しておらず、削除は挙動不変（テストも旧経路を検証していた分だけ削除、新規テストは不要）。
+
+### 2. `metascore` 削除の経緯
+
+論点D（D-1'）は仕様検討資料の段階で既に「削除」と決着していたが、担当ブランチ `refactor/remove-metacritic-path`（PR-D）が §8 の実装計画に「未着手」のまま残っていた。本PRはこの未着手タスクを実行した。Metacritic 取得（`fetch-metacritic.ts`）は API キーの不備で全 17 号にわたり 0 件しか返しておらず、`metascore != null` 経路は一度も発火していなかったため、削除は挙動不変。
+
+### 3. `igdbRating` レスキュー経路を維持した判断
+
+3経路のうち唯一、`igdbRating >= 85 && igdbRatingCount >= 8` は実データで機能している実在の経路であることが確認された（高評価・低投票数タイトル、例: Splatoon Raiders を正しく救済）。削除せず、§2.3 の品質条件表に「条件2（投票数15以上）の閾値緩和版」として明文化した（管理者判断・ユーザー確認済み）。
+
+### 4. `/code-review` 指摘2件の内容と対応
+
+両件とも本PRで修正した（分離なし）。
+
+| 指摘 | 対応 |
+|---|---|
+| `metascore`/`userScore` 削除後も `validate-existing-issue.ts` の `FrontmatterArticle` インターフェースに陳腐化したフィールドが残っていた | 削除（`toGeneratedArticle` は既に参照していなかった） |
+| `fetch-data.ts` の `buildClassicCandidates` 呼び出し直前のコメントが旧仕様（「メタスコアが非常に高い」）のままだった | 現行仕様（評価母数ベースの母集団条件、§5.4/§5.5/§5.8）を指すコメントに更新 |
+
+### 5. テスト数の変化
+
+**1106 → 1101**（削除5件、新規0件）。挙動不変の純削除のため新規テストは不要と判断した。削除した5件は、旧 `metascore`/`steamPlayers` 経路を検証していたテスト（いずれもデッドコード/未発火経路の回帰テストで、削除により意味を失ったもの）。
+
+### 6. Issue #251 への申し送り
+
+本PRはコード変更を行っていない。「批評媒体数が2以上」の品質条件に評価点の下限を追加するかどうかの判断内容は、本PRに同梱する形で `docs/article-category-spec.md` §9.3（新設した14番目の項目）に記録した。詳細はそちらを参照。Issue #251 はクローズせず監視項目として開けたままにする。
 
 ---
 
