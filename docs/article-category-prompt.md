@@ -21,6 +21,7 @@
 | PR-F0 | `fix/publish-date-jst` | 未着手 | - | PR-F の直前に入れる |
 | PR-F | `feat/feature-event-fallback` | 未着手 | - | PR-F0 の後 |
 | PR-G | `feat/article-count-validation` | 未着手 | - | PR-B・名作枠PR より後。severity=high の妥当性は§9.1の保留と合わせて着手前にユーザー確認 |
+| **#260 対応** | `fix/issue-260-newrelease-window` | ✅ **マージ済み**（2026-08-10。マージコミット `7a33cea`。squash） | **#260**（Closed）/ 関連 **#241**（Closed） / PR #261 | 29ファイル / **1104テスト**（着手前 1101）。コミット1本（squash）。`selectGamesForArticles` 内の `releasedAfter` が3ヶ月窓（`setMonth(-3)`、実測約91〜92日）のまま、仕様書§2.3・付録パラメータ表の60日窓（#241対応でIGDB側の母集団クエリは既に統一済み）と乖離していたのを `sixtyDaysAgo`（`setDate(-60)`）に統一。管理者が実データ（`data/aggregated.json` 105件、fetchedAt=2026-05-16）で `buildNewReleaseCandidates` の実ロジックを検証し、**60日窓の候補14件に対し3ヶ月窓の候補は22件、うち`Slay the Spire II`（基準日の91日前発売）は3ヶ月窓では4軸スコアで全候補中2位となり新作枠（採用数2）に実際に選定されるが、60日窓では母集団にすら入らない**実害を確認。`buildNewReleaseCandidates`の境界値回帰テストを新規追加（59日前=含む・60日前=境界で除外・61日前=除外）。`fetch-igdb.ts`の`fetchIndieGames`（インディー枠、§3の母集団取得クエリ）にある同名変数`threeMonthsAgo`は完全に別機能でスコープ外のため変更なし |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1585,6 +1586,37 @@ Issue #238 を `Refs` で参照した（#238 自体は PR #249 でクローズ�
 ### 6. Issue #251 への申し送り
 
 本PRはコード変更を行っていない。「批評媒体数が2以上」の品質条件に評価点の下限を追加するかどうかの判断内容は、本PRに同梱する形で `docs/article-category-spec.md` §9.3（新設した14番目の項目）に記録した。詳細はそちらを参照。Issue #251 はクローズせず監視項目として開けたままにする。
+
+---
+
+  PR #261（Issue #260 対応）
+
+  【共通ヘッダ】
+
+# PR #261: 新作枠の選定フィルタを60日窓に修正する（Issue #260）
+
+- ブランチ: `fix/issue-260-newrelease-window`
+- Issue: **#260**（Closed）。関連 **#241**（Closed。IGDB側の母集団クエリは既に60日窓に統一済みだった）
+- 仕様: §2.3・付録パラメータ表（「発売済みの探索窓 | 60 日」）
+
+## 問題
+
+`scripts/fetch-data.ts` の `selectGamesForArticles` が新作枠候補の絞り込みで `buildNewReleaseCandidates` に渡す `releasedAfter` は、`threeMonthsAgo`（`setMonth(-3)`、実測約91〜92日）のままだった。Issue #241 対応（PR #243）でIGDB側の母集団取得クエリは60日窓に揃えられていたが、この`selectGamesForArticles`内の別レイヤーのフィルタだけが2026-02-22の古い実装のまま3ヶ月で取り残されていた。
+
+## 実施結果（2026-08-10）
+
+**PR #261。マージコミット `7a33cea`（squash）。コミット1本。**
+
+管理者が実データ（過去のスナップショット `data/aggregated.json`、105件、fetchedAt=2026-05-16）で `buildNewReleaseCandidates` の実ロジックを使い60日窓と3ヶ月窓（92日）を比較検証した。
+
+- 60日窓の候補: **14件** / 3ヶ月窓の候補: **22件**
+- **`Slay the Spire II`（基準日の91日前発売）が3ヶ月窓では4軸スコアで全候補中2位にランクインし実際に新作枠（採用数2）に選定されるが、60日窓では母集団にすら入らない**、という実害を確認した
+
+これを受けて Issue #260 を起票し、本PRで修正した。`scripts/fetch-data.ts`（1217〜1227行目付近）の `threeMonthsAgo` を `sixtyDaysAgo`（`setDate(-60)`）にリネーム・変更し、`buildNewReleaseCandidates` への `releasedAfter` 引数もこれに追従させた。`scripts/fetch-data.test.ts` に `buildNewReleaseCandidates` の境界値回帰テストを新規追加した（59日前=含む・60日前=境界で除外・61日前=除外。旧3ヶ月窓なら含まれてしまっていたケース）。
+
+テストは修正前 29ファイル / 1101テスト → 修正後 29ファイル / **1104テスト**（新規3件）、全通過。`/code-review` 実施済み、指摘0件。
+
+なお `scripts/fetch-igdb.ts` の `fetchIndieGames` 関数（インディー枠、§3の母集団取得クエリ）にも同名変数 `threeMonthsAgo` があるが、これは完全に別機能でIssueのスコープ外のため変更していない。
 
 ---
 
