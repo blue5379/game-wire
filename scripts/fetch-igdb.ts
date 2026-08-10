@@ -1007,11 +1007,15 @@ async function fetchRecentPopularGamesByRatingCount(
  * Rayman Legends Retold）。§2.4 側を緩めて発売済みクエリと揃える方針でユーザー
  * 判断確定済み。
  *
- * ⚠️ 管理者が実測済み（2026-08-09）: この変更は当日の実データでは取得結果を変えない。
- * where 句合致は 33件→34件に増えるが、`sort first_release_date asc; limit 20` の
- * 先頭20件は変わらず、Rayman Legends Retold は緩和後も34件中23番目で limit に
- * 切られたまま。これは想定どおりであり、目的は仕様矛盾の解消であって取得結果を
- * 増やすことではない。
+ * ⚠️ 管理者が実測済み（2026-08-09）: Issue #244 時点の変更（gameTypes 緩和）は当日の
+ * 実データでは取得結果を変えなかった。where 句合致は 33件→34件に増えたが、
+ * `sort first_release_date asc; limit 20` の先頭20件は変わらず、Rayman Legends Retold
+ * は緩和後も34件中23番目で limit に切られたままだった。
+ *
+ * Issue #250（2026-08-10）: 上記の `limit 20` が母集団（33〜34件）を大きく下回り、
+ * #244 で緩和した gameTypes の恩恵（Rayman Legends Retold 等）を実質無効化していたため、
+ * `limit` を 20 から 50 に引き上げてユーザー判断確定済み。発売済み側の2軸クエリ
+ * （Issue #241 / PR #243）が既に採用している `limit 50` と値を揃えている。
  *
  * ⚠️ §2.4 が規定する「確定日のみ」フィルタ（`release_dates.date_format`）はここでは
  * 実装しない。担当は PR-C（別 PR）。このクエリは曖昧な発売日（「2026年Q3」等）の
@@ -1031,7 +1035,7 @@ async function fetchUpcomingGames(
         gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
       })};
       sort first_release_date asc;
-      limit 20;
+      limit 50;
     `;
 
     const games = await igdbRequest<IGDBPoolRawGame>(
