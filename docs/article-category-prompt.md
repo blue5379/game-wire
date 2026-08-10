@@ -14,7 +14,7 @@
 | **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
 | PR-C | `feat/unreleased-article-branching` | 未着手 | - | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース |
 | PR-D | `refactor/remove-metacritic-path` | ✅ **完了**（単独ブランチではなく PR #258 に吸収） | - | **このブランチ自体は使われなかった。** 実際の作業は下記 **`#253` 対応**行（PR #258）としてマージされた。名作枠PR（#254）マージ後に着手されたため、当初想定していた競合は発生しなかった |
-| **#253 対応** | `fix/issue-253-qualified-game-cleanup` | ✅ **マージ済み**（2026-08-09。マージコミット `0af2a36`。通常マージ、squashではない） | **#253**（Closed）/ 関連 **#251**（Open のまま。コード変更なし） / PR #258 | PR-D が担当する予定だった `metascore` 削除を吸収 + `steamPlayers` の恒常的デッドコードを発見して削除 + `igdbRating` レスキュー経路を維持して仕様書に明文化。29ファイル / **1101テスト**（着手前 1106）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`） |
+| **#253 対応** | `fix/issue-253-qualified-game-cleanup` | ✅ **マージ済み**（2026-08-10。マージコミット `0af2a36`。通常マージ、squashではない） | **#253**（Closed）/ 関連 **#251**（Open のまま。コード変更なし） / PR #258 | PR-D が担当する予定だった `metascore` 削除を吸収 + `steamPlayers` の恒常的デッドコードを発見して削除 + `igdbRating` レスキュー経路を維持して仕様書に明文化。29ファイル / **1101テスト**（着手前 1106）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`） |
 | 名作枠PR | `feat/issue-classic-slot-population` | ✅ **マージ済み**（2026-08-09。`0a2b025`。merge commit） | 関連 **#238** / PR #254 | **ブランチ名は当初案の `feat/classic-slot-redesign` から変更**。29ファイル / **1106テスト**（着手前 27 / 1021）。コミット2本（実装 → レビュー対応）。母集団条件を評価母数ベース（`total_rating >= 85 & total_rating_count >= 200`）に変更し、選定側 `buildClassicCandidates` も同条件に一本化。実測: **名作枠選定が `Splatoon Raiders` → `The Witcher 3: Wild Hunt` に変化**、他枠は不変。**着手前検証で `parent_game` が展開可能なことを発見**し、決着ブロックが前提としていた ID 集合照合が不要になった（`igdbId` 追加も不要）。**レビューで欠陥1件を検出・修正**（親の `game_type` を見ずに `Final Fantasy VII Remake` を誤除外）。**`/code-review` 指摘4件のうち2件を本PRで対応**（選定側の `game_type` ゲート欠落・`limit 200` の非対称）、**2件を #255 / #256 に分離**（Creator's Eye の影響記述要求・特集プレフィルタのプロンプト肥大） |
 | PR-I | `feat/indie-scale-classification` | ✅ **マージ済み**（2026-08-09。`7a2a0da`。squash） | #231（Closed）/ 関連 #175（`Refs`）/ PR #237 | 26ファイル / **960テスト**（着手前 26 / 865）。コミット2本（実装 → レビュー対応）。**着手後に「決着済みだが未実装」の論点A（新作枠の企業規模ゲート撤廃）を発見し、同PRで実装**（下記「実施結果」）。Issue #231 が提案していた方針は決着で棄却された A-3 相当だった。**分離した Issue は 7 件**（#234 / #235 / #236 / #238 / #239 / #240 / #241） |
 | PR-E | `fix/prompt-excerpt-length` | 未着手 | - | PR-C と同じ箇所を触る。どちらか先に入れてリベース |
@@ -314,7 +314,7 @@ CLAUDE.md が「ユーザーの指示を待たずに実施」と定めている�
 
 ⚠️ **さらに PR #258（Issue #253。マージ `0af2a36`）で `game-filter.ts` / `fetch-data.ts` / `types.ts` の行番号がずれ、
 `fetch-metacritic.ts` は全削除（260行）された。** `metascore`/`steamPlayers` 経路の削除に伴う純減で、
-新設シンボルは無い。マージ後の実測値（2026-08-09。`5c9e9b4^` → `0af2a36`）:
+新設シンボルは無い。マージ後の実測値（2026-08-10。`5c9e9b4^` → `0af2a36`）:
 
 | シンボル（ファイル） | PR #258 前 | PR #258 マージ後 | ずれ |
 |---|---|---|---|
@@ -1536,7 +1536,7 @@ Issue #238 を `Refs` で参照した（#238 自体は PR #249 でクローズ�
 2. `steamPlayers > 0`
 3. `igdbRating >= QUALITY_IGDB_RATING_STRONG(85) && igdbRatingCount >= QUALITY_IGDB_RC_FLOOR(8)`
 
-## 実施結果（2026-08-09）
+## 実施結果（2026-08-10）
 
 **PR #258。マージコミット `0af2a36`（通常マージ、squashではない）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`）。**
 実装は Sonnet に委譲し、diff を管理者が検証した。
