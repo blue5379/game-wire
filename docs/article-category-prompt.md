@@ -26,6 +26,7 @@
 | **#256 対応** | `fix/issue-256-feature-prefilter-summary-cap` | ✅ **マージ済み**（2026-08-10。マージコミット `34919f8`。squash） | **#256**（Closed）/ 関連 名作枠PR（#254） / PR #264 | 29ファイル / **1107テスト**（着手前 1104。新規3件）。コミット1本。特集テーマ事前フィルタ（`prefilterFeatureCandidatesByTheme`）が候補ゲームの`summary`を全文プロンプトに載せており、名作枠の母集団拡大（PR #254、123→288件）で約+34Kトークン/号のコスト増になっていたのを、`FEATURE_PREFILTER_SUMMARY_MAX_CHARS`（200文字）で切り詰めて解消。候補件数・選定ロジック自体は不変。`/code-review`で1件指摘（単純`slice`によるUTF-16サロゲートペア分割のリスク）が出たが、低リスク・既存コード（`fetch-web-search.ts`の同パターン）と整合との判断で見送り、別Issue分離もせず |
 | **#255 対応** | `fix/issue-255-creators-eye-hallucination-risk` | ✅ **マージ済み**（2026-08-10。マージコミット `be24575`。squash） | **#255**（Closed）/ 関連 名作枠PR（#254） / PR #265 | 29ファイル / **1109テスト**（着手前 1107。新規2件）。コミット2本（実装 → `/code-review`指摘対応）。`classicSystem`のCreator's Eyeが「後世に影響を与えた革新的な要素」という根拠のない歴史的影響の記述を要求し続けていた（名作枠PR #254の`/code-review`で発覚し本Issueに分離）のを、要求項目自体を削除して解消。§2（📜ゲームの歴史）に既に入れていた「情報が無ければ省略可」ガードは、Creator's Eyeが必須セクションのため踏襲せず。`/code-review`で回帰テストが無い点を指摘され、同PRで追加コミットして対応 |
 | **#221 対応** | `fix/issue-221-empty-feature-guard` | ✅ **マージ済み**（2026-08-10。マージコミット `ccc44f1`。squash） | **#221**（Closed）/ 関連 **#179**（設計原則）・**#222**（Open。PR-0.1の`/code-review`で本Issueと同時に分離された別懸念。未対応） / PR #267 | 29ファイル / **1110テスト**（着手前 1109。新規1件）。コミット2本（実装 → `/code-review`指摘2件の対応）。`selectedGameData`が0件になった場合に`throw`するガードを追加。管理者が実データで検証し、過去に公開された全19号のfeature記事は`recommendedGames`が3〜5件で0件になったことは一度もない（実害はまだ発生していない理論上の欠陥）と確認した |
+| **#247 対応** | `fix/issue-247-featured-recommended-url-validation` | ✅ **マージ済み**（2026-08-10。マージコミット `7cfa916`。通常マージ、squashではない） | **#247**（Closed）/ 関連 **#234**（PR #246のレビューで分離） / PR #269 | 29ファイル / **1124テスト**（着手前 1110。新規14件）。コミット2本（実装 → `/code-review`指摘対応）。特集記事`recommendedGames[].officialUrl`にBluesky/Discordの非公式URLが本番で5件混入していた実害を解消。**着手前の独立検証でIssue本文より深い根本原因を発見**（下記「実施結果」に詳述）: `NON_OFFICIAL_URL_PATTERNS`のドメイン抜けにより、Tavily経由の誤候補がIGDBの正しい公式URLを無条件に上書きしていた。根本原因の修正+出力時ゲート追加の両方を実施 |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -2050,3 +2051,60 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 
 - 下流関数`buildFeatureUserMessage`自体はガードしていない、という指摘。現在の呼び出し経路では本PRのガードで0件が`generateFeatureArticle`内で必ず先に捕捉されるため、`buildFeatureUserMessage`が空リストを受け取ることは無く、仮説的な懸念にとどまる
 - エラーメッセージの診断情報が既存ログと重複する、という指摘。軽微なスタイル上の指摘であり実害を伴わないため見送った
+
+---
+
+  PR #269（Issue #247 対応）
+
+  【共通ヘッダ】
+
+# PR #269: 特集記事recommendedGamesの非公式URL混入を防ぐ（Issue #247）
+
+- ブランチ: `fix/issue-247-featured-recommended-url-validation`
+- Issue: **#247**（Closed）。PR #246（#234対応）のレビューで検出・分離された既存欠陥（#246自体が原因ではない）
+- 関連: **#234**（IGDBの`websites.category`→`type`改名対応。PR #246の副作用で`recommendedGames`への流入経路が1つ増えていた）
+
+## 問題
+
+特集記事の`recommendedGames[].officialUrl`が、`article.sourceUrls.official`（`build-issue.ts`に既存のゲートあり）と異なり、信頼済みソース判定・到達性チェックを一切通らずに出力されていた。特集記事は`sourceUrls`を持たないため、既存ゲートに構造的に到達しない。
+
+実測（2026-08-09）: 発行済みの号（issue-002/003/004/005/006/008）に、Bluesky プロフィール・Discord 招待リンクが「公式URL」として計5件混入していた。
+
+## 着手前の独立検証で判明した根本原因（Issue本文の診断より深い）
+
+Issue #247本文は「recommendedGamesに出力ゲートが無い」ことを原因としていたが、管理者がライブIGDB照会で独立検証した結果、漏洩した`Slay the Spire II`は**IGDB側に正しい公式URL（`https://www.megacrit.com/games/`、`officialUrlSource: 'igdb-official'`）が存在していた**にもかかわらず、記事には`bsky.app`が出力されていたことが判明した。
+
+原因は2段構え:
+
+1. `fetch-official-jp-url.ts`の`NON_OFFICIAL_URL_PATTERNS`に`discord.gg`/`discord.com`はあるが、実際に漏れた**`discordapp.com`（旧ドメイン）と`bsky.app`（Bluesky）が抜けていた**
+2. `generate-articles.ts`（特集）・`fetch-data.ts`（新作/インディー/名作の`enrichSelectedGamesWithOfficialUrl`）はどちらも「Tavilyが何か見つけたらIGDBの正しいURLを無条件に上書きする」設計のため、ドメインフィルタの穴を突いた誤ったTavily候補が正しいIGDB候補を上書きしていた
+
+Issue本文が提案する「recommendedGamesに`sourceUrls.official`と同じゲートを追加」だけでは、`officialUrlSource: 'tavily'`（信頼済み扱い）かつ`isUrlAlive`も通るbsky.app/discordapp.comは防げない。この根本原因（ドメインフィルタの穴）は`recommendedGames`だけでなく**新作/インディー/名作枠の`sourceUrls.official`にも共通して存在する潜在バグ**だった（本番の`official:`フィールドには実測で非公式URLの漏洩は0件だったが、構造的には同じリスクを抱えていた）。
+
+ユーザー判断（2026-08-10）: 根本原因の修正と、Issue本文が求める出力時ゲート追加の**両方を同一PRで実施**することに決定。
+
+## 実施結果（2026-08-10）
+
+**PR #269。マージコミット `7cfa916`（通常マージ、squashではない）。コミット2本（実装 `7a88cc7` → `/code-review`指摘対応 `745d3fd`）。**
+
+### (a) 根本原因対処
+
+`fetch-official-jp-url.ts`の`NON_OFFICIAL_URL_PATTERNS`に`bsky.app`・`discordapp.com`を追加。全カテゴリ（新作/インディー/特集/名作）の`fetchOfficialJpUrl`呼び出しに波及する修正。
+
+### (b) 出力時ゲート追加（多層防御）
+
+- `types.ts`: `RecommendedGame`に`officialUrlSource?: 'tavily' | 'igdb-official'`を追加
+- `generate-articles.ts`: `recommendedGames.push()`で`officialUrlSource`を伝播
+- `build-issue.ts`: `recommendedGames`の出力ループに、既存の`sourceUrls.official`ゲートと同じロジックを適用
+
+テストは着手前 29ファイル / 1110テスト → 修正後 29ファイル / **1124テスト**（新規14件）、全通過。型チェックも通過。
+
+### `/code-review`指摘4件のうち3件を追加コミットで修正
+
+- **未定義ソースが信頼済み扱いになる**: `recommendedGames`側のゲートは`officialUrlSource`が`undefined`の場合もソース判定をすり抜けて`isUrlAlive`のみの判定になり、ドメイン不問で通ってしまう欠陥があった。実データ追跡の結果、現在のコードパスでは`officialUrl`と`officialUrlSource`が必ずペアで設定されるため実害は無いが、`RecommendedGame.officialUrlSource`は本PRで新設したフィールドで後方互換の必要が無いため、**厳格化して未定義も「信頼できない」として拒否する**よう変更した（`sourceUrls.official`側は既存の後方互換動作を維持）
+- **ゲートロジックの重複**: `sourceUrls.official`と`recommendedGames`のゲートがほぼ同一のまま重複していたため、共通ヘルパー`resolveGatedOfficialUrl(url, source, opts)`に切り出した。`opts.allowUndefinedSource`で両者の挙動差（後方互換の有無）を制御する
+- **テストの無意味な`vi.restoreAllMocks()`**: `global.fetch`を直接代入で差し替えているため実質no-op（スパイではないため何も復元しない）だったので削除した
+
+### 残り1件は見送り
+
+- `isUrlAlive`のHEADリクエストがループ内で逐次awaitされ並列化されていない、という指摘。既存の`sourceUrls.official`ゲートも同型の逐次パターンを踏襲しているだけで新規の問題ではなく、週次バッチ処理でタイムクリティカルでもないため見送った
