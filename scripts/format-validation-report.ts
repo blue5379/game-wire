@@ -17,6 +17,13 @@
  * AI成人向けスクリーニング失敗（Issue #222）は、Web 検索失敗と同様「本来行うべき安全確認が
  * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
  * （error に昇格）とする。
+ *
+ * 一方、AI成人向けスクリーニングの応答形式不正（unrecognizedScreeningResponses、YES/NO 以外の
+ * 応答を安全側で通過させたケース）は、カウント・表示はするが error には昇格させない。
+ * これは例外を投げない fail-open 経路であり、実際の Bedrock 応答形式（切り詰め・句読点付与等の
+ * 頻度）がまだ観測できていないため、閾値の妥当性が未検証の状態で自動起票を強制すると、
+ * 実際には無害な揺らぎで毎週 Issue が誤起票されるリスクがある。まずこのフィールドで実態を
+ * 観測してから、昇格の要否・閾値を検討する（Issue #222 code review 対応）。
  */
 
 import type { ValidationReport, ValidationWarning } from './validate-article.js';
@@ -89,6 +96,7 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const medium = report.warningsBySeverity.medium;
   const webFail = webSearchFailureCount(report);
   const adultScreeningFail = adultScreeningFailureCount(report);
+  const unrecognizedScreeningResponses = report.webSearchStats?.unrecognizedScreeningResponses ?? 0;
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   const contradicted = report.llmJudge?.claimsByVerdict.contradicted ?? 0;
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
@@ -106,6 +114,11 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   if (adultScreeningFail > 0) {
     actions.push(
       `🔞 **AI成人向けスクリーニング失敗 ${adultScreeningFail} 件**: 判定不能のまま fail-open で通過したゲームがあります。成人向けコンテンツでないか手動で確認してください。`
+    );
+  }
+  if (unrecognizedScreeningResponses > 0) {
+    actions.push(
+      `❓ **AI成人向けスクリーニング応答形式不正 ${unrecognizedScreeningResponses} 件**: 応答形式が想定外（YES/NO以外）だったため判定できず、fail-open で通過したゲームがあります。成人向けコンテンツでないか手動で確認してください。`
     );
   }
   if (contradicted > 0) {
@@ -180,7 +193,6 @@ export function formatReportMarkdown(report: ValidationReport): string {
 
   // 件数サマリ
   const webFail = webSearchFailureCount(report);
-  const adultScreeningFail = adultScreeningFailureCount(report);
   out.push('### サマリ');
   out.push('');
   out.push('| 項目 | 件数 |');
@@ -196,10 +208,25 @@ export function formatReportMarkdown(report: ValidationReport): string {
   } else {
     out.push('| ✅ Web検索失敗 | 0 |');
   }
-  if (adultScreeningFail > 0) {
-    out.push(`| ⚠️ AI成人向けスクリーニング失敗（fail-open） | ${adultScreeningFail} |`);
+  // adultScreeningFailures は undefined（未計測）と 0（計測して失敗ゼロ）を区別して表示する。
+  // adultScreeningFailureCount() は computeReportStatus 用に `?? 0` で潰した値を返すため、
+  // ここでは使わず report.webSearchStats?.adultScreeningFailures を直接見て3分岐する（Issue #222 code review 対応）。
+  const rawAdultScreeningFailures = report.webSearchStats?.adultScreeningFailures;
+  if (rawAdultScreeningFailures === undefined) {
+    out.push('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
+  } else if (rawAdultScreeningFailures > 0) {
+    out.push(`| ⚠️ AI成人向けスクリーニング失敗（fail-open） | ${rawAdultScreeningFailures} |`);
   } else {
     out.push('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+  }
+  // unrecognizedScreeningResponses も同様に3分岐（未計測 / >0 / 0）で表示する。
+  const rawUnrecognizedScreeningResponses = report.webSearchStats?.unrecognizedScreeningResponses;
+  if (rawUnrecognizedScreeningResponses === undefined) {
+    out.push('| ❓ AI成人向けスクリーニング応答形式不正 | 未計測 |');
+  } else if (rawUnrecognizedScreeningResponses > 0) {
+    out.push(`| ⚠️ AI成人向けスクリーニング応答形式不正 | ${rawUnrecognizedScreeningResponses} |`);
+  } else {
+    out.push('| ✅ AI成人向けスクリーニング応答形式不正 | 0 |');
   }
 
   // 警告詳細

@@ -197,7 +197,12 @@ describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #22
   it('invokeClaudeModel が reject した場合、stats.adultScreeningFailures が加算され、かつゲームは除外されず通過する（fail-open のポジティブコントロール）', async () => {
     const game = makeGame({ title: 'Unjudgeable Game' });
     mockInvoke.mockRejectedValue(new Error('Bedrock timeout'));
-    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
 
     const result = await __test.screenOutAdultGames([game], stats);
 
@@ -208,7 +213,12 @@ describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #22
   it('例外が発生しない正常系（判定NO）では adultScreeningFailures は加算されない（ネガティブコントロール）', async () => {
     const game = makeGame({ title: 'Normal Game' });
     mockInvoke.mockResolvedValue('NO');
-    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
 
     const result = await __test.screenOutAdultGames([game], stats);
 
@@ -219,7 +229,12 @@ describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #22
   it('例外が発生しない正常系（判定YES＝除外）でも adultScreeningFailures は加算されない', async () => {
     const game = makeGame({ title: 'Adult Game' });
     mockInvoke.mockResolvedValue('YES');
-    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
 
     const result = await __test.screenOutAdultGames([game], stats);
 
@@ -235,7 +250,12 @@ describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #22
       if (userMessage.includes('Fail Game')) throw new Error('Bedrock timeout');
       return 'NO';
     });
-    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
 
     const result = await __test.screenOutAdultGames([gameA, gameB, gameC], stats);
 
@@ -247,6 +267,91 @@ describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #22
   it('stats を渡さない場合でも例外を投げない（stats はオプショナル引数）', async () => {
     const game = makeGame({ title: 'Unjudgeable Game' });
     mockInvoke.mockRejectedValue(new Error('Bedrock timeout'));
+
+    await expect(__test.screenOutAdultGames([game])).resolves.toEqual([game]);
+  });
+});
+
+describe('screenOutAdultGames — unrecognizedScreeningResponses カウンタ (Issue #222 code review 修正3)', () => {
+  // isAdultContentByAI は maxTokens: 10 による切り詰めや句読点・記号付与等で、応答が
+  // 'YES'/'NO' の厳密一致にならないことがある。この場合は例外を投げないため
+  // adultScreeningFailures（catch節）では捕捉できず、もう一つの fail-open 経路になる。
+  // ここでは応答形式不正を検知する unrecognizedScreeningResponses カウンタを検証する。
+
+  it.each(['YES.', '', 'MAYBE', '**YES**', 'yes please'])(
+    '応答が YES/NO いずれでもない場合（例: %j）、unrecognizedScreeningResponses が加算され、adultScreeningFailures は加算されない',
+    async (response) => {
+      const game = makeGame({ title: 'Ambiguous Response Game' });
+      mockInvoke.mockResolvedValue(response);
+      const stats = {
+        searchFailures: 0,
+        pageContentFailures: 0,
+        adultScreeningFailures: 0,
+        unrecognizedScreeningResponses: 0,
+      };
+
+      const result = await __test.screenOutAdultGames([game], stats);
+
+      expect(stats.unrecognizedScreeningResponses).toBe(1);
+      expect(stats.adultScreeningFailures).toBe(0);
+      // 応答形式不正時も fail-open の挙動自体は変えない（安全側＝非成人向け扱いで通過）
+      expect(result).toEqual([game]);
+    }
+  );
+
+  it('応答が "NO"（正常系）の場合、unrecognizedScreeningResponses・adultScreeningFailures ともに加算されない（ネガティブコントロール）', async () => {
+    const game = makeGame({ title: 'Normal Game' });
+    mockInvoke.mockResolvedValue('NO');
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
+
+    const result = await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.unrecognizedScreeningResponses).toBe(0);
+    expect(stats.adultScreeningFailures).toBe(0);
+    expect(result).toEqual([game]);
+  });
+
+  it('応答が "YES"（正常系・除外）の場合も、unrecognizedScreeningResponses・adultScreeningFailures ともに加算されない', async () => {
+    const game = makeGame({ title: 'Adult Game' });
+    mockInvoke.mockResolvedValue('YES');
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
+
+    const result = await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.unrecognizedScreeningResponses).toBe(0);
+    expect(stats.adultScreeningFailures).toBe(0);
+    expect(result).toEqual([]);
+  });
+
+  it('Bedrock 呼び出しが例外を投げた場合（応答形式の問題ではない）は adultScreeningFailures のみ加算され、unrecognizedScreeningResponses は加算されない（2つのカウンタの排他性の確認）', async () => {
+    const game = makeGame({ title: 'Unjudgeable Game' });
+    mockInvoke.mockRejectedValue(new Error('Bedrock timeout'));
+    const stats = {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 0,
+    };
+
+    await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.adultScreeningFailures).toBe(1);
+    expect(stats.unrecognizedScreeningResponses).toBe(0);
+  });
+
+  it('stats を渡さない場合でも例外を投げない（応答形式不正のケース）', async () => {
+    const game = makeGame({ title: 'Ambiguous Response Game' });
+    mockInvoke.mockResolvedValue('MAYBE');
 
     await expect(__test.screenOutAdultGames([game])).resolves.toEqual([game]);
   });

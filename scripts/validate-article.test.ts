@@ -873,6 +873,18 @@ describe('validateArticles (集約)', () => {
     const report = validateArticles([], 8);
     expect(report.webSearchStats).toBeUndefined();
   });
+
+  it('webSearchStats の unrecognizedScreeningResponses がレポートにそのまま引き継がれる（Issue #222 code review 修正3）', () => {
+    const report = validateArticles([], 8, {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 0,
+      unrecognizedScreeningResponses: 5,
+    });
+    expect(report.webSearchStats?.unrecognizedScreeningResponses).toBe(5);
+    // adultScreeningFailures とは独立したカウンタであること
+    expect(report.webSearchStats?.adultScreeningFailures).toBe(0);
+  });
 });
 
 describe('buildFixInstruction', () => {
@@ -1538,6 +1550,86 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
       expect(logCalls.some((line: string) => line.includes('unmeasured'))).toBe(true);
       // 「0件（計測済み）」メッセージとは異なること（混同していないことの確認）
       expect(logCalls.some((line: string) => line.includes('Adult screening failures: 0'))).toBe(false);
+    });
+  });
+
+  // 応答形式不正（YES/NO以外）カウンタの stdout 出力（Issue #222 code review 修正3）
+  describe('unrecognizedScreeningResponses の stdout 出力', () => {
+    it('1件以上あれば console.warn で件数を出す', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 2,
+        },
+      };
+      writeAndCheckReport(report, dir);
+
+      const warnCalls = (console.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(
+        warnCalls.some(
+          (line: string) => line.includes('Unrecognized screening responses') && line.includes('2')
+        )
+      ).toBe(true);
+    });
+
+    it('0件（計測済み）なら console.log で「0」を出し、console.warn は呼ばれない', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 0,
+        },
+      };
+      writeAndCheckReport(report, dir);
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      const warnCalls = (console.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(
+        logCalls.some((line: string) => line.includes('Unrecognized screening responses: 0'))
+      ).toBe(true);
+      expect(
+        warnCalls.some((line: string) => line.includes('Unrecognized screening responses'))
+      ).toBe(false);
+    });
+
+    it('webSearchStats に unrecognizedScreeningResponses が無い（旧キャッシュ）場合は「未計測」であり「0件」とは別メッセージで出す', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 },
+      };
+      writeAndCheckReport(report, dir);
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(logCalls.some((line: string) => line.includes('Unrecognized screening responses: unmeasured'))).toBe(
+        true
+      );
+      expect(
+        logCalls.some((line: string) => line.includes('Unrecognized screening responses: 0'))
+      ).toBe(false);
+    });
+
+    it('status には影響しない（unrecognizedScreeningResponses は error 昇格の対象外・重要仕様）', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 99,
+        },
+      };
+      writeAndCheckReport(report, dir);
+
+      expect(report.status).toBe('ok');
     });
   });
 });
