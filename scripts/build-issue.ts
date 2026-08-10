@@ -37,6 +37,40 @@ async function isUrlAlive(url: string): Promise<boolean> {
 }
 
 /**
+ * 公式URLの多層防御ゲート（信頼済みソース判定 + 到達性確認）を共通化したヘルパー。
+ * Issue #247: article.sourceUrls.official と recommendedGames[].officialUrl の
+ * 双方で同じロジックが必要なため、重複を解消するために切り出した。
+ *
+ * @param opts.allowUndefinedSource true の場合、source === undefined はソース判定を
+ *   すり抜けて到達性チェックのみ行う（既存キャッシュとの後方互換用）。
+ *   false の場合、source === undefined も「信頼できない」として拒否する。
+ * @param opts.label WARNログの文言に使うラベル（例: "Official" / "Recommended game official"）
+ */
+async function resolveGatedOfficialUrl(
+  url: string,
+  source: string | undefined,
+  opts: { allowUndefinedSource: boolean; label: string }
+): Promise<string | undefined> {
+  const isTrustedSource = source === 'tavily' || source === 'igdb-official';
+  const isTrusted = isTrustedSource || (opts.allowUndefinedSource && source === undefined);
+
+  if (!isTrusted) {
+    console.log(
+      `    [WARN] ${opts.label} URL source "${source}" is not trusted, skipping: ${url}`
+    );
+    return undefined;
+  }
+
+  const alive = await isUrlAlive(url);
+  if (!alive) {
+    console.log(`    [WARN] ${opts.label} URL unreachable, skipping: ${url}`);
+    return undefined;
+  }
+
+  return url;
+}
+
+/**
  * 次の号番号を取得
  */
 function getNextIssueNumber(): number {
@@ -185,20 +219,15 @@ export async function formatArticleForFrontmatter(
         // Issue #247: article.sourceUrls.official と同じ多層防御ゲート。
         // recommendedGames は generate-articles.ts が Tavily/IGDBの結果を無条件に
         // 上書きし得るため、信頼済みソース判定と到達性チェックをここでも行う。
+        // officialUrlSource は本PRで新設したフィールドで既存キャッシュとの後方互換が
+        // 不要なため、source未定義も「信頼できない」として拒否する（allowUndefinedSource: false）。
         const source = game.officialUrlSource as string | undefined;
-        if (source && source !== 'tavily' && source !== 'igdb-official') {
-          console.log(
-            `    [WARN] Recommended game official URL source "${source}" is not trusted, skipping: ${game.officialUrl}`
-          );
-        } else {
-          const alive = await isUrlAlive(game.officialUrl);
-          if (alive) {
-            lines.push(`        officialUrl: "${game.officialUrl}"`);
-          } else {
-            console.log(
-              `    [WARN] Recommended game official URL unreachable, skipping: ${game.officialUrl}`
-            );
-          }
+        const resolvedUrl = await resolveGatedOfficialUrl(game.officialUrl, source, {
+          allowUndefinedSource: false,
+          label: 'Recommended game official',
+        });
+        if (resolvedUrl) {
+          lines.push(`        officialUrl: "${resolvedUrl}"`);
         }
       }
     }
@@ -276,18 +305,15 @@ export async function formatArticleForFrontmatter(
       // Issue #117: 'igdb-fallback'（旧: category=1 タグ無しで機械採用された URL）は
       // 内容検証をすり抜けて誤採用される構造的リスクを持つため、最終出力でも弾く二重防御。
       // 値そのものはキャッシュ互換のため受け入れるが、出力には載せない。
+      // officialUrlSource フィールド導入以前のキャッシュ値との互換性のため、
+      // source未定義は許容する（allowUndefinedSource: true）。
       const source = article.sourceUrls.officialUrlSource as string | undefined;
-      if (source && source !== 'tavily' && source !== 'igdb-official') {
-        console.log(
-          `    [WARN] Official URL source "${source}" is not trusted, skipping: ${article.sourceUrls.official}`
-        );
-      } else {
-        const alive = await isUrlAlive(article.sourceUrls.official);
-        if (alive) {
-          urlLines.push(`      official: "${article.sourceUrls.official}"`);
-        } else {
-          console.log(`    [WARN] Official URL unreachable, skipping: ${article.sourceUrls.official}`);
-        }
+      const resolvedUrl = await resolveGatedOfficialUrl(article.sourceUrls.official, source, {
+        allowUndefinedSource: true,
+        label: 'Official',
+      });
+      if (resolvedUrl) {
+        urlLines.push(`      official: "${resolvedUrl}"`);
       }
     }
     // stores[]: Identity Resolver 解決済みのプラットフォーム別リンク

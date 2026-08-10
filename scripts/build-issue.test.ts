@@ -4,10 +4,10 @@
  * Issue #94: 不完全記事を hidden 扱いにする最終防衛線の判定ロジック。
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { isCriticallyIncompleteArticle, formatArticleForFrontmatter } from './build-issue.js';
 import type { GeneratedArticle } from './generate-articles.js';
-import type { RecommendedGame } from './types.js';
+import type { RecommendedGame, SourceUrls } from './types.js';
 
 function makeArticle(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
   return {
@@ -110,10 +110,6 @@ describe('isCriticallyIncompleteArticle', () => {
 describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲート', () => {
   const originalFetch = global.fetch;
 
-  beforeEach(() => {
-    vi.restoreAllMocks();
-  });
-
   afterEach(() => {
     global.fetch = originalFetch;
   });
@@ -176,5 +172,73 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
 
     const result = await formatArticleForFrontmatter(article);
     expect(result).toContain('officialUrl: "https://www.megacrit.com/games/"');
+  });
+
+  it('officialUrlSource が undefined の場合、isUrlAlive が true でも officialUrl を出力しない（source未定義も信頼できない扱いに厳格化。#247 code review 指摘#1対応）', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    const article = makeArticle({
+      category: 'feature',
+      recommendedGames: [makeRecommendedGame({ officialUrlSource: undefined })],
+    });
+
+    const result = await formatArticleForFrontmatter(article);
+    expect(result).not.toContain('officialUrl: "https://www.megacrit.com/games/"');
+  });
+});
+
+/**
+ * Issue #247 code review 指摘#3: resolveGatedOfficialUrl への切り出し後も、
+ * article.sourceUrls.official 側の既存の後方互換の挙動（officialUrlSource未定義でも
+ * 到達性チェックのみで通過する）が変わっていないことを担保する回帰テスト。
+ */
+describe('formatArticleForFrontmatter: sourceUrls.official の後方互換ゲート', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('officialUrlSource が undefined でも isUrlAlive が true なら official を出力する（キャッシュ互換）', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    const article = makeArticle({
+      category: 'newRelease',
+      sourceUrls: {
+        official: 'https://www.megacrit.com/games/',
+      },
+    });
+
+    const result = await formatArticleForFrontmatter(article);
+    expect(result).toContain('official: "https://www.megacrit.com/games/"');
+  });
+
+  it('officialUrlSource が undefined でも isUrlAlive が false なら official を出力しない', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false });
+
+    const article = makeArticle({
+      category: 'newRelease',
+      sourceUrls: {
+        official: 'https://www.megacrit.com/games/',
+      },
+    });
+
+    const result = await formatArticleForFrontmatter(article);
+    expect(result).not.toContain('official: "https://www.megacrit.com/games/"');
+  });
+
+  it('officialUrlSource が信頼できないソース（igdb-fallback）の場合、isUrlAlive が true でも official を出力しない', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+    const article = makeArticle({
+      category: 'newRelease',
+      sourceUrls: {
+        official: 'https://www.megacrit.com/games/',
+        officialUrlSource: 'igdb-fallback' as SourceUrls['officialUrlSource'],
+      },
+    });
+
+    const result = await formatArticleForFrontmatter(article);
+    expect(result).not.toContain('official: "https://www.megacrit.com/games/"');
   });
 });
