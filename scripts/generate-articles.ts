@@ -882,6 +882,23 @@ export async function generateFeatureArticle(
   // 規定本数チェックより前に行い、スクリーニングで薄くなった特集を下の警告で検知できるようにする。
   selectedGameData = await screenOutAdultGames(selectedGameData);
 
+  // 候補が0件になった場合は特集記事の生成自体を止める（Issue #221）。
+  // qualified/fringe いずれの候補プールも尽きた（またはAIスクリーニングで全滅した）状態で
+  // 記事生成を続けると、buildFeatureUserMessage が空の「紹介するゲーム」ブロックを
+  // LLM に渡すことになり、LLM が内部知識（ハルシネーション）で穴埋めしてしまう。
+  // 呼び出し元（generateFeatureArticle の呼び出し箇所）は try/catch で囲まれており、
+  // catch は console.error するだけで regenerables.push を呼ばないため、
+  // ここで throw すれば「特集枠だけスキップし、号全体は止めない」という
+  // 既存の設計原則（Issue #179, docs/article-category-spec.md）通りの挙動になる。
+  if (selectedGameData.length === 0) {
+    throw new Error(
+      `Feature article generation aborted: no candidate games remain for theme "${theme}" ` +
+        `after selection/screening (qualified: ${qualified.length}, fringe: ${fringe.length} ` +
+        'at pool stage, 0 after AI adult-content screening or title matching). ' +
+        'Skipping feature article for this issue instead of generating with an empty game list.'
+    );
+  }
+
   // 特集ゲームが規定本数を下回ったら警告（黙って薄い特集が出るのを検知するため）。
   // テーマが限定的で候補が枯渇した場合に起こり得る。
   if (selectedGameData.length < FEATURE_MIN_GAMES) {
