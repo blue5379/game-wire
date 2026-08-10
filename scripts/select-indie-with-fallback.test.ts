@@ -29,8 +29,6 @@ function makeGame(overrides: Partial<GameData>): GameData {
   };
 }
 
-const EMPTY_CONTEXT = { youtubePopularitySorted: [] };
-
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -41,78 +39,44 @@ beforeEach(() => {
 describe('meetsPopularityThreshold', () => {
   it('steamRecommendations >= 5000 → true', () => {
     const g = makeGame({ steamRecommendations: 5000 });
-    expect(meetsPopularityThreshold(g, [])).toBe(true);
+    expect(meetsPopularityThreshold(g)).toBe(true);
   });
 
   it('steamRecommendations < 5000 alone → false', () => {
     const g = makeGame({ steamRecommendations: 4999 });
-    expect(meetsPopularityThreshold(g, [])).toBe(false);
+    expect(meetsPopularityThreshold(g)).toBe(false);
   });
 
   it('steamRank <= 200 → true', () => {
     const g = makeGame({ steamRank: 1 });
-    expect(meetsPopularityThreshold(g, [])).toBe(true);
+    expect(meetsPopularityThreshold(g)).toBe(true);
+  });
+
+  it('steamRank = 200（境界値ちょうど） → true', () => {
+    const g = makeGame({ steamRank: 200 });
+    expect(meetsPopularityThreshold(g)).toBe(true);
   });
 
   it('steamRank > 200 alone → false', () => {
     const g = makeGame({ steamRank: 201 });
-    expect(meetsPopularityThreshold(g, [])).toBe(false);
-  });
-
-  it('youtubePopularity in top 30% of sorted pool → true', () => {
-    const sorted = [
-      makeGame({ youtubePopularity: 1000 }),
-      makeGame({ youtubePopularity: 800 }),
-      makeGame({ youtubePopularity: 600 }),
-      makeGame({ youtubePopularity: 400 }),
-      makeGame({ youtubePopularity: 200 }),
-    ];
-    // top 30% = index >= floor(5 * 0.70) = 3 → threshold is sorted[3].youtubePopularity = 400
-    // game with 800 should be in top 30%
-    const g = makeGame({ youtubePopularity: 800 });
-    expect(meetsPopularityThreshold(g, sorted)).toBe(true);
-  });
-
-  it('youtubePopularity below 30% threshold → false', () => {
-    const sorted = [
-      makeGame({ youtubePopularity: 1000 }),
-      makeGame({ youtubePopularity: 800 }),
-      makeGame({ youtubePopularity: 600 }),
-      makeGame({ youtubePopularity: 400 }),
-      makeGame({ youtubePopularity: 200 }),
-    ];
-    const g = makeGame({ youtubePopularity: 100 });
-    expect(meetsPopularityThreshold(g, sorted)).toBe(false);
-  });
-
-  it('youtubePopularity = 境界値ちょうど（thresholdScore）→ true', () => {
-    // n=5, percentile=0.30: thresholdIndex = floor(5 * 0.70) = 3, thresholdScore = sorted[3] = 400
-    const sorted = [
-      makeGame({ youtubePopularity: 1000 }),
-      makeGame({ youtubePopularity: 800 }),
-      makeGame({ youtubePopularity: 600 }),
-      makeGame({ youtubePopularity: 400 }),
-      makeGame({ youtubePopularity: 200 }),
-    ];
-    const g = makeGame({ youtubePopularity: 400 }); // 境界値ちょうど
-    expect(meetsPopularityThreshold(g, sorted)).toBe(true);
-  });
-
-  it('youtubePopularity = 境界値 - 1 → false', () => {
-    const sorted = [
-      makeGame({ youtubePopularity: 1000 }),
-      makeGame({ youtubePopularity: 800 }),
-      makeGame({ youtubePopularity: 600 }),
-      makeGame({ youtubePopularity: 400 }),
-      makeGame({ youtubePopularity: 200 }),
-    ];
-    const g = makeGame({ youtubePopularity: 399 });
-    expect(meetsPopularityThreshold(g, sorted)).toBe(false);
+    expect(meetsPopularityThreshold(g)).toBe(false);
   });
 
   it('no data at all → false', () => {
     const g = makeGame({});
-    expect(meetsPopularityThreshold(g, [])).toBe(false);
+    expect(meetsPopularityThreshold(g)).toBe(false);
+  });
+
+  // Issue #235 回帰テスト: 話題性判定から YouTube 経路を削除したことの固定化。
+  // ポジティブコントロール（steamRecommendations=5000 → true, steamRank=200 → true）は
+  // 上記の既存テストで確認済みなので、ここでは YouTube 単独では通らないことのみを確認する。
+  it('youtubePopularity が巨大でも steamRecommendations / steamRank が閾値未満なら false（YouTube 経路は削除済み）', () => {
+    const g = makeGame({
+      youtubePopularity: 10_000_000,
+      steamRecommendations: 4999,
+      steamRank: 201,
+    });
+    expect(meetsPopularityThreshold(g)).toBe(false);
   });
 });
 
@@ -143,7 +107,7 @@ describe('selectIndieGamesWithFallback - 通常ルート', () => {
       .mockResolvedValueOnce({ ok: true, game: finishedA })
       .mockResolvedValueOnce({ ok: true, game: finishedB });
 
-    const result = await selectIndieGamesWithFallback([A, B], 2, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([A, B], 2);
     expect(result.adopted).toHaveLength(2);
     expect(result.adopted[0].title).toBe('Game A');
     expect(result.adopted[1].title).toBe('Game B');
@@ -162,7 +126,7 @@ describe('selectIndieGamesWithFallback - 通常ルート', () => {
       .mockResolvedValueOnce({ ok: true, game: finishedB })
       .mockResolvedValueOnce({ ok: true, game: finishedC });
 
-    const result = await selectIndieGamesWithFallback([A, B, C], 2, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([A, B, C], 2);
     expect(result.adopted).toHaveLength(2);
     expect(result.adopted[0].title).toBe('Game B');
     expect(result.adopted[1].title).toBe('Game C');
@@ -178,13 +142,13 @@ describe('selectIndieGamesWithFallback - 通常ルート', () => {
       .mockResolvedValueOnce({ ok: false, reason: 'still-missing-required' as const, game: A })
       .mockResolvedValueOnce({ ok: false, reason: 'still-missing-required' as const, game: B });
 
-    const result = await selectIndieGamesWithFallback([A, B], 2, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([A, B], 2);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(2);
   });
 
   it('ranked=[] → adopted=[], rejected=[]', async () => {
-    const result = await selectIndieGamesWithFallback([], 2, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([], 2);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(0);
     expect(mockFinalize).not.toHaveBeenCalled();
@@ -212,7 +176,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: gameAfterFinalize,
     });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
 
     expect(result.adopted).toHaveLength(1);
     expect(result.adopted[0].developer).toBe('個人開発（dev_account）');
@@ -236,7 +200,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: gameAfterFinalize,
     });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
 
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
@@ -263,7 +227,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: gameAfterFinalize,
     });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
 
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
@@ -288,7 +252,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: gameAfterFinalize,
     });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
 
     expect(result.adopted).toHaveLength(1);
     expect(result.adopted[0].developer).toBe('個人開発（unknown）');
@@ -318,7 +282,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: mechaChamRaw,
     });
 
-    const result = await selectIndieGamesWithFallback([mechaChamRaw], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([mechaChamRaw], 1);
 
     expect(result.adopted).toHaveLength(1);
     const adopted = result.adopted[0];
@@ -341,7 +305,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].reason).toBe('not-adopted');
@@ -358,7 +322,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].reason).toBe('not-adopted');
@@ -386,7 +350,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       game: gameAfterFinalize,
     });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].reason).toBe('not-adopted');
@@ -405,7 +369,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].reason).toBe('not-adopted');
@@ -422,7 +386,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
 
-    const result = await selectIndieGamesWithFallback([candidate], 1, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([candidate], 1);
     expect(result.adopted).toHaveLength(1);
     expect(result.adopted[0].developer).toBe('Team Cherry');
   });
@@ -440,7 +404,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       .mockResolvedValueOnce({ ok: true, game: finishedA })
       .mockResolvedValueOnce({ ok: true, game: finishedB });
 
-    await selectIndieGamesWithFallback(games, 2, EMPTY_CONTEXT);
+    await selectIndieGamesWithFallback(games, 2);
 
     expect(mockFinalize).toHaveBeenCalledTimes(2);
   });
@@ -474,7 +438,7 @@ describe('selectIndieGamesWithFallback — developerGameCount による大手ゲ
       .mockResolvedValueOnce({ ok: true, game: finishedLarge })
       .mockResolvedValueOnce({ ok: true, game: finishedSmall });
 
-    const result = await selectIndieGamesWithFallback([large, small], 2, EMPTY_CONTEXT);
+    const result = await selectIndieGamesWithFallback([large, small], 2);
 
     expect(result.adopted.map((g) => g.title)).toContain('Small By Count');
     expect(result.adopted.map((g) => g.title)).not.toContain('Large By Count');

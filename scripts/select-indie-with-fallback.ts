@@ -19,13 +19,6 @@ const POPULARITY_STEAM_REVIEWS_MIN =
   Number(process.env.INDIE_POPULARITY_STEAM_REVIEWS_MIN) || 5000;
 const POPULARITY_STEAM_RANK_MAX =
   Number(process.env.INDIE_POPULARITY_STEAM_RANK_MAX) || 200;
-const POPULARITY_YOUTUBE_PERCENTILE =
-  Number(process.env.INDIE_POPULARITY_YOUTUBE_PERCENTILE) || 0.30;
-
-export interface PopularityContext {
-  /** 候補プール全体を youtubePopularity 降順に並べたリスト（percentile 計算用） */
-  youtubePopularitySorted: GameData[];
-}
 
 export interface SelectionResult {
   adopted: GameData[];
@@ -39,24 +32,10 @@ const NORMAL_REQUIRED = { cover: true, developer: true, sourceUrl: true, steamRe
 /**
  * ゲームが話題性閾値を満たすか判定する。
  * @param game 評価対象ゲーム
- * @param youtubePopularitySorted 候補プール全体を youtubePopularity 降順に並べたリスト
  */
-export function meetsPopularityThreshold(
-  game: GameData,
-  youtubePopularitySorted: GameData[]
-): boolean {
+export function meetsPopularityThreshold(game: GameData): boolean {
   if ((game.steamRecommendations ?? 0) >= POPULARITY_STEAM_REVIEWS_MIN) return true;
   if ((game.steamRank ?? Infinity) <= POPULARITY_STEAM_RANK_MAX) return true;
-
-  if (game.youtubePopularity !== undefined && youtubePopularitySorted.length > 0) {
-    // 上位 POPULARITY_YOUTUBE_PERCENTILE（30%）の閾値スコアを計算
-    const thresholdIndex = Math.floor(
-      youtubePopularitySorted.length * (1 - POPULARITY_YOUTUBE_PERCENTILE)
-    );
-    const thresholdScore = youtubePopularitySorted[thresholdIndex]?.youtubePopularity ?? 0;
-    if (game.youtubePopularity >= thresholdScore) return true;
-  }
-
   return false;
 }
 
@@ -93,8 +72,7 @@ export function formatIndividualDeveloper(rawName: string): string {
  * これにより「枠を埋めるために不適格なゲームを載せない」という設計方針を保証する。
  */
 export async function vetIndieCandidate(
-  game: GameData,
-  context: PopularityContext
+  game: GameData
 ): Promise<GameData | null> {
   let finalizeResult: Awaited<ReturnType<typeof finalizeGameMetadata>>;
   try {
@@ -136,7 +114,7 @@ export async function vetIndieCandidate(
   if (
     finalizeResult.reason === 'still-missing-required' &&
     isOnlyDeveloperMissing(finalizeResult.game) &&
-    meetsPopularityThreshold(game, context.youtubePopularitySorted)
+    meetsPopularityThreshold(game)
   ) {
     // developer が欠落していても publisher が大手なら個人開発ラベルで採用しない。
     if (isLargeStudio(finalizeResult.game.publisher).hit) {
@@ -169,8 +147,7 @@ export async function vetIndieCandidate(
  */
 export async function selectIndieGamesWithFallback(
   ranked: GameData[],
-  targetCount: number,
-  context: PopularityContext
+  targetCount: number
 ): Promise<SelectionResult> {
   const queue = [...ranked];
   const adopted: GameData[] = [];
@@ -179,7 +156,7 @@ export async function selectIndieGamesWithFallback(
   while (adopted.length < targetCount && queue.length > 0) {
     const candidate = queue.shift()!;
 
-    const vetted = await vetIndieCandidate(candidate, context);
+    const vetted = await vetIndieCandidate(candidate);
     if (vetted) {
       adopted.push(vetted);
       continue;

@@ -449,6 +449,8 @@ Shovel Knight や VA-11 HALL-A は「小さなチームがどうやって作っ�
 | 記事生成プロンプトへの数値提示（「YouTube での累計視聴回数: N 回」） | **今回は残す**。ただし**分裂した表記の一部しか拾えていない値を LLM に渡している**状態なので（「マイクラ」だけで 174 万、「マインクラフト」77 万が別集計）、Issue #217 で扱う。なお本番 17・18 号の記事本文には視聴回数が出力されていないことを確認済み（漏洩はしていない） |
 | データ取得そのもの（`fetchYouTubeData`） | **残す**。Issue #217 の検証に必要 |
 
+> ✅ **実装しました**（2026-08-11。Issue #235）。`meetsPopularityThreshold` から YouTube 分岐と `PopularityContext` を削除し、`fetch-data.ts` の `youtubePopularitySorted` 構築2箇所（通常選定・CompletenessGate 差し替え）を削除しました。
+
 ### 3.6 ▼ ロジック: 並び順
 
 **Steam のおすすめ数の降順**（2026-08-07 決定）。
