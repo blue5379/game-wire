@@ -68,6 +68,19 @@ export interface ValidationReport {
   webSearchStats?: {
     searchFailures: number;
     pageContentFailures: number;
+    /**
+     * AI成人向けスクリーニング（Bedrock呼び出し）の失敗回数。fail-openで通過した件数（Issue #222）。
+     * 旧キャッシュ（本フィールド追加前に生成された data/generated-articles.json）には存在しないため
+     * optional。undefined =「未計測」、0 =「計測した上で失敗ゼロ」であり、意味が異なるので混同しないこと。
+     */
+    adultScreeningFailures?: number;
+    /**
+     * AI成人向けスクリーニングの応答が YES/NO どちらでもなかった回数（応答形式不正のfail-open、Issue #222）。
+     * adultScreeningFailures とは意味が異なる別カウンタ（例外は投げていない）。
+     * undefined =「未計測」、0 =「計測した上でゼロ」。error 昇格の対象には含めない
+     * （理由は format-validation-report.ts 冒頭のコメント参照）。
+     */
+    unrecognizedScreeningResponses?: number;
   };
   /**
    * LLM-as-a-judge による事実性チェックの結果（P3）。
@@ -880,7 +893,12 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
 export function validateArticles(
   articles: GeneratedArticle[],
   issueNumber: number,
-  webSearchStats?: { searchFailures: number; pageContentFailures: number },
+  webSearchStats?: {
+    searchFailures: number;
+    pageContentFailures: number;
+    adultScreeningFailures?: number;
+    unrecognizedScreeningResponses?: number;
+  },
   publishDate?: Date
 ): ValidationReport {
   const warnings: ValidationWarning[] = [];
@@ -975,6 +993,26 @@ export function writeAndCheckReport(
       );
     } else {
       console.log(`  Web search failures: 0`);
+    }
+    // adultScreeningFailures は旧キャッシュに存在しない場合がある。undefined（未計測）と
+    // 0（計測した上で失敗ゼロ）を混同しないよう、undefined は別メッセージで明示する（Issue #222）。
+    if (s.adultScreeningFailures === undefined) {
+      console.log(`  Adult screening failures: unmeasured (old cache)`);
+    } else if (s.adultScreeningFailures > 0) {
+      console.warn(`  ⚠️  Adult screening failures (fail-open): ${s.adultScreeningFailures}`);
+    } else {
+      console.log(`  Adult screening failures: 0`);
+    }
+    // unrecognizedScreeningResponses も同様に「未計測」と「計測して0件」を区別する（Issue #222）。
+    // 例外を投げていない fail-open 経路のため adultScreeningFailures とは別カウンタ。
+    if (s.unrecognizedScreeningResponses === undefined) {
+      console.log(`  Unrecognized screening responses: unmeasured (old cache)`);
+    } else if (s.unrecognizedScreeningResponses > 0) {
+      console.warn(
+        `  ⚠️  Unrecognized screening responses (fail-open): ${s.unrecognizedScreeningResponses}`
+      );
+    } else {
+      console.log(`  Unrecognized screening responses: 0`);
     }
   }
   console.log(`Report saved: ${reportPath}`);

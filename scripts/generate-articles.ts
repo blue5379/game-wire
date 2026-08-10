@@ -47,10 +47,23 @@ import { normalizeTitle } from './normalize.js';
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
 
-// Web検索失敗カウンター型（main()でローカルに生成し参照渡し）
-interface WebSearchStats {
+// 記事生成中の失敗カウンター型（main()でローカルに生成し参照渡し）。
+// 元々は Web検索失敗のみを扱う WebSearchStats だったが、Issue #222 対応で
+// AI成人向けスクリーニング（Bedrock呼び出し）の fail-open 失敗も同じ仕組みで
+// 計上するようになったため、Web検索専用ではなくなった。そのため
+// GenerationStats に改名した（この型はファイル外にエクスポートしていないため、
+// 影響範囲は本ファイル内の参照のみ。grep で確認済み）。
+interface GenerationStats {
   searchFailures: number;
   pageContentFailures: number;
+  /** isAdultContentByAI の Bedrock 呼び出しが例外を投げた回数（fail-open で通過した件数） */
+  adultScreeningFailures: number;
+  /**
+   * isAdultContentByAI の応答が trim+toUpperCase 後に 'YES' でも 'NO' でもなかった回数（Issue #222 追加観測）。
+   * 例外は投げていないため adultScreeningFailures とは別の経路の fail-open（応答形式不正のまま
+   * 非成人向け扱いで通過）であり、混同しないよう別カウンタとして分離する。
+   */
+  unrecognizedScreeningResponses: number;
 }
 
 // データディレクトリ
@@ -146,6 +159,19 @@ export interface GeneratedIssue {
   webSearchStats?: {
     searchFailures: number;       // Tavilyキーワード検索の失敗回数
     pageContentFailures: number;  // 公式ページ取得の失敗回数
+    /**
+     * AI成人向けスクリーニング（Bedrock）の失敗回数。fail-openで通過した件数。
+     * optional の理由: build-issue.ts が `JSON.parse(...) as GeneratedIssue` で古い
+     * generated-articles.json（本フィールド追加前）を読み込むことがあり、その場合
+     * 実行時は undefined になる。number 必須のままだと型が実態と食い違う「型の嘘」に
+     * なるため optional にしている（書き込み側の main() は引き続き必ず値を設定する）。
+     */
+    adultScreeningFailures?: number;
+    /**
+     * isAdultContentByAI の応答が YES/NO どちらでもなかった回数（応答形式不正のfail-open）。
+     * adultScreeningFailures とは別カウンタ（意味が異なる）。上記と同じ理由で optional。
+     */
+    unrecognizedScreeningResponses?: number;
   };
 }
 
@@ -251,7 +277,7 @@ ${content}`;
  * ゲームタイトルと概要を元に成人向けコンテンツか判定する。
  * 判定が難しい場合は安全側（false）に倒す。
  */
-async function isAdultContentByAI(game: GameData): Promise<boolean> {
+async function isAdultContentByAI(game: GameData, stats?: GenerationStats): Promise<boolean> {
   const title = game.title;
   const summary = game.summary || '';
 
@@ -282,9 +308,21 @@ YES または NO のみを1行で出力してください。理由は不要で�
       console.log(`  [AI Screening] Adult content detected: "${title}"`);
       return true;
     }
+    if (result !== 'NO') {
+      // 応答が想定形式（YES/NO）ではない。maxTokens: 10 による切り詰めや、
+      // "YES." / "**YES**" / 空文字 / 拒否応答等が該当し得る。例外は投げていないため
+      // adultScreeningFailures（catch節）では捕捉できない、もう一つの fail-open 経路。
+      // 安全側（非成人向け扱い）で通過させる挙動自体は変えず、観測のみ行う。
+      const truncated = result.length > 100 ? `${result.slice(0, 100)}...(truncated)` : result;
+      console.warn(
+        `  [AI Screening] Unrecognized response format (expected YES/NO) for "${title}", treating as non-adult (fail-open). Actual response: "${truncated}"`
+      );
+      if (stats) stats.unrecognizedScreeningResponses++;
+    }
     return false;
   } catch (error) {
     console.warn(`  [AI Screening] Failed for "${title}", defaulting to safe: ${error}`);
+    if (stats) stats.adultScreeningFailures++;
     return false;
   }
 }
@@ -294,10 +332,10 @@ YES または NO のみを1行で出力してください。理由は不要で�
  * isAdultContentByAI を順次呼び出す（Bedrock 呼び出しの順序・レート挙動を
  * 既存3箇所と揃えるため Promise.all は使わない）。
  */
-async function screenOutAdultGames(games: GameData[]): Promise<GameData[]> {
+async function screenOutAdultGames(games: GameData[], stats?: GenerationStats): Promise<GameData[]> {
   const result: GameData[] = [];
   for (const game of games) {
-    if (await isAdultContentByAI(game)) {
+    if (await isAdultContentByAI(game, stats)) {
       console.warn(`  Skipping adult content game: "${game.title}"`);
       continue;
     }
@@ -313,7 +351,7 @@ async function generateNewReleaseArticle(
   game: GameData,
   publishDate: Date,
   regenOpts?: RegenerateOptions,
-  stats?: WebSearchStats
+  stats?: GenerationStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating new release article: ${game.title}`);
 
@@ -411,7 +449,7 @@ async function generateIndieArticle(
   game: GameData,
   publishDate: Date,
   regenOpts?: RegenerateOptions,
-  stats?: WebSearchStats
+  stats?: GenerationStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating indie article: ${game.title}`);
 
@@ -698,7 +736,7 @@ export async function generateFeatureArticle(
   issueNumber: number,
   relatedGames?: GameData[],
   excludeTitles?: string[],
-  stats?: WebSearchStats
+  stats?: GenerationStats
 ): Promise<{ article: GeneratedArticle; context: FeatureArticleContext }> {
   // --- フェーズ1: テーマ選定 ---
   const events = getEventsInRange(publishDate, 7);
@@ -880,7 +918,7 @@ export async function generateFeatureArticle(
 
   // AI スクリーニングで成人向けコンテンツを除外（他3カテゴリと同じ2層防御を揃える）。
   // 規定本数チェックより前に行い、スクリーニングで薄くなった特集を下の警告で検知できるようにする。
-  selectedGameData = await screenOutAdultGames(selectedGameData);
+  selectedGameData = await screenOutAdultGames(selectedGameData, stats);
 
   // 候補が0件になった場合は特集記事の生成自体を止める（Issue #221）。
   // qualified/fringe いずれの候補プールも尽きた（またはAIスクリーニングで全滅した）状態で
@@ -1043,7 +1081,7 @@ async function generateClassicArticle(
   game: GameData,
   publishDate: Date,
   regenOpts?: RegenerateOptions,
-  stats?: WebSearchStats
+  stats?: GenerationStats
 ): Promise<GeneratedArticle> {
   console.log(`  Generating classic article: ${game.title}`);
 
@@ -1245,8 +1283,16 @@ async function main(): Promise<void> {
   console.log(`Next issue number: ${nextIssueNumber}`);
   console.log('');
 
-  // Web検索失敗カウンター（main()スコープで管理し各generate関数に参照渡し）
-  const webSearchStats: WebSearchStats = { searchFailures: 0, pageContentFailures: 0 };
+  // 記事生成中の失敗カウンター（main()スコープで管理し各generate関数に参照渡し）。
+  // 変数名は webSearchStats のままだが、Issue #222 対応で AI成人向けスクリーニングの
+  // fail-open 失敗（adultScreeningFailures）も同じオブジェクトで計上する
+  // （GeneratedIssue.webSearchStats フィールド名との対応を保つため据え置き）。
+  const webSearchStats: GenerationStats = {
+    searchFailures: 0,
+    pageContentFailures: 0,
+    adultScreeningFailures: 0,
+    unrecognizedScreeningResponses: 0,
+  };
 
   // 記事と、その記事を修正指示付きで作り直す再生成クロージャをまとめて保持する。
   // 各 generate 関数のシグネチャ差は regenerate クロージャで吸収する。
@@ -1267,7 +1313,7 @@ async function main(): Promise<void> {
   console.log('Generating new release articles...');
   for (const game of selectedGames.newReleases.slice(0, 2)) {
     try {
-      if (await isAdultContentByAI(game)) {
+      if (await isAdultContentByAI(game, webSearchStats)) {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
@@ -1288,7 +1334,7 @@ async function main(): Promise<void> {
   console.log('Generating indie articles...');
   for (const game of selectedGames.indies.slice(0, 2)) {
     try {
-      if (await isAdultContentByAI(game)) {
+      if (await isAdultContentByAI(game, webSearchStats)) {
         console.warn(`  Skipping adult content game: "${game.title}"`);
         continue;
       }
@@ -1368,7 +1414,7 @@ async function main(): Promise<void> {
   if (selectedGames.classic) {
     const classicGame = selectedGames.classic;
     try {
-      if (await isAdultContentByAI(classicGame)) {
+      if (await isAdultContentByAI(classicGame, webSearchStats)) {
         console.warn(`  Skipping adult content classic game: "${classicGame.title}"`);
       } else {
         const article = await generateClassicArticle(classicGame, publishDate, undefined, webSearchStats);
@@ -1419,6 +1465,8 @@ async function main(): Promise<void> {
     webSearchStats: {
       searchFailures: webSearchStats.searchFailures,
       pageContentFailures: webSearchStats.pageContentFailures,
+      adultScreeningFailures: webSearchStats.adultScreeningFailures,
+      unrecognizedScreeningResponses: webSearchStats.unrecognizedScreeningResponses,
     },
   };
 
@@ -1442,6 +1490,28 @@ async function main(): Promise<void> {
     console.warn(`   - Keyword search failures: ${webSearchStats.searchFailures}`);
     console.warn(`   - Official page fetch failures: ${webSearchStats.pageContentFailures}`);
     console.warn(`   These failures may have reduced article quality.`);
+  }
+
+  // AI成人向けスクリーニング（Bedrock）の fail-open 失敗を集約警告する（Issue #222）。
+  // isAdultContentByAI は判定不能時に安全側（false=成人向けではない）へ倒す仕様のため、
+  // 失敗してもエラーにはならず記事生成は続行する。そのため「成人向けが0件だった正常系」と
+  // 「Bedrock障害でこの層の判定が全件失敗し、事実上無効化された異常系」がログ上で
+  // 区別できなかった。このカウンタと警告により、後者を検知可能にする。
+  if (webSearchStats.adultScreeningFailures > 0) {
+    console.warn('');
+    console.warn(`⚠️  AI成人向けスクリーニングが${webSearchStats.adultScreeningFailures}件失敗しました:`);
+    console.warn(`   Bedrock呼び出しが例外を投げたため、該当ゲームは判定不能のまま安全側（非成人向け扱い）で通過しています（fail-open）。`);
+    console.warn(`   これは「成人向けゲームが0件だった」正常系とは異なり、スクリーニング層が一部無効化された状態です。`);
+  }
+
+  // 応答形式不正（YES/NO以外）による fail-open も同様に集約警告する。例外を投げていないため
+  // 上記の adultScreeningFailures とは別の経路（Issue #222 追加観測）。
+  if (webSearchStats.unrecognizedScreeningResponses > 0) {
+    console.warn('');
+    console.warn(
+      `⚠️  AI成人向けスクリーニングの応答形式が想定外（YES/NO以外）だったケースが${webSearchStats.unrecognizedScreeningResponses}件ありました:`
+    );
+    console.warn(`   該当ゲームは判定不能のまま安全側（非成人向け扱い）で通過しています（fail-open）。`);
   }
 
   console.log(`Finished at: ${new Date().toISOString()}`);

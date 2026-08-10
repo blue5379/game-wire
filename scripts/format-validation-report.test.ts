@@ -11,6 +11,7 @@ import {
   buildRecommendedActions,
   formatReportMarkdown,
   webSearchFailureCount,
+  adultScreeningFailureCount,
 } from './format-validation-report.js';
 import type { ValidationReport, ValidationWarning } from './validate-article.js';
 
@@ -49,6 +50,22 @@ describe('computeReportStatus', () => {
       webSearchStats: { searchFailures: 0, pageContentFailures: 2 },
     });
     expect(computeReportStatus(report)).toBe('error');
+  });
+
+  it('AI成人向けスクリーニング失敗があれば（high 0・Web検索失敗 0 でも）error（Issue #222、Web検索失敗と同じ扱い）', () => {
+    const report = makeReport({
+      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 1 },
+    });
+    expect(computeReportStatus(report)).toBe('error');
+  });
+
+  it('webSearchStats に adultScreeningFailures が無い（旧キャッシュ）場合は未計測として ok 側の判定に影響しない', () => {
+    const report = makeReport({
+      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
+    });
+    expect(computeReportStatus(report)).toBe('ok');
   });
 
   it('medium 警告のみなら warning', () => {
@@ -121,6 +138,31 @@ describe('webSearchFailureCount', () => {
     const report = makeReport({ webSearchStats: { searchFailures: 3, pageContentFailures: 2 } });
     expect(webSearchFailureCount(report)).toBe(5);
   });
+
+  it('adultScreeningFailures は合算しない（意味が異なるため・Issue #222）', () => {
+    const report = makeReport({
+      webSearchStats: { searchFailures: 1, pageContentFailures: 1, adultScreeningFailures: 10 },
+    });
+    expect(webSearchFailureCount(report)).toBe(2);
+  });
+});
+
+describe('adultScreeningFailureCount (Issue #222)', () => {
+  it('webSearchStats が無ければ 0', () => {
+    expect(adultScreeningFailureCount(makeReport())).toBe(0);
+  });
+
+  it('webSearchStats はあるが adultScreeningFailures が無い（旧キャッシュ）場合も 0', () => {
+    const report = makeReport({ webSearchStats: { searchFailures: 0, pageContentFailures: 0 } });
+    expect(adultScreeningFailureCount(report)).toBe(0);
+  });
+
+  it('adultScreeningFailures をそのまま返す（Web検索失敗の値とは独立）', () => {
+    const report = makeReport({
+      webSearchStats: { searchFailures: 5, pageContentFailures: 5, adultScreeningFailures: 3 },
+    });
+    expect(adultScreeningFailureCount(report)).toBe(3);
+  });
 });
 
 describe('buildRecommendedActions', () => {
@@ -142,6 +184,24 @@ describe('buildRecommendedActions', () => {
     const report = makeReport({ webSearchStats: { searchFailures: 1, pageContentFailures: 1 } });
     const actions = buildRecommendedActions(report);
     expect(actions.some((a) => a.includes('Web 検索失敗 2 件'))).toBe(true);
+  });
+
+  it('AI成人向けスクリーニング失敗があれば手動確認のアクションを含む（Issue #222）', () => {
+    const report = makeReport({
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 2 },
+    });
+    const actions = buildRecommendedActions(report);
+    const action = actions.find((a) => a.includes('AI成人向けスクリーニング失敗 2 件'));
+    expect(action).toBeDefined();
+    expect(action).toContain('成人向け');
+  });
+
+  it('adultScreeningFailures が 0 ならAI成人向けスクリーニングのアクションを含まない', () => {
+    const report = makeReport({
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 },
+    });
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('AI成人向けスクリーニング'))).toBe(false);
   });
 
   it('複数種類の問題があれば複数のアクションを列挙する', () => {
@@ -214,6 +274,170 @@ describe('formatReportMarkdown', () => {
     expect(md).toContain('検索結果に根拠あり');
     expect(md).toContain('https://example.com/src');
     expect(md).not.toContain('捏造の可能性あり');
+  });
+
+  it('AI成人向けスクリーニング失敗があればサマリ表に件数を表示する（Issue #222）', () => {
+    const report = makeReport({
+      status: 'error',
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 3 },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('| ⚠️ AI成人向けスクリーニング失敗（fail-open） | 3 |');
+  });
+
+  it('adultScreeningFailures が 0 ならサマリ表は正常系（✅ 0件）表示になる', () => {
+    const report = makeReport({
+      status: 'ok',
+      webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+    expect(md).not.toContain('⚠️ AI成人向けスクリーニング失敗');
+  });
+
+  it('webSearchStats が undefined（旧キャッシュ）でも例外を投げない。Web検索失敗は0件扱いだが、AI成人向けスクリーニング失敗は未計測として表示する（Issue #222 code review 対応）', () => {
+    const report = makeReport({ status: 'ok' });
+    delete report.webSearchStats;
+    expect(() => formatReportMarkdown(report)).not.toThrow();
+    const md = formatReportMarkdown(report);
+    // Web検索失敗は元々 webSearchFailureCount() が undefined を 0 として扱う仕様のまま（変更対象外）
+    expect(md).toContain('| ✅ Web検索失敗 | 0 |');
+    // AI成人向けスクリーニング失敗は「未計測」であり「0件」と断定してはならない
+    expect(md).toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
+    expect(md).not.toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+    expect(md).not.toContain('⚠️ AI成人向けスクリーニング失敗');
+  });
+
+  // 修正1（Issue #222 code review）: markdown は「未計測」と「計測して0件」を区別する。
+  // 実在する未計測経路: validate-existing-issue.ts が webSearchStats=undefined を渡すケース、
+  // および旧 generated-articles.json（本フィールド追加前）を build-issue が読むケース。
+  describe('AI成人向けスクリーニング失敗 — 未計測/0件/N件の3分岐（Issue #222 code review 修正1）', () => {
+    it('webSearchStats はあるが adultScreeningFailures フィールドが無い（旧キャッシュ）場合は「未計測」と表示し、「0」とは表示しない', () => {
+      const report = makeReport({
+        status: 'ok',
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
+      expect(md).not.toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+      expect(md).not.toContain('⚠️ AI成人向けスクリーニング失敗');
+    });
+
+    it('adultScreeningFailures が 0（計測済み）の場合は「AI成人向けスクリーニング失敗」行に「0」と表示し、「未計測」とは表示しない', () => {
+      const report = makeReport({
+        status: 'ok',
+        // unrecognizedScreeningResponses も明示的に 0 を渡し、AI成人向けスクリーニング失敗の行だけを
+        // 検証できるようにする（この項目自体が別途「未計測」を出しうるため）
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 0,
+        },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+      expect(md).not.toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
+    });
+
+    it('adultScreeningFailures が 3件（計測済み）の場合は件数を表示し、「未計測」とは表示しない', () => {
+      const report = makeReport({
+        status: 'error',
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 3,
+          unrecognizedScreeningResponses: 0,
+        },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ⚠️ AI成人向けスクリーニング失敗（fail-open） | 3 |');
+      expect(md).not.toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
+      expect(md).not.toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');
+    });
+  });
+
+  // 修正3（Issue #222 code review）: 応答形式不正（YES/NO以外）カウンタのサマリ表・推奨アクション表示。
+  describe('AI成人向けスクリーニング応答形式不正 — サマリ表・推奨アクション（Issue #222 code review 修正3）', () => {
+    it('unrecognizedScreeningResponses が無い（未計測）場合は「未計測」と表示する', () => {
+      const report = makeReport({
+        status: 'ok',
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ❓ AI成人向けスクリーニング応答形式不正 | 未計測 |');
+    });
+
+    it('unrecognizedScreeningResponses が 0（計測済み）の場合は「0」と表示する', () => {
+      const report = makeReport({
+        status: 'ok',
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          unrecognizedScreeningResponses: 0,
+        },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ✅ AI成人向けスクリーニング応答形式不正 | 0 |');
+    });
+
+    it('unrecognizedScreeningResponses が2件ある場合はサマリ表に件数を表示し、推奨アクションにも含める', () => {
+      const report = makeReport({
+        status: 'ok', // 昇格させない仕様のピン留め（ok のままでも表示自体はされること）
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          unrecognizedScreeningResponses: 2,
+        },
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| ⚠️ AI成人向けスクリーニング応答形式不正 | 2 |');
+
+      const actions = buildRecommendedActions(report);
+      const action = actions.find((a) => a.includes('応答形式不正 2 件'));
+      expect(action).toBeDefined();
+    });
+
+    it('unrecognizedScreeningResponses が 0 なら推奨アクションに応答形式不正の項目を含めない', () => {
+      const report = makeReport({
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          unrecognizedScreeningResponses: 0,
+        },
+      });
+      const actions = buildRecommendedActions(report);
+      expect(actions.some((a) => a.includes('応答形式不正'))).toBe(false);
+    });
+  });
+
+  // 重要な仕様固定（Issue #222 code review 修正3）: unrecognizedScreeningResponses は
+  // 観測目的のカウンタであり、実際のBedrock応答形式の頻度が未検証のため、
+  // 誤起票リスクを避けて computeReportStatus には含めない（error に昇格させない）。
+  describe('unrecognizedScreeningResponses は computeReportStatus を error に昇格させない（Issue #222 code review 修正3・重要仕様）', () => {
+    it('unrecognizedScreeningResponses > 0 でも他に問題が無ければ status は ok のまま', () => {
+      const report = makeReport({
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 5,
+        },
+      });
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('unrecognizedScreeningResponses がどれだけ多くても（1000件）status は ok のまま', () => {
+      const report = makeReport({
+        webSearchStats: {
+          searchFailures: 0,
+          pageContentFailures: 0,
+          adultScreeningFailures: 0,
+          unrecognizedScreeningResponses: 1000,
+        },
+      });
+      expect(computeReportStatus(report)).toBe('ok');
+    });
   });
 
   it('LLM judge の集計を表に含める', () => {

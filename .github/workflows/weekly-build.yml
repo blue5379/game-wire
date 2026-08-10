@@ -133,7 +133,15 @@ jobs:
 
           ISSUE_NUM=$(jq -r '.issueNumber' "$REPORT_JSON")
           HIGH=$(jq -r '.warningsBySeverity.high' "$REPORT_JSON")
-          TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（HIGH: ${HIGH}件）"
+          ADULT=$(jq -r '.webSearchStats.adultScreeningFailures // 0' "$REPORT_JSON")
+          # AI成人向けスクリーニング失敗のみで起票された場合、HIGH件数だけのタイトルだと
+          # 「HIGH: 0件」という矛盾した表記になる（Issue #222 code review 対応）。
+          # ADULT が 0 の場合は従来通りの表記のまま（重複防止ロジックが旧Issueと一致し続けるように保つ）。
+          if [ "$ADULT" != "0" ]; then
+            TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（HIGH: ${HIGH}件、AI成人向けスクリーニング失敗: ${ADULT}件）"
+          else
+            TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（HIGH: ${HIGH}件）"
+          fi
 
           # 同一タイトルのオープン Issue が既にあれば起票しない（重複防止）。
           # GitHub 検索インデックスは即時反映されないため、全件取得してローカルで完全一致フィルタする。
