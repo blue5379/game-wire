@@ -27,8 +27,6 @@ interface FrontmatterArticle {
     releaseDate?: string;
     developer?: string;
     publisher?: string;
-    metascore?: number | null;
-    userScore?: number | null;
   };
   sourceUrls?: {
     steam?: string;
@@ -70,8 +68,6 @@ function toGeneratedArticle(fa: FrontmatterArticle): GeneratedArticle {
           releaseDate: fa.game.releaseDate,
           developer: fa.game.developer,
           publisher: fa.game.publisher,
-          metascore: fa.game.metascore,
-          userScore: fa.game.userScore,
         }
       : undefined,
   };

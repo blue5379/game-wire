@@ -26,7 +26,7 @@ import {
 } from './fetch-data.js';
 import { isFanGame } from './game-filter.js';
 import { isIndieGame } from './indie-classifier.js';
-import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData, MetacriticData } from './types.js';
+import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData } from './types.js';
 import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
@@ -910,10 +910,10 @@ describe('isAlreadySelected — 号内カテゴリ間の重複判定（正規化
 describe('buildNewReleaseCandidates', () => {
   const releasedAfter = new Date('2026-05-01');
 
-  it('3軸スコア降順に並ぶ（旧ソート＝metascore/igdbRating降順とは異なる順序になることを検証）', () => {
-    // 旧ソートキー: metascore || igdbRating || 0
-    //   SteamHitNoName: metascore/igdbRating とも無し → 0
-    //   CriticHigh: metascore=84 → 84
+  it('3軸スコア降順に並ぶ（旧ソート＝批評スコア/igdbRating降順とは異なる順序になることを検証）', () => {
+    // 旧ソートキー: 批評スコア || igdbRating || 0
+    //   SteamHitNoName: 批評スコア/igdbRating とも無し → 0
+    //   CriticHigh: 批評スコア=84 → 84
     //   旧ソートなら [CriticHigh, SteamHitNoName] の順になる
     //
     // 新ソート（3軸スコア, steamSlotCount=20）:
@@ -930,10 +930,9 @@ describe('buildNewReleaseCandidates', () => {
       title: 'CriticHigh',
       normalizedTitle: 'critichigh',
       releaseDate: '2026-06-01',
-      metascore: 84,
       aggregatedRating: 84,
       aggregatedRatingCount: 4,
-      steamPlayers: 100, // hasExistenceEvidence 用（steamRank なしでも存在根拠を持たせる）
+      igdbRatingCount: 5, // hasExistenceEvidence 用（steamRank なしでも存在根拠を持たせる。votesMin=15未満なのでスコアのvotes軸には寄与しない）
     });
 
     const result = buildNewReleaseCandidates([criticHigh, steamHitNoName], {
@@ -1053,7 +1052,7 @@ describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {
   const releasedAfter = new Date('2026-05-01');
 
   it('amazonRanks を渡すと、Amazon掲載のみで品質・実存条件を満たすゲームが候補に入る。渡さなければ同じゲームは候補に入らない（ポジティブコントロール）', () => {
-    // 他のシグナル（steamRank/steamPlayers/igdbRatingCount/metascore/aggregatedRatingCount）を
+    // 他のシグナル（steamRank/igdbRatingCount/aggregatedRatingCount）を
     // 一切持たない国内専用タイトルを想定
     const amazonOnly = makeGame({
       title: 'Amazon Only Game',
@@ -1118,7 +1117,7 @@ describe('buildNewReleaseCandidates — Amazon経路（§2.3 PR-B2）', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // buildClassicCandidates — 名作枠の候補構築（§5.4/§5.5/§5.8決着, Issue classic-slot-population）
 //
-// 旧仕様（metascore>80 or igdbRating>=80、igdbRating>=85なら無条件、それ以外はSteam/YouTube人気）
+// 旧仕様（批評スコア>80 or igdbRating>=80、igdbRating>=85なら無条件、それ以外はSteam/YouTube人気）
 // は§5.4の母集団条件（total_rating>=85 & total_rating_count>=200）に一本化された。
 // ─────────────────────────────────────────────────────────────────────────────
 describe('buildClassicCandidates', () => {
@@ -1359,7 +1358,7 @@ describe('buildClassicCandidates', () => {
     expect(result.map((g) => g.title)).toContain('Should Survive');
   });
 
-  it('評価母数（totalRatingCount）降順に並ぶ（§5.8決着。metascore/igdbRatingによるソートは廃止）', () => {
+  it('評価母数（totalRatingCount）降順に並ぶ（§5.8決着。批評スコア/igdbRatingによるソートは廃止）', () => {
     const lower = makeGame({
       title: 'Lower Count',
       normalizedTitle: 'lower count',
@@ -1766,7 +1765,6 @@ describe('deduplicateGames — developerGameCount のマージ（§3.4, Issue #2
 describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible の転記', () => {
   const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
   const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
-  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
 
   it('新規エントリ生成: IGDB 単独ゲームに totalRating/totalRatingCount/classicRemakeEligible が転記される', async () => {
     const igdbData: IGDBData = {
@@ -1785,7 +1783,7 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
       fetchedAt: '',
     };
 
-    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
 
     const game = games.find((g) => g.title === 'Solo Classic Game');
     expect(game).toBeDefined();
@@ -1811,7 +1809,7 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
       fetchedAt: '',
     };
 
-    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
 
     const game = games.find((g) => g.title === 'Allowed Remake Game');
     expect(game).toBeDefined();
@@ -1857,7 +1855,7 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
       fetchedAt: '',
     };
 
-    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
     const result = buildClassicCandidates(games, { cooldown: new Set(), alreadySelected: [] });
 
     const titles = result.map((g) => g.title);
@@ -1887,15 +1885,10 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
       ],
       fetchedAt: '',
     };
-    const metacriticData: MetacriticData = {
-      scores: [{ title: 'Matched Classic Game', platform: 'PC', metascore: null, userScore: null }],
-      fetchedAt: '',
-    };
-
     const originalFetch = global.fetch;
     global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
     try {
-      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData);
       const game = games.find((g) => g.title === 'Matched Classic Game');
       expect(game).toBeDefined();
       expect(game!.totalRating).toBe(92);
@@ -1928,15 +1921,10 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
       ],
       fetchedAt: '',
     };
-    const metacriticData: MetacriticData = {
-      scores: [{ title: 'Matched Rejected Remake', platform: 'PC', metascore: null, userScore: null }],
-      fetchedAt: '',
-    };
-
     const originalFetch = global.fetch;
     global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
     try {
-      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData);
       const game = games.find((g) => g.title === 'Matched Rejected Remake');
       expect(game).toBeDefined();
       expect(game!.classicRemakeEligible).toBe(false);
@@ -1950,14 +1938,13 @@ describe('aggregateGames — totalRating/totalRatingCount/classicRemakeEligible 
 // aggregateGames — developerGameCount の転記（§3.4 開発本数による規模判定, Issue #231・PR-I その1）
 //
 // マッチ時ブランチ・新規エントリ生成の両方で igdb.developerGameCount が GameData に
-// 転記されることを検証する。Storefront API / Metacritic 補完のネットワーク呼び出しに
+// 転記されることを検証する。Storefront API のネットワーク呼び出しに
 // 触れないよう、フィクスチャは needsCompletion が false になるよう組み立てるか、
 // global.fetch を ok:false でモックして早期 return させる。
 // ─────────────────────────────────────────────────────────────────────────────
 describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）', () => {
   const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
   const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
-  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
 
   it('新規エントリ生成: IGDB 単独ゲームに developerGameCount が転記される', async () => {
     const igdbData: IGDBData = {
@@ -1975,7 +1962,7 @@ describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）
       fetchedAt: '',
     };
 
-    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
 
     const game = games.find((g) => g.title === 'Solo IGDB Game');
     expect(game).toBeDefined();
@@ -2003,18 +1990,12 @@ describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）
       ],
       fetchedAt: '',
     };
-    // metascore を確定させて Metacritic 補完ループのネットワーク呼び出しを避ける
-    const metacriticData: MetacriticData = {
-      scores: [{ title: 'Matched Game', platform: 'PC', metascore: null, userScore: null }],
-      fetchedAt: '',
-    };
-
     const originalFetch = global.fetch;
     // Storefront 補完ループ（steamRecommendations 等が未確定で needsCompletion=true になる）が
     // 実ネットワークに飛ばないよう、ok:false を返して早期 return させる
     global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
     try {
-      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData);
       const game = games.find((g) => g.title === 'Matched Game');
       expect(game).toBeDefined();
       expect(game!.developerGameCount).toBe(241);
@@ -2052,15 +2033,10 @@ describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）
       ],
       fetchedAt: '',
     };
-    const metacriticData: MetacriticData = {
-      scores: [{ title: 'Unverifiable Match Game', platform: 'PC', metascore: null, userScore: null }],
-      fetchedAt: '',
-    };
-
     const originalFetch = global.fetch;
     global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
     try {
-      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData, metacriticData);
+      const games = await aggregateGames(steamData, EMPTY_YOUTUBE, igdbData);
       const game = games.find((g) => g.title === 'Unverifiable Match Game');
       expect(game).toBeDefined();
       expect(game!.developer).toBeUndefined();
@@ -2082,7 +2058,6 @@ describe('aggregateGames — developerGameCount の転記（§3.4, Issue #231）
 describe('aggregateGames — IGDB 単独ゲームへの steamAppId 継承（§3.6, PR-I その2）', () => {
   const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
   const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
-  const EMPTY_METACRITIC: MetacriticData = { scores: [], fetchedAt: '' };
 
   it('steamUrl を持つ IGDB 単独ゲームは steamAppId を持って集約結果に入る。steamUrl を持たない候補は steamAppId が undefined のまま（ポジティブコントロール）', async () => {
     const igdbData: IGDBData = {
@@ -2114,7 +2089,7 @@ describe('aggregateGames — IGDB 単独ゲームへの steamAppId 継承（§3.
     // 入るため、実ネットワークに飛ばないよう ok:false で早期 return させる
     global.fetch = (async () => ({ ok: false })) as unknown as typeof fetch;
     try {
-      const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData, EMPTY_METACRITIC);
+      const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
 
       const withSteam = games.find((g) => g.title === 'Solo With Steam');
       expect(withSteam).toBeDefined();
@@ -2192,7 +2167,7 @@ describe('buildIndieCandidates — 旧スコアなら別順序になるフィク
       developer: 'Indie Dev B',
       source: ['steam'],
       youtubePopularity: 0,
-      steamPlayers: 5000,
+      steamRank: 50, // isQualifiedGame 用（Steam 同時接続数経路の削除に伴い、Steam Charts 掲載を通過根拠にする）
       steamRecommendations: 900_000,
       igdbRating: 60,
       releaseDate: daysAgoStr(10), // 90日窓フィルタ（本PR）に引っかからないよう窓内にする

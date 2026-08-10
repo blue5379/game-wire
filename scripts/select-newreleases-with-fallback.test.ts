@@ -47,14 +47,6 @@ describe('hasExistenceEvidence', () => {
     expect(hasExistenceEvidence(g)).toBe(true);
   });
 
-  it('steamPlayers > 0 → true', () => {
-    expect(hasExistenceEvidence(makeGame({ steamPlayers: 1000 }))).toBe(true);
-  });
-
-  it('steamPlayers = 0 → false（0は証拠にならない）', () => {
-    expect(hasExistenceEvidence(makeGame({ steamPlayers: 0 }))).toBe(false);
-  });
-
   it('igdbRatingCount >= 5 → true', () => {
     expect(hasExistenceEvidence(makeGame({ igdbRatingCount: 5 }))).toBe(true);
   });

@@ -128,18 +128,6 @@ describe('isQualifiedGame — 境界値とOR条件の各経路', () => {
     expect(isQualifiedGame(makeGame({ steamRank: 50 }))).toBe(true);
   });
 
-  it('steamPlayers > 0 なら true', () => {
-    expect(isQualifiedGame(makeGame({ steamPlayers: 1 }))).toBe(true);
-  });
-
-  it('steamPlayers が 0 のときは false（他の条件が無い場合）', () => {
-    expect(isQualifiedGame(makeGame({ steamPlayers: 0 }))).toBe(false);
-  });
-
-  it('metascore が設定されていれば true', () => {
-    expect(isQualifiedGame(makeGame({ metascore: 60 }))).toBe(true);
-  });
-
   it(`高評価少数票の救済: igdbRating >= ${QUALITY_IGDB_RATING_STRONG} かつ igdbRatingCount >= ${QUALITY_IGDB_RC_FLOOR}（境界値ちょうど）なら true`, () => {
     expect(
       isQualifiedGame(
@@ -172,14 +160,13 @@ describe('isQualifiedGame — 境界値とOR条件の各経路', () => {
 describe('isQualifiedGame — Amazon経路・批評媒体数経路（§2.3 PR-B2）', () => {
   // 実測に対応: 『スプラトゥーン レイダース』相当のゲーム（igdbRatingCount=6 で
   // QUALITY_IGDB_RC_MIN=15 未満・igdbRating=95 は高いが igdbRatingCount=6 は
-  // QUALITY_IGDB_RC_FLOOR=8 未満のため救済経路も通らない・steamRank/metascore なし・
+  // QUALITY_IGDB_RC_FLOOR=8 未満のため救済経路も通らない・steamRank なし・
   // aggregatedRatingCount=1 で QUALITY_CRITIC_COUNT_MIN=2 未満）は他の経路をすべて欠く。
   it('amazonRanked: true だけで qualified になること（他のシグナルをすべて欠いたゲームで検証）', () => {
     const game = makeGame({
       igdbRatingCount: 6,
       igdbRating: 95,
       steamRank: undefined,
-      metascore: undefined,
       aggregatedRatingCount: 1,
     });
 
@@ -192,7 +179,6 @@ describe('isQualifiedGame — Amazon経路・批評媒体数経路（§2.3 PR-B2
       aggregatedRatingCount: QUALITY_CRITIC_COUNT_MIN,
       igdbRatingCount: undefined,
       steamRank: undefined,
-      metascore: undefined,
     });
     expect(isQualifiedGame(qualified)).toBe(true);
 
@@ -200,7 +186,6 @@ describe('isQualifiedGame — Amazon経路・批評媒体数経路（§2.3 PR-B2
       aggregatedRatingCount: QUALITY_CRITIC_COUNT_MIN - 1,
       igdbRatingCount: undefined,
       steamRank: undefined,
-      metascore: undefined,
     });
     expect(isQualifiedGame(notQualified)).toBe(false);
   });

@@ -419,8 +419,6 @@ export function buildUserMessage(
     developer?: string;
     publisher?: string;
     summary?: string;
-    metascore?: number | null;
-    userScore?: number | null;
     gameType?: number;
   },
   additionalContext?: string,
@@ -471,14 +469,6 @@ export function buildUserMessage(
 
   if (gameInfo.summary) {
     lines.push(`概要: ${gameInfo.summary}`);
-  }
-
-  if (gameInfo.metascore !== undefined && gameInfo.metascore !== null) {
-    lines.push(`Metacriticスコア: ${gameInfo.metascore}`);
-  }
-
-  if (gameInfo.userScore !== undefined && gameInfo.userScore !== null) {
-    lines.push(`ユーザースコア: ${gameInfo.userScore}`);
   }
 
   if (officialPageContext) {
@@ -831,18 +821,14 @@ export const featureThemePrefilterPrompt = `あなたはゲーム情報Webマガ
 export function formatQualitySignals(g: {
   igdbRating?: number;
   igdbRatingCount?: number;
-  metascore?: number | null;
   steamRank?: number;
-  steamPlayers?: number;
   youtubePopularity?: number;
 }): string {
   const parts: string[] = [];
   if (g.igdbRating != null && g.igdbRatingCount != null) {
     parts.push(`IGDB${Math.round(g.igdbRating)}(評価${g.igdbRatingCount}件)`);
   }
-  if (g.metascore != null) parts.push(`Metacritic${g.metascore}`);
   if (g.steamRank != null) parts.push(`Steam売上${g.steamRank}位`);
-  if (g.steamPlayers != null && g.steamPlayers > 0) parts.push(`同接${g.steamPlayers}`);
   if (g.youtubePopularity != null && g.youtubePopularity > 0) parts.push(`YouTube人気${g.youtubePopularity}`);
   return parts.length > 0 ? parts.join(' / ') : '評価情報なし';
 }
@@ -855,9 +841,7 @@ export type FeatureCandidateBase = {
   summary?: string;
   igdbRating?: number;
   igdbRatingCount?: number;
-  metascore?: number | null;
   steamRank?: number;
-  steamPlayers?: number;
   youtubePopularity?: number;
 };
 
