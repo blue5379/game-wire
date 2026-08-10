@@ -28,6 +28,7 @@
 | **#221 対応** | `fix/issue-221-empty-feature-guard` | ✅ **マージ済み**（2026-08-10。マージコミット `ccc44f1`。squash） | **#221**（Closed）/ 関連 **#179**（設計原則）・**#222**（Closed。PR-0.1の`/code-review`で本Issueと同時に分離された別懸念。→ PR #271 で対応済み） / PR #267 | 29ファイル / **1110テスト**（着手前 1109。新規1件）。コミット2本（実装 → `/code-review`指摘2件の対応）。`selectedGameData`が0件になった場合に`throw`するガードを追加。管理者が実データで検証し、過去に公開された全19号のfeature記事は`recommendedGames`が3〜5件で0件になったことは一度もない（実害はまだ発生していない理論上の欠陥）と確認した |
 | **#247 対応** | `fix/issue-247-featured-recommended-url-validation` | ✅ **マージ済み**（2026-08-10。マージコミット `7cfa916`。通常マージ、squashではない） | **#247**（Closed）/ 関連 **#234**（PR #246のレビューで分離） / PR #269 | 29ファイル / **1124テスト**（着手前 1110。新規14件）。コミット2本（実装 → `/code-review`指摘対応）。特集記事`recommendedGames[].officialUrl`にBluesky/Discordの非公式URLが本番で5件混入していた実害を解消。**着手前の独立検証でIssue本文より深い根本原因を発見**（下記「実施結果」に詳述）: `NON_OFFICIAL_URL_PATTERNS`のドメイン抜けにより、Tavily経由の誤候補がIGDBの正しい公式URLを無条件に上書きしていた。根本原因の修正+出力時ゲート追加の両方を実施 |
 | **#222 対応** | `fix/issue-222-adult-screening-observability` | ✅ **マージ済み**（2026-08-11。マージコミット `c333eaf`。通常マージ、squashではない） | **#222**（Closed）/ 関連 **#221**（PR-0.1のレビューで同時に分離） / PR #271 | 29ファイル / **1168テスト**（着手前 1124。新規44件）。コミット2本（実装 → `/code-review`指摘4件の対応）。**着手前検証でIssue本文の前提（「AIスクリーニングは特集枠の主防御」）が誤りと判明**し、Issueにコメントで訂正（実際はIGDBの`themes != (42)`が第1層、AIスクリーニングは第3層）。観測の出力先が**2系統**（CIのstdout / 永続化されるValidation Report）あることをデータフロー追跡で発見し、初回実装で漏れていたレポート側も追加対応。`/code-review`が**例外以外の第2のfail-open経路**（応答形式不正）を検出し、別カウンタで計上（ただし実態未観測のため`error`昇格はさせない仕様判断をテストで固定） |
+| **#235 対応** | `fix/issue-235-drop-youtube-popularity-route` | ✅ **マージ済み**（2026-08-11。マージコミット `d04a107`。通常マージ、squashではない） | **#235**（Closed）/ 関連 **#217**（YouTube活用の可否検証）・**#274**（本PRのレビューで新規分離） / PR #273 | 29ファイル / **1166テスト**（着手前 1168。YouTube percentileの4テストを削除、回帰テスト+ポジティブコントロールを2件追加）。コミット1本。§3.5が2026-08-07に決定済みだった「話題性ルートをSteamの2経路だけにする」の未実装分を実装。**着手前の独立検証で前セッションの前提が再現しないことが判明**（下記「実施結果」に詳述）: 「YouTubeマッチ0件＝実質デッドコード」は直近データでは成立せず2件マッチしていたが、いずれも先に評価されるSteam経路を満たすためYouTube分岐は到達不能で、結論（供給は減らない）はより強い理由で成立した |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1856,7 +1857,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 | Issue | 内容 |
 |---|---|
 | **#234** | `websites.category` → `type` 改名で `officialUrl` 抽出が全経路で機能していない → ✅ **完了**（2026-08-09。PR #246。マージ `bd71e4f`） |
-| **#235** | §3.5 の「話題性ルートから YouTube を外す」決定が未実装・PR 未割り当て |
+| **#235** | §3.5 の「話題性ルートから YouTube を外す」決定が未実装・PR 未割り当て → ✅ **完了**（2026-08-11。PR #273。マージ `d04a107`） |
 | **#236** | IGDB の会社レコード重複で `developed` 判定が取りこぼす |
 | **#238** | 話題の国内新作『Splatoon Raiders』が新作枠に載らず名作深掘り枠に選ばれる |
 | **#239** | `aggregateGames` が同一 `normalizedTitle` の既存エントリを黙って上書きする |
@@ -2180,3 +2181,94 @@ Issue本文は次のように主張していたが、**コード実読で誤り�
 | `computeReportStatus`に`unrecognizedScreeningResponses`を誤って追加 | 3件失敗 ✅ |
 
 また、既存テスト1件が変更されていたため内容を確認し、旧仕様（`✅ 0件`表示）のアサーションを正しい`❓ 未計測` + `not.toContain`ガードに置き換える**強化**であって弱体化ではないことを確認した。
+
+---
+
+  PR #273（Issue #235 対応）
+
+  【共通ヘッダ】
+
+# PR #273: インディー枠の話題性ルートから YouTube 経路を外す（Issue #235）
+
+- ブランチ: `fix/issue-235-drop-youtube-popularity-route`
+- Issue: **#235**（Closed）。PR-I（#237）の検証中に分離された7件のうちの1件
+- 関連: **#217**（YouTube 活用の可否検証）/ **#274**（本PRのレビューで新規分離）
+
+## 問題
+
+`docs/article-category-spec.md` §3.5 が 2026-08-07 のユーザー判断で決定した「インディー枠の話題性ルートから YouTube 経路を外し、Steam の2経路だけにする」が、どの PR にも割り当てられないまま未実装だった。§9.3 項目10 が「決着済みだが PR に割り当てられていない決定」として本 Issue を指していた。
+
+削除対象の実装には2つの欠陥があった:
+
+- 降順配列に対して `floor(件数 × (1 − 0.30))` の位置を閾値にしていたため、意図（上位30%）と逆に**上位80%を通していた**
+- `youtubePopularity` を持たない候補が多いと閾値インデックスの要素が値を持たず `?? 0` で**閾値0に落ち、値を持つ候補が無条件に通るフリーパス**になっていた
+
+§3.5 は「廃止する経路のバグを直す意味が無く、供給をさらに狭める」として、閾値バグの修正ではなく**経路ごとの削除**を決定していた。
+
+## 着手前の独立検証（前セッションの前提が再現しなかった）
+
+前セッションの先行調査は「`youtubePopularity` が定義済みのゲーム0件、`source` に `youtube` を含むゲーム0件 ＝ YouTube→GameData のマッチングが1件も成立しておらず実質デッドコード」としていた。しかし:
+
+- ローカルの `data/aggregated.json` は **fetchedAt 2026-05-16 の約3ヶ月前のスナップショット**で、前セッションが使ったものと同一だった
+- `weekly-build.yml` は `src/content/issues/`・`history.json`・画像・`data/validation/` しかコミットせず、**`aggregated.json` を永続化していない**（artifact アップロードも無い）。つまりライブ実行しない限り直近データは入手できない
+- そこで `npm run fetch-data` をライブ実行し、**2026-08-10 のスナップショット（320ゲーム / インディー候補24件）**を取得して再測定した
+
+結果、**前提は再現しなかった**:
+
+| 指標 | 5/16 | 8/10 |
+|---|---|---|
+| games | 105 | 320 |
+| `youtubePopularity` 定義済み | 0件 | **2件** |
+| trendingVideos / 抽出成功 | 30 / 17 | 30 / 23 |
+
+**ただし結論（削除しても供給は減らない）は、より強い理由で成立した。** `meetsPopularityThreshold` は Steam の2経路を先に評価して早期 return するため、`youtubePopularity` を持つ2件はいずれも YouTube 分岐に到達しない:
+
+| ゲーム | youtubePopularity | steamRecommendations | steamRank | Steam経路 |
+|---|---|---|---|---|
+| ほの暮しの庭 | 542,378 | 255 | 1 | ✅ rank ≤ 200 |
+| Meccha Chameleon | 889,066 | 72,927 | 4 | ✅ 両方 |
+
+## 等価性の証明（`youtubePopularitySorted` の構築方法に非依存）
+
+変更前の true 集合を `upperOld(g) = new(g) || (youtubePopularity が定義済み)` で上から抑えた。変更前の YouTube 分岐は「`youtubePopularity` が定義済み」を必須とするため閾値が0（最も緩い場合）でも `変更前 ⊆ upperOld` が成り立ち、かつ Steam 2経路を含むので `new ⊆ 変更前`。実測で `new` と `upperOld` が全ゲームで一致したため、`youtubePopularitySorted` をどう構築しても変更前後は等価と確定した。**この論法により `indieRanked` を再構築せずに結論を出せる**（前セッションの測定は本番と異なる構築で行った箇所があったという申し送りがあったため、構築方法に依存しない手法を選んだ）。
+
+```
+snapshot 2026-08-10 / games=320 : new=135件, upperOld=135件, 判定が変わるゲーム 0件
+snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わるゲーム 0件
+```
+
+採用件数はインディー枠 2件 → 2件 で不変（Palworld / Scrap Mechanic）。どちらも `developer` が正規名で `個人開発（…）` ラベルではないため、そもそも話題性ルートに到達せず通常ルートで採用されていた。
+
+## 実施結果（2026-08-11）
+
+**PR #273。マージコミット `d04a107`（通常マージ、squashではない）。コミット1本（`1e94f18`）。**
+
+- `select-indie-with-fallback.ts`: `meetsPopularityThreshold` から YouTube 分岐と percentile 計算を削除し第2引数を廃止。`PopularityContext` と `POPULARITY_YOUTUBE_PERCENTILE`（`INDIE_POPULARITY_YOUTUBE_PERCENTILE`）を削除。`vetIndieCandidate` / `selectIndieGamesWithFallback` から `context` 引数を削除
+- `fetch-data.ts`: `youtubePopularitySorted` の構築を**2箇所**削除。**引き継ぎ文書は1箇所（通常選定）しか挙げていなかったが、CompletenessGate の差し替え用クロージャという第2の構築箇所があった**（`indieReserves` からソートして渡していたもの）。後者は `indies: vetIndieCandidate` に簡約した
+- §3.5「廃止の範囲」表で「残す」と決まっている用途は変更していない（新作枠の実存判定、プロンプトへの視聴回数提示、`fetchYouTubeData`、集約時のマージ、型定義）
+- `INDIE_POPULARITY_YOUTUBE_PERCENTILE` はコード内定義以外に参照が無く（.env / workflow / docs いずれにも無し）、残骸は出ていない
+
+テストは着手前 29ファイル / 1168テスト → 修正後 29ファイル / **1166テスト**（YouTube percentileの4テストを削除、回帰テスト1件とポジティブコントロール1件を追加。差し引き −2）、全通過。型チェックも通過。
+
+### ミュータント検証（管理者が実行）
+
+| ミュータント | 結果 |
+|---|---|
+| YouTube 経路を復活（`if (game.youtubePopularity !== undefined) return true;`） | 新規回帰テストが**1件だけ**失敗 ✅ |
+| `meetsPopularityThreshold` を常に `false` に | ポジティブコントロール3件＋統合テスト3件の**計6件**が失敗 ✅ |
+
+### `/code-review` 指摘1件 → 別 Issue #274 に分離
+
+`meetsPopularityThreshold(game)` が `finalizeGameMetadata` の**戻り値ではなく引数（finalize 前のオブジェクト）**を読んでいるため、finalize 中に Steam Storefront から取得した `steamRecommendations` が話題性判定に効かない、という指摘。前提5点をすべて実読で確認し**正しいと判断**した上で、本PRでは修正せず Issue #274 に分離した。
+
+判断根拠:
+
+- **既存バグである**（`main` の `ba195e6` でも同じく finalize 前オブジェクトを渡していた。本PRは第2引数を消しただけ）
+- **供給を増やす方向の変更**であり、#235 はそもそも「供給件数が変わる変更を PR-I の前後比較に混ぜない」という理由で分離された Issue なので、同じ理由でここに混ぜるべきではない
+- **本PRの等価性証明は無効化されない**（証明は同一入力に対する変更前後の関数一致を示すもの。変更前・変更後のどちらも同じ `game` を読むため等価性は厳密に成立する）
+
+規模の実測（2026-08-10 スナップショット / 320ゲーム）: `steamRecommendations` 未取得 152件、うち `steamAppId` も無く集約時に Storefront をスキップした 89件、うち `igdbSlug` があり finalize の IGDB 再検索が走り得る（＝ギャップ母集団）**89件**。ただし実際に採否が変わるにはさらに「finalize 後も developer が欠落」「finalize の Storefront が 5,000 以上を返す」が必要で、**実害の発生件数は未計測**。
+
+### Issue #217 への材料
+
+8/10 データでは **`めっちゃカメレオン` → `Meccha Chameleon` の日英マッチが成立していた**。§3.5 が 8/07 実測で記録した「日英表記でマッチしない」（ビーストオブリンカネーションの例）という見立ては**一律には当てはまらない**。一方で「マイクラ」が依然として複数エントリに分裂しているのも同じデータで確認できる。
