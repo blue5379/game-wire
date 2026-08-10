@@ -168,6 +168,12 @@ export interface RecommendedGame {
   title: string;
   coverImage?: string;
   officialUrl?: string;
+  /**
+   * officialUrl の由来。Issue #247: build-issue.ts の出力ゲートで
+   * 'tavily' | 'igdb-official' 以外は officialUrl を出力しない多層防御に使う。
+   * SourceUrls['officialUrlSource'] と同じ型。
+   */
+  officialUrlSource?: 'tavily' | 'igdb-official';
   platforms?: string[];
   developer?: string;
   publisher?: string;

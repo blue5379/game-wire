@@ -137,7 +137,7 @@ export function isCriticallyIncompleteArticle(article: GeneratedArticle): boolea
  * 記事データをYAML frontmatter用にフォーマット
  * @param sourceMismatchTitles game-source-mismatch で検出された記事タイトルの集合（hidden 扱いにする）
  */
-async function formatArticleForFrontmatter(
+export async function formatArticleForFrontmatter(
   article: GeneratedArticle,
   sourceMismatchTitles: Set<string> = new Set()
 ): Promise<string> {
@@ -182,7 +182,24 @@ async function formatArticleForFrontmatter(
         lines.push(`        coverImage: "${game.coverImage}"`);
       }
       if (game.officialUrl) {
-        lines.push(`        officialUrl: "${game.officialUrl}"`);
+        // Issue #247: article.sourceUrls.official と同じ多層防御ゲート。
+        // recommendedGames は generate-articles.ts が Tavily/IGDBの結果を無条件に
+        // 上書きし得るため、信頼済みソース判定と到達性チェックをここでも行う。
+        const source = game.officialUrlSource as string | undefined;
+        if (source && source !== 'tavily' && source !== 'igdb-official') {
+          console.log(
+            `    [WARN] Recommended game official URL source "${source}" is not trusted, skipping: ${game.officialUrl}`
+          );
+        } else {
+          const alive = await isUrlAlive(game.officialUrl);
+          if (alive) {
+            lines.push(`        officialUrl: "${game.officialUrl}"`);
+          } else {
+            console.log(
+              `    [WARN] Recommended game official URL unreachable, skipping: ${game.officialUrl}`
+            );
+          }
+        }
       }
     }
   }

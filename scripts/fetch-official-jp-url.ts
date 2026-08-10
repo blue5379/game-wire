@@ -20,6 +20,8 @@ export const NON_OFFICIAL_URL_PATTERNS = [
   'reddit.com',
   'discord.gg',
   'discord.com',
+  'discordapp.com', // Issue #247: discord.com への移行前の旧ドメイン。本番で誤採用された実害あり
+  'bsky.app', // Issue #247: Bluesky。本番で誤採用された実害あり
   'store.steampowered.com',
   'steampowered.com',
   'store.playstation.com',   // PS Storeのみ除外（www.playstation.com/ja-jp/games/ は通過）
@@ -50,7 +52,7 @@ export const NON_OFFICIAL_URL_PATTERNS = [
 /**
  * URLが非公式サイトかどうかを判定
  */
-function isNonOfficialUrl(url: string): boolean {
+export function isNonOfficialUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return NON_OFFICIAL_URL_PATTERNS.some((p) => lower.includes(p));
 }
