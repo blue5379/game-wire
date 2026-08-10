@@ -1289,14 +1289,7 @@ async function selectGamesForArticles(
     console.log(`    - ${g.title} (releaseDate=${g.releaseDate ?? '-'}, steamRecommendations=${g.steamRecommendations ?? '-'}, igdbRating=${g.igdbRating ?? '-'})`);
   }
 
-  // youtubePopularity 降順リスト（話題性 percentile 計算用）
-  const youtubePopularitySorted = [...indieRanked].sort(
-    (a, b) => (b.youtubePopularity ?? 0) - (a.youtubePopularity ?? 0)
-  );
-
-  const indieSelection = await selectIndieGamesWithFallback(indieRanked, 2, {
-    youtubePopularitySorted,
-  });
+  const indieSelection = await selectIndieGamesWithFallback(indieRanked, 2);
 
   const indies = indieSelection.adopted;
   // 採用・拒否の処理を経ていない残り候補（デバッグ/ログ用）
@@ -1478,14 +1471,7 @@ async function main(): Promise<void> {
     },
     {
       newReleases: vetNewReleaseCandidate,
-      // インディーの vetting は youtubePopularitySorted を必要とするためクロージャで渡す。
-      // indieReserves は indieRanked 順（スコア降順）であり youtubePopularity 降順ではないため、
-      // percentile 計算用にここでソートして渡す。
-      indies: (g) => vetIndieCandidate(g, {
-        youtubePopularitySorted: [...selectedGames.indieReserves].sort(
-          (a, b) => (b.youtubePopularity ?? 0) - (a.youtubePopularity ?? 0)
-        ),
-      }),
+      indies: vetIndieCandidate,
     }
   );
   console.log(
