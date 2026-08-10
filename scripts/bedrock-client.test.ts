@@ -177,6 +177,61 @@ describe('prefilterFeatureCandidatesByTheme - テーマ事前フィルタ', () =
     const result = await prefilterFeatureCandidatesByTheme('写真の日特集', candidates, 3);
     expect(result).toEqual([]);
   });
+
+  // Issue #256: プロンプトに載せる summary を200文字に切り詰めてトークンコストを削減する。
+  // LLM に送信される実際の userMessage テキストを取り出して検証するヘルパー。
+  function getSentUserMessageText(): string {
+    const sentInput = mockSend.mock.calls[0][0].input as {
+      messages: Array<{ content: Array<{ text: string }> }>;
+    };
+    return sentInput.messages[0].content[0].text;
+  }
+
+  it('summary が200文字を超える場合は200文字に切り詰めてLLMに送る（Issue #256）', async () => {
+    const longSummary = 'あ'.repeat(200) + 'TAIL_SHOULD_BE_TRUNCATED';
+    const candidatesWithLongSummary = [
+      ...candidates,
+      { title: 'Long Summary Game', genres: ['Test'], summary: longSummary },
+    ];
+    mockClaudeText('{"titles": ["Long Summary Game"]}');
+
+    await prefilterFeatureCandidatesByTheme('写真の日特集', candidatesWithLongSummary, 3);
+
+    const sentText = getSentUserMessageText();
+    expect(sentText).toContain(`概要: ${'あ'.repeat(200)}`);
+    expect(sentText).not.toContain('TAIL_SHOULD_BE_TRUNCATED');
+  });
+
+  it('summary がちょうど200文字なら切り詰めずそのまま送る（境界値）', async () => {
+    const exactSummary = 'い'.repeat(200);
+    const candidatesWithExactSummary = [
+      ...candidates,
+      { title: 'Exact 200 Game', genres: ['Test'], summary: exactSummary },
+    ];
+    mockClaudeText('{"titles": ["Exact 200 Game"]}');
+
+    await prefilterFeatureCandidatesByTheme('写真の日特集', candidatesWithExactSummary, 3);
+
+    const sentText = getSentUserMessageText();
+    // 200文字ちょうどなら slice(0, 200) は元の文字列と同一になるため、
+    // 200文字 + 区切り文字が続く形で完全一致することを確認する。
+    expect(sentText).toContain(`概要: ${exactSummary} / 評価:`);
+  });
+
+  it('summary が201文字なら1文字だけ切り詰められる（境界値）', async () => {
+    const summary201 = 'う'.repeat(200) + 'X';
+    const candidatesWithOverBySingleChar = [
+      ...candidates,
+      { title: 'Over By One Game', genres: ['Test'], summary: summary201 },
+    ];
+    mockClaudeText('{"titles": ["Over By One Game"]}');
+
+    await prefilterFeatureCandidatesByTheme('写真の日特集', candidatesWithOverBySingleChar, 3);
+
+    const sentText = getSentUserMessageText();
+    expect(sentText).toContain(`概要: ${'う'.repeat(200)} / 評価:`);
+    expect(sentText).not.toContain('X');
+  });
 });
 
 describe('PromptTemplates - 本文タイトル明記ルール（Issue #194）', () => {
