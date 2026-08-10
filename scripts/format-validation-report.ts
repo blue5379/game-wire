@@ -6,12 +6,17 @@
  *  2. 自動起票判定: 総合ステータス（ok/warning/error）を機械的に算出
  *
  * 総合ステータスの定義:
- *  - error   (🔴 要対応):   high 警告が1件以上、または Web 検索失敗がある
+ *  - error   (🔴 要対応):   high 警告が1件以上、または Web 検索失敗がある、
+ *                           または AI成人向けスクリーニング失敗（fail-open）がある
  *  - warning (🟡 要確認):   error ではないが、medium 警告・公式URL未取得・
  *                           LLM judge の矛盾/裏付け不能のいずれかがある
  *  - ok      (🟢 対応不要): 上記いずれも無い
  *
  * error の定義は「Issue 自動起票の条件」と一致させている（起票される号は必ず 🔴）。
+ *
+ * AI成人向けスクリーニング失敗（Issue #222）は、Web 検索失敗と同様「本来行うべき安全確認が
+ * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
+ * （error に昇格）とする。
  */
 
 import type { ValidationReport, ValidationWarning } from './validate-article.js';
@@ -23,6 +28,15 @@ export function webSearchFailureCount(report: ValidationReport): number {
   const s = report.webSearchStats;
   if (!s) return 0;
   return s.searchFailures + s.pageContentFailures;
+}
+
+/**
+ * AI成人向けスクリーニング（Bedrock呼び出し）の失敗回数。fail-openで通過した件数（Issue #222）。
+ * webSearchFailureCount とは意味が異なる（Web検索の失敗ではない）ため、別ヘルパーとして分離する。
+ * 旧キャッシュ（本フィールド追加前）で値が無い場合は 0 として扱う。
+ */
+export function adultScreeningFailureCount(report: ValidationReport): number {
+  return report.webSearchStats?.adultScreeningFailures ?? 0;
 }
 
 /** LLM judge が矛盾・裏付け不能と判定した claim の総数 */
@@ -37,7 +51,7 @@ function judgeProblemCount(report: ValidationReport): number {
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
   const high = report.warningsBySeverity.high;
-  if (high > 0 || webSearchFailureCount(report) > 0) {
+  if (high > 0 || webSearchFailureCount(report) > 0 || adultScreeningFailureCount(report) > 0) {
     return 'error';
   }
 
@@ -52,7 +66,8 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 
 /**
  * この号について Issue を自動起票すべきか。
- * 条件: high 警告が1件以上、または Web 検索失敗がある（= 総合ステータスが error）。
+ * 条件: high 警告が1件以上、または Web 検索失敗がある、
+ * または AI成人向けスクリーニング失敗（fail-open）がある（= 総合ステータスが error）。
  */
 export function shouldFileIssue(report: ValidationReport): boolean {
   return computeReportStatus(report) === 'error';
@@ -73,6 +88,7 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const high = report.warningsBySeverity.high;
   const medium = report.warningsBySeverity.medium;
   const webFail = webSearchFailureCount(report);
+  const adultScreeningFail = adultScreeningFailureCount(report);
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   const contradicted = report.llmJudge?.claimsByVerdict.contradicted ?? 0;
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
@@ -85,6 +101,11 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   if (webFail > 0) {
     actions.push(
       `⚠️ **Web 検索失敗 ${webFail} 件**: 一部の主張が根拠未確認のまま生成されています。手動でファクトチェックしてください。`
+    );
+  }
+  if (adultScreeningFail > 0) {
+    actions.push(
+      `🔞 **AI成人向けスクリーニング失敗 ${adultScreeningFail} 件**: 判定不能のまま fail-open で通過したゲームがあります。成人向けコンテンツでないか手動で確認してください。`
     );
   }
   if (contradicted > 0) {
@@ -159,6 +180,7 @@ export function formatReportMarkdown(report: ValidationReport): string {
 
   // 件数サマリ
   const webFail = webSearchFailureCount(report);
+  const adultScreeningFail = adultScreeningFailureCount(report);
   out.push('### サマリ');
   out.push('');
   out.push('| 項目 | 件数 |');
@@ -173,6 +195,11 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(`| ⚠️ Web検索失敗（ページ取得） | ${report.webSearchStats?.pageContentFailures ?? 0} |`);
   } else {
     out.push('| ✅ Web検索失敗 | 0 |');
+  }
+  if (adultScreeningFail > 0) {
+    out.push(`| ⚠️ AI成人向けスクリーニング失敗（fail-open） | ${adultScreeningFail} |`);
+  } else {
+    out.push('| ✅ AI成人向けスクリーニング失敗 | 0 |');
   }
 
   // 警告詳細

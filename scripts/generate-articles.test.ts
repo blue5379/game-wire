@@ -193,6 +193,65 @@ describe('screenOutAdultGames — 特集記事への AI スクリーニング適
   });
 });
 
+describe('screenOutAdultGames — adultScreeningFailures カウンタ (Issue #222)', () => {
+  it('invokeClaudeModel が reject した場合、stats.adultScreeningFailures が加算され、かつゲームは除外されず通過する（fail-open のポジティブコントロール）', async () => {
+    const game = makeGame({ title: 'Unjudgeable Game' });
+    mockInvoke.mockRejectedValue(new Error('Bedrock timeout'));
+    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+
+    const result = await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.adultScreeningFailures).toBe(1);
+    expect(result).toEqual([game]);
+  });
+
+  it('例外が発生しない正常系（判定NO）では adultScreeningFailures は加算されない（ネガティブコントロール）', async () => {
+    const game = makeGame({ title: 'Normal Game' });
+    mockInvoke.mockResolvedValue('NO');
+    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+
+    const result = await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.adultScreeningFailures).toBe(0);
+    expect(result).toEqual([game]);
+  });
+
+  it('例外が発生しない正常系（判定YES＝除外）でも adultScreeningFailures は加算されない', async () => {
+    const game = makeGame({ title: 'Adult Game' });
+    mockInvoke.mockResolvedValue('YES');
+    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+
+    const result = await __test.screenOutAdultGames([game], stats);
+
+    expect(stats.adultScreeningFailures).toBe(0);
+    expect(result).toEqual([]);
+  });
+
+  it('複数件が失敗した場合、件数が正しく積算される', async () => {
+    const gameA = makeGame({ title: 'Fail Game A' });
+    const gameB = makeGame({ title: 'OK Game B' });
+    const gameC = makeGame({ title: 'Fail Game C' });
+    mockInvoke.mockImplementation(async (_system, userMessage: string) => {
+      if (userMessage.includes('Fail Game')) throw new Error('Bedrock timeout');
+      return 'NO';
+    });
+    const stats = { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 };
+
+    const result = await __test.screenOutAdultGames([gameA, gameB, gameC], stats);
+
+    expect(stats.adultScreeningFailures).toBe(2);
+    // fail-open: 失敗した2件も判定不能のまま通過するため、3件とも残る
+    expect(result).toEqual([gameA, gameB, gameC]);
+  });
+
+  it('stats を渡さない場合でも例外を投げない（stats はオプショナル引数）', async () => {
+    const game = makeGame({ title: 'Unjudgeable Game' });
+    mockInvoke.mockRejectedValue(new Error('Bedrock timeout'));
+
+    await expect(__test.screenOutAdultGames([game])).resolves.toEqual([game]);
+  });
+});
+
 describe('generateFeatureArticle — スクリーニングが本数警告より前に効くこと (Issue #208)', () => {
   it('AI スクリーニングで選定ゲームが FEATURE_MIN_GAMES(3) を下回った場合、本数不足の警告が出て、除外されたゲームは特集記事に含まれない', async () => {
     const gameA = makeGame({ title: 'Game A', normalizedTitle: 'game a', steamRank: 1 });

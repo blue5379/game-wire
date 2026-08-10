@@ -859,6 +859,20 @@ describe('validateArticles (集約)', () => {
     expect(report.totalWarnings).toBeGreaterThanOrEqual(2);
     expect(report.warningsBySeverity.high).toBeGreaterThanOrEqual(2);
   });
+
+  it('webSearchStats の adultScreeningFailures がレポートにそのまま引き継がれる（Issue #222）', () => {
+    const report = validateArticles([], 8, {
+      searchFailures: 0,
+      pageContentFailures: 0,
+      adultScreeningFailures: 4,
+    });
+    expect(report.webSearchStats?.adultScreeningFailures).toBe(4);
+  });
+
+  it('webSearchStats が undefined でもレポートの webSearchStats は undefined のまま（旧呼び出し元との互換）', () => {
+    const report = validateArticles([], 8);
+    expect(report.webSearchStats).toBeUndefined();
+  });
 });
 
 describe('buildFixInstruction', () => {
@@ -1479,5 +1493,51 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
     writeAndCheckReport(report, dir);
 
     expect(report.status).toBe('error');
+  });
+
+  // AI成人向けスクリーニング失敗（fail-open）の stdout 出力（Issue #222 P2）
+  describe('adultScreeningFailures の stdout 出力', () => {
+    it('1件以上あれば console.warn で件数を出す', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 2 },
+      };
+      writeAndCheckReport(report, dir);
+
+      const warnCalls = (console.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(warnCalls.some((line: string) => line.includes('Adult screening failures') && line.includes('2'))).toBe(
+        true
+      );
+    });
+
+    it('0件（計測済み）なら console.log で「0」を出し、console.warn は呼ばれない', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 0 },
+      };
+      writeAndCheckReport(report, dir);
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      const warnCalls = (console.warn as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      expect(logCalls.some((line: string) => line.includes('Adult screening failures: 0'))).toBe(true);
+      expect(warnCalls.some((line: string) => line.includes('Adult screening failures'))).toBe(false);
+    });
+
+    it('webSearchStats に adultScreeningFailures が無い（旧キャッシュ）場合は「未計測」であり「0件」とは別メッセージで出す', () => {
+      const dir = path.join(tmpBase, 'validation');
+      const report: ValidationReport = {
+        ...makeReport(16),
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
+      };
+      writeAndCheckReport(report, dir);
+
+      const logCalls = (console.log as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+      // 「未計測」メッセージが出ること
+      expect(logCalls.some((line: string) => line.includes('unmeasured'))).toBe(true);
+      // 「0件（計測済み）」メッセージとは異なること（混同していないことの確認）
+      expect(logCalls.some((line: string) => line.includes('Adult screening failures: 0'))).toBe(false);
+    });
   });
 });
