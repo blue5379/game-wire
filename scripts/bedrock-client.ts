@@ -851,6 +851,15 @@ export type FeatureCandidateWithSearch = FeatureCandidateBase & {
 };
 
 /**
+ * 特集テーマ一次選抜プロンプトに載せる候補 summary の最大文字数。
+ *
+ * テーマ判定に必要なのは概要の大意であり全文ではないため切り詰める。
+ * Issue #256: 名作枠母集団拡大（PR #254、123件→288件）により summary を
+ * 持つ候補が増え、+34Kトークン/号のコスト増となっていた対策。
+ */
+const FEATURE_PREFILTER_SUMMARY_MAX_CHARS = 200;
+
+/**
  * AIを使って大量の候補からテーマ関連ゲームの上位を粗く抽出する（一次選抜）。
  *
  * 候補が limit 以下の場合は LLM を呼ばず全件をそのまま返す（コスト節約）。
@@ -873,7 +882,7 @@ export async function prefilterFeatureCandidatesByTheme(
       const parts = [`title: "${g.title}"`];
       if (g.titleJa) parts.push(`日本語名: ${g.titleJa}`);
       if (g.genres && g.genres.length > 0) parts.push(`ジャンル: ${g.genres.join(', ')}`);
-      if (g.summary) parts.push(`概要: ${g.summary}`);
+      if (g.summary) parts.push(`概要: ${g.summary.slice(0, FEATURE_PREFILTER_SUMMARY_MAX_CHARS)}`);
       parts.push(`評価: ${formatQualitySignals(g)}`);
       return `- ${parts.join(' / ')}`;
     })
