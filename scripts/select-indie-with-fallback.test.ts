@@ -13,6 +13,7 @@ import {
   selectIndieGamesWithFallback,
   meetsPopularityThreshold,
   formatIndividualDeveloper,
+  vetIndieCandidate,
 } from './select-indie-with-fallback';
 import { finalizeGameMetadata } from './finalize-game-metadata.js';
 
@@ -443,5 +444,66 @@ describe('selectIndieGamesWithFallback — developerGameCount による大手ゲ
     expect(result.adopted.map((g) => g.title)).toContain('Small By Count');
     expect(result.adopted.map((g) => g.title)).not.toContain('Large By Count');
     expect(result.rejected.map((r) => r.title)).toContain('Large By Count');
+  });
+});
+
+// ────────────────────────────────────────────────
+// vetIndieCandidate — Issue #236: 親会社パブリッシャ名が静的リストに無かった穴の回帰テスト
+// 実データ（2026-08-10 スナップショット）でインディー枠の大手ゲートを素通りした2件を再現する。
+// 修正前（LARGE_DEVELOPERS に Xbox Game Studios / Sony Interactive Entertainment /
+// Nippon Ichi Software が無い状態）ではこの2件は publisher 側ゲートに掛からず採用されてしまっていた。
+// ────────────────────────────────────────────────
+describe('vetIndieCandidate — Issue #236 親会社パブリッシャの大手ゲート回帰テスト', () => {
+  it('developer=Halo Studios（16本）/ publisher=Xbox Game Studios の候補は publisher 側ゲートで除外される', async () => {
+    const candidate = makeGame({ title: 'Halo: Campaign Evolved', normalizedTitle: 'halo: campaign evolved' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Halo Studios',
+      developerGameCount: 16,
+      publisher: 'Xbox Game Studios',
+      coverImage: 'https://example.com/halo.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1234567' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await vetIndieCandidate(candidate);
+    expect(result).toBeNull();
+  });
+
+  it('developer=Nippon Ichi Software, Inc.（3本）/ publisher=NIS America, Inc. の候補は除外される', async () => {
+    const candidate = makeGame({ title: 'ほの暮しの庭', normalizedTitle: 'ほのぐらしのにわ' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'Nippon Ichi Software, Inc.',
+      developerGameCount: 3,
+      publisher: 'NIS America, Inc.',
+      coverImage: 'https://example.com/honogurashi.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/7654321' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await vetIndieCandidate(candidate);
+    expect(result).toBeNull();
+  });
+
+  // ポジティブコントロール: 本来インディーの候補が巻き込まれて除外されていないことの確認
+  // （「除外されること」だけを検証するテストは、常に null を返す実装でも通ってしまうため必須）
+  it('developer=PocketPair（7本）の候補は引き続き採用される', async () => {
+    const candidate = makeGame({ title: 'Palworld', normalizedTitle: 'palworld' });
+    const finishedGame = {
+      ...candidate,
+      developer: 'PocketPair',
+      developerGameCount: 7,
+      coverImage: 'https://example.com/palworld.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/1623730' },
+    };
+
+    mockFinalize.mockResolvedValueOnce({ ok: true, game: finishedGame });
+
+    const result = await vetIndieCandidate(candidate);
+    expect(result).not.toBeNull();
+    expect(result?.developer).toBe('PocketPair');
   });
 });

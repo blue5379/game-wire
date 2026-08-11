@@ -396,6 +396,57 @@ describe('isLargeStudio', () => {
     const nfd = 'Eidos-Montréal'; // é を NFD で表現
     expect(isLargeStudio(nfd)).toMatchObject({ hit: true, list: 'large' });
   });
+
+  // Issue #236: 親会社パブリッシャ自体が LARGE_DEVELOPERS に無かった穴の修正確認
+  it('Xbox Game Studios is large', () => {
+    expect(isLargeStudio('Xbox Game Studios')).toEqual({ hit: true, matched: 'Xbox Game Studios', list: 'large' });
+  });
+
+  it('Microsoft (alias) is large', () => {
+    expect(isLargeStudio('Microsoft')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  it('Sony Interactive Entertainment is large', () => {
+    expect(isLargeStudio('Sony Interactive Entertainment')).toEqual({
+      hit: true,
+      matched: 'Sony Interactive Entertainment',
+      list: 'large',
+    });
+  });
+
+  it('PlayStation Studios (alias) is large', () => {
+    expect(isLargeStudio('PlayStation Studios')).toMatchObject({ hit: true, list: 'large' });
+  });
+
+  // Issue #236 実害ケース: ほの暮しの庭の developer 表記（実データ, 2026-08-10 スナップショット）
+  it('Nippon Ichi Software, Inc.（実データ表記）はサフィックス正規化を経て Nippon Ichi Software にヒットする', () => {
+    expect(isLargeStudio('Nippon Ichi Software, Inc.')).toEqual({
+      hit: true,
+      matched: 'Nippon Ichi Software',
+      list: 'large',
+    });
+  });
+
+  it('NIS America, Inc. は Nippon Ichi Software にヒットする', () => {
+    expect(isLargeStudio('NIS America, Inc.')).toEqual({
+      hit: true,
+      matched: 'Nippon Ichi Software',
+      list: 'large',
+    });
+  });
+
+  // ネガティブコントロール: 無関係な会社・単体略称・作品名を巻き込まないこと
+  it('Sony Pictures Imageworks is not large（sony 単体エイリアスは追加していない）', () => {
+    expect(isLargeStudio('Sony Pictures Imageworks')).toEqual({ hit: false });
+  });
+
+  it('Microsoft Flight Simulator（作品名）is not large', () => {
+    expect(isLargeStudio('Microsoft Flight Simulator')).toEqual({ hit: false });
+  });
+
+  it('Xbox（単体）is not large（xbox 単体エイリアスは追加していない）', () => {
+    expect(isLargeStudio('Xbox')).toEqual({ hit: false });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
