@@ -111,10 +111,19 @@ export async function vetIndieCandidate(
   }
 
   // 通常ルート不通過 → 話題性ルート評価
+  //
+  // Issue #274: meetsPopularityThreshold には finalize 前の `game` ではなく
+  // finalize 後の `finalizeResult.game` を渡す。
+  // finalizeGameMetadata は入力をシャローコピーして返す（入力オブジェクトは変更しない）ため、
+  // Storefront API から取得した steamRecommendations は戻り値側にしか反映されない。
+  // NORMAL_REQUIRED の steamRecommendations: true は Storefront 呼び出しをトリガーするための
+  // フラグに過ぎず、取得した値そのものは finalizeResult.game を見なければ判定に使えない。
+  // 同じ if 文内で isOnlyDeveloperMissing だけ finalize 後のオブジェクトを見ていたのに対し、
+  // meetsPopularityThreshold が finalize 前のオブジェクトを見ていたのが不整合の原因だった。
   if (
     finalizeResult.reason === 'still-missing-required' &&
     isOnlyDeveloperMissing(finalizeResult.game) &&
-    meetsPopularityThreshold(game)
+    meetsPopularityThreshold(finalizeResult.game)
   ) {
     // developer が欠落していても publisher が大手なら個人開発ラベルで採用しない。
     if (isLargeStudio(finalizeResult.game.publisher).hit) {

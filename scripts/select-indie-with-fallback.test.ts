@@ -294,6 +294,106 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(result.rejected).toHaveLength(0);
   });
 
+  // Issue #274 回帰テスト: meetsPopularityThreshold は finalize 後のオブジェクトを見るべき。
+  // 既存の「めっちゃカメレオン」テストは入力側とモック戻り値側で同一オブジェクトを使っており
+  // finalize 前後の区別に対して盲目だった（steamRecommendations が入力側にも既にあるため、
+  // 修正前の meetsPopularityThreshold(game) でも通ってしまう）。
+  // ここでは入力側に steamRecommendations を持たせず、finalize のモック戻り値にだけ持たせることで、
+  // 「finalize 前を見る実装」と「finalize 後を見る実装」を区別できるテストにする。
+  describe('Issue #274: finalize で Storefront 補完された steamRecommendations の反映', () => {
+    it('入力に steamRecommendations が無く、finalize 戻り値にのみ steamRecommendations=11179（閾値超）がある場合は話題性ルートで採用される', async () => {
+      const candidate = makeGame({
+        title: 'Storefront Enriched Indie',
+        normalizedTitle: 'storefront enriched indie',
+        steamRawDeveloper: 'solo_dev_account',
+        coverImage: 'https://example.com/cover.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/55555' },
+        // steamRecommendations は入力側に無い（Storefront 補完前）
+      });
+      expect(candidate.steamRecommendations).toBeUndefined();
+
+      const gameAfterFinalize = {
+        ...candidate,
+        steamRecommendations: 11179, // finalize 内で Storefront API から取得された値
+        // developer は依然として欠落（isQualifiedCompanyName がアカウント名を弾いた想定）
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+
+      expect(result.adopted).toHaveLength(1);
+      expect(result.adopted[0].developer).toBe('個人開発（solo_dev_account）');
+      expect(result.adopted[0].steamRecommendations).toBe(11179);
+      expect(result.rejected).toHaveLength(0);
+    });
+
+    // ネガティブコントロール: 「採用されること」だけを検証するテストは常に採用する実装でも
+    // 通ってしまうため、閾値未満では不採用になることを併せて確認する。
+    it('ネガティブコントロール: finalize 戻り値の steamRecommendations が閾値未満（4999）なら採用されない', async () => {
+      const candidate = makeGame({
+        title: 'Storefront Enriched Niche',
+        normalizedTitle: 'storefront enriched niche',
+        steamRawDeveloper: 'solo_dev_account_2',
+        coverImage: 'https://example.com/cover2.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/55556' },
+      });
+      expect(candidate.steamRecommendations).toBeUndefined();
+
+      const gameAfterFinalize = {
+        ...candidate,
+        steamRecommendations: 4999, // 閾値未満
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+
+      expect(result.adopted).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0].title).toBe('Storefront Enriched Niche');
+    });
+
+    // 境界値: POPULARITY_STEAM_REVIEWS_MIN のデフォルト値（select-indie-with-fallback.ts:19 を
+    // 目視確認: `Number(process.env.INDIE_POPULARITY_STEAM_REVIEWS_MIN) || 5000`）をリテラルで直書きする。
+    // 本番定数の import はしない。
+    it('境界値: finalize 戻り値の steamRecommendations がちょうど閾値（5000）なら採用される', async () => {
+      const candidate = makeGame({
+        title: 'Storefront Enriched Boundary',
+        normalizedTitle: 'storefront enriched boundary',
+        steamRawDeveloper: 'solo_dev_account_3',
+        coverImage: 'https://example.com/cover3.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/55557' },
+      });
+      expect(candidate.steamRecommendations).toBeUndefined();
+
+      const gameAfterFinalize = {
+        ...candidate,
+        steamRecommendations: 5000, // リテラル直書き（POPULARITY_STEAM_REVIEWS_MIN の import は禁止されている）
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+
+      expect(result.adopted).toHaveLength(1);
+      expect(result.adopted[0].developer).toBe('個人開発（solo_dev_account_3）');
+      expect(result.adopted[0].steamRecommendations).toBe(5000);
+    });
+  });
+
   // Issue #167: finalize 後に IGDB が大手スタジオ名を補完した場合の混入防止
   it('finalize 後に developer が Kojima Productions になったゲームは rejected になる', async () => {
     const candidate = makeGame({ title: 'Death Stranding', normalizedTitle: 'death stranding' });
