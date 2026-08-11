@@ -13,7 +13,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SelectedGames, GameData, RecommendedGame } from './types.js';
 import { getCooldownTitles } from './game-history.js';
-import { isQualifiedGame } from './game-filter.js';
+import { isQualifiedGame, isFanGame } from './game-filter.js';
 import {
   invokeClaudeModel,
   PromptTemplates,
@@ -781,7 +781,34 @@ export async function generateFeatureArticle(
 
   // aggregated.json 候補 + 検証通過提案ゲームを合流（重複除去）
   // aggregated.json には書き戻さない（読み取り元を汚さない）
-  const allCandidates = deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified]);
+  const deduplicated = deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified]);
+
+  // §6.1「すべての母集団クエリに共通で適用」/ §4.5 経路1「他の枠の除外方針をそのまま継承する」
+  // に基づき、ファンゲームを母集団から除外する。
+  // 経路1（aggregated.json 由来）と経路2（LLM提案 → verifyProposedGames の実在検証通過分）が
+  // ここで合流しており、この1箇所で除外することで両経路をカバーする。
+  // qualified / fringe は allCandidates の相補的な二分（isQualifiedGame の真偽で分割）なので、
+  // ここで掛ければ両方に効く。
+  // §6.2 の「他の枠を継承」はリメイク・リマスター除外について新作=許可/インディー=一律除外/
+  // 名作=条件付き許可の3通りに割れており、特集はテーマに合うゲームを横に並べる枠なので
+  // リメイクでもテーマ適合性は損なわれない、という理由により、リメイク・リマスター除外は
+  // 意図的に適用しない（ユーザー判断で確定）。
+  const allCandidates: GameData[] = [];
+  const excludedFanGameTitles: string[] = [];
+  for (const g of deduplicated) {
+    if (isFanGame(g)) {
+      excludedFanGameTitles.push(g.title);
+    } else {
+      allCandidates.push(g);
+    }
+  }
+  console.log(`  Excluded ${excludedFanGameTitles.length} fan game(s) from feature candidates`);
+  if (excludedFanGameTitles.length > 0) {
+    console.log('[feature] excluded fan games:');
+    for (const title of excludedFanGameTitles) {
+      console.log(`  - ${title}`);
+    }
+  }
 
   // 品質フィルタ: qualified / fringe に分割
   const qualified = allCandidates.filter((g) => isQualifiedGame(g));
