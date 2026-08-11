@@ -2380,7 +2380,7 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 
 **規模は未測定**。全エントリ中の該当件数を機械的に列挙しようとしたが断念した: 文字列の類似度では「別法人か否か」を判定できない（`nintendo` は `Nintendo EPD` の部分文字列であり、素朴な包含判定では `Nintendo → Nintendo EPD` のような代表例自体が「一致」と誤判定されて漏れる）ため。
 
-✅ **解決済み（2026-08-12。PR #291）**: `DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離した。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games`（`2k boston`/`2k czech` は傘下スタジオ）と `PUBG Studios`（`pubg corporation` は旧社名）は「別法人に化ける」構造ではないため対象外と判断した。あわせて `game.developer` の canonical 上書き（`select-newreleases-with-fallback.ts:75-76`）を撤去した（`displayName` で上書きすると `matchGameToSteamEntity` の company 軸が `disagree` へ転落し、severity `high` の `game-source-mismatch` を誤発報する実害が測定されたため）。
+✅ **解決済み（2026-08-12。PR #291）**: `DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離した。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games`（`2k boston`/`2k czech` は傘下スタジオ）と `PUBG Studios`（`pubg corporation` は旧社名）は「別法人に化ける」構造ではないため対象外と判断した。あわせて `vetNewReleaseCandidate`（`select-newreleases-with-fallback.ts`）の `game.developer` の canonical 上書きを撤去した（`displayName` で上書きすると `matchGameToSteamEntity` の company 軸が `disagree` へ転落し、severity `high` の `game-source-mismatch` を誤発報する実害が測定されたため）。**撤去前の該当コードは `fc191d1^` 時点の `:75-76`**（`const finalDeveloper = devResult.hit ? devResult.matched : ...`）。現在の同ファイルの `:66-81` は「なぜ上書きしないのか」を説明するコメントに置き換わっている。
 
 ### 教訓
 
@@ -2829,7 +2829,15 @@ Issue 本文は4例を同列に挙げていたが、以下の2つは「別法人
 
 5観点すべて実行。**投稿された指摘は0件**（スコア80未満のため自動投稿なし）。ただし1件（docs の stale 化）は管理者が一次ソースで再検証して**実在を確認**したため、本docs PRで対応する。他4観点（CLAUDE.md準拠 / 表層バグ / git履歴の文脈 / コード内コメント準拠）は指摘なし。
 
-git履歴観点のレビューが補強した事実: `developer` 上書きを導入した `d2da1d5` の直後に `9b6c0f9` が publisher 側の上書きを「`validateGameSourceConsistency` の developer 照合と確実に不一致になり `game-source-mismatch` (high) を誘発する」として撤回している。今回の撤去は同じ原則の延長にある。
+git履歴観点のレビューが補強した事実（コミットの帰属は本docs PRの `/code-review` 指摘を受けて管理者が `git show` で再確認した）: Issue #180 対応時に**同型の問題が既に一度起きて撤回されていた**。
+
+| コミット | 内容 |
+|---|---|
+| `d2da1d5` | `developer` 側の canonical 上書きを導入（`pubResult` は大手ゲートの判定にのみ使い、`finalDeveloper` には使っていない） |
+| `8b637c5` | `/code-review` 指摘を受けて **publisher 側の canonical 上書きを追加**（`: pubResult.hit ? pubResult.matched : ...`） |
+| `9b6c0f9` | その publisher 側の上書きを**撤回**。理由は「`validateGameSourceConsistency` の developer 照合と確実に不一致になり、`game-source-mismatch` (high) → hidden 化（#179 FP-2 型の破壊）を誘発する」 |
+
+つまり `9b6c0f9` が撤回したのは `8b637c5` が追加した publisher 側の上書きであり、`d2da1d5` が導入した developer 側の上書きはこのとき残された。**今回の PR #291 はその残っていた developer 側の上書きを、`9b6c0f9` と同じ理由（company 軸との不一致）で撤去したことになる。** 同じ原則が2度目に適用されるまで約1ヶ月かかっている。
 
 ## テスト
 
