@@ -475,3 +475,164 @@ describe('generateClassicArticle — 歴史検索クエリへの発売年の伝�
     expect(mockSearchGameInfo).toHaveBeenCalledWith('Chrono Trigger', 'classic', 'Square', undefined);
   });
 });
+
+describe('generateFeatureArticle — ファンゲーム除外フィルタ (Issue #232)', () => {
+  beforeEach(() => {
+    // selectFeatureGames はモックでタイトル一致のみで選定するため、
+    // 候補に渡されなかったゲームは選定結果にも含まれない（期待挙動）。
+    mockSelectFeatureGames.mockImplementation(
+      async (_theme: string, candidates: Array<{ title: string }>) => {
+        return candidates.map((c) => c.title);
+      }
+    );
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+  });
+
+  it('keywords にファンゲーム判定文字列を持つゲームは特集候補から除外される', async () => {
+    const normalGame = makeGame({
+      title: 'Normal RPG',
+      igdbRatingCount: 50, // qualified 条件を満たす
+      keywords: ['rpg', 'adventure'],
+    });
+    const fanGame = makeGame({
+      title: 'Fan Project',
+      igdbRatingCount: 50, // qualified 条件を満たすが、ファンゲーム判定で除外される
+      keywords: ['fangame', 'rpg'],
+    });
+
+    const { context } = await generateFeatureArticle(
+      new Date('2026-08-08'),
+      999,
+      [normalGame, fanGame],
+      []
+    );
+
+    // fanGame は除外され、normalGame のみが選定結果に含まれる
+    expect(context.featureGames.map((g) => g.title)).toEqual(['Normal RPG']);
+  });
+
+  it('ポジティブコントロール: ファンゲームでない通常のゲームは候補に残る', async () => {
+    const gameA = makeGame({
+      title: 'Game A',
+      igdbRatingCount: 50,
+      keywords: ['action'],
+    });
+    const gameB = makeGame({
+      title: 'Game B',
+      igdbRatingCount: 50,
+      keywords: ['adventure'],
+    });
+
+    const { context } = await generateFeatureArticle(
+      new Date('2026-08-08'),
+      999,
+      [gameA, gameB],
+      []
+    );
+
+    // 両方とも通常のゲームなので両方選定される
+    expect(context.featureGames.map((g) => g.title)).toEqual(['Game A', 'Game B']);
+  });
+
+  it('リメイク・リマスターは除外されない（回帰テスト）', async () => {
+    const remake = makeGame({
+      title: 'Final Fantasy VII Remake',
+      igdbRatingCount: 100,
+      gameType: 8, // リメイク
+    });
+    const remaster = makeGame({
+      title: 'The Last of Us Remastered',
+      igdbRatingCount: 100,
+      gameType: 9, // リマスター
+    });
+    const normal = makeGame({
+      title: 'Normal Game',
+      igdbRatingCount: 50,
+    });
+
+    const { context } = await generateFeatureArticle(
+      new Date('2026-08-08'),
+      999,
+      [remake, remaster, normal],
+      []
+    );
+
+    // リメイク・リマスターは除外されず、すべて候補に残る
+    expect(context.featureGames.map((g) => g.title)).toEqual([
+      'Final Fantasy VII Remake',
+      'The Last of Us Remastered',
+      'Normal Game',
+    ]);
+  });
+
+  it('タイトル由来のファンゲーム判定も効く', async () => {
+    const unofficialGame = makeGame({
+      title: 'Unofficial Pokemon Game',
+      igdbRatingCount: 50,
+    });
+    const normalGame = makeGame({
+      title: 'Official Pokemon Game',
+      igdbRatingCount: 50,
+    });
+
+    const { context } = await generateFeatureArticle(
+      new Date('2026-08-08'),
+      999,
+      [unofficialGame, normalGame],
+      []
+    );
+
+    // タイトルに "unofficial" を含むゲームは除外され、Official のみ残る
+    expect(context.featureGames.map((g) => g.title)).toEqual(['Official Pokemon Game']);
+  });
+
+  it('除外されたファンゲームのタイトルがログに出力される', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const fanGame1 = makeGame({
+      title: 'Fan Game A',
+      igdbRatingCount: 50,
+      keywords: ['fangame'],
+    });
+    const fanGame2 = makeGame({
+      title: 'Unofficial Fan Game B',
+      igdbRatingCount: 50,
+    });
+    const normalGame = makeGame({
+      title: 'Normal Game',
+      igdbRatingCount: 50,
+    });
+
+    try {
+      await generateFeatureArticle(
+        new Date('2026-08-08'),
+        999,
+        [fanGame1, fanGame2, normalGame],
+        []
+      );
+
+      // 除外件数のログが出力されていることを確認
+      const excludedCountLog = logSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === 'string' && call[0].includes('Excluded 2 fan game(s) from feature candidates')
+      );
+      expect(excludedCountLog).toBe(true);
+
+      // 除外されたタイトルのログが出力されていることを確認
+      const fanGame1Log = logSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === 'string' && call[0].includes('Fan Game A')
+      );
+      expect(fanGame1Log).toBe(true);
+
+      const fanGame2Log = logSpy.mock.calls.some(
+        (call) =>
+          typeof call[0] === 'string' && call[0].includes('Unofficial Fan Game B')
+      );
+      expect(fanGame2Log).toBe(true);
+    } finally {
+      // アサーション失敗時に console.log のスタブが後続テストへ漏れないよう finally で復元する
+      logSpy.mockRestore();
+    }
+  });
+});
