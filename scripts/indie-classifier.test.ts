@@ -427,12 +427,11 @@ describe('isLargeStudio', () => {
     });
   });
 
-  it('NIS America, Inc. は Nippon Ichi Software にヒットする', () => {
-    expect(isLargeStudio('NIS America, Inc.')).toEqual({
-      hit: true,
-      matched: 'Nippon Ichi Software',
-      list: 'large',
-    });
+  // Issue #236 code-review 指摘: NIS America は日本一ソフトウェアとは別法人のパブリッシャのため、
+  // 'nis america' エイリアスは削除済み（canonical 名が記事ラベル・developer 表記にそのまま出力され、
+  // 事実と異なる帰属になるため）。
+  it('NIS America, Inc. は別法人のため大手判定しない', () => {
+    expect(isLargeStudio('NIS America, Inc.')).toEqual({ hit: false });
   });
 
   // ネガティブコントロール: 無関係な会社・単体略称・作品名を巻き込まないこと

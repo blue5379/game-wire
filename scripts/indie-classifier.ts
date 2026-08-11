@@ -89,8 +89,15 @@ const LARGE_DEVELOPERS: ReadonlyArray<DeveloperEntry> = [
     ],
   },
   {
+    // Issue #236 code-review 指摘: 'nis america' エイリアスは削除済み。
+    // NIS America は日本一ソフトウェアとは別法人のパブリッシャであり、
+    // canonical 名がそのまま記事ラベル・developer 表記に出力されるため、
+    // エイリアスに含めると「NIS America 発売タイトル」が「Nippon Ichi Softwareの新作」等
+    // 事実と異なる帰属になってしまう。Issue #236 の実害ケース（ほの暮しの庭）は
+    // developer="Nippon Ichi Software, Inc." 側（静的リスト一致）で既に除外されるため、
+    // publisher 側にエイリアスを持たせる実データ上の修正効果はない。
     canonical: 'Nippon Ichi Software',
-    aliases: ['nippon ichi software', 'nippon ichi', '日本一ソフトウェア', 'nis america'],
+    aliases: ['nippon ichi software', 'nippon ichi', '日本一ソフトウェア'],
   },
 ];
 

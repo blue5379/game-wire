@@ -471,7 +471,10 @@ describe('vetIndieCandidate — Issue #236 親会社パブリッシャの大手�
     expect(result).toBeNull();
   });
 
-  it('developer=Nippon Ichi Software, Inc.（3本）/ publisher=NIS America, Inc. の候補は除外される', async () => {
+  // Issue #236 code-review 指摘: publisher="NIS America, Inc." 側のエイリアスは削除済みのため、
+  // この候補は developer="Nippon Ichi Software, Inc." 側の静的リスト一致（大手ゲート）で除外される。
+  // publisher 側は無関係（'nis america' エイリアスは実データ上の修正効果がゼロだったため削除）。
+  it('developer側の静的リスト一致（Nippon Ichi Software, Inc.）で除外される（publisherのNIS America側ではない）', async () => {
     const candidate = makeGame({ title: 'ほの暮しの庭', normalizedTitle: 'ほのぐらしのにわ' });
     const finishedGame = {
       ...candidate,
