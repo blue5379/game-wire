@@ -1,5 +1,4 @@
 import { finalizeGameMetadata } from './finalize-game-metadata.js';
-import { isLargeStudio } from './indie-classifier.js';
 import type { GameData } from './types.js';
 
 export interface NewReleasesSelectionResult {
@@ -64,17 +63,22 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
 
   if (!finalizeResult.ok) return null;
 
-  // developer が静的リストの大手なら canonical 名で上書き（同一企業の表記ゆれ吸収。既存挙動、Issue #180）。
-  // ここでの isLargeStudio 呼び出しは採用可否の判定ではなく表記正規化のみが目的のため、
-  // developerGameCount（開発本数による規模判定）は渡さない。開発本数判定はインディー枠の
-  // 除外条件専用（論点A / §11.1 確定事項 #11）であり、新作枠では使わない。
-  // publisher 側での上書きは行わない。Steam の developers[] には受託スタジオ名が載る
-  // （実測: Echoes of Aincrad は developers=["Game Studio Inc."] /
-  // publishers=["Bandai Namco Entertainment Inc."]）ため、publisher 名で上書きすると
-  // 記事の開発元表記が事実と異なり、validateGameSourceConsistency の developer 照合とも不一致になる。
-  const devResult = isLargeStudio(finalizeResult.game.developer);
-  const finalDeveloper = devResult.hit ? devResult.matched : finalizeResult.game.developer;
-  return { ...finalizeResult.game, developer: finalDeveloper };
+  // developer の上書きは行わない（Issue #180, #277）。理由:
+  // 1. `pickNewReleaseLabelCompany` 関数（indie-classifier.ts）のJSDocに
+  //    「`game.developer` 自体は事実（受託スタジオ名）を保持する方針」と明記されており、
+  //    生値の保持が設計方針である。
+  // 2. canonical や displayName で上書きすると、Steam の developers[]/publishers[] と
+  //    `companyNamesOverlap` 突合時に和名（`任天堂`）vs 英語表記（`Nintendo`）の不一致や、
+  //    正規化名（`Nintendo EPD`）vs 生値（`Nintendo`）の不一致が発生し、
+  //    同一性照合（`validate-article.ts` → `game-identity.ts`）が回帰する（Issue #277 実測）。
+  // 3. Issue #180（受託開発タイトルのラベルを大手側に寄せる）の意図は、記事生成時の
+  //    `pickNewReleaseLabelCompany` 呼び出しで既に達成されており、developer フィールド自体の
+  //    上書きは不要である（実測: 公開19号の newRelease 記事32本で発火例は0件）。
+  //
+  // 上書きしないことで、Steam 生値がそのまま残り、全ケースで照合が通る
+  // （実測: `overlap('Nintendo','Nintendo')=true`、
+  // `overlap('Xbox Game Studios','Xbox Game Studios')=true`）。
+  return finalizeResult.game;
 }
 
 /**

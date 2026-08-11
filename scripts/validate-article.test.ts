@@ -1260,6 +1260,114 @@ describe('validateGameSourceConsistency', () => {
     const warnings = await validateGameSourceConsistency(article, fetchImpl);
     expect(warnings.some((w) => w.type === 'game-source-uncertain')).toBe(true);
   });
+
+  // Issue #277 回帰防止: developer 上書き撤去による同一性照合の保全
+  describe('[Issue #277] developer 生値保持による同一性照合の保全', () => {
+    it('developer=Nintendo（生値）/ Steam developers=["Nintendo"] で company 軸が agree になる', async () => {
+      const article = makeArticle({
+        title: '任天堂の新作タイトル',
+        category: 'newRelease',
+        game: {
+          title: 'Nintendo Game',
+          genre: ['Action'],
+          platforms: ['Nintendo Switch'],
+          releaseDate: '2026-08-01',
+          developer: 'Nintendo',
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+      });
+      const fetchImpl = makeBilingualFetch('999999', {
+        name: 'Nintendo Game',
+        release_date: { coming_soon: false, date: '1 Aug, 2026' },
+        developers: ['Nintendo'],
+      });
+
+      // title=same, year=same, company=agree → 警告なし
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings).toHaveLength(0);
+    });
+
+    // ネガティブコントロール: developer を和名（displayName）に上書きし、かつ title が不一致の場合、
+    // company 軸が disagree のみとなり、title disagree + company disagree → uncertain になる
+    it('developer=任天堂（和名）/ Steam developers=["Nintendo"] かつ title 不一致では uncertain 警告が出る（撤去の根拠）', async () => {
+      const article = makeArticle({
+        title: '任天堂の新作タイトル',
+        category: 'newRelease',
+        game: {
+          title: 'Nintendo Test Game',
+          genre: ['Action'],
+          platforms: ['Nintendo Switch'],
+          releaseDate: '2026-08-01',
+          developer: '任天堂', // displayName に上書きした場合
+          // publisher も無い、または和名の場合、company 軸の救済が無い
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+      });
+      const fetchImpl = makeBilingualFetch('999999', {
+        name: 'Nintendo Another Game', // title 不一致
+        release_date: { coming_soon: false, date: '1 Aug, 2026' },
+        developers: ['Nintendo'],
+      });
+
+      // title=disagree, year=agree, company=disagree → uncertain（行5）
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      const uncertain = warnings.find((w) => w.type === 'game-source-uncertain');
+      expect(uncertain).toBeDefined();
+      expect(uncertain?.severity).toBe('medium');
+      expect(uncertain?.message).toMatch(/company=disagree/);
+    });
+
+    it('developer=Xbox Game Studios（生値）/ Steam developers=["Xbox Game Studios"] で company 軸が agree になる', async () => {
+      const article = makeArticle({
+        title: 'Xbox Game Studios の新作',
+        category: 'newRelease',
+        game: {
+          title: 'Xbox Game',
+          genre: ['Action'],
+          platforms: ['Xbox Series X/S'],
+          releaseDate: '2026-08-01',
+          developer: 'Xbox Game Studios',
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/888888' },
+      });
+      const fetchImpl = makeBilingualFetch('888888', {
+        name: 'Xbox Game',
+        release_date: { coming_soon: false, date: '1 Aug, 2026' },
+        developers: ['Xbox Game Studios'],
+      });
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings).toHaveLength(0);
+    });
+
+    // ネガティブコントロール: Microsoft（displayName）+ title 不一致では uncertain になる
+    it('developer=Microsoft（displayName）/ Steam developers=["Xbox Game Studios"] かつ title 不一致では uncertain 警告が出る', async () => {
+      const article = makeArticle({
+        title: 'Xbox Game Studios の新作',
+        category: 'newRelease',
+        game: {
+          title: 'Xbox Test Game',
+          genre: ['Action'],
+          platforms: ['Xbox Series X/S'],
+          releaseDate: '2026-08-01',
+          developer: 'Microsoft', // displayName に上書きした場合
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/888888' },
+      });
+      const fetchImpl = makeBilingualFetch('888888', {
+        name: 'Xbox Another Game', // title 不一致
+        release_date: { coming_soon: false, date: '1 Aug, 2026' },
+        developers: ['Xbox Game Studios'],
+      });
+
+      // title=disagree, year=agree, company=disagree → uncertain（行5）
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      const uncertain = warnings.find((w) => w.type === 'game-source-uncertain');
+      expect(uncertain).toBeDefined();
+      expect(uncertain?.severity).toBe('medium');
+      expect(uncertain?.message).toMatch(/company=disagree/);
+    });
+  });
 });
 
 describe('validateReleasedTitleExpression', () => {

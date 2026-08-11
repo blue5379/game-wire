@@ -87,7 +87,7 @@ describe('normalizeDeveloperName', () => {
 describe('isLargeStudio', () => {
   // 大手スタジオ - 正例
   it('CD Projekt RED is large', () => {
-    expect(isLargeStudio('CD Projekt RED')).toEqual({ hit: true, matched: 'CD Projekt RED', list: 'large' });
+    expect(isLargeStudio('CD Projekt RED')).toEqual({ hit: true, matched: 'CD Projekt RED', displayName: 'CD Projekt RED', list: 'large' });
   });
 
   it('CD Projekt Red (case variation) is large', () => {
@@ -154,7 +154,7 @@ describe('isLargeStudio', () => {
 
   // 大手子会社 - 正例
   it('Ninja Theory is subsidiary', () => {
-    expect(isLargeStudio('Ninja Theory')).toEqual({ hit: true, matched: 'Ninja Theory', list: 'subsidiary' });
+    expect(isLargeStudio('Ninja Theory')).toEqual({ hit: true, matched: 'Ninja Theory', displayName: 'Ninja Theory', list: 'subsidiary' });
   });
 
   it('343 Industries is subsidiary', () => {
@@ -398,8 +398,9 @@ describe('isLargeStudio', () => {
   });
 
   // Issue #236: 親会社パブリッシャ自体が LARGE_DEVELOPERS に無かった穴の修正確認
+  // Issue #277: displayName=Microsoft を返す
   it('Xbox Game Studios is large', () => {
-    expect(isLargeStudio('Xbox Game Studios')).toEqual({ hit: true, matched: 'Xbox Game Studios', list: 'large' });
+    expect(isLargeStudio('Xbox Game Studios')).toEqual({ hit: true, matched: 'Xbox Game Studios', displayName: 'Microsoft', list: 'large' });
   });
 
   it('Microsoft (alias) is large', () => {
@@ -410,6 +411,7 @@ describe('isLargeStudio', () => {
     expect(isLargeStudio('Sony Interactive Entertainment')).toEqual({
       hit: true,
       matched: 'Sony Interactive Entertainment',
+      displayName: 'Sony Interactive Entertainment',
       list: 'large',
     });
   });
@@ -423,6 +425,7 @@ describe('isLargeStudio', () => {
     expect(isLargeStudio('Nippon Ichi Software, Inc.')).toEqual({
       hit: true,
       matched: 'Nippon Ichi Software',
+      displayName: 'Nippon Ichi Software',
       list: 'large',
     });
   });
@@ -468,6 +471,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Unlisted Small Studio', 21)).toEqual({
       hit: true,
       matched: 'Unlisted Small Studio',
+      displayName: 'Unlisted Small Studio',
       list: 'developed-count',
     });
   });
@@ -476,6 +480,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Some New Studio', 25)).toEqual({
       hit: true,
       matched: 'Some New Studio',
+      displayName: 'Some New Studio',
       list: 'developed-count',
     });
   });
@@ -484,6 +489,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('The Coalition', 8)).toEqual({
       hit: true,
       matched: 'The Coalition',
+      displayName: 'The Coalition',
       list: 'subsidiary',
     });
   });
@@ -492,6 +498,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('The Coalition')).toEqual({
       hit: true,
       matched: 'The Coalition',
+      displayName: 'The Coalition',
       list: 'subsidiary',
     });
   });
@@ -508,6 +515,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Nihon Falcom', 214)).toEqual({
       hit: true,
       matched: 'Nihon Falcom',
+      displayName: 'Nihon Falcom',
       list: 'large',
     });
   });
@@ -519,6 +527,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Unlisted Studio With 214 Games', 214)).toEqual({
       hit: true,
       matched: 'Unlisted Studio With 214 Games',
+      displayName: 'Unlisted Studio With 214 Games',
       list: 'developed-count',
     });
   });
@@ -547,6 +556,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Env Test Studio B', 51)).toEqual({
       hit: true,
       matched: 'Env Test Studio B',
+      displayName: 'Env Test Studio B',
       list: 'developed-count',
     });
   });
@@ -556,6 +566,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Env Test Studio C', 1)).toEqual({
       hit: true,
       matched: 'Env Test Studio C',
+      displayName: 'Env Test Studio C',
       list: 'developed-count',
     });
   });
@@ -566,6 +577,7 @@ describe('isLargeStudio — developedCount（§3.4 開発本数による規模�
     expect(isLargeStudio('Env Test Studio E', 21)).toEqual({
       hit: true,
       matched: 'Env Test Studio E',
+      displayName: 'Env Test Studio E',
       list: 'developed-count',
     });
   });
@@ -711,9 +723,10 @@ describe('isIndieGame', () => {
   });
 });
 
-describe('pickNewReleaseLabelCompany（Issue #180: 大手新作枠のラベル用企業名）', () => {
-  it('developer が大手 → developer の canonical 名を返す', () => {
-    expect(pickNewReleaseLabelCompany('nintendo', undefined)).toBe('Nintendo EPD');
+describe('pickNewReleaseLabelCompany（Issue #180, #277: 大手新作枠のラベル用企業名）', () => {
+  it('developer が大手 → developer の displayName（読者向け表示名）を返す', () => {
+    // Issue #277: Nintendo EPD は canonical だが、displayName=任天堂 を返す
+    expect(pickNewReleaseLabelCompany('nintendo', undefined)).toBe('任天堂');
   });
 
   it('受託開発（developer 小規模・publisher 大手）→ publisher の canonical 名を返す', () => {
@@ -730,6 +743,92 @@ describe('pickNewReleaseLabelCompany（Issue #180: 大手新作枠のラベル�
 
   it('developer 未定義・publisher も大手でない → undefined（呼び出し側が「注目新作」にする）', () => {
     expect(pickNewReleaseLabelCompany(undefined, 'Small Publisher')).toBeUndefined();
+  });
+
+  // Issue #277: displayName が指定されたエントリの表示名検証
+  it('受託開発（developer 小規模・publisher が Nintendo）→ 任天堂（displayName）を返す', () => {
+    // 実測ケース vol.002: developer=Omega Force / publisher=Nintendo で任天堂発売
+    expect(pickNewReleaseLabelCompany('Omega Force', 'Nintendo')).toBe('任天堂');
+  });
+
+  it('Xbox Game Studios → Microsoft（displayName）を返す', () => {
+    expect(pickNewReleaseLabelCompany('Xbox Game Studios', undefined)).toBe('Microsoft');
+    expect(pickNewReleaseLabelCompany('microsoft', undefined)).toBe('Microsoft');
+  });
+
+  it('Bethesda → Bethesda（displayName）を返す', () => {
+    expect(pickNewReleaseLabelCompany('bethesda softworks', undefined)).toBe('Bethesda');
+    expect(pickNewReleaseLabelCompany('bethesda game studios', undefined)).toBe('Bethesda');
+  });
+
+  // ポジティブコントロール: displayName の無いエントリは canonical を返す（表記ゆれ吸収が維持される）
+  it('displayName の無いエントリは canonical を返す（Capcom）', () => {
+    expect(pickNewReleaseLabelCompany('capcom', undefined)).toBe('Capcom');
+    expect(pickNewReleaseLabelCompany('カプコン', undefined)).toBe('Capcom');
+  });
+
+  it('displayName の無いエントリは canonical を返す（Nihon Falcom）', () => {
+    expect(pickNewReleaseLabelCompany('falcom', undefined)).toBe('Nihon Falcom');
+    expect(pickNewReleaseLabelCompany('日本ファルコム', undefined)).toBe('Nihon Falcom');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #277: displayName による表示名分離の検証
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Issue #277: displayName（規模判定用 canonical と読者向け表示名の分離）', () => {
+  describe('isLargeStudio は displayName を持つエントリで hit=true かつ正しい displayName を返す', () => {
+    it('Nintendo EPD エントリのすべての alias で hit=true、displayName=任天堂', () => {
+      expect(isLargeStudio('nintendo epd')).toMatchObject({ hit: true, matched: 'Nintendo EPD', displayName: '任天堂', list: 'large' });
+      expect(isLargeStudio('nintendo')).toMatchObject({ hit: true, matched: 'Nintendo EPD', displayName: '任天堂', list: 'large' });
+      expect(isLargeStudio('任天堂')).toMatchObject({ hit: true, matched: 'Nintendo EPD', displayName: '任天堂', list: 'large' });
+    });
+
+    it('Xbox Game Studios エントリのすべての alias で hit=true、displayName=Microsoft', () => {
+      expect(isLargeStudio('xbox game studios')).toMatchObject({ hit: true, matched: 'Xbox Game Studios', displayName: 'Microsoft', list: 'large' });
+      expect(isLargeStudio('microsoft')).toMatchObject({ hit: true, matched: 'Xbox Game Studios', displayName: 'Microsoft', list: 'large' });
+      expect(isLargeStudio('microsoft studios')).toMatchObject({ hit: true, matched: 'Xbox Game Studios', displayName: 'Microsoft', list: 'large' });
+      expect(isLargeStudio('microsoft game studios')).toMatchObject({ hit: true, matched: 'Xbox Game Studios', displayName: 'Microsoft', list: 'large' });
+    });
+
+    it('Bethesda Game Studios エントリのすべての alias で hit=true、displayName=Bethesda', () => {
+      expect(isLargeStudio('bethesda game studios')).toMatchObject({ hit: true, matched: 'Bethesda Game Studios', displayName: 'Bethesda', list: 'subsidiary' });
+      expect(isLargeStudio('bethesda softworks')).toMatchObject({ hit: true, matched: 'Bethesda Game Studios', displayName: 'Bethesda', list: 'subsidiary' });
+      expect(isLargeStudio('bethesda')).toMatchObject({ hit: true, matched: 'Bethesda Game Studios', displayName: 'Bethesda', list: 'subsidiary' });
+    });
+  });
+
+  describe('displayName の無いエントリは canonical を displayName としてそのまま返す（既存挙動維持）', () => {
+    it('Capcom は displayName=Capcom（canonical と同じ）', () => {
+      expect(isLargeStudio('capcom')).toMatchObject({ hit: true, matched: 'Capcom', displayName: 'Capcom', list: 'large' });
+    });
+
+    it('Nihon Falcom は displayName=Nihon Falcom（canonical と同じ）', () => {
+      expect(isLargeStudio('falcom')).toMatchObject({ hit: true, matched: 'Nihon Falcom', displayName: 'Nihon Falcom', list: 'large' });
+    });
+
+    it('Naughty Dog（子会社）は displayName=Naughty Dog', () => {
+      expect(isLargeStudio('naughty dog')).toMatchObject({ hit: true, matched: 'Naughty Dog', displayName: 'Naughty Dog', list: 'subsidiary' });
+    });
+  });
+
+  describe('開発本数判定（list=developed-count）では displayName は入力文字列と同じ', () => {
+    it('静的リスト外・developedCount=25 → matched=displayName=入力文字列', () => {
+      const result = isLargeStudio('Some New Studio', 25);
+      expect(result).toMatchObject({ hit: true, matched: 'Some New Studio', displayName: 'Some New Studio', list: 'developed-count' });
+    });
+  });
+
+  describe('isIndieGame の matched（除外理由ログ用）は canonical のまま（規模判定の根拠を保つ）', () => {
+    it('Nintendo EPD に一致するゲームは matched=Nintendo EPD（canonical）で除外される', () => {
+      const game = makeGame({ title: 'Test Game', developer: 'Nintendo' });
+      expect(isIndieGame(game)).toEqual({ ok: false, reason: 'large-studio', matched: 'Nintendo EPD' });
+    });
+
+    it('displayName 無しのゲームは matched=canonical', () => {
+      const game = makeGame({ title: 'Test Game', developer: 'Capcom' });
+      expect(isIndieGame(game)).toEqual({ ok: false, reason: 'large-studio', matched: 'Capcom' });
+    });
   });
 });
 
