@@ -31,6 +31,7 @@
 | **#235 対応** | `fix/issue-235-drop-youtube-popularity-route` | ✅ **マージ済み**（2026-08-11。マージコミット `d04a107`。通常マージ、squashではない） | **#235**（Closed）/ 関連 **#217**（YouTube活用の可否検証）・**#274**（本PRのレビューで新規分離） / PR #273 | 29ファイル / **1166テスト**（着手前 1168。YouTube percentileの4テストを削除、回帰テスト+ポジティブコントロールを2件追加）。コミット1本。§3.5が2026-08-07に決定済みだった「話題性ルートをSteamの2経路だけにする」の未実装分を実装。**着手前の独立検証で前セッションの前提が再現しないことが判明**（下記「実施結果」に詳述）: 「YouTubeマッチ0件＝実質デッドコード」は直近データでは成立せず2件マッチしていたが、いずれも先に評価されるSteam経路を満たすためYouTube分岐は到達不能で、結論（供給は減らない）はより強い理由で成立した |
 | **#236 対応** | `fix/issue-236-parent-publisher-entries` | ✅ **マージ済み**（2026-08-11。マージコミット `abd8f3e`。通常マージ、squashではない） | **#236**（**Closed にしていない。①が未解決のため**）/ 関連 **#231**（Closed。方針の根拠が実測で崩れた）・**#277**（本PRのレビューの横断確認で新規起票）・**#175**（上位タスク） / PR #276 | 29ファイル / **1178テスト**（着手前 1166）。コミット2本（実装 `76e31e5` → `/code-review` 指摘対応 `dd40bb4`）。真因2層のうち**②（`MAJOR_PUBLISHER_SUBSIDIARIES` にはコメント見出しだけがあり、親会社エントリが `LARGE_DEVELOPERS` に無かった）だけ**を対処し、**①（IGDBのレコード分裂）は未解決のまま Issue を開いている**。Issue #231 が個社追記を退けた根拠（「PR-I の `developed` 判定と二重になる」）は**実測で崩れた**: 『ほの暮しの庭』は `developed=3` の分裂レコードに紐づき `developed` 判定が発火しない。`/code-review` 指摘1件を採用したが、**対処法はレビュー案（別 canonical を立てる）から変更し、エイリアスごと削除**した |
 | **#274 対応** | `fix/issue-274-popularity-route-finalize` | ✅ **マージ済み**（2026-08-11。マージコミット `6ac5af0`。通常マージ、squashではない） | **#274**（Closed）/ 関連 **#280**（本PRの `/code-review` で新規分離） / PR #279 | 29ファイル / **1181テスト**（着手前 1178。新規3件）。コミット1本（`47cefc3`）。`meetsPopularityThreshold` に finalize 前のオブジェクトを渡していた不整合の修正（本体1行）。実データ測定で実害は0件だったが、**修正は単調**（供給が減るリスクが構造的にゼロ）なので実施した。**1回目の測定は検出力ゼロ**だった: 本番と同じ `targetCount=2` では上位2候補が通常ルートで採用された時点でループが終了し、24候補中2件しか評価されず話題性ルートが一度も動かなかった。`/code-review` 指摘1件を **Issue #280 に分離** |
+| **#280 対応** | `fix/issue-280-popularity-route-developer-gate` | ✅ **マージ済み**（2026-08-11。マージコミット `c823440`。通常マージ、squashではない） | **#280**（Closed）/ 関連 **#284**（欠陥B。本PRから新規分離）・**#285**（欠陥2。本PRから新規分離）・**#274**（本Issueの出所） / PR #282 | 29ファイル / **1184テスト**（着手前 1181。新規6件を追加し、うち3件を`/code-review`指摘により削除）。コミット2本（実装 `09c0710` → `/code-review`指摘対応 `13e63bd`）。話題性ルートの大手ゲートに `isLargeStudio(steamRawDeveloper)` を追加。`isQualifiedCompanyName` が単一トークン社名を弾くため `developer` 未設定になり、大手が「個人開発」ラベルで載り得た欠陥1を解消。**`/code-review` が管理者の実装の半分を無効と判定した**: 同時に入れた第2引数 `developerGameCount` は、この経路では常に `undefined` で発火しない死んだコードだった（到達条件が `!game.developer` である一方、`developerGameCount` は `developer` と同時にのみ書かれ、`developer` を解除する経路が無い）。第2引数と、到達不能な状態を前提にしていたテスト3件を撤回した。実データ測定では変更前後で判定が変わった候補は0件（供給は減らない） |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -2449,4 +2450,135 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 ### 教訓
 
 - **「計測して0件」と「計測経路に到達していない」を区別する。** 本番と同じ条件で計測ログが0件だったが、これはループが2候補で打ち切られ話題性ルートが一度も動かなかったためだった。**計測する前に「その経路は何件処理されるのか」を確認する**こと
+
+---
+
+# PR #282: 話題性ルートの大手ゲートに steamRawDeveloper を追加する（Issue #280）
+
+- ブランチ: `fix/issue-280-popularity-route-developer-gate`
+- Issue: **#280**（Closed）。PR #279 の `/code-review` で分離
+- 関連: **#284**（欠陥B。本PRから新規分離）・**#285**（欠陥2。本PRから新規分離）・**#274**（本Issueの出所）
+
+## 何が壊れていたか（Issue #280 が挙げた欠陥1）
+
+話題性ルートの大手ゲートは `publisher` に対してのみ `isLargeStudio` を呼んでおり（`select-indie-with-fallback.ts:129`）、`steamRawDeveloper` を全く見ていなかった。一方、`isQualifiedCompanyName`（`steam-utils.ts:35-39`）は「英数字とアンダースコアのみで20文字未満」を弾くため、単一トークン社名である `Nintendo` / `Capcom` / `SEGA` / `Valve` / `Konami` / `Ubisoft` / `Bethesda` はすべて `developer` 未設定になる（いずれも `isLargeStudio=true`）。この2つの条件が組み合わさることで、`個人開発（Capcom）` のような誤ラベルが生成され得た。
+
+## 着手前の独立検証で判明したこと
+
+### 該当する大手は7社ではなく計15社
+
+Issue #280 本文は Nintendo / Capcom / SEGA / Valve / Konami / Ubisoft / Bethesda の7社を挙げていたが、管理者が実測すると**計15社**が同条件（`isQualifiedCompanyName`=false かつ `isLargeStudio`=true）に該当した。追加8社は:
+
+- FromSoftware
+- Atlus
+- Rockstar
+- Activision
+- Blizzard（`MAJOR_PUBLISHER_SUBSIDIARIES` 経由）
+- Microsoft
+- EA
+- Falcom（Bethesda も同じく `MAJOR_PUBLISHER_SUBSIDIARIES` 経由）
+
+### 仕様書に記述が存在しない「個人開発」ラベル経路
+
+`個人開発` ラベル経路は **`docs/article-category-spec.md` に記述が存在しない**（`grep -r '個人開発'` でヒット0件）。出所は Issue #97 の**コメント**（本文ではない）で、「『個人開発（〇〇）』表記の品位: アカウント名そのまま括弧内に入れることが許容範囲か運用後に判断」と保留項目として書かれたまま仕様に昇格していない。
+
+### 公開記事への実害の確認
+
+`grep -r '個人開発（' src/content/issues/` を実行したところ、ヒットは `src/content/issues/issue-012.md` の `個人開発（lemorion_1224）` のみで、これは実際のSteamアカウント名なので誤りではない。`個人開発（Petroglyph）` は DEV_MODE 出力（`issues-dev/issue-019.md`）にのみ存在し、公開記事には出ていない。
+
+## 実データによる前後比較測定（決定論的）
+
+ユーザー承認を得て `DEV_MODE=true npm run fetch-data` をライブ実行し、新規スナップショット316件（`fetchedAt=2026-08-11T12:56:55.814Z`）を取得した。同一スナップショットに旧ロジック（修正前）と新ロジック（修正後）の両方を適用する決定論的比較（PR #276 で確立した手法）を実施した。
+
+| 指標 | 件数 |
+|---|---|
+| インディー枠候補（通常ルート） | 27 |
+| うち話題性ルート到達 | 5 |
+| **うち新旧で判定が変わる** | **0** |
+
+話題性ルートに到達した5件は:
+
+1. **Soulmask**: `developer` 無・`developerGameCount` 無・`publisher=Qooland Games`（非大手）→ **新旧とも採用**
+2. **Sunkenland**: `developer=Vector3 Studio`（非大手）→ 大手ゲート評価前に不採用（`publisher` が無いため別経路で弾かれる）
+3. **Satisfactory**: `developer` 無・`publisher=Coffee Stain Publishing`（非大手）→ **新旧とも採用**
+4. **Enshrouded**: `developer=Keen Games`（非大手）→ **新旧とも採用**
+5. **V Rising**: `developer=Stunlock Studios`（非大手）→ **新旧とも採用**
+
+**変更前後で判定が変わった候補は0件。供給は減らない。**
+
+### ポジティブコントロール
+
+話題性ルートに到達した5件はいずれも非大手だったため、新ゲートが実際に大手を弾くことを別途確認した。Issue #280 本文の7社 + 追加8社のうち、スナップショットに含まれている社名を `steamRawDeveloper` に持つレコードを抽出し、手動で `candidate` 相当のオブジェクトを作成して `isLargeStudio` を評価した。結果:
+
+- **Capcom**: `true`（`LARGE_DEVELOPERS` 経由）
+- **Nintendo**: `true`（`LARGE_DEVELOPERS` 経由）
+- **Valve**: `true`（`LARGE_DEVELOPERS` 経由）
+
+**新ゲートは大手に対して実際に発火することを確認した。**
+
+## `/code-review` の結果（指摘1件を採用、信頼度100）
+
+5エージェントのうち4件が同じ箇所を指摘したが**結論が正反対**だった:
+
+- **2件**: 「Steam由来の名前とIGDB由来の件数を組み合わせるペアリング違反」（`steamRawDeveloper` + `developerGameCount`）
+- **2件**: 「第2引数は常に undefined で到達不能」
+
+両立しないため管理者が実コードで検証した。
+
+### 検証結果: 後者が正しい（第2引数は常に undefined）
+
+`developerGameCount` の全書き込み箇所を追跡:
+
+1. **`fetch-igdb.ts:486-488` / `:857-859`**: 同一 `involved_companies` レコード由来で `developer` と同時にのみ設定
+2. **`fetch-data.ts:135` / `:337` / `:611`**: `pickDeveloperGameCount` が `developer` をガードしており、`developer` が無いと `undefined` を返す
+3. **`fetch-data.ts:385`**: 同一 `igdb` オブジェクトから同一リテラル内で `developer` と同時に代入
+4. **`finalize-game-metadata.ts:81`**: `pickDeveloperGameCount` でガード
+
+**すべての書き込み箇所で `developerGameCount` は `developer` と同時にのみ設定され、`developer` を解除する経路は存在しない。** したがって `developer` 未設定が到達条件のこの経路（`isOnlyDeveloperMissing` が `true`）では、`developerGameCount` は常に `undefined`。ペアリング違反（前者）は起こり得ない。
+
+### 対処
+
+- 第2引数 `developerGameCount` を削除
+- コメントを「渡さない理由」の説明に差し替え
+- 到達不能な状態（`developer` 未設定かつ `developerGameCount` 設定済み）を前提にしていたテスト3件（count=50/21/20）を削除
+
+テストは 1181 + 6（新規）- 3（削除）= 1184 件になった。
+
+### ミュータント検証（管理者が再実行）
+
+ゲートを修正前（`publisher` のみ）に戻すと Capcom のテストが1件失敗し、ポジティブコントロール（`NaipSoft`）は通過し続けた。**テストが自明に緑になっていないことを確認した。**
+
+## 分離した課題
+
+### Issue #285（欠陥2）
+
+開発本数による規模判定をこの経路に効かせるには `steamRawDeveloper` に対応する開発本数を新たに引く仕組みが必要。`developerGameCount` は IGDB の `involved_companies.company.developed` 由来で、`steamRawDeveloper` は Storefront の `app_details.developers[0]` 由来のため、現状では紐づかない。実害は未測定。
+
+### Issue #284（欠陥B）
+
+`isQualifiedCompanyName` が Petroglyph / Supergiant / Klei / tinyBuild のような中小の単一トークン社名を誤ってアカウント名と判定する。影響は話題性ルートに限らず `finalize` 全体（新作枠・名作枠を含む）。ラベル表記自体が仕様未確定である点も含む（`docs/article-category-spec.md` に記述が無い）。
+
+## テスト
+
+1181 → 1184。新規6件を追加し、うち3件を `/code-review` 指摘により削除した。
+
+### 新規テスト（残存3件）
+
+1. **Capcom**: `steamRawDeveloper='Capcom'` / `publisher='Capcom'`。新ゲートで弾かれることを確認
+2. **NaipSoft**（ポジティブコントロール）: 非大手。新旧とも採用
+3. **Steam名無し・件数有り**（ネガティブコントロール）: `developerGameCount=50` だが `steamRawDeveloper` 無し。第2引数を渡していた当初実装では弾かれたが、削除後は通過
+
+## 教訓
+
+### 自分の実装の前提（データフロー上の制約）を実装前に確認する
+
+「通常ルートと軸を揃える」という発想は妥当だったが、`developer` 未設定が到達条件の経路に `developer` と同時にしか書かれない値を渡しても意味がないことを、実装前に確認していなかった。**到達条件と渡す値の依存関係を実装前にコードで追跡すること。**
+
+### レビューエージェントが同じ箇所について正反対の結論を出すことがある
+
+両立しない指摘は多数決ではなく、管理者が一次ソース（実コード）で決着させる。今回は4件の指摘が2-2に割れたが、書き込み箇所を grep で全件追跡することで結論を確定した。
+
+### スナップショットが古いと「0件」に検出力が無い
+
+測定中に `data/aggregated.json` で「count有・developer無」を数えて0件を得たが、当該スナップショットは `fetchedAt=2026-05-16` で `developerGameCount` フィールド自体が存在せず、この0件は無意味だった。結論は実データではなくコード上の不変条件（全書き込み箇所で `developer` と同時にのみ設定）から導いた。**スナップショットの取得日時とスキーマ変更歴を突き合わせること。**
 - **副作用のあるスクリプトでも、`main()` 呼び出しだけを除いた複製を作れば分析に使える。** 再 fetch による外部APIクォータの消費を避けつつ、本番と同じロジックで測れる。複製前に依存モジュール全件に無ガードの `main()` が無いことを確認すること
