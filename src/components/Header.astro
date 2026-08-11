@@ -19,8 +19,7 @@ const formattedDate = publishDate
   <div class="container">
     <div class="header-content">
       <a href="/" class="logo">
-        <span class="logo-text">GAME</span>
-        <span class="logo-accent">QUESTRA</span>
+        <img src="/logo-title.png" alt="GameQuestra" class="logo-image" />
       </a>
       <nav class="nav">
         <a href="/">最新号</a>
@@ -64,25 +63,16 @@ const formattedDate = publishDate
 
   .logo {
     display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 1.75rem;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+    align-items: center;
     text-decoration: none;
   }
 
-  .logo-text {
-    color: var(--color-text);
+  .logo-image {
+    height: 28px;
+    width: auto;
   }
 
-  .logo-accent {
-    color: var(--color-primary);
-  }
-
-  .logo:hover .logo-text,
-  .logo:hover .logo-accent {
+  .logo:hover .logo-image {
     opacity: 0.9;
   }
 
@@ -93,8 +83,11 @@ const formattedDate = publishDate
 
   .nav a {
     color: var(--color-text-muted);
-    font-size: 0.8125rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
     padding: var(--spacing-xs) 0;
     border-bottom: 2px solid transparent;
     transition: border-color 0.2s ease, color 0.2s ease;
@@ -106,7 +99,7 @@ const formattedDate = publishDate
   }
 
   .issue-banner {
-    background: var(--color-primary);
+    background: var(--gradient-logo);
     padding: var(--spacing-sm) 0;
   }
 
@@ -114,12 +107,12 @@ const formattedDate = publishDate
     display: flex;
     align-items: center;
     gap: var(--spacing-lg);
-    font-family: var(--font-heading);
+    font-family: var(--font-mono);
   }
 
   .issue-number {
     font-size: 1.125rem;
-    font-family: var(--font-heading);
+    font-family: var(--font-mono);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
