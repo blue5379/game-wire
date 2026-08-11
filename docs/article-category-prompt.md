@@ -30,6 +30,7 @@
 | **#222 対応** | `fix/issue-222-adult-screening-observability` | ✅ **マージ済み**（2026-08-11。マージコミット `c333eaf`。通常マージ、squashではない） | **#222**（Closed）/ 関連 **#221**（PR-0.1のレビューで同時に分離） / PR #271 | 29ファイル / **1168テスト**（着手前 1124。新規44件）。コミット2本（実装 → `/code-review`指摘4件の対応）。**着手前検証でIssue本文の前提（「AIスクリーニングは特集枠の主防御」）が誤りと判明**し、Issueにコメントで訂正（実際はIGDBの`themes != (42)`が第1層、AIスクリーニングは第3層）。観測の出力先が**2系統**（CIのstdout / 永続化されるValidation Report）あることをデータフロー追跡で発見し、初回実装で漏れていたレポート側も追加対応。`/code-review`が**例外以外の第2のfail-open経路**（応答形式不正）を検出し、別カウンタで計上（ただし実態未観測のため`error`昇格はさせない仕様判断をテストで固定） |
 | **#235 対応** | `fix/issue-235-drop-youtube-popularity-route` | ✅ **マージ済み**（2026-08-11。マージコミット `d04a107`。通常マージ、squashではない） | **#235**（Closed）/ 関連 **#217**（YouTube活用の可否検証）・**#274**（本PRのレビューで新規分離） / PR #273 | 29ファイル / **1166テスト**（着手前 1168。YouTube percentileの4テストを削除、回帰テスト+ポジティブコントロールを2件追加）。コミット1本。§3.5が2026-08-07に決定済みだった「話題性ルートをSteamの2経路だけにする」の未実装分を実装。**着手前の独立検証で前セッションの前提が再現しないことが判明**（下記「実施結果」に詳述）: 「YouTubeマッチ0件＝実質デッドコード」は直近データでは成立せず2件マッチしていたが、いずれも先に評価されるSteam経路を満たすためYouTube分岐は到達不能で、結論（供給は減らない）はより強い理由で成立した |
 | **#236 対応** | `fix/issue-236-parent-publisher-entries` | ✅ **マージ済み**（2026-08-11。マージコミット `abd8f3e`。通常マージ、squashではない） | **#236**（**Closed にしていない。①が未解決のため**）/ 関連 **#231**（Closed。方針の根拠が実測で崩れた）・**#277**（本PRのレビューの横断確認で新規起票）・**#175**（上位タスク） / PR #276 | 29ファイル / **1178テスト**（着手前 1166）。コミット2本（実装 `76e31e5` → `/code-review` 指摘対応 `dd40bb4`）。真因2層のうち**②（`MAJOR_PUBLISHER_SUBSIDIARIES` にはコメント見出しだけがあり、親会社エントリが `LARGE_DEVELOPERS` に無かった）だけ**を対処し、**①（IGDBのレコード分裂）は未解決のまま Issue を開いている**。Issue #231 が個社追記を退けた根拠（「PR-I の `developed` 判定と二重になる」）は**実測で崩れた**: 『ほの暮しの庭』は `developed=3` の分裂レコードに紐づき `developed` 判定が発火しない。`/code-review` 指摘1件を採用したが、**対処法はレビュー案（別 canonical を立てる）から変更し、エイリアスごと削除**した |
+| **#274 対応** | `fix/issue-274-popularity-route-finalize` | ✅ **マージ済み**（2026-08-11。マージコミット `6ac5af0`。通常マージ、squashではない） | **#274**（Closed）/ 関連 **#280**（本PRの `/code-review` で新規分離） / PR #279 | 29ファイル / **1181テスト**（着手前 1178。新規3件）。コミット1本（`47cefc3`）。`meetsPopularityThreshold` に finalize 前のオブジェクトを渡していた不整合の修正（本体1行）。実データ測定で実害は0件だったが、**修正は単調**（供給が減るリスクが構造的にゼロ）なので実施した。**1回目の測定は検出力ゼロ**だった: 本番と同じ `targetCount=2` では上位2候補が通常ルートで採用された時点でループが終了し、24候補中2件しか評価されず話題性ルートが一度も動かなかった。`/code-review` 指摘1件を **Issue #280 に分離** |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -2380,3 +2381,72 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 
 - **引き継ぎ文書が挙げる「影響箇所」の件数を信用しない。** 2箇所と見積もられていたが実読で5箇所あった。特に `generate-articles.ts:417` の記事ラベル経路は文書に記載が無く、canonical 文字列が読者向け表示に直結していた
 - **「前のIssueがその方針を退けた」という理由を、退けた根拠ごと再検証する。** #231 は「PR-I の `developed` 判定が代わりに直す」として個社追記を退けたが、その `developed` 判定が実測でこのケースを覆っていなかった。**方針の結論ではなく、方針が依拠した機構が今も成立しているかを確認する**
+
+---
+
+# PR #279: 話題性ルートの判定に finalize 後のオブジェクトを渡す（Issue #274）
+
+- ブランチ: `fix/issue-274-popularity-route-finalize`
+- Issue: **#274**（Closed）。PR #273 の `/code-review` で分離
+- 関連: **#280**（本PRの `/code-review` で新規分離）
+
+## 何が壊れていたか
+
+同じ `if` 文の中で finalize 前後のオブジェクトが混在していた。`isOnlyDeveloperMissing(finalizeResult.game)`（finalize 後）と `meetsPopularityThreshold(game)`（finalize 前）。`finalizeGameMetadata` は入力をシャローコピーして返す（`finalize-game-metadata.ts:44`）ため、Storefront から取得した `steamRecommendations`（同 `:225-226`）は戻り値側にしか無い。`NORMAL_REQUIRED` の `steamRecommendations: true` は Storefront 呼び出しのトリガー用フラグで、取得した値が判定に使われていなかった。
+
+## 単調性（Issue にも引き継ぎ文書にも書かれていなかった不変条件）
+
+`meetsPopularityThreshold` が読むのは `steamRecommendations` と `steamRank` の2つだけ。前者は `undefined` のときにしか書かれず（`finalize-game-metadata.ts:225`）、**後者は finalize が一切書かない**（grep で確認）。したがって修正後の判定は修正前の**上位集合**であり、採用件数が減るリスクは構造的にゼロ。
+
+## 実データによる実害測定（2段階）
+
+### 第1回（本番と同じ条件）→ 検出力ゼロ。結論に使えない
+
+`DEV_MODE=true npm run fetch-data` を本番と同じ `targetCount=2` で実行したところ計測ログは0件。しかし `selectIndieGamesWithFallback` は `while (adopted.length < targetCount && queue.length > 0)` で回るため、**上位2候補（Palworld / Scrap Mechanic）が通常ルートで採用された時点でループが終了**し、24候補中2件しか `vetIndieCandidate` に到達せず**話題性ルートは一度も評価されなかった**。「計測して0件」と「計測経路に到達していない」は別物である。
+
+### 第2回（全候補）→ 実害0件
+
+保存済みスナップショット（`fetchedAt=2026-08-11T04:24Z` / 315ゲーム）に対して全候補を vet し直した。YouTube クォータを再消費しないよう fetch は再実行せず、`fetch-data.ts` の `main()` 呼び出しだけを取り除いた複製から `buildIndieCandidates` を読んだ（依存モジュール22件に無ガードの `main()` が無いことを事前確認）。`cooldown` は空にしたため本番より広い**上限母集団**。
+
+| 指標 | 件数 |
+|---|---|
+| インディー候補（cooldown 無し・上限） | 24 |
+| vet 通過 | 22 |
+| `still-missing-required` に到達 | 2 |
+| うち `onlyDevMissing=true` | 2 |
+| **うち pre≠post（判定が変わる）** | **0** |
+| **finalize が `steamRecommendations` を補完** | **0** |
+
+到達した2件（Home4Us / The Sculptor）はいずれも **`steamRank`（6位 / 12位）で既に閾値を満たしており**、`steamRecommendations` は finalize 前後とも未取得だった。`steamRank` は finalize が触らないため、この2件では pre/post の区別が判定に影響しない。
+
+**本スナップショットでの実害は0件。ただし1スナップショットの測定であり「発生しない」証明ではない**（Issue #240 と同じ留保）。
+
+計測は一時的なコードを当てて行い、**測定後に削除**したのでPRには含まれない。
+
+## 実害0でも修正した理由
+
+1. 同じ `if` 文で finalize 前後が混在している不整合そのものが、将来の変更で誤りを増幅する
+2. 単調性により供給が減るリスクが構造的にゼロで、修正コストが低い
+3. `steamRecommendations: true` が Storefront 呼び出しをトリガーしているのに、取得した `steamRecommendations` の値だけが捨てられていた（同じ呼び出しで得られる cover / publisher / sourceUrls は使われているため、呼び出し自体が無駄だったわけではない）
+
+## テスト
+
+1178 → 1181。Issue が要求した設計（**入力側に `steamRecommendations` を持たず finalize のモック戻り値にだけ持つ** フィクスチャ）に従った。既存の `lemorion_1224` テストは入力側とモック戻り値が同一オブジェクトで finalize 前後の区別に盲目なため、そのままでは修正前でも通ってしまう。新規は本体 / ネガティブコントロール（4999）/ 境界値（5000）の3件で、`expect(candidate.steamRecommendations).toBeUndefined()` のガードを入れて前提自体をテストが保証するようにした。既存テストは削除も変更もしていない。
+
+**ミュータント検証**（管理者が再実行）: 修正を元に戻すと**2件が失敗**（本体・境界値）。ネガティブコントロールは閾値未満でどちらの実装でも不採用なので不変であり、これは想定どおり。
+
+## `/code-review` 指摘 → Issue #280 に分離
+
+話題性ルートが `steamRawDeveloper` に対して `isLargeStudio` を一度も呼ばないため、実在スタジオが「個人開発」として載り得るという指摘。実測で確認した内容:
+
+- `isQualifiedCompanyName`（`steam-utils.ts:35-39`）は「英数字とアンダースコアのみで20文字未満」を弾くため、**`Nintendo` / `Capcom` / `SEGA` / `Valve` / `Konami` / `Ubisoft` / `Bethesda` はすべて `developer` 未設定になる**（いずれも `isLargeStudio=true`）
+- 話題性ルートの大手ガードは `publisher` にしか掛かっていない（`select-indie-with-fallback.ts:129`）ため、`個人開発（Capcom）` のようなラベルが生成され得る
+- `個人開発（Petroglyph）` が `src/content/issues-dev/issue-019.md`（**DEV_MODE 出力**）に存在する。**公開済み記事には出ていない**（`src/content/issues/issue-012.md` の `個人開発（lemorion_1224）` は Steam アカウント名で意図どおり）
+- レビューが提案した `isLargeStudio(steamRawDeveloper)` の追加は**大手のケースは塞ぐが Petroglyph のような中小スタジオの誤ラベルは塞がない**（静的リストに無いため）
+
+本PRで直さなかった理由: 既存欠陥であること、対処が**供給の減る方向**で Issue #274 の修正（増える方向・単調）と性質が逆であり同一PRでは前後比較が解釈不能になること、本PRによる露出拡大が実測で0件であること。
+
+### 教訓
+
+- **「計測して0件」と「計測経路に到達していない」を区別する。** 本番と同じ条件で計測ログが0件だったが、これはループが2候補で打ち切られ話題性ルートが一度も動かなかったためだった。**計測する前に「その経路は何件処理されるのか」を確認する**こと
+- **副作用のあるスクリプトでも、`main()` 呼び出しだけを除いた複製を作れば分析に使える。** 再 fetch による外部APIクォータの消費を避けつつ、本番と同じロジックで測れる。複製前に依存モジュール全件に無ガードの `main()` が無いことを確認すること
