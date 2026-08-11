@@ -33,6 +33,7 @@
 | **#274 対応** | `fix/issue-274-popularity-route-finalize` | ✅ **マージ済み**（2026-08-11。マージコミット `6ac5af0`。通常マージ、squashではない） | **#274**（Closed）/ 関連 **#280**（本PRの `/code-review` で新規分離） / PR #279 | 29ファイル / **1181テスト**（着手前 1178。新規3件）。コミット1本（`47cefc3`）。`meetsPopularityThreshold` に finalize 前のオブジェクトを渡していた不整合の修正（本体1行）。実データ測定で実害は0件だったが、**修正は単調**（供給が減るリスクが構造的にゼロ）なので実施した。**1回目の測定は検出力ゼロ**だった: 本番と同じ `targetCount=2` では上位2候補が通常ルートで採用された時点でループが終了し、24候補中2件しか評価されず話題性ルートが一度も動かなかった。`/code-review` 指摘1件を **Issue #280 に分離** |
 | **#280 対応** | `fix/issue-280-popularity-route-developer-gate` | ✅ **マージ済み**（2026-08-11。マージコミット `c823440`。通常マージ、squashではない） | **#280**（Closed）/ 関連 **#284**（欠陥B。本PRから新規分離）・**#285**（欠陥2。本PRから新規分離）・**#274**（本Issueの出所） / PR #282 | 29ファイル / **1184テスト**（着手前 1181。新規6件を追加し、うち3件を`/code-review`指摘により削除）。コミット2本（実装 `09c0710` → `/code-review`指摘対応 `13e63bd`）。話題性ルートの大手ゲートに `isLargeStudio(steamRawDeveloper)` を追加。`isQualifiedCompanyName` が単一トークン社名を弾くため `developer` 未設定になり、大手が「個人開発」ラベルで載り得た欠陥1を解消。**`/code-review` が管理者の実装の半分を無効と判定した**: 同時に入れた第2引数 `developerGameCount` は、この経路では常に `undefined` で発火しない死んだコードだった（到達条件が `!game.developer` である一方、`developerGameCount` は `developer` と同時にのみ書かれ、`developer` を解除する経路が無い）。第2引数と、到達不能な状態を前提にしていたテスト3件を撤回した。実データ測定では変更前後で判定が変わった候補は0件（供給は減らない） |
 | **#232 対応** | `fix/issue-232-feature-fangame-filter` | ✅ **マージ済み**（2026-08-12。マージコミット `6829685`。通常マージ、squashではない） | **#232**（Closed）/ 関連 **#289**（本PRの着手前検証で新規起票） / PR #288 | 29ファイル / **1189テスト**（着手前 1184。新規5件）。コミット1本（`8d5911e`）。`deduplicated`（経路1・経路2の合流点）への1箇所適用で qualified / fringe の両分岐をカバー。実測: qualified 227 → 225（−2。Black Mesa / Pokémon Infinite Fusion）。Issue本文の対象が実経路でないことを着手前検証で判明（`fetch-data.ts:1316` の `featured` は特集記事に使われていない → Issue #289）。リメイク非適用はユーザー判断（継承元が3通りに割れる）。`/code-review` 4件すべてスコア80未満で分離なし |
+| **#277 対応** | `fix/issue-277-canonical-display-name` | ✅ **マージ済み**（2026-08-12。マージコミット `50e2c7a`。通常マージ、squashではない） | **#277**（Closed）/ 関連 **#236**（本Issueの出所）・**#180**（ラベル方針の起源）・**#175**（上位タスク） / PR #291 | 29ファイル / **1212テスト**（着手前 1189。新規23件）。コミット1本（`fc191d1`）。`DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games` と `PUBG Studios` は対象外と判断（別法人に化ける構造ではない）。**レビューで回帰を検出**: 初回実装は `game.developer` を `displayName` で上書きしていたが、これは `matchGameToSteamEntity` の company 軸を `disagree` へ転落させ、severity `high` の `game-source-mismatch` を誤発報する。管理者の実測で実害を確認し、上書き自体を撤去した。`/code-review` 指摘0件だが、docs stale 1件を管理者判断で採用（本docs PRで対応） |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1798,7 +1799,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 | 対象 | 内容 |
 |---|---|
 | `indie-classifier.ts` | `isLargeStudio(developer, developedCount?)` に本数判定を OR 追加（`LARGE_STUDIO_DEVELOPED_THRESHOLD`、既定 20、`> 20` で大手）。`pickDeveloperGameCount` を新設 |
-| `select-newreleases-with-fallback.ts` | **企業規模ゲートを削除**（論点A）。canonical 名の正規化（Issue #180）は維持 |
+| `select-newreleases-with-fallback.ts` | **企業規模ゲートを削除**（論点A）。canonical 名の正規化（Issue #180）は維持（**⚠️ その後 PR #291 / Issue #277 で撤去**） |
 | `fetch-igdb.ts` | `involved_companies.company.developed` を 4 クエリに追加。`pickSteamUrlFromWebsites` を新設し 4 箇所で共有。`websites.type` を追加 |
 | `fetch-data.ts` | IGDB 単独エントリへの `steamAppId` 引き継ぎ。`computeIndieScore` を廃止し `compareIndieCandidates`（Steam おすすめ数降順）に置換。`isWithinIndieReleaseWindow`（90 日窓）を新設 |
 
@@ -2323,10 +2324,10 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 | 1 | `select-indie-with-fallback.ts:97-98` | インディー枠ゲート（developer/publisher両方）→ 供給↓（狙い） |
 | 2 | `select-indie-with-fallback.ts:120` | 話題性ルートの publisher ゲート → 供給↓ |
 | 3 | `fetch-data.ts:1130`（`isIndieGame`） | 候補プール構築段階の絞り込み（developer のみ）→ 供給↓ |
-| 4 | `select-newreleases-with-fallback.ts:75-76` | `game.developer` を canonical 名で上書き。その値は `validateGameSourceConsistency`（`validate-article.ts:720-722`）経由で `matchGameToSteamEntity` の company 軸（`game-identity.ts:382`）に流れる。company 軸が `disagree` になると、判定表の行4（title disagree + year unknown + company disagree）で `verdict='different'` となり、severity `high` の `game-source-mismatch` 警告（`validate-article.ts:728-733`）が出る。ただし company 軸が verdict を左右するのは**判定表の行4に限られる**（行1「title agree かつ year が disagree でない」なら company 軸に関わらず `same`）。また company 軸は `gameCompanies = [game.developer, game.publisher]` として developer・publisher の両方を見るため（`game-identity.ts:382`）、publisher 側は上書きされない以上、developer の上書きだけで verdict が変わるとは限らない。実害は未測定 |
+| 4 | `select-newreleases-with-fallback.ts:75-76` | `game.developer` を canonical 名で上書き。その値は `validateGameSourceConsistency`（`validate-article.ts:720-722`）経由で `matchGameToSteamEntity` の company 軸（`game-identity.ts:382`）に流れる。company 軸が `disagree` になると、判定表の行4（title disagree + year unknown + company disagree）で `verdict='different'` となり、severity `high` の `game-source-mismatch` 警告（`validate-article.ts:728-733`）が出る。ただし company 軸が verdict を左右するのは**判定表の行4に限られる**（行1「title agree かつ year が disagree でない」なら company 軸に関わらず `same`）。また company 軸は `gameCompanies = [game.developer, game.publisher]` として developer・publisher の両方を見るため（`game-identity.ts:382`）、publisher 側は上書きされない以上、developer の上書きだけで verdict が変わるとは限らない。実害は未測定 **⚠️ PR #291 / Issue #277 でこの上書き自体を撤去した。ここに書かれていた「実害は未測定」は PR #291 で測定され、`displayName` への差し替えでは company軸が実際に `disagree` へ転落することが確認された** |
 | 5 | `generate-articles.ts:417`（`pickNewReleaseLabelCompany`） | 新作記事のラベル「◯◯の新作」 |
 
-**新作枠の採用可否ゲートは §11.1 確定事項 #1 のとおり PR #237 で撤廃済み**なので、新作枠への波及は採用件数には及ばない。ただし**「ラベル表記のみ」でもない**: 項目4のとおり developer の canonical 上書きは `matchGameToSteamEntity` の company 軸を経由し、判定表の行4に限って severity `high` の `game-source-mismatch` 警告に波及し得る（行1が成立する場合や publisher 側が一致している場合はこの経路の影響を受けない）。**実害は未測定**である。
+**新作枠の採用可否ゲートは §11.1 確定事項 #1 のとおり PR #237 で撤廃済み**なので、新作枠への波及は採用件数には及ばない。ただし**「ラベル表記のみ」でもない**: 項目4のとおり developer の canonical 上書きは `matchGameToSteamEntity` の company 軸を経由し、判定表の行4に限って severity `high` の `game-source-mismatch` 警告に波及し得る（行1が成立する場合や publisher 側が一致している場合はこの経路の影響を受けない）。**実害は未測定**である。**⚠️ PR #291 / Issue #277 でこの上書きを撤去した。実害は測定され、`displayName` への差し替えでは `matchGameToSteamEntity` の company 軸が `disagree` へ転落することが確認された**。
 
 ## 追加したエントリ
 
@@ -2378,6 +2379,8 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 **本PRで追加したエントリも同じ欠陥クラスの新しい実例である**: `Xbox Game Studios` は alias に `microsoft` を、`Sony Interactive Entertainment` は alias に `playstation studios` を持つ（`indie-classifier.ts:75, 86`）。そのため developer/publisher が「Microsoft」のタイトルはラベルが「Xbox Game Studiosの新作」になり、上記の項目4の経路で developer 表記も同様に書き換わる。
 
 **規模は未測定**。全エントリ中の該当件数を機械的に列挙しようとしたが断念した: 文字列の類似度では「別法人か否か」を判定できない（`nintendo` は `Nintendo EPD` の部分文字列であり、素朴な包含判定では `Nintendo → Nintendo EPD` のような代表例自体が「一致」と誤判定されて漏れる）ため。
+
+✅ **解決済み（2026-08-12。PR #291）**: `DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離した。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games`（`2k boston`/`2k czech` は傘下スタジオ）と `PUBG Studios`（`pubg corporation` は旧社名）は「別法人に化ける」構造ではないため対象外と判断した。あわせて `game.developer` の canonical 上書き（`select-newreleases-with-fallback.ts:75-76`）を撤去した（`displayName` で上書きすると `matchGameToSteamEntity` の company 軸が `disagree` へ転落し、severity `high` の `game-source-mismatch` を誤発報する実害が測定されたため）。
 
 ### 教訓
 
@@ -2734,3 +2737,136 @@ Issue #232 の記述が誤っていたのは、`isFanGame` 適用の検討が `f
 **PR #279・PR #282 に続き3PR連続で踏んでいる罠**（#279 は `targetCount` の早期終了で経路に到達せず、#282 は `developerGameCount` フィールド自体が無く、本PRは `keywords` / `gameType` が無い）。`data/aggregated.json`（`fetchedAt=2026-05-16`）には `keywords` を持つゲームも `gameType` を持つゲームも0件で、そのまま測れば `isFanGame` の実害は「0件」になるが、それは検出力が無いだけだった。**測定の前に、対象フィールドがそのスナップショットに何件存在するかを `grep -c` で数えること。**
 
 なお本PRでは今回さらに一歩進めて、**除外された2件が実際に選定され得るのか（到達可能性）も確認した**。2件は qualified の115番目 / 146番目でフォールバックの上位20件の窓の外にあり、そこだけ見れば「窓外なので実害なし」と誤結論しかねなかったが、`prefilterFeatureCandidatesByTheme` が候補数超過時に全件をLLMへ送るため到達可能だった。**「候補に入ったか」ではなく「選定され得るか」まで追うこと。**
+
+---
+
+# PR #291: `isLargeStudio` の canonical 名を表示用と規模判定用に分離する（Issue #277）
+
+- ブランチ: `fix/issue-277-canonical-display-name`
+- Issue: **#277**（Closed）
+- 関連: **#236**（本Issueの出所）/ **#180**（ラベル方針の起源）/ **#175**（上位タスク）
+- PR: #291（マージ `50e2c7a`。2026-08-12）
+
+## 何が壊れていたか
+
+`isLargeStudio` の `canonical` 名が、一部のエントリでエイリアスの実体と別の法人・別部門を指していた。例えば `Nintendo` → `Nintendo EPD`、`Bethesda Softworks` → `Bethesda Game Studios`、`Microsoft` → `Xbox Game Studios` のように、記事に出る企業名がゲームの実際の発売元・開発元とは異なる部門名にすり替わる。
+
+`canonical` は規模判定用の内部識別子として機能していたが、`pickNewReleaseLabelCompany`（`generate-articles.ts:417`）で読者向けラベルにも使われており、「規模判定」と「読者向け表示」という異なる目的が1つのフィールドに載っていた。
+
+## 着手前の独立検証で判明したこと
+
+### Issue 本文の実害記述は経路として不正確だった
+
+Issue は「記事のカテゴリラベル → 記事タイトルに誤った社名」を第一の実害として挙げていたが、`labelCompany` は記事に直接出力されない。`generate-articles.ts:417-419` で `generateTitle` の**プロンプト内の「カテゴリ:」行**に入るだけで、そこから先はLLMの裁量。
+
+管理者の実測: 公開19号の newRelease 記事**32本**すべてに実関数を通したが、**タイトルに誤社名が出た例は0件**（vol.002 は `developer=Omega Force` / `publisher=Nintendo` でラベルが `Nintendo EPDの新作` になるが、実タイトルは社名を含まない）。
+
+実際に読者に届く経路は **frontmatter の `developer`**（`select-newreleases-with-fallback.ts` の上書き → `generate-articles.ts:435` → 記事の「開発元」表記）。ただし**公開済みの記事でこの上書きが発火した例は0件**（実測。`developer: "Xbox Game Studios"` 等で公開19号を grep してヒット0件）。発火するのは `Arkane Lyon` → `Arkane Studios` のような別部門→親スタジオのケースであり、公開データには現れていない。したがって Issue #277 の実害は**ラベル経路（プロンプト）とfrontmatter経路のどちらも、公開記事では未発現**である。
+
+### Issue が「規模は未測定」としていた点を測定した
+
+Issue は「全エントリのうち何件が該当するか測定できていない」「文字列の類似度では別法人か否かを判定できないため機械的な列挙は断念した」としていた。
+
+管理者は公開19号の newRelease 32本の `developer`/`publisher` 実データを実関数に通す方法で測定し、ラベルが別法人名に化けた実例（vol.002 の `Nintendo EPDの新作`）と、`developer` 上書きの発火例が**0件**であることを確認した。
+
+## 採用した方針
+
+Issue #277 の案1（`displayName` による分離）を採用した。
+
+1. `DeveloperEntry`（`scripts/indie-classifier.ts`）に任意フィールド `displayName?: string` を追加。省略時は `canonical` にフォールバック
+2. `displayName` を付けたのは **3エントリのみ**:
+   - `Nintendo EPD` → `任天堂`（aliases に `nintendo`/`任天堂` を含む開発部門名）
+   - `Xbox Game Studios` → `Microsoft`（aliases に `microsoft` 等を含む）
+   - `Bethesda Game Studios` → `Bethesda`（aliases に別法人 `bethesda softworks` を含む）
+
+### 対象外と判断した2エントリ
+
+Issue 本文は4例を同列に挙げていたが、以下の2つは「別法人に化ける」構造ではない:
+
+- **`2K Games`**: `2k boston`/`2k czech` は**傘下スタジオ**であって別法人ではない（親会社の名義で出る）
+- **`PUBG Studios`**: `pubg corporation` は**旧社名**であって別法人ではない（改称後も同一法人）
+
+## レビューで検出した欠陥（最重要）
+
+**Sonnet の初回実装は `developer` 上書きを `displayName` に差し替えていたが、これは同一性照合に回帰を入れる。管理者の diff 検証で検出し撤去した。**
+
+### データフローと実害
+
+`vetNewReleaseCandidate`（`select-newreleases-with-fallback.ts`）での上書きは、`generate-articles.ts:435` 等の frontmatter に入り、`validate-article.ts:721` 経由で `matchGameToSteamEntity` の **company軸**（`game-identity.ts:382-402`）に渡され、Steam の `developers[]` と `companyNamesOverlap`（`steam-utils.ts:90-112`）で突合される。
+
+管理者の実測:
+
+| Steam生値 | canonical上書き（撤去前main） | displayName上書き | 上書きなし（PR #291） |
+|---|---|---|---|
+| `Nintendo` | `Nintendo EPD` → true | `任天堂` → **false** | `Nintendo` → **true** |
+| `Nintendo EPD` | `Nintendo EPD` → true | `任天堂` → **false** | `Nintendo EPD` → **true** |
+| `Xbox Game Studios` | `Xbox Game Studios` → true | `Microsoft` → **false** | `Xbox Game Studios` → **true** |
+| `Bethesda Softworks` | `Bethesda Game Studios` → true | `Bethesda` → true | **true** |
+
+エンドツーエンドで `matchGameToSteamEntity` に実データを投入して確認した実害: `publisher` も和名の場合、または `publisher` が無い場合、company軸が `agree` → **`disagree`** に転落。title軸がdisagreeの状況で `verdict` が `uncertain` → **`different`** に変わり、`severity: 'high'` の `game-source-mismatch` を**誤発報**する。通常ケース（`publisher='Nintendo'` が併存）では publisher 側で company軸が救われるが、これは偶然の冗長性への依存。
+
+### 撤去の根拠4点
+
+1. `pickNewReleaseLabelCompany` のJSDocが「**`game.developer` 自体は事実（受託スタジオ名）を保持する方針**」と明記しており、canonical上書きはこの方針と矛盾していた
+2. 上書きしなければ生値が残り、全ケースで照合が通る
+3. Issue #180 の意図（受託開発のラベルを大手側に寄せる）はラベル経路で達成済み
+4. 実測: 公開32本で上書きの発火例は0件。公開データへの影響なし
+
+### 管理者の自己申告（必ず記録すること）
+
+**この欠陥のリスクは `docs/article-category-prompt.md:2326`（PR #276 の影響範囲表の項目4）に着手前から既に文書化されていた。** company軸への流入経路、判定表の行4に限られること、`publisher` 側が一致していると影響を受けないことまで書かれていた。設計判断の段階でこの記述を grep していれば、実装前に気づけた。
+
+## ミュータント検証（管理者が実施。4種すべて検出）
+
+| ミュータント | 結果 |
+|---|---|
+| `developer` の canonical 上書きを再導入 | ✅ 3件失敗 |
+| `developer` の displayName 上書きを再導入（検出した欠陥そのもの） | ✅ 5件失敗 |
+| ラベルを `matched` に戻す（#277修正の取り消し） | ✅ 4件失敗 |
+| `displayName ?? canonical` のフォールバックを削除 | ✅ 13件失敗 |
+
+## `/code-review` の結果
+
+5観点すべて実行。**投稿された指摘は0件**（スコア80未満のため自動投稿なし）。ただし1件（docs の stale 化）は管理者が一次ソースで再検証して**実在を確認**したため、本docs PRで対応する。他4観点（CLAUDE.md準拠 / 表層バグ / git履歴の文脈 / コード内コメント準拠）は指摘なし。
+
+git履歴観点のレビューが補強した事実: `developer` 上書きを導入した `d2da1d5` の直後に `9b6c0f9` が publisher 側の上書きを「`validateGameSourceConsistency` の developer 照合と確実に不一致になり `game-source-mismatch` (high) を誘発する」として撤回している。今回の撤去は同じ原則の延長にある。
+
+## テスト
+
+29ファイル / **1212テスト**全通過（着手前ベースライン 1189。+23件）。
+
+新規に追加した `it()` ブロックの内訳（`git show fc191d1` で実測）:
+
+| ファイル | 件数 | 内容 |
+|---|---|---|
+| `indie-classifier.test.ts` | 15 | `displayName` の3エントリ全alias（11パターン）での `hit` 不変性、`pickNewReleaseLabelCompany` が表示名を返すこと、`list: 'developed-count'` 経路、ポジティブコントロール（`capcom` → `Capcom` / `falcom` → `Nihon Falcom` で表記ゆれ吸収が生きていること） |
+| `select-newreleases-with-fallback.test.ts` | 6 | `developer` が上書きされず生値が保持されること（`displayName` 有り3件 + `displayName` 無しの `capcom` + 小規模スタジオ + 通常ルートの既存テスト更新分） |
+| `validate-article.test.ts` | 4 | 同一性照合の保全。生値なら company軸が `agree`（2件）、**ネガティブコントロール**として `任天堂` / `Microsoft` に上書きした場合は `company=disagree` で `uncertain` 警告が出ること（2件） |
+
+なお `indie-classifier.test.ts` では既存の `toEqual` アサーション11件に `displayName` フィールドを追加する更新も行っている（`LargeStudioResult` に必須フィールドを足したため）。**既存テスト `expect(pickNewReleaseLabelCompany('nintendo', undefined)).toBe('Nintendo EPD')` はバグを固定していたため、期待値を更新した**（削除ではなく更新）。
+
+## 教訓
+
+### 既存 docs に同じリスクが文書化されていないか、設計判断の前に grep する
+
+今回の欠陥は `docs/article-category-prompt.md:2326` に着手前から書かれていた。過去PRの「影響範囲表」は、次の変更の設計制約になる。`developer` / `canonical` / `displayName` / `matchGameToSteamEntity` / `game-source-mismatch` のいずれかで grep していれば、実装前に気づけた。
+
+### 表示用の値と照合用の値を同じフィールドに載せない
+
+`game.developer` は読者向け表示と同一性照合の**両方**に使われるため、片方の都合で書き換えると他方が壊れる。今回は「上書きしない」ことで両立させた。
+
+- **表示用**: frontmatter → 記事の「開発元」表記
+- **照合用**: `validateGameSourceConsistency` → `matchGameToSteamEntity` の company 軸 → Steam の `developers[]` と突合
+
+前者を canonical 名で書き換えると、後者が「Steam に無い社名」との照合になり `disagree` へ転落する。
+
+### Issue が「測定できない」としている項目こそ、別の測定手段を探す
+
+Issue #277 は文字列類似度による自動列挙を断念していたが、公開記事の実データを実関数に通す方法で測定できた。
+
+- ラベルが `Nintendo EPDの新作` になった記事: 32本中**2本**（vol.002 / vol.008）。うち**帰属が事実と異なるのは1本**（vol.002 は `developer=Omega Force` なので Nintendo EPD 帰属は誤り。vol.008 は `developer=Nintendo EPD Production Group No. 4` なので帰属自体は妥当）
+- そのラベルが記事タイトルに出た例: **0件**（ラベルはプロンプト経由のためLLMの裁量）
+- `developer` 上書きの発火例: **0件**（公開データへの影響なし）
+- company軸が転落するケース: 実測で確認（上記の表）
+
+「測定できていない」は「機械的な全件列挙ができない」だけで、実ケースによる実測は可能だった。
