@@ -32,6 +32,7 @@
 | **#236 対応** | `fix/issue-236-parent-publisher-entries` | ✅ **マージ済み**（2026-08-11。マージコミット `abd8f3e`。通常マージ、squashではない） | **#236**（**Closed にしていない。①が未解決のため**）/ 関連 **#231**（Closed。方針の根拠が実測で崩れた）・**#277**（本PRのレビューの横断確認で新規起票）・**#175**（上位タスク） / PR #276 | 29ファイル / **1178テスト**（着手前 1166）。コミット2本（実装 `76e31e5` → `/code-review` 指摘対応 `dd40bb4`）。真因2層のうち**②（`MAJOR_PUBLISHER_SUBSIDIARIES` にはコメント見出しだけがあり、親会社エントリが `LARGE_DEVELOPERS` に無かった）だけ**を対処し、**①（IGDBのレコード分裂）は未解決のまま Issue を開いている**。Issue #231 が個社追記を退けた根拠（「PR-I の `developed` 判定と二重になる」）は**実測で崩れた**: 『ほの暮しの庭』は `developed=3` の分裂レコードに紐づき `developed` 判定が発火しない。`/code-review` 指摘1件を採用したが、**対処法はレビュー案（別 canonical を立てる）から変更し、エイリアスごと削除**した |
 | **#274 対応** | `fix/issue-274-popularity-route-finalize` | ✅ **マージ済み**（2026-08-11。マージコミット `6ac5af0`。通常マージ、squashではない） | **#274**（Closed）/ 関連 **#280**（本PRの `/code-review` で新規分離） / PR #279 | 29ファイル / **1181テスト**（着手前 1178。新規3件）。コミット1本（`47cefc3`）。`meetsPopularityThreshold` に finalize 前のオブジェクトを渡していた不整合の修正（本体1行）。実データ測定で実害は0件だったが、**修正は単調**（供給が減るリスクが構造的にゼロ）なので実施した。**1回目の測定は検出力ゼロ**だった: 本番と同じ `targetCount=2` では上位2候補が通常ルートで採用された時点でループが終了し、24候補中2件しか評価されず話題性ルートが一度も動かなかった。`/code-review` 指摘1件を **Issue #280 に分離** |
 | **#280 対応** | `fix/issue-280-popularity-route-developer-gate` | ✅ **マージ済み**（2026-08-11。マージコミット `c823440`。通常マージ、squashではない） | **#280**（Closed）/ 関連 **#284**（欠陥B。本PRから新規分離）・**#285**（欠陥2。本PRから新規分離）・**#274**（本Issueの出所） / PR #282 | 29ファイル / **1184テスト**（着手前 1181。新規6件を追加し、うち3件を`/code-review`指摘により削除）。コミット2本（実装 `09c0710` → `/code-review`指摘対応 `13e63bd`）。話題性ルートの大手ゲートに `isLargeStudio(steamRawDeveloper)` を追加。`isQualifiedCompanyName` が単一トークン社名を弾くため `developer` 未設定になり、大手が「個人開発」ラベルで載り得た欠陥1を解消。**`/code-review` が管理者の実装の半分を無効と判定した**: 同時に入れた第2引数 `developerGameCount` は、この経路では常に `undefined` で発火しない死んだコードだった（到達条件が `!game.developer` である一方、`developerGameCount` は `developer` と同時にのみ書かれ、`developer` を解除する経路が無い）。第2引数と、到達不能な状態を前提にしていたテスト3件を撤回した。実データ測定では変更前後で判定が変わった候補は0件（供給は減らない） |
+| **#232 対応** | `fix/issue-232-feature-fangame-filter` | ✅ **マージ済み**（2026-08-12。マージコミット `6829685`。通常マージ、squashではない） | **#232**（Closed）/ 関連 **#289**（本PRの着手前検証で新規起票） / PR #288 | 29ファイル / **1189テスト**（着手前 1184。新規5件）。コミット1本（`8d5911e`）。`deduplicated`（経路1・経路2の合流点）への1箇所適用で qualified / fringe の両分岐をカバー。実測: qualified 227 → 225（−2。Black Mesa / Pokémon Infinite Fusion）。Issue本文の対象が実経路でないことを着手前検証で判明（`fetch-data.ts:1316` の `featured` は特集記事に使われていない → Issue #289）。リメイク非適用はユーザー判断（継承元が3通りに割れる）。`/code-review` 4件すべてスコア80未満で分離なし |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1100,7 +1101,7 @@ DEV_MODE の実出力と検索コンテキストを突き合わせて**全記述
 
 - **母集団クエリの窓・`hypes > 5`・`sort hypes desc`・`limit 20` は変更しない**（ユーザー確認済み）。
   §2.3 の 60 日窓と §4.1.3 の hypes ソート廃止はサーバ側 sort の代替が未決着のため別PR
-- **特集枠への除外フィルタ適用は別Issue** → **#232**（選定経路が `generate-articles.ts` 側にあり調査が要る）
+- **特集枠への除外フィルタ適用は別Issue** → **#232**（選定経路が `generate-articles.ts` 側にあり調査が要る） → ✅ **完了**（2026-08-12。PR #288）。**この当時の見立て（`generate-articles.ts` 側）が正しかった**
 - `date_format`（§2.4 の未発売枠）は PR-C の担当
 
 ### テスト設計上の落とし穴（次回以降の再利用価値あり）
@@ -2582,3 +2583,154 @@ Issue #280 本文は Nintendo / Capcom / SEGA / Valve / Konami / Ubisoft / Bethe
 
 測定中に `data/aggregated.json` で「count有・developer無」を数えて0件を得たが、当該スナップショットは `fetchedAt=2026-05-16` で `developerGameCount` フィールド自体が存在せず、この0件は無意味だった。結論は実データではなくコード上の不変条件（全書き込み箇所で `developer` と同時にのみ設定）から導いた。**スナップショットの取得日時とスキーマ変更歴を突き合わせること。**
 - **副作用のあるスクリプトでも、`main()` 呼び出しだけを除いた複製を作れば分析に使える。** 再 fetch による外部APIクォータの消費を避けつつ、本番と同じロジックで測れる。複製前に依存モジュール全件に無ガードの `main()` が無いことを確認すること
+
+---
+
+# PR #288: 特集枠の候補母集団に isFanGame 除外を適用する（Issue #232）
+
+- ブランチ: `fix/issue-232-feature-fangame-filter`
+- Issue: **#232**（Closed）
+- 関連: **#289**（本PRの着手前検証で新規起票）
+- PR: #288（マージ `6829685`。2026-08-12）
+
+## 何が壊れていたか
+
+特集枠の候補母集団（`deduplicated`、`generate-articles.ts` 内）に対して `isFanGame` 除外フィルタが一切掛かっていなかった。新作枠・インディー枠・名作枠は `scripts/fetch-data.ts` の各 `build*Candidates` 関数でフィルタを適用しているが、特集枠だけは `generate-articles.ts` 側に選定経路があり見落とされていた（§6.1 が既に指摘済み）。
+
+## 着手前の独立検証で判明したこと
+
+### Issue #232 が対象としていたコードは特集記事に使われていない
+
+Issue #232 本文は `scripts/fetch-data.ts:1316` の `selectedGames.featured` 選定を対象としていたが、**この値は特集記事の素材になっていない**。
+
+- `generateFeatureArticle` の呼び出し（`generate-articles.ts:1421`。**本PRのマージ後の行番号**。マージ前は `:1394`）に渡されるのは `filteredAllGames`（`:1408-1412` で構築）であり、`selectedGames.featured` ではない
+- `git log -S 'selectedGames.featured' --all -- scripts/generate-articles.ts` で全履歴を確認したが、`selectedGames.featured` が特集記事生成関数に渡されたことは**一度もない**
+- `generate-articles.ts:1393` のコメント「（selectedGames.featured は特集記事自身の素材のため除外しない）」は**事実に反する**（コミット `8130eb8`、2026-04-11 で追加。行番号は本PRのマージ後の値で、マージ前は `:1366`）
+- `featured` に現存する効果は3つのみ: ①`fetch-data.ts:1327` の `alreadySelected` に入り**名作枠の重複除外リストになる** ②`fetch-data.ts:676`/`:851` で IGDB/Metacritic の追加取得対象になり**APIコストを消費する** ③`completeness-gate.ts:451` のチェック対象
+
+この件は **Issue #289** として起票済み（タイトル: 「fetch-data.ts の featured 選定が特集記事に使われていない（コメントも事実に反する）」）。
+
+### 仕様 §6.2 の「他の枠を継承」は継承先が一意に定まらない
+
+Issue が特集枠への適用を求めたのは `isFanGame` だけだが、仕様書 §6.2 は「リメイク・リマスターも他枠の方針を継承」と書いている。しかし継承元が3通りに割れている:
+
+| 枠 | リメイク・リマスター方針 |
+|---|---|
+| 新作紹介 | Main Game + リメイク + リマスターを許可 |
+| インディー | Main Game のみ（一律除外） |
+| 名作深掘り | Main Game + 原作が母集団にいないリメイク・リマスターを許可 |
+
+→ **ユーザー判断で決着（2026-08-12）**: 特集枠には**リメイク・リマスターを意図的に非適用**とする。理由: ①継承元が3通りに割れて一意に定まらない ②特集はテーマに合うゲームを横に並べる枠であり、リメイクでもテーマ適合性は損なわれない。
+
+## 適用位置を1箇所にした理由
+
+特集候補の入口は2経路ある:
+
+1. **経路1**: `aggregated.json` 由来（`relatedGames` から構築）
+2. **経路2**: LLM 提案 → `verifyProposedGames` の実在検証通過分
+
+この2経路は `deduplicated`（`deduplicateGames([...(relatedGames ?? []), ...proposedAndVerified])`）で合流する。さらに、`deduplicated` を `isQualifiedGame` で分割して `qualified` / `fringe` を作るが、この2つは相補的な二分（qualified = true / qualified = false）なので、**分割前の `deduplicated` に掛ければ両方に効く**。
+
+→ したがって、`isFanGame` を `deduplicated` への1箇所適用で、経路1・経路2の両方と、qualified / fringe の両分岐をカバーできる。
+
+実装位置: `generate-articles.ts:796-811`。`deduplicated` の構築（`:784`）と `qualified` / `fringe` の分割（`:814-815`）の間に挟む。`isFanGame` を候補ごとに1回だけ評価し、除外したタイトルをそのまま記録できるよう、`filter` ではなく単一パスのループにした:
+
+```ts
+const allCandidates: GameData[] = [];
+const excludedFanGameTitles: string[] = [];
+for (const g of deduplicated) {
+  if (isFanGame(g)) {
+    excludedFanGameTitles.push(g.title);
+  } else {
+    allCandidates.push(g);
+  }
+}
+```
+
+除外したタイトルは `fetch-data.ts:1302-1307` の `[indie] rejected candidates:` の前例に倣ってログに出す。**件数は0件でも常にログする**（「除外が0件だった正常系」と「フィルタが動いていない異常系」をログ上で区別できるようにするため）。
+
+## 実データによる前後比較測定
+
+管理者がユーザー承認を得て `DEV_MODE=true npm run fetch-data` を実行（2026-08-11 15:20 JST）。新規スナップショット315件、`fetchedAt=2026-08-11T15:20:45.532Z`。
+
+**検出力の確認が必要だった点**: 既存の `data/aggregated.json`（`fetchedAt=2026-05-16`）は `keywords` を持つゲームが**0件**、`gameType` を持つゲームが**0件**で、`isFanGame` / `isRemakeOrRemaster` の判定に必要なフィールド自体が存在しなかった。そのまま測ると「0件」に検出力が無いため、ライブ fetch で測り直した。新スナップショットは keywords 292/315、gameType 311/315。
+
+### 候補の変化
+
+| 指標 | 変更前 | 変更後 |
+|---|---|---|
+| 経路1候補（`relatedGames` 相当） | 310 | 310 |
+| qualified | 227 | 225（−2） |
+| fringe | 83 | 83（−0） |
+
+除外された2件（いずれも qualified 側）:
+
+| タイトル | 検出理由 | igdbRating / igdbRatingCount |
+|---|---|---|
+| Black Mesa | `keywords=[fangame]`（`gameType=8`） | 87.7 / 547 |
+| Pokémon Infinite Fusion | `keywords=[unofficial,fangame,fanmade]` | 98.4 / 23 |
+
+- Black Mesa は商業リリース作品なので `isFanGame` の判定は厳しめだが、**他の3枠では既に同じ `isFanGame` で除外されている**。本PRは枠間の不整合を解消する方向の変更
+- 2件は qualified の115番目 / 146番目で、フォールバックの上位20件（`FEATURE_CANDIDATE_LIMIT = 20`）の窓の外にある。ただし `prefilterFeatureCandidatesByTheme` は候補数が上限を超える場合に**全227件をLLMへ送る**ため、どちらも選定され得る（到達可能性を管理者が確認済み）
+- 修正後も qualified 225件で `FEATURE_MIN_GAMES = 3` に対し供給は十分
+- なお `Pokémon Infinite Fusion` が過去号（`issue-017.md:202`）に載っている件は `category: classic` であり、§6.1 が「PR #230 で名作枠に適用して解消した」と記録しているケースそのもの。特集経路の実害例ではない
+
+## テスト
+
+### 新規5件の内容
+
+1. **`keywords: ['fangame']` のゲームが候補から除外される**
+2. **ポジティブコントロール**: 通常ゲーム2件（`keywords=['action']` / `keywords=['adventure']`）はどちらも残る
+3. **回帰: `gameType: 8`/`9`（リメイク・リマスター）は除外されない**
+4. **タイトル `Unofficial Pokemon Game` が除外される**（タイトル正規表現）
+5. **除外されたタイトルが `console.log` に出力される**（スパイは `finally` で復元）
+
+テスト数: 1184 → **1189**（新規5件）、全通過。
+
+### ミュータント検証（管理者が実施）
+
+除外を `const allCandidates: GameData[] = deduplicated;` に戻すと **3 failed | 29 passed**:
+
+- 落ちたのは上記1 / 4 / 5 の3件（keywords検出・タイトル検出・ログ出力）
+- ポジティブコントロール（2）とリメイク回帰（3）は緑のまま
+
+復元後32件全通過を確認。
+
+## `/code-review` の結果（4件すべてスコア80未満）
+
+5エージェントで4件の指摘が出たが、**信頼度スコアはすべて80未満（50 / 0 / 50 / 0）でPRコメントは投稿しなかった**。管理者が個別に検証した採否:
+
+| 指摘 | スコア | 採否と根拠 |
+|---|---|---|
+| 仕様書の「未適用 → Issue #232」が未更新 | 50 | **実質採用（本docs PRで対応）**。事実だが、本リポジトリは「コードPR → docs PR」を分離する運用（`CLAUDE.md`「コードPRにドキュメントを混ぜない」）。PR本文にフォローアップ予定を書いていなかったのは不備なのでPRにコメント追記した |
+| 新規テスト5件のうち `finally` を使うのが5件目だけで不統一 | 0 | **却下**。1〜4件目はスパイもモックも作っていないため復元対象が存在しない |
+| ポジティブコントロールが `keywords: ['action']` で「惜しい値」を使っていない | 50 | **却下**。`fan-translation`/`fanservice`/`fan-service`/`fanfiction` の near-miss は `game-filter.test.ts:48-63` が**同一テスト内にポジティブコントロールを同居させた形で**既に網羅済み。統合層のテストの役割は「パイプラインで実際にフィルタが掛かること」の検証なので、判定関数の境界値を再現するのは層の重複 |
+| 「全件がファンゲーム」「空配列」の境界テストが無い | 0 | **却下**。空プールは `generate-articles.ts:958-966` の abort ガードがあり、Issue #221 の既存テスト（`:412-437`）が空配列入力で `mockInvoke` が呼ばれないことを検証済み |
+
+## 分離した課題
+
+### Issue #289
+
+`fetch-data.ts:1316` の `featured` が特集記事に使われていないことへの対処3案:
+
+- **(a)** 特集記事に使うよう経路を接続する（§4.5 の「2経路」構造が壊れる可能性）
+- **(b)** 名作候補から除外する用途として維持（現状維持）
+- **(c)** ゼロ本許可として削除（API コスト削減）
+
+決着には、(b)/(c) を選ぶなら**先に名作枠候補数への影響を実データで測る**必要がある。
+
+## 教訓
+
+### Issue が指すコードパスが複数あるときは、どれが実際に出力へ流れるかを `git log -S` で全履歴確認する
+
+Issue #232 の記述が誤っていたのは、`isFanGame` 適用の検討が `fetch-data.ts` の3枠のビルダーを起点にしていたため。**Issue が指す「特集枠の選定経路」は2つあり、実経路は `generate-articles.ts` 側だった**。Issue 本文の「想定される修正」を鵜呑みにせず、`git log` で実際の使用箇所を追跡する必要があった。
+
+### 仕様の「他の枠を継承」のような相対参照は、継承元が複数あって割れていると解決できない
+
+§6.2 の「他の枠の方針を継承（→ §4.5）」は相対参照だが、§4.5 は特集の候補が複数経路から来ることを書いているだけで、リメイク・リマスターの扱いは新作=許可 / インディー=除外 / 名作=条件付き許可の3通りに割れている。コードでは決められないのでユーザー判断を仰いだ。
+
+### スナップショットに測定対象フィールドが存在するかを先に確認する
+
+**PR #279・PR #282 に続き3PR連続で踏んでいる罠**（#279 は `targetCount` の早期終了で経路に到達せず、#282 は `developerGameCount` フィールド自体が無く、本PRは `keywords` / `gameType` が無い）。`data/aggregated.json`（`fetchedAt=2026-05-16`）には `keywords` を持つゲームも `gameType` を持つゲームも0件で、そのまま測れば `isFanGame` の実害は「0件」になるが、それは検出力が無いだけだった。**測定の前に、対象フィールドがそのスナップショットに何件存在するかを `grep -c` で数えること。**
+
+なお本PRでは今回さらに一歩進めて、**除外された2件が実際に選定され得るのか（到達可能性）も確認した**。2件は qualified の115番目 / 146番目でフォールバックの上位20件の窓の外にあり、そこだけ見れば「窓外なので実害なし」と誤結論しかねなかったが、`prefilterFeatureCandidatesByTheme` が候補数超過時に全件をLLMへ送るため到達可能だった。**「候補に入ったか」ではなく「選定され得るか」まで追うこと。**
