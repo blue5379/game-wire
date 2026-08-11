@@ -733,7 +733,7 @@ Hound13              developed=  1  published=  1
 | 規模判定 | 静的リスト完全一致（`isLargeStudio`） | `companies.developed` 件数 + 静的リストの OR/AND 併用 |
 | DLC | 制限なし（vol.14 は ARK の DLC 2 本） | `game_type = 0` で除外 |
 | リメイク・リマスター | 制限なし | **論点J-2**。この枠では影響が極小（36 件 → 39 件）なので `game_type = 0` 維持が有力 |
-| 話題性ルート | `steamRecommendations >= 5000` / `steamRank <= 200` / YouTube 上位 30% | 維持 |
+| 話題性ルート | `steamRecommendations >= 5000` / `steamRank <= 200` / YouTube 上位 30% | ~~維持~~ → **YouTube 経路を廃止し Steam 2 経路のみにする**（2026-08-07 決定。→ spec §3.5・Issue #235。✅ 2026-08-11 実装。PR #273。マージ `d04a107`） |
 
 **プロンプト方針**: 現行 `indieSystem`（`bedrock-client.ts:188`）は「個人や小規模チームの作品への敬意を示す」とあり意図と合致している。読者価値の観点では 🎨開発ストーリー を厚くする方向の調整余地があるが、ハルシネーション制約（開発期間・費用・人数の記述禁止）とのバランスが要検討。
 
