@@ -509,6 +509,91 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     expect(mockFinalize).toHaveBeenCalledTimes(2);
   });
+
+  // Issue #280 A: 話題性ルートの大手ゲートは steamRawDeveloper を見るべき
+  describe('Issue #280 A: 話題性ルートの大手ゲート（steamRawDeveloper）', () => {
+    it('話題性ルートで steamRawDeveloper="Capcom"（単一トークンの大手、developer未設定）→ rejected になる', async () => {
+      const candidate = makeGame({
+        title: 'Capcom Arcade Game',
+        normalizedTitle: 'capcom arcade game',
+        steamRawDeveloper: 'Capcom', // isQualifiedCompanyName が弾いた結果、developer は未設定のまま
+        steamRecommendations: 9000,
+        coverImage: 'https://example.com/capcom.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/777777' },
+      });
+      const gameAfterFinalize = {
+        ...candidate,
+        // developer は依然 undefined（話題性ルートの到達条件）
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+      expect(result.adopted).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0].title).toBe('Capcom Arcade Game');
+    });
+
+    // ポジティブコントロール: 中小の steamRawDeveloper で developerGameCount 未設定 → 採用される
+    it('ポジティブコントロール: steamRawDeveloper="NaipSoft"（実データで到達を確認した中小）で developerGameCount 未設定 → 個人開発ラベルで採用される', async () => {
+      const candidate = makeGame({
+        title: 'NaipSoft Indie Game',
+        normalizedTitle: 'naipsoft indie game',
+        steamRawDeveloper: 'NaipSoft', // 管理者が実データで到達を確認した実在の中小開発者
+        steamRecommendations: 6000,
+        coverImage: 'https://example.com/naipsoft.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/333333' },
+      });
+      const gameAfterFinalize = {
+        ...candidate,
+        // developerGameCount: undefined（IGDB補完無し）
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+      expect(result.adopted).toHaveLength(1);
+      expect(result.adopted[0].developer).toBe('個人開発（NaipSoft）');
+      expect(result.rejected).toHaveLength(0);
+    });
+
+    // 回帰: publisher 側の大手ゲート（既存）も引き続き機能することを確認
+    // （既存のテストで既にカバーされているが、Issue #280 の文脈で明示的に1件追加）
+    it('回帰: publisher 側の大手ゲート（Nintendo）は引き続き機能する', async () => {
+      const candidate = makeGame({
+        title: 'Nintendo Published Indie',
+        normalizedTitle: 'nintendo published indie',
+        steamRawDeveloper: 'tiny_dev',
+        steamRecommendations: 9000,
+        coverImage: 'https://example.com/nintendopub.jpg',
+        sourceUrls: { steam: 'https://store.steampowered.com/app/222222' },
+      });
+      const gameAfterFinalize = {
+        ...candidate,
+        publisher: 'Nintendo',
+        // developer still undefined, steamRawDeveloper は中小（既存の Issue #180 テストと同じ構造）
+      };
+
+      mockFinalize.mockResolvedValueOnce({
+        ok: false,
+        reason: 'still-missing-required' as const,
+        game: gameAfterFinalize,
+      });
+
+      const result = await selectIndieGamesWithFallback([candidate], 1);
+      expect(result.adopted).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0].title).toBe('Nintendo Published Indie');
+    });
+  });
 });
 
 // ────────────────────────────────────────────────
