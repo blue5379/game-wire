@@ -29,7 +29,7 @@
 | **#247 対応** | `fix/issue-247-featured-recommended-url-validation` | ✅ **マージ済み**（2026-08-10。マージコミット `7cfa916`。通常マージ、squashではない） | **#247**（Closed）/ 関連 **#234**（PR #246のレビューで分離） / PR #269 | 29ファイル / **1124テスト**（着手前 1110。新規14件）。コミット2本（実装 → `/code-review`指摘対応）。特集記事`recommendedGames[].officialUrl`にBluesky/Discordの非公式URLが本番で5件混入していた実害を解消。**着手前の独立検証でIssue本文より深い根本原因を発見**（下記「実施結果」に詳述）: `NON_OFFICIAL_URL_PATTERNS`のドメイン抜けにより、Tavily経由の誤候補がIGDBの正しい公式URLを無条件に上書きしていた。根本原因の修正+出力時ゲート追加の両方を実施 |
 | **#222 対応** | `fix/issue-222-adult-screening-observability` | ✅ **マージ済み**（2026-08-11。マージコミット `c333eaf`。通常マージ、squashではない） | **#222**（Closed）/ 関連 **#221**（PR-0.1のレビューで同時に分離） / PR #271 | 29ファイル / **1168テスト**（着手前 1124。新規44件）。コミット2本（実装 → `/code-review`指摘4件の対応）。**着手前検証でIssue本文の前提（「AIスクリーニングは特集枠の主防御」）が誤りと判明**し、Issueにコメントで訂正（実際はIGDBの`themes != (42)`が第1層、AIスクリーニングは第3層）。観測の出力先が**2系統**（CIのstdout / 永続化されるValidation Report）あることをデータフロー追跡で発見し、初回実装で漏れていたレポート側も追加対応。`/code-review`が**例外以外の第2のfail-open経路**（応答形式不正）を検出し、別カウンタで計上（ただし実態未観測のため`error`昇格はさせない仕様判断をテストで固定） |
 | **#235 対応** | `fix/issue-235-drop-youtube-popularity-route` | ✅ **マージ済み**（2026-08-11。マージコミット `d04a107`。通常マージ、squashではない） | **#235**（Closed）/ 関連 **#217**（YouTube活用の可否検証）・**#274**（本PRのレビューで新規分離） / PR #273 | 29ファイル / **1166テスト**（着手前 1168。YouTube percentileの4テストを削除、回帰テスト+ポジティブコントロールを2件追加）。コミット1本。§3.5が2026-08-07に決定済みだった「話題性ルートをSteamの2経路だけにする」の未実装分を実装。**着手前の独立検証で前セッションの前提が再現しないことが判明**（下記「実施結果」に詳述）: 「YouTubeマッチ0件＝実質デッドコード」は直近データでは成立せず2件マッチしていたが、いずれも先に評価されるSteam経路を満たすためYouTube分岐は到達不能で、結論（供給は減らない）はより強い理由で成立した |
-| **#236 対応** | `fix/issue-236-parent-publisher-entries` | ✅ **マージ済み**（2026-08-11。マージコミット `abd8f3e`。通常マージ、squashではない） | **#236**（**Closed にしていない。①が未解決のため**）/ 関連 **#231**（Closed。方針の根拠が実測で崩れた）・**#277**（本PRのレビューの横断確認で新規起票）・**#175**（上位タスク） / PR #276 | 29ファイル / **1178テスト**（着手前 1166）。コミット2本（実装 `76e31e5` → `/code-review` 指摘対応 `dd40bb4`）。真因2層のうち**②（`MAJOR_PUBLISHER_SUBSIDIARIES` の親会社エントリ欠落）だけ**を対処し、**①（IGDBのレコード分裂）は未解決のまま Issue を開いている**。Issue #231 が個社追記を退けた根拠（「PR-I の `developed` 判定と二重になる」）は**実測で崩れた**: 『ほの暮しの庭』は `developed=3` の分裂レコードに紐づき `developed` 判定が発火しない。`/code-review` 指摘1件を採用したが、**対処法はレビュー案（別 canonical を立てる）から変更し、エイリアスごと削除**した |
+| **#236 対応** | `fix/issue-236-parent-publisher-entries` | ✅ **マージ済み**（2026-08-11。マージコミット `abd8f3e`。通常マージ、squashではない） | **#236**（**Closed にしていない。①が未解決のため**）/ 関連 **#231**（Closed。方針の根拠が実測で崩れた）・**#277**（本PRのレビューの横断確認で新規起票）・**#175**（上位タスク） / PR #276 | 29ファイル / **1178テスト**（着手前 1166）。コミット2本（実装 `76e31e5` → `/code-review` 指摘対応 `dd40bb4`）。真因2層のうち**②（`MAJOR_PUBLISHER_SUBSIDIARIES` にはコメント見出しだけがあり、親会社エントリが `LARGE_DEVELOPERS` に無かった）だけ**を対処し、**①（IGDBのレコード分裂）は未解決のまま Issue を開いている**。Issue #231 が個社追記を退けた根拠（「PR-I の `developed` 判定と二重になる」）は**実測で崩れた**: 『ほの暮しの庭』は `developed=3` の分裂レコードに紐づき `developed` 判定が発火しない。`/code-review` 指摘1件を採用したが、**対処法はレビュー案（別 canonical を立てる）から変更し、エイリアスごと削除**した |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1859,7 +1859,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 |---|---|
 | **#234** | `websites.category` → `type` 改名で `officialUrl` 抽出が全経路で機能していない → ✅ **完了**（2026-08-09。PR #246。マージ `bd71e4f`） |
 | **#235** | §3.5 の「話題性ルートから YouTube を外す」決定が未実装・PR 未割り当て → ✅ **完了**（2026-08-11。PR #273。マージ `d04a107`） |
-| **#236** | IGDB の会社レコード重複で `developed` 判定が取りこぼす |
+| **#236** | IGDB の会社レコード重複で `developed` 判定が取りこぼす → ②のみ対処（2026-08-11。PR #276。マージ `abd8f3e`）。**①（IGDBのレコード分裂）は未解決のため Issue は Open のまま** |
 | **#238** | 話題の国内新作『Splatoon Raiders』が新作枠に載らず名作深掘り枠に選ばれる |
 | **#239** | `aggregateGames` が同一 `normalizedTitle` の既存エントリを黙って上書きする |
 | **#240** | 生の `developed` 件数が多作な小規模スタジオを大手扱いする（Kairosoft = 88 本） |
@@ -2309,7 +2309,7 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 
 ## 何が壊れていたか
 
-`MAJOR_PUBLISHER_SUBSIDIARIES` は `// Microsoft / Xbox Game Studios` や `// Sony Interactive Entertainment` という**コメント見出し**の下に子会社だけを列挙し、親会社そのものがエントリとして存在しなかった。そのため `isLargeStudio('Xbox Game Studios')` が `hit: false` を返し、インディー枠の publisher 側ゲート（`select-indie-with-fallback.ts:98`）が「親会社名が偶然 `LARGE_DEVELOPERS` にも載っている場合だけ機能する」状態だった。
+`MAJOR_PUBLISHER_SUBSIDIARIES` は `// Microsoft / Xbox Game Studios` や `// Sony Interactive Entertainment` という**コメント見出し**の下に子会社だけを列挙し、親会社そのものがエントリとして存在しなかった。そのため `isLargeStudio('Xbox Game Studios')` が `hit: false` を返していた。ただし `isLargeStudio`（`indie-classifier.ts:245-258`）は `LARGE_DEVELOPERS` を走査した後に **`MAJOR_PUBLISHER_SUBSIDIARIES` も走査する**。このリストには実データで publisher として現れる名前（`2K Games` / `Bethesda Softworks` / `Blizzard Entertainment` / `Rare` 等）が含まれているため、**修正前の publisher 側ゲート（`select-indie-with-fallback.ts:98`）は「親会社名が偶然 `LARGE_DEVELOPERS` にも載っている場合だけ機能する」という記述が示唆するより広い範囲で発火していた**。
 
 ## 影響範囲は5箇所（引き継ぎ文書は2箇所と見積もっていた）
 
@@ -2320,10 +2320,10 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 | 1 | `select-indie-with-fallback.ts:97-98` | インディー枠ゲート（developer/publisher両方）→ 供給↓（狙い） |
 | 2 | `select-indie-with-fallback.ts:120` | 話題性ルートの publisher ゲート → 供給↓ |
 | 3 | `fetch-data.ts:1130`（`isIndieGame`） | 候補プール構築段階の絞り込み（developer のみ）→ 供給↓ |
-| 4 | `select-newreleases-with-fallback.ts:75` | developer 名の canonical 上書き（表示文字列） |
+| 4 | `select-newreleases-with-fallback.ts:75-76` | `game.developer` を canonical 名で上書き。その値は `validateGameSourceConsistency`（`validate-article.ts:720-722`）経由で `matchGameToSteamEntity` の company 軸（`game-identity.ts:382`）に流れる。company 軸が `disagree` になると、判定表の行4（title disagree + year unknown + company disagree）で `verdict='different'` となり、severity `high` の `game-source-mismatch` 警告（`validate-article.ts:728-733`）が出る。ただし company 軸が verdict を左右するのは**判定表の行4に限られる**（行1「title agree かつ year が disagree でない」なら company 軸に関わらず `same`）。また company 軸は `gameCompanies = [game.developer, game.publisher]` として developer・publisher の両方を見るため（`game-identity.ts:382`）、publisher 側は上書きされない以上、developer の上書きだけで verdict が変わるとは限らない。実害は未測定 |
 | 5 | `generate-articles.ts:417`（`pickNewReleaseLabelCompany`） | 新作記事のラベル「◯◯の新作」 |
 
-**新作枠の採用可否ゲートは §11.1 確定事項 #1 のとおり PR #237 で撤廃済み**なので、新作枠への波及は採用件数ではなく**ラベル表記のみ**である。
+**新作枠の採用可否ゲートは §11.1 確定事項 #1 のとおり PR #237 で撤廃済み**なので、新作枠への波及は採用件数には及ばない。ただし**「ラベル表記のみ」でもない**: 項目4のとおり developer の canonical 上書きは `matchGameToSteamEntity` の company 軸を経由し、判定表の行4に限って severity `high` の `game-source-mismatch` 警告に波及し得る（行1が成立する場合や publisher 側が一致している場合はこの経路の影響を受けない）。**実害は未測定**である。
 
 ## 追加したエントリ
 
@@ -2367,6 +2367,14 @@ snapshot 2026-05-16 / games=105 : new=18件,  upperOld=18件,  判定が変わ�
 ## 残る課題
 
 ①（IGDB のレコード分裂）は未解決。加えて今回追加した `Nippon Ichi Software` エントリは①の症状を個社で塞いでいるため、**この企業については①が観測しにくくなった**。①を検証する際は別の企業で測る必要がある。
+
+### Issue #277: `isLargeStudio` の canonical 名が別法人・別部門に化ける
+
+`NIS America` の指摘（上記「`/code-review` 指摘への対応」）を横断確認する過程で、`isLargeStudio` の既存欠陥を発見し #277 として起票した。`canonical` 名がエイリアスの実体と別の法人・別部門を指すエントリが既にあり、`Nintendo` → `Nintendo EPD`、`Bethesda Softworks` → `Bethesda Game Studios` のように、記事に出る企業名がゲームの実際の発売元・開発元とは異なる部門名にすり替わる。
+
+**本PRで追加したエントリも同じ欠陥クラスの新しい実例である**: `Xbox Game Studios` は alias に `microsoft` を、`Sony Interactive Entertainment` は alias に `playstation studios` を持つ（`indie-classifier.ts:75, 86`）。そのため developer/publisher が「Microsoft」のタイトルはラベルが「Xbox Game Studiosの新作」になり、上記の項目4の経路で developer 表記も同様に書き換わる。
+
+**規模は未測定**。全エントリ中の該当件数を機械的に列挙しようとしたが断念した: 文字列の類似度では「別法人か否か」を判定できない（`nintendo` は `Nintendo EPD` の部分文字列であり、素朴な包含判定では `Nintendo → Nintendo EPD` のような代表例自体が「一致」と誤判定されて漏れる）ため。
 
 ### 教訓
 
