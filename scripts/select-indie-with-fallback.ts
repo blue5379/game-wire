@@ -125,14 +125,24 @@ export async function vetIndieCandidate(
     isOnlyDeveloperMissing(finalizeResult.game) &&
     meetsPopularityThreshold(finalizeResult.game)
   ) {
-    // developer が欠落していても publisher が大手なら個人開発ラベルで採用しない。
-    if (isLargeStudio(finalizeResult.game.publisher).hit) {
+    // Issue #280 A: 話題性ルートの大手ゲートを通常ルートと同じ軸に揃える。
+    // `developer` は話題性ルートの到達条件（isOnlyDeveloperMissing）により必ず未設定なので、
+    // 判定対象は `steamRawDeveloper`（isQualifiedCompanyName が弾く前の生値）。
+    // 通常ルートと同じく、静的リスト + IGDB 開発本数（developerGameCount）の両方を渡す。
+    // Nintendo / Capcom / FromSoftware 等の単一トークン社名は isQualifiedCompanyName が
+    // アカウント名と誤判定して弾いてしまうため、話題性ルートで steamRawDeveloper を見ないと
+    // 大手の個人開発ラベル化（ゲート抜け）が発生する（Issue #280 の欠陥1）。
+    // developerGameCount を渡さないと、IGDB 開発本数が閾値超の大手（静的リスト外）も
+    // 素通りしてしまう（Issue #280 の欠陥2）。
+    const rawDevHit = isLargeStudio(finalizeResult.game.steamRawDeveloper, finalizeResult.game.developerGameCount).hit;
+    const pubHit = isLargeStudio(finalizeResult.game.publisher).hit;
+    if (rawDevHit || pubHit) {
       console.log(
         JSON.stringify({
           scope: 'vet-indie-candidate',
           title: finalizeResult.game.title,
           step: 'large-studio-gate',
-          reason: `not-indie via popularity route (publisher="${finalizeResult.game.publisher ?? ''}")`,
+          reason: `not-indie via popularity route (steamRawDeveloper="${finalizeResult.game.steamRawDeveloper ?? ''}", publisher="${finalizeResult.game.publisher ?? ''}")`,
         })
       );
       return null;
