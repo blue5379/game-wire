@@ -4,8 +4,8 @@
  */
 
 :root {
-  /* カラーパレット - Swiss Elegant Editorial */
-  --color-primary: #C41E3A;
+  /* カラーパレット - Logo Gradient (GameQuestraロゴ準拠) */
+  --color-primary: #3b56d1;
   --color-secondary: #666666;
   --color-accent: #F2F1ED;
   --color-background: #FAFAF7;
@@ -13,6 +13,9 @@
   --color-text: #0F0F0F;
   --color-text-muted: #666666;
   --color-border: #E0E0E0;
+
+  /* ロゴ実物の配色（シアン→ブルー→バイオレット→マゼンタ）に合わせたグラデーション */
+  --gradient-logo: linear-gradient(90deg, #12a8e8 0%, #2f6ae0 32%, #7c3aed 66%, #9b2fd6 100%);
 
   /* スコアカラー */
   --color-score-high: #66bb6a;
@@ -23,10 +26,11 @@
   --color-category-new-release: #0288D1;
   --color-category-indie: #2E7D32;
   --color-category-feature: #E65100;
-  --color-category-classic: #6A1B9A;
+  --color-category-classic: #7c3aed;
 
   /* フォント */
-  --font-heading: 'Noto Serif JP', serif;
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
   --font-body: 'Inter', 'Noto Sans JP', sans-serif;
 
   /* フォントサイズ */
