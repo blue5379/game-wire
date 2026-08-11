@@ -189,13 +189,16 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
     expect(result.adopted[0].publisher).toBe('Bandai Namco Entertainment Inc.');
   });
 
-  // Issue #180: developer が静的リストの大手なら canonical 名に正規化される（既存挙動の維持。
-  // 企業規模ゲート撤廃後も、この canonical 名への正規化自体は残る）
-  it('developer が静的リストの大手（別名表記 nintendo）→ 採用され developer が canonical 名（Nintendo EPD）に正規化される', async () => {
+  // Issue #180 / #277: developer の上書きを撤去（回帰防止）。
+  // Issue #277 で canonical / displayName による上書きが同一性照合と衝突することが判明
+  // （和名 `任天堂` vs Steam 英語表記 `Nintendo` の不一致、`Nintendo EPD` vs 生値 `Nintendo` の不一致）。
+  // developer は事実（生値）を保持する方針であり、上書きしない。Issue #180（受託開発タイトルの
+  // ラベルを大手側に寄せる）の意図は `pickNewReleaseLabelCompany` で達成済み。
+  it('developer が大手でも上書きされず、生値が保持される（同一性照合との衝突回避、Issue #277）', async () => {
     const A = makeGame({ title: 'Mario Game', normalizedTitle: 'mario game' });
     const finished = {
       ...A,
-      developer: 'nintendo',
+      developer: 'Nintendo',
       coverImage: 'https://example.com/cover.jpg',
       sourceUrls: { steam: 'https://store.steampowered.com/app/12345' },
     };
@@ -204,7 +207,8 @@ describe('selectNewReleasesWithFallback — 通常ルート', () => {
 
     const result = await selectNewReleasesWithFallback([A], 1);
     expect(result.adopted).toHaveLength(1);
-    expect(result.adopted[0].developer).toBe('Nintendo EPD');
+    // 'Nintendo EPD' でも '任天堂' でもなく、生値 'Nintendo' のまま
+    expect(result.adopted[0].developer).toBe('Nintendo');
   });
 
   // 論点A（企業規模条件の撤廃）: developer・publisher がどちらも大手でなくても、
@@ -483,5 +487,93 @@ describe('selectNewReleasesWithFallback — developerGameCount は新作枠の�
     expect(result.adopted).toHaveLength(1);
     expect(result.adopted[0].title).toBe('ほの暮しの庭');
     expect(result.rejected).toHaveLength(0);
+  });
+
+  // Issue #277: developer の上書き撤去の回帰防止
+  describe('[Issue #277] developer は上書きせず生値を保持する（同一性照合との衝突回避）', () => {
+    it('developer=Nintendo（displayName=任天堂 を持つ）でも上書きされず生値が保持される', async () => {
+      const A = makeGame({ title: 'Test Game', normalizedTitle: 'test game' });
+      const finished = {
+        ...A,
+        developer: 'Nintendo',
+        coverImage: 'https://x/test.jpg',
+        sourceUrls: { steam: 'https://s/test' },
+      };
+
+      mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+      const result = await selectNewReleasesWithFallback([A], 1);
+      expect(result.adopted).toHaveLength(1);
+      // '任天堂' に上書きされず 'Nintendo' のまま（Steam 生値との照合を保つ）
+      expect(result.adopted[0].developer).toBe('Nintendo');
+    });
+
+    it('developer=Xbox Game Studios（displayName=Microsoft）でも上書きされず生値が保持される', async () => {
+      const A = makeGame({ title: 'Test Game', normalizedTitle: 'test game' });
+      const finished = {
+        ...A,
+        developer: 'Xbox Game Studios',
+        coverImage: 'https://x/test.jpg',
+        sourceUrls: { steam: 'https://s/test' },
+      };
+
+      mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+      const result = await selectNewReleasesWithFallback([A], 1);
+      expect(result.adopted).toHaveLength(1);
+      // 'Microsoft' に上書きされず 'Xbox Game Studios' のまま
+      expect(result.adopted[0].developer).toBe('Xbox Game Studios');
+    });
+
+    it('developer=Bethesda Game Studios（displayName=Bethesda）でも上書きされず生値が保持される', async () => {
+      const A = makeGame({ title: 'Test Game', normalizedTitle: 'test game' });
+      const finished = {
+        ...A,
+        developer: 'Bethesda Game Studios',
+        coverImage: 'https://x/test.jpg',
+        sourceUrls: { steam: 'https://s/test' },
+      };
+
+      mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+      const result = await selectNewReleasesWithFallback([A], 1);
+      expect(result.adopted).toHaveLength(1);
+      // 'Bethesda' に上書きされず 'Bethesda Game Studios' のまま
+      expect(result.adopted[0].developer).toBe('Bethesda Game Studios');
+    });
+
+    // ポジティブコントロール: displayName の無い大手でも生値保持
+    it('developer=Capcom（displayName 無し）でも上書きされず生値が保持される', async () => {
+      const A = makeGame({ title: 'Test Game', normalizedTitle: 'test game' });
+      const finished = {
+        ...A,
+        developer: 'capcom',
+        coverImage: 'https://x/test.jpg',
+        sourceUrls: { steam: 'https://s/test' },
+      };
+
+      mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+      const result = await selectNewReleasesWithFallback([A], 1);
+      expect(result.adopted).toHaveLength(1);
+      // 'Capcom'（canonical）に上書きされず 'capcom' のまま
+      expect(result.adopted[0].developer).toBe('capcom');
+    });
+
+    it('developer が小規模スタジオでも生値が保持される', async () => {
+      const A = makeGame({ title: 'Test Game', normalizedTitle: 'test game' });
+      const finished = {
+        ...A,
+        developer: 'Small Studio Inc.',
+        coverImage: 'https://x/test.jpg',
+        sourceUrls: { steam: 'https://s/test' },
+      };
+
+      mockFinalize.mockResolvedValueOnce({ ok: true, game: finished });
+
+      const result = await selectNewReleasesWithFallback([A], 1);
+      expect(result.adopted).toHaveLength(1);
+      expect(result.adopted[0].developer).toBe('Small Studio Inc.');
+    });
   });
 });

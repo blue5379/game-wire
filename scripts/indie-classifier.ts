@@ -1,7 +1,16 @@
 import type { GameData } from './types';
 
+/**
+ * 大手スタジオのエントリ。
+ *
+ * - `canonical`: 規模判定・内部識別子。同一企業の表記ゆれを吸収するためのキー。
+ * - `displayName`: 読者向け表示名（省略時は canonical を使う）。canonical が
+ *   別法人・別部門名になっているエントリで、読者に示す企業名を分離するために追加（Issue #277）。
+ * - `aliases`: canonical と一致判定する表記バリエーション。
+ */
 interface DeveloperEntry {
   canonical: string;
+  displayName?: string;
   aliases: string[];
 }
 
@@ -14,7 +23,9 @@ const LARGE_DEVELOPERS: ReadonlyArray<DeveloperEntry> = [
   { canonical: 'Capcom', aliases: ['capcom', 'カプコン'] },
   { canonical: 'Square Enix', aliases: ['square enix', 'スクウェア・エニックス', 'square enix co', 'square enix ltd'] },
   { canonical: 'Bandai Namco Entertainment', aliases: ['bandai namco entertainment', 'bandai namco', 'bandai namco studios', 'namco bandai', 'namco'] },
-  { canonical: 'Nintendo EPD', aliases: ['nintendo epd', 'nintendo', '任天堂'] },
+  // Issue #277: canonical が開発部門名（Nintendo EPD）だが、aliases に任天堂本体が含まれる。
+  // 他社開発・任天堂発売タイトルが「Nintendo EPDの新作」とラベル付けされる問題を回避。
+  { canonical: 'Nintendo EPD', displayName: '任天堂', aliases: ['nintendo epd', 'nintendo', '任天堂'] },
   { canonical: 'Game Freak', aliases: ['game freak', 'ゲームフリーク'] },
   { canonical: 'Konami', aliases: ['konami', 'konami digital entertainment', 'konami holdings', 'コナミ', 'コナミデジタルエンタテインメント'] },
   { canonical: 'Sega', aliases: ['sega', 'セガ', 'sega games', 'sega corporation'] },
@@ -68,8 +79,10 @@ const LARGE_DEVELOPERS: ReadonlyArray<DeveloperEntry> = [
   // Issue #236: 親会社パブリッシャそのものが LARGE_DEVELOPERS に無く、
   // isLargeStudio('Xbox Game Studios') 等が hit: false になっていた穴を埋める。
   // MAJOR_PUBLISHER_SUBSIDIARIES ではなく親会社自身のエントリなのでこちらに追加する。
+  // Issue #277: aliases に 'microsoft' を含むため、親会社名（Microsoft）を displayName とする。
   {
     canonical: 'Xbox Game Studios',
+    displayName: 'Microsoft',
     aliases: [
       'xbox game studios',
       'microsoft',
@@ -118,7 +131,9 @@ const MAJOR_PUBLISHER_SUBSIDIARIES: ReadonlyArray<DeveloperEntry> = [
   { canonical: 'id Software', aliases: ['id software'] },
   { canonical: 'MachineGames', aliases: ['machinegames', 'machine games'] },
   { canonical: 'Arkane Studios', aliases: ['arkane studios', 'arkane austin', 'arkane lyon'] },
-  { canonical: 'Bethesda Game Studios', aliases: ['bethesda game studios', 'bethesda softworks', 'bethesda'] },
+  // Issue #277: aliases に 'bethesda softworks'（パブリッシャ、別法人）と 'bethesda game studios'
+  // （デベロッパ）を含む。どちらにも寄らない「Bethesda」を displayName とする。
+  { canonical: 'Bethesda Game Studios', displayName: 'Bethesda', aliases: ['bethesda game studios', 'bethesda softworks', 'bethesda'] },
   { canonical: 'Tango Gameworks', aliases: ['tango gameworks'] },
   { canonical: 'World\'s Edge', aliases: ["world's edge", 'worlds edge'] },
   { canonical: 'ZeniMax Online Studios', aliases: ['zenimax online studios', 'zenimax online'] },
@@ -203,8 +218,14 @@ export function normalizeDeveloperName(name: string): string {
     .trim();
 }
 
+/**
+ * 大手スタジオ判定結果。
+ *
+ * - `matched`: 規模判定に使った canonical 名（静的リスト由来）または入力文字列（開発本数判定）。
+ * - `displayName`: 読者向け表示名。エントリに displayName があればそれを、なければ matched を返す。
+ */
 type LargeStudioResult =
-  | { hit: true; matched: string; list: 'large' | 'subsidiary' | 'developed-count' }
+  | { hit: true; matched: string; displayName: string; list: 'large' | 'subsidiary' | 'developed-count' }
   | { hit: false };
 
 const DEFAULT_LARGE_STUDIO_DEVELOPED_THRESHOLD = 20;
@@ -245,7 +266,12 @@ export function isLargeStudio(
   for (const entry of LARGE_DEVELOPERS) {
     for (const alias of entry.aliases) {
       if (normalizeDeveloperName(alias) === normalized) {
-        return { hit: true, matched: entry.canonical, list: 'large' };
+        return {
+          hit: true,
+          matched: entry.canonical,
+          displayName: entry.displayName ?? entry.canonical,
+          list: 'large',
+        };
       }
     }
   }
@@ -253,28 +279,38 @@ export function isLargeStudio(
   for (const entry of MAJOR_PUBLISHER_SUBSIDIARIES) {
     for (const alias of entry.aliases) {
       if (normalizeDeveloperName(alias) === normalized) {
-        return { hit: true, matched: entry.canonical, list: 'subsidiary' };
+        return {
+          hit: true,
+          matched: entry.canonical,
+          displayName: entry.displayName ?? entry.canonical,
+          list: 'subsidiary',
+        };
       }
     }
   }
 
   // 開発本数による規模判定（§3.4）。20 は大手ではない、21 から大手。
+  // この経路では静的エントリが無いため、matched と displayName は同じ値（入力文字列）。
   if (developedCount !== undefined && developedCount > readLargeStudioDevelopedThreshold()) {
-    return { hit: true, matched: developer, list: 'developed-count' };
+    return { hit: true, matched: developer, displayName: developer, list: 'developed-count' };
   }
 
   return { hit: false };
 }
 
 /**
- * 「大手企業の新作」枠の記事カテゴリラベルに使う企業名を選ぶ（Issue #180）。
+ * 「大手企業の新作」枠の記事カテゴリラベルに使う企業名を選ぶ（Issue #180, #277）。
  *
- * developer が大手ならその canonical 名、受託開発（developer は小規模だが
- * publisher が大手）なら publisher の canonical 名を返す。
+ * developer が大手ならその表示名、受託開発（developer は小規模だが
+ * publisher が大手）なら publisher の表示名を返す。
  * どちらも大手でなければ developer をそのまま返す（呼び出し側のフォールバック用）。
  *
  * game.developer 自体は事実（受託スタジオ名）を保持する方針のため、
  * 読者向けラベル「◯◯の新作」の◯◯だけをここで大手側に寄せる。
+ *
+ * Issue #277: 読者向けラベルには displayName を使う。canonical が別法人・別部門名に
+ * なっているエントリ（Nintendo EPD, Xbox Game Studios, Bethesda Game Studios）で、
+ * 事実と異なる帰属が表示されることを防ぐ。
  *
  * developedCount（IGDB 開発本数による規模判定）は渡さない。開発本数判定は
  * インディー枠の除外条件としてのみ使う（論点A / docs/article-category-spec-review.md
@@ -285,9 +321,9 @@ export function pickNewReleaseLabelCompany(
   publisher: string | undefined
 ): string | undefined {
   const dev = isLargeStudio(developer);
-  if (dev.hit) return dev.matched;
+  if (dev.hit) return dev.displayName;
   const pub = isLargeStudio(publisher);
-  if (pub.hit) return pub.matched;
+  if (pub.hit) return pub.displayName;
   return developer;
 }
 
