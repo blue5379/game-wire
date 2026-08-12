@@ -441,14 +441,14 @@ export async function runCompletenessGate(
     uncertainIdentity: [],
   };
 
-  // 対象: newReleases + indies（featured / classic は差し替えが複雑なため warn のみ）
+  // 対象: newReleases + indies（classic は差し替えが複雑なため warn のみ）
   const mutableArrays: { key: 'newReleases' | 'indies'; arr: GameData[] }[] = [
     { key: 'newReleases', arr: selectedGames.newReleases },
     { key: 'indies', arr: selectedGames.indies },
   ];
 
-  // featured / classic は violations 記録のみ（差し替えしない）
-  const singletons: (GameData | null)[] = [selectedGames.featured, selectedGames.classic];
+  // classic は violations 記録のみ（差し替えしない）
+  const singletons: (GameData | null)[] = [selectedGames.classic];
 
   /**
    * ゲームごとの違反を溜め込む。差し替え可否は「そのゲームの違反すべてが replaceable=true」であるかで判定する。
@@ -473,7 +473,7 @@ export async function runCompletenessGate(
     }
   }
 
-  // featured / classic の違反も記録（差し替えなし・fail 判定対象外）
+  // classic の違反も記録（差し替えなし・fail 判定対象外）
   for (const game of singletons) {
     if (!game) continue;
     const result = await checkGame(game, trace, fetchImpl);

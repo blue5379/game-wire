@@ -227,6 +227,5 @@ export interface SelectedGames {
   newReleasesReserves: GameData[]; // 新作差し替え予備プール（removeZombieGames 後の補充用）
   indies: GameData[]; // インディーゲーム 2本
   indieReserves: GameData[]; // インディー差し替え予備プール（デバッグ/ログ用）
-  featured: GameData | null; // 特集記事用
   classic: GameData | null; // 名作深掘り用
 }

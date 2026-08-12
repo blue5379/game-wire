@@ -1294,7 +1294,6 @@ async function main(): Promise<void> {
       newReleasesReserves: [],
       indies: [], // 選定データなし: 0件で発行
       indieReserves: [],
-      featured: null,
       classic: createFallbackGame('classic'),
     };
   }
@@ -1390,7 +1389,6 @@ async function main(): Promise<void> {
     }
 
     // 同号の他記事で選定済みのタイトルを除外リストとして構築
-    // （selectedGames.featured は特集記事自身の素材のため除外しない）
     const alreadySelectedTitles = [
       ...selectedGames.newReleases.map((g) => g.title),
       ...selectedGames.indies.map((g) => g.title),

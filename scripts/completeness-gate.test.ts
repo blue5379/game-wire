@@ -66,7 +66,6 @@ function makeSelectedGames(overrides: Partial<SelectedGames> = {}): SelectedGame
     newReleasesReserves: [],
     indies: [],
     indieReserves: [],
-    featured: null,
     classic: null,
     ...overrides,
   };
@@ -779,21 +778,21 @@ describe('runCompletenessGate: mode=replace', () => {
     expect(selected.newReleases[0].title).toBe('Healthy Game');
   });
 
-  it('featured の違反は violations に記録されるが差し替えはしない', async () => {
+  it('classic の違反は violations に記録されるが差し替えはしない', async () => {
     mockHeadOk.mockResolvedValue(true);
 
-    const violatingFeatured = makeGame({
-      title: 'Featured Zombie',
-      normalizedTitle: 'featured zombie',
+    const violatingClassic = makeGame({
+      title: 'Classic Zombie',
+      normalizedTitle: 'classic zombie',
       sourceUrls: { stores: [] },
     });
 
-    const selected = makeSelectedGames({ featured: violatingFeatured });
+    const selected = makeSelectedGames({ classic: violatingClassic });
     const report = await runCompletenessGate(selected, undefined, [], 'replace');
 
-    expect(report.violations.some((v) => v.gameTitle === 'Featured Zombie')).toBe(true);
-    // featured は差し替えされない
-    expect(selected.featured?.title).toBe('Featured Zombie');
+    expect(report.violations.some((v) => v.gameTitle === 'Classic Zombie')).toBe(true);
+    // classic は差し替えされない
+    expect(selected.classic?.title).toBe('Classic Zombie');
   });
 });
 
@@ -872,20 +871,20 @@ describe('runCompletenessGate: mode=fail', () => {
     expect(report.violations).toHaveLength(0);
   });
 
-  it('featured のみに違反があっても hasMutableViolations=false（fail 対象外）', async () => {
+  it('classic のみに違反があっても hasMutableViolations=false（fail 対象外）', async () => {
     mockHeadOk.mockResolvedValue(true);
 
-    const violatingFeatured = makeGame({
-      title: 'Featured Zombie',
-      normalizedTitle: 'featured zombie',
+    const violatingClassic = makeGame({
+      title: 'Classic Zombie',
+      normalizedTitle: 'classic zombie',
       sourceUrls: { stores: [] }, // R1 違反
     });
-    const selected = makeSelectedGames({ featured: violatingFeatured });
+    const selected = makeSelectedGames({ classic: violatingClassic });
 
     const report = await runCompletenessGate(selected, undefined, [], 'fail');
 
-    // featured 違反は violations に記録されるが fail 対象にはならない
-    expect(report.violations.some((v) => v.gameTitle === 'Featured Zombie')).toBe(true);
+    // classic 違反は violations に記録されるが fail 対象にはならない
+    expect(report.violations.some((v) => v.gameTitle === 'Classic Zombie')).toBe(true);
     expect(report.hasMutableViolations).toBe(false);
   });
 });
