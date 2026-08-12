@@ -5,7 +5,7 @@
  * 1. ranked（スコア順）を先頭から順に評価し、targetCount 件採用するまで繰り返す
  * 2. 通常ルート: finalizeGameMetadata → ok なら確定
  * 3. 話題性ルート: still-missing-required かつ developer のみ欠落 かつ 話題性閾値 OK
- *    → 「個人開発（アカウント名）」ラベルを付与して確定
+ *    → steamRawDeveloper（Steam Storefront developers[0] の生値）を developer に採用して確定
  * 4. どちらも通らない → rejected に追加、次の予備へ
  * 5. 予備が尽きたら targetCount 未満でも終了
  */
@@ -52,14 +52,6 @@ function isOnlyDeveloperMissing(game: GameData): boolean {
     (game.sourceUrls?.stores && game.sourceUrls.stores.length > 0)
   );
   return hasCover && hasSourceUrl && !game.developer;
-}
-
-/**
- * 個人開発ラベルを生成する。
- * @param rawName Steam developer 名（アカウント名でも正規名でも）
- */
-export function formatIndividualDeveloper(rawName: string): string {
-  return `個人開発（${rawName}）`;
 }
 
 /**
@@ -130,7 +122,7 @@ export async function vetIndieCandidate(
     // 判定対象は `steamRawDeveloper`（isQualifiedCompanyName が弾く前の生値）。
     // Nintendo / Capcom / FromSoftware 等の単一トークン社名は isQualifiedCompanyName が
     // アカウント名と誤判定して弾いてしまうため、話題性ルートで steamRawDeveloper を見ないと
-    // 大手の個人開発ラベル化（ゲート抜け）が発生する（Issue #280 の欠陥1）。
+    // 大手ゲームの混入（ゲート抜け）が発生する（Issue #280 の欠陥1）。
     //
     // 通常ルート（L97）と違い IGDB 開発本数（developerGameCount）は渡さない。
     // developerGameCount は `developer` と同時にのみ書き込まれ（fetch-igdb.ts の
@@ -152,10 +144,14 @@ export async function vetIndieCandidate(
       );
       return null;
     }
-    const rawName = finalizeResult.game.steamRawDeveloper ?? 'unknown';
+    // steamRawDeveloper をそのまま developer に入れる。
+    // steamRawDeveloper が undefined の場合は developer も undefined のままとなり、
+    // 直後の hasAllRequiredFields(adoptedGame, NORMAL_REQUIRED) が false を返すため
+    // return null（候補不採用）に自然に落ちる。
+    // ?? 'unknown' フォールバックは削除（根拠のない値を出力することになるため）。
     const adoptedGame: GameData = {
       ...finalizeResult.game,
-      developer: formatIndividualDeveloper(rawName),
+      developer: finalizeResult.game.steamRawDeveloper,
     };
     if (hasAllRequiredFields(adoptedGame, NORMAL_REQUIRED)) {
       return adoptedGame;

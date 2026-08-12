@@ -477,7 +477,7 @@ export async function aggregateGames(
       }
 
       // developer / publisher: 品質ガードを通過したもののみ採用
-      // steamRawDeveloper は品質ガード前の生値を保存（PR-C の話題性ルートで使用）
+      // steamRawDeveloper は品質ガード前の生値を保存（話題性ルートで developer が欠落した場合のフォールバックとして使用）
       if (Array.isArray(data.developers) && data.developers.length > 0) {
         const dev = String(data.developers[0]).trim();
         game.steamRawDeveloper = game.steamRawDeveloper ?? dev;
@@ -1109,7 +1109,7 @@ export function compareIndieCandidates(a: GameData, b: GameData): number {
  * 副作用を持たない純関数（ログ出力は呼び出し側で行う）。
  *
  * developer=undefined は isIndieGame が 'no-developer' で ok:false を返すが、
- * 候補プールには含める（話題性ルートで steamRawDeveloper による補完を後段で行うため）。
+ * 候補プールには含める（話題性ルートで steamRawDeveloper を developer に採用できるため）。
  */
 export function buildIndieCandidates(
   games: GameData[],
@@ -1268,7 +1268,7 @@ async function selectGamesForArticles(
 
   // インディーゲーム候補（大手スタジオと確定できるものだけ除外）
   // developer=undefined は 'no-developer' で ok:false になるが、候補プールには含める。
-  // 話題性ルートで steamRawDeveloper を使った「個人開発（アカウント名）」補完を後段で行う。
+  // 話題性ルートで steamRawDeveloper を developer に採用する補完処理を後段で行う。
   const indieRanked = buildIndieCandidates(games, {
     cooldown: indieCooldown,
     alreadySelected: newReleases,
