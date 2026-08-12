@@ -34,7 +34,7 @@
 | **#280 対応** | `fix/issue-280-popularity-route-developer-gate` | ✅ **マージ済み**（2026-08-11。マージコミット `c823440`。通常マージ、squashではない） | **#280**（Closed）/ 関連 **#284**（欠陥B。本PRから新規分離）・**#285**（欠陥2。本PRから新規分離）・**#274**（本Issueの出所） / PR #282 | 29ファイル / **1184テスト**（着手前 1181。新規6件を追加し、うち3件を`/code-review`指摘により削除）。コミット2本（実装 `09c0710` → `/code-review`指摘対応 `13e63bd`）。話題性ルートの大手ゲートに `isLargeStudio(steamRawDeveloper)` を追加。`isQualifiedCompanyName` が単一トークン社名を弾くため `developer` 未設定になり、大手が「個人開発」ラベルで載り得た欠陥1を解消。**`/code-review` が管理者の実装の半分を無効と判定した**: 同時に入れた第2引数 `developerGameCount` は、この経路では常に `undefined` で発火しない死んだコードだった（到達条件が `!game.developer` である一方、`developerGameCount` は `developer` と同時にのみ書かれ、`developer` を解除する経路が無い）。第2引数と、到達不能な状態を前提にしていたテスト3件を撤回した。実データ測定では変更前後で判定が変わった候補は0件（供給は減らない） |
 | **#232 対応** | `fix/issue-232-feature-fangame-filter` | ✅ **マージ済み**（2026-08-12。マージコミット `6829685`。通常マージ、squashではない） | **#232**（Closed）/ 関連 **#289**（本PRの着手前検証で新規起票） / PR #288 | 29ファイル / **1189テスト**（着手前 1184。新規5件）。コミット1本（`8d5911e`）。`deduplicated`（経路1・経路2の合流点）への1箇所適用で qualified / fringe の両分岐をカバー。実測: qualified 227 → 225（−2。Black Mesa / Pokémon Infinite Fusion）。Issue本文の対象が実経路でないことを着手前検証で判明（`fetch-data.ts:1316` の `featured` は特集記事に使われていない → Issue #289）。リメイク非適用はユーザー判断（継承元が3通りに割れる）。`/code-review` 4件すべてスコア80未満で分離なし |
 | **#277 対応** | `fix/issue-277-canonical-display-name` | ✅ **マージ済み**（2026-08-12。マージコミット `50e2c7a`。通常マージ、squashではない） | **#277**（Closed）/ 関連 **#236**（本Issueの出所）・**#180**（ラベル方針の起源）・**#175**（上位タスク） / PR #291 | 29ファイル / **1212テスト**（着手前 1189。新規23件）。コミット1本（`fc191d1`）。`DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games` と `PUBG Studios` は対象外と判断（別法人に化ける構造ではない）。**レビューで回帰を検出**: 初回実装は `game.developer` を `displayName` で上書きしていたが、これは `matchGameToSteamEntity` の company 軸を `disagree` へ転落させ、severity `high` の `game-source-mismatch` を誤発報する。管理者の実測で実害を確認し、上書き自体を撤去した。`/code-review` 指摘0件だが、docs stale 1件を管理者判断で採用（本docs PRで対応） |
-| **#289 対応** | `fix/issue-289-remove-featured` | ✅ **マージ済み**（2026-08-12。マージコミット `2c12b4d`。通常マージ、squashではない） | **#289**（Closed）/ 関連 **#232**（本Issueの出所）・**#293**（本PRの検討中に新規起票） / PR #294 | 29ファイル / **1214テスト**（着手前 1212。新規2件）。コミット1本（`5116768`）。**対処 (c) 削除を採用**: `SelectedGames.featured` フィールドと全消費者を削除。**Issue本文の「単調な変化」は不正確だった**: 実測で名作候補数は 176→177 件の単調増だが、**採用される1位が Witcher 3 → GTA V に入れ替わる非単調な変化**が生じた（`totalRatingCount` 降順で GTA V = 5896 > Witcher 3 = 5430）。`featured` は死んだ値ではなく、名作枠から1件を締め出すフィルタとして実質機能していた。削除を選んだ根拠3点: ①選定条件に設計判断の記録が無い（Initial commit の残骸） ②仕様 §4.2・§4.5 と正面から矛盾（特に **§4.6 は IGDB のテーマ分類を明示的に棄却済み**） ③除外は常に1件で順序が意味を持たない（`find` vs `filter`）。ミュータント検証4種のうち3種を検出、1種は構造的限界（`selectGamesForArticles` が export されていない）。`/code-review` 3件検出も全件スコア0で不採用（1件目は `git show 1bb61e6` で誤りと判明、2件目は移行コードの誤提案、3件目は対処不要な参照） |
+| **#289 対応** | `fix/issue-289-remove-featured` | ✅ **マージ済み**（2026-08-12。マージコミット `2c12b4d`。通常マージ、squashではない） | **#289**（Closed）/ 関連 **#232**（本Issueの出所）・**#293**（本PRの検討中に新規起票） / PR #294 | 29ファイル / **1214テスト**（着手前 1212。新規2件）。コミット1本（`5116768`）。**対処 (c) 削除を採用**: `SelectedGames.featured` フィールドと全消費者を削除。**Issue本文の「単調な変化」は不正確だった**: 実測で名作候補数は 176→177 件の単調増だが、**採用される1位が Witcher 3 → GTA V に入れ替わる非単調な変化**が生じた（`totalRatingCount` 降順で GTA V = 5896 > Witcher 3 = 5430）。`featured` は死んだ値ではなく、名作枠から1件を締め出すフィルタとして実質機能していた。削除を選んだ根拠3点: ①**ジャンル条件**に設計判断の記録が無い（ジャンルリストは Initial commit から不変。ただしスコア条件の側は `bb7cda2` / `5c9e9b4` で2度受動的に変化しており、当初「条件全体が不変」と書いたのは誤りだった → 実施結果節に訂正表あり） ②仕様 §4.2・§4.5 と正面から矛盾（特に **§4.6 は IGDB のテーマ分類を明示的に棄却済み**） ③除外は常に1件で順序が意味を持たない（`find` vs `filter`）。ミュータント検証4種のうち3種を検出、1種は構造的限界（`selectGamesForArticles` が export されていない）。`/code-review` は PR #294 で3件・本docs PR #295 で3件を検出。PR #294 側は全件不採用、**PR #295 側は1件（スコア条件の履歴の誤り）を管理者が `git show` で実在確認して採用** |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -1011,6 +1011,13 @@ fail-closed 自体は仕様 §6.1 の決定どおりなので**覆さない**。
   （＝この項目が塞ごうとしている経路そのものが残る）。
 
   ⚠️ **その後 PR #294 / Issue #289 で `featured` 自体を廃止したため、この4箇所目は消滅した（現在は3箇所）**（2026-08-12）。
+
+  なお `isAlreadySelected` の JSDoc（`fetch-data.ts`）は同時期に「2箇所」と書き換えられているが、**この2つの数字は矛盾していない。数えている対象が違う**:
+
+  - 上記リストの「3箇所」= **論理的な除外関係**（indie←newReleases / classic←newReleases / classic←indies）
+  - JSDoc の「2箇所」= **`isAlreadySelected()` の呼び出し箇所**（`buildIndieCandidates` / `buildClassicCandidates`）
+
+  classic 側は1回の呼び出しで `[...newReleases, ...indies]` を渡すため、除外関係2つが呼び出し1箇所に対応する。
 
 ## 受け入れ条件
 
@@ -2907,6 +2914,8 @@ Issue #277 は文字列類似度による自動列挙を断念していたが、
 
 ## 何が壊れていたか
 
+> ⚠️ **以下の行番号はすべて `5116768^`（PR #294 のマージ前）時点の値**。PR #294 が該当コードを削除したため、現在の同じ行番号には別の内容が入っている（例: 現在の `fetch-data.ts:1316` は `reconcileSelectedGames` の `classic` 追加行）。PR #292 の `/code-review` 指摘で確立した「削除済みコードの引用には時点を明記する」方式に従う。
+
 PR #288（Issue #232）の着手前検証で、`scripts/fetch-data.ts:1316` の `selectedGames.featured` 選定が**特集記事に使われていない**ことが判明した:
 
 - `generateFeatureArticle` の呼び出し（`generate-articles.ts:1421`）に渡されるのは `filteredAllGames`（`:1408-1412` で構築）であり、`selectedGames.featured` ではない
@@ -2956,7 +2965,17 @@ Issue #289 は対処案(c)の影響を「**除外対象が1件減るので名作
 
 ## 削除を選んだ根拠（3点）
 
-1. **選定条件に設計判断の記録が無い**。`git log -S "'sports', 'racing', 'simulation'"` のヒットは `898224c`（Initial commit）の1件のみ。仕様策定前の初期実装の残骸
+1. **ジャンル条件に設計判断の記録が無い**。`git log -S "'sports', 'racing', 'simulation'"` のヒットは `898224c`（Initial commit）の1件のみで、**ジャンルリスト `['sports','racing','simulation']` は一度も変更されていない**。仕様策定前の初期実装の残骸。
+
+   ⚠️ **ただしスコア条件の側は2度変更されている**（本docs PRの `/code-review` 指摘を受けて管理者が `git show` で再確認）。「条件全体が Initial commit から不変」と読める書き方は誤りだった:
+
+   | コミット | スコア条件 |
+   |---|---|
+   | `898224c`（Initial commit） | `metascore > 75`（加えて `games.find((g) => g.steamPlayers > 50000)` のフォールバックがあった） |
+   | `bb7cda2`（Phase 13） | `(metascore > 75) \|\| (igdbRating >= 75)` に拡張 |
+   | `5c9e9b4`（Issue #253 対応） | `metascore` 削除に伴い `igdbRating >= 75` のみに |
+
+   つまりスコア条件は他の変更（`metascore` 廃止など）に**受動的に追従して変わった**だけで、「このジャンルでこの閾値が妥当か」という**ジャンル選定そのものの設計判断は一度も行われていない**。根拠としての結論は変わらないが、事実関係はこの表のとおり。
 2. **仕様と正面から矛盾する**。`docs/article-category-spec.md` §4.2 の特集枠は「暦のイベント起点でテーマを決め、そのテーマに合うゲームを3本以上」。§4.5 の候補経路は2つ（プールの残り / LLM提案）で「ジャンルで1本選ぶ」経路は存在しない。特に **§4.6 は IGDB の機械可読なテーマ分類を「記念日→ジャンルの編集意図から離れる」として明示的に棄却済み**。ジャンル固定で縛る発想そのものが仕様として否定されている
 3. **除外されるタイトルが意味のない順序で決まっていた**。`games.find()` なので**除外は常にちょうど1件**（`filter` ではない）。どのタイトルになるかは `aggregateGames`（`fetch-data.ts` で `Array.from(gameMap.values())`）の挿入順＝Steam Top Sellers → Top Played → YouTube → IGDB という、**選定上の意味を持たない順序**で決まっていた
 
