@@ -14,6 +14,7 @@ import {
   validateFeatureNumericClaims,
   validateArticles,
   validateGameSourceConsistency,
+  validateGameSourceConsistencyForArticles,
   validateReleasedTitleExpression,
   buildFixInstruction,
   extractNumericUnitKey,
@@ -1217,7 +1218,7 @@ describe('validateGameSourceConsistency', () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it('Steam URL が無い記事は検証対象外（警告なし・API も呼ばない）', async () => {
+  it('Steam URL が無い記事は同一性照合の対象外（API は呼ばない、unchecked 警告が出る）', async () => {
     const article = makeArticle({
       title: '『Qux』',
       category: 'classic',
@@ -1227,7 +1228,10 @@ describe('validateGameSourceConsistency', () => {
     const fetchMock = vi.fn();
 
     const warnings = await validateGameSourceConsistency(article, fetchMock as unknown as typeof fetch);
-    expect(warnings).toHaveLength(0);
+    // Issue #296: appId が取れない場合は game-source-unchecked 警告が出る
+    const unchecked = warnings.find((w) => w.type === 'game-source-unchecked');
+    expect(unchecked).toBeDefined();
+    expect(unchecked?.severity).toBe('low');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -1366,6 +1370,221 @@ describe('validateGameSourceConsistency', () => {
       expect(uncertain).toBeDefined();
       expect(uncertain?.severity).toBe('medium');
       expect(uncertain?.message).toMatch(/company=disagree/);
+    });
+  });
+
+  // Issue #296: game-source-unchecked（appId 未取得で照合スキップ）の観測
+  describe('[Issue #296] game-source-unchecked（appId 未取得で照合スキップの観測）', () => {
+    it('appId が取れない記事 → game-source-unchecked 警告（severity=low）が1件出る', async () => {
+      const article = makeArticle({
+        title: '『NoSteamURL』',
+        category: 'indie',
+        game: {
+          title: 'NoSteamURL',
+          genre: ['Action'],
+          platforms: ['PC (Microsoft Windows)'],
+          releaseDate: '2026-07-01',
+          developer: 'Some Studio',
+        },
+        sourceUrls: { official: 'https://example.com' },
+      });
+      const fetchImpl = vi.fn(); // API は呼ばれない
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      const unchecked = warnings.find((w) => w.type === 'game-source-unchecked');
+      expect(unchecked).toBeDefined();
+      expect(unchecked?.severity).toBe('low');
+      expect(unchecked?.message).toMatch(/Steam appId が取得できなかった/);
+      expect(unchecked?.message).toMatch(/sourceUrls\.steam/);
+      expect(unchecked?.message).toMatch(/sourceUrls\.stores/);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    // ポジティブコントロール: sourceUrls.steam を持つ記事
+    it('sourceUrls.steam を持つ記事 → game-source-unchecked が出ない（照合が実行される）', async () => {
+      const article = makeArticle({
+        title: '『HasSteamURL』',
+        category: 'indie',
+        game: {
+          title: 'HasSteamURL',
+          genre: ['Action'],
+          platforms: ['PC (Microsoft Windows)'],
+          releaseDate: '2026-07-01',
+          developer: 'Some Studio',
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/1234567' },
+      });
+      const fetchImpl = makeBilingualFetch('1234567', {
+        name: 'HasSteamURL',
+        release_date: { coming_soon: false, date: '1 Jul, 2026' },
+        developers: ['Some Studio'],
+      });
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings.filter((w) => w.type === 'game-source-unchecked')).toHaveLength(0);
+      // API が呼ばれたことを確認
+      expect(fetchImpl).toHaveBeenCalled();
+    });
+
+    // ポジティブコントロール: sourceUrls.stores[] の steam 経由で appId が取れる記事
+    it('sourceUrls.stores[] の platform=steam で appId が取れる記事 → game-source-unchecked が出ない', async () => {
+      const article = makeArticle({
+        title: '『StoresArraySteam』',
+        category: 'indie',
+        game: {
+          title: 'StoresArraySteam',
+          genre: ['Action'],
+          platforms: ['PC (Microsoft Windows)'],
+          releaseDate: '2026-07-01',
+          developer: 'Another Studio',
+        },
+        sourceUrls: {
+          stores: [
+            {
+              platform: 'steam',
+              url: 'https://store.steampowered.com/app/7654321',
+              resolvedBy: 'igdb-website',
+              confidence: 'high',
+            },
+          ],
+        },
+      });
+      const fetchImpl = makeBilingualFetch('7654321', {
+        name: 'StoresArraySteam',
+        release_date: { coming_soon: false, date: '1 Jul, 2026' },
+        developers: ['Another Studio'],
+      });
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings.filter((w) => w.type === 'game-source-unchecked')).toHaveLength(0);
+      // API が呼ばれたことを確認（この経路が見落とされやすいため重要）
+      expect(fetchImpl).toHaveBeenCalled();
+    });
+
+    // feature 記事は game ブロックを持たないため警告を出さない
+    it('feature 記事 → game-source-unchecked が出ない（対象外）', async () => {
+      const article = makeArticle({
+        title: '特集: ゲーム業界の最新トレンド',
+        category: 'feature',
+        // game ブロック無し
+        sourceUrls: { official: 'https://example.com' },
+      });
+      const fetchImpl = vi.fn();
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings.filter((w) => w.type === 'game-source-unchecked')).toHaveLength(0);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+
+    // game ブロックが無い記事
+    it('game ブロックが無い記事 → game-source-unchecked が出ない（対象外）', async () => {
+      const article = makeArticle({
+        title: '『NoGameBlock』',
+        category: 'indie',
+        // game ブロック無し
+        sourceUrls: { official: 'https://example.com' },
+      });
+      const fetchImpl = vi.fn();
+
+      const warnings = await validateGameSourceConsistency(article, fetchImpl);
+      expect(warnings.filter((w) => w.type === 'game-source-unchecked')).toHaveLength(0);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    });
+  });
+
+  // validateGameSourceConsistencyForArticles: appId 無し記事と appId あり記事の混在
+  describe('validateGameSourceConsistencyForArticles（バッチ実行）', () => {
+    beforeEach(() => {
+      clearSteamEntityCache();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('appId 無し記事と appId あり記事が混在した場合、unchecked 警告が収集される', async () => {
+      const articleWithAppId = makeArticle({
+        title: '『WithAppId』',
+        category: 'indie',
+        game: {
+          title: 'WithAppId',
+          genre: ['Action'],
+          platforms: ['PC (Microsoft Windows)'],
+          releaseDate: '2026-07-01',
+          developer: 'Some Studio',
+        },
+        sourceUrls: { steam: 'https://store.steampowered.com/app/1111111' },
+      });
+      const articleWithoutAppId = makeArticle({
+        title: '『WithoutAppId』',
+        category: 'indie',
+        game: {
+          title: 'WithoutAppId',
+          genre: ['Action'],
+          platforms: ['PC (Microsoft Windows)'],
+          releaseDate: '2026-07-01',
+          developer: 'Another Studio',
+        },
+        sourceUrls: { official: 'https://example.com' },
+      });
+
+      const fetchImpl = makeBilingualFetch('1111111', {
+        name: 'WithAppId',
+        release_date: { coming_soon: false, date: '1 Jul, 2026' },
+        developers: ['Some Studio'],
+      });
+
+      const warnings = await validateGameSourceConsistencyForArticles(
+        [articleWithAppId, articleWithoutAppId],
+        fetchImpl
+      );
+
+      // appId 無し記事の unchecked 警告が収集される
+      const unchecked = warnings.filter((w) => w.type === 'game-source-unchecked');
+      expect(unchecked).toHaveLength(1);
+      expect(unchecked[0].articleTitle).toBe('『WithoutAppId』');
+
+      // appId あり記事に対して API が呼ばれた（1回だけ）
+      expect(fetchImpl).toHaveBeenCalledTimes(2); // en + ja の2リクエスト
+    });
+
+    it('appId 無し記事のみの場合、Storefront fetch が呼ばれない', async () => {
+      const articleWithoutAppId1 = makeArticle({
+        title: '『NoAppId1』',
+        category: 'indie',
+        game: {
+          title: 'NoAppId1',
+          genre: [],
+          platforms: [],
+          releaseDate: '2026-07-01',
+        },
+        sourceUrls: { official: 'https://example.com' },
+      });
+      const articleWithoutAppId2 = makeArticle({
+        title: '『NoAppId2』',
+        category: 'classic',
+        game: {
+          title: 'NoAppId2',
+          genre: [],
+          platforms: [],
+          releaseDate: '2020-01-01',
+        },
+        sourceUrls: { igdb: 'https://www.igdb.com/games/noappid2' },
+      });
+
+      const fetchImpl = vi.fn();
+
+      const warnings = await validateGameSourceConsistencyForArticles(
+        [articleWithoutAppId1, articleWithoutAppId2],
+        fetchImpl
+      );
+
+      // 2件とも unchecked 警告が出る
+      const unchecked = warnings.filter((w) => w.type === 'game-source-unchecked');
+      expect(unchecked).toHaveLength(2);
+
+      // Storefront fetch は1回も呼ばれない（レート制限対策の最適化が維持されている）
+      expect(fetchImpl).not.toHaveBeenCalled();
     });
   });
 });

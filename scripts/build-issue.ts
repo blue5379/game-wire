@@ -523,10 +523,21 @@ async function main(): Promise<void> {
   const sourceMismatchTitles = new Set<string>();
   // uncertain（同一性を断定できない）は hidden にせず、レポート・CI サマリで evidence を可視化するのみ（#179 PR-3）
   const sourceUncertainWarnings: import('./validate-article.js').ValidationWarning[] = [];
+  // unchecked（appId 未取得で照合スキップ）は hidden にせず、レポートで観測するのみ（#296）
+  const sourceUncheckedWarnings: import('./validate-article.js').ValidationWarning[] = [];
   try {
     const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
     const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
     const uncertainWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-uncertain');
+    const uncheckedWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-unchecked');
+    if (uncheckedWarnings.length > 0) {
+      sourceUncheckedWarnings.push(...uncheckedWarnings);
+      console.warn('');
+      console.warn('⚠️  game-source-unchecked (appId 未取得のため照合スキップ):');
+      for (const w of uncheckedWarnings) {
+        console.warn(`  - "${w.articleTitle}"`);
+      }
+    }
     if (uncertainWarnings.length > 0) {
       sourceUncertainWarnings.push(...uncertainWarnings);
       console.warn('');
@@ -666,6 +677,13 @@ async function main(): Promise<void> {
     report.warnings.push(...sourceUncertainWarnings);
     report.totalWarnings = report.warnings.length;
     report.warningsBySeverity.medium += sourceUncertainWarnings.length;
+  }
+
+  // game-source-unchecked もレポートに記録する（low。hidden・fail 閾値には影響しない）
+  if (sourceUncheckedWarnings.length > 0) {
+    report.warnings.push(...sourceUncheckedWarnings);
+    report.totalWarnings = report.warnings.length;
+    report.warningsBySeverity.low += sourceUncheckedWarnings.length;
   }
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。

@@ -707,7 +707,19 @@ export async function validateGameSourceConsistency(
   if (!game) return warnings;
 
   const appId = extractSteamAppIdFromArticle(article);
-  if (appId === undefined) return warnings;
+  if (appId === undefined) {
+    // Issue #296: Steam appId が取得できなかったため同一性照合を実行しなかった（観測用）
+    warnings.push({
+      articleTitle: article.title,
+      category: article.category,
+      severity: 'low',
+      type: 'game-source-unchecked',
+      message:
+        `Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。` +
+        `appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。`,
+    });
+    return warnings;
+  }
 
   // Steam 実体を二言語取得（失敗時は fail-open）
   const entity = await fetchSteamEntity(appId, fetchImpl);
@@ -767,8 +779,14 @@ export async function validateGameSourceConsistencyForArticles(
   const warnings: ValidationWarning[] = [];
   let first = true;
   for (const article of articles) {
+    const appId = extractSteamAppIdFromArticle(article);
     // Steam appId を持たない記事は API を呼ばないのでディレイ不要
-    if (extractSteamAppIdFromArticle(article) === undefined) continue;
+    // ただし game-source-unchecked 警告は収集する必要があるため、
+    // validateGameSourceConsistency を呼んで警告を取得する
+    if (appId === undefined) {
+      warnings.push(...(await validateGameSourceConsistency(article, fetchImpl)));
+      continue;
+    }
     if (!first) {
       await new Promise((r) => setTimeout(r, STOREFRONT_REQUEST_DELAY_MS));
     }
