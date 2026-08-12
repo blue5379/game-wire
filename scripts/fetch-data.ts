@@ -673,7 +673,6 @@ async function reconcileSelectedGames(
   const allGames: GameData[] = [
     ...selectedGames.newReleases,
     ...selectedGames.indies,
-    ...(selectedGames.featured ? [selectedGames.featured] : []),
     ...(selectedGames.classic ? [selectedGames.classic] : []),
   ];
 
@@ -814,14 +813,6 @@ export function removeZombieGames(selectedGames: SelectedGames): void {
 
   let removedSingletons = 0;
 
-  if (selectedGames.featured && !hasAllRequiredFields(selectedGames.featured, required)) {
-    console.warn(
-      `  [ZombieFilter] Nullifying featured "${selectedGames.featured.title}" (missing cover or sourceUrl)`
-    );
-    selectedGames.featured = null;
-    removedSingletons++;
-  }
-
   if (selectedGames.classic && !hasAllRequiredFields(selectedGames.classic, required)) {
     console.warn(
       `  [ZombieFilter] Nullifying classic "${selectedGames.classic.title}" (missing cover or sourceUrl)`
@@ -848,7 +839,6 @@ async function enrichSelectedGamesWithOfficialUrl(
   const allGames: GameData[] = [
     ...selectedGames.newReleases,
     ...selectedGames.indies,
-    ...(selectedGames.featured ? [selectedGames.featured] : []),
     ...(selectedGames.classic ? [selectedGames.classic] : []),
   ];
 
@@ -907,7 +897,7 @@ async function enrichSelectedGamesWithOfficialUrl(
 /**
  * 号内カテゴリ間の重複判定。正規化タイトルで比較する（§6.3）。null/undefined は無視する。
  *
- * 4箇所（newReleases 除外×2、indies 除外、featured 除外）で同じ比較ロジックを
+ * 2箇所（indies 除外、classic 除外）で同じ比較ロジックを
  * コピーすると、PR #209 が対処した「同じ誤りが3箇所に同時に存在する」事故の
  * 再発条件になるため、共通関数に集約する。
  *
@@ -1312,19 +1302,10 @@ async function selectGamesForArticles(
     console.warn(`[Warning] indie採用${indies.length}件 — 2件未満で発行します`);
   }
 
-  // 特集記事用（シーズンイベント関連 or 人気タイトル）
-  const featured =
-    games.find(
-      (g) =>
-        g.genres?.some((genre) =>
-          ['sports', 'racing', 'simulation'].includes(genre.toLowerCase())
-        ) && g.igdbRating && g.igdbRating >= 75
-    ) || null;
-
   // 名作深掘り（評価母数ベースの母集団条件。詳細は buildClassicCandidates の JSDoc 参照。§5.4/§5.5/§5.8）
   const classicCandidates = buildClassicCandidates(games, {
     cooldown: classicCooldown,
-    alreadySelected: [...newReleases, ...indies, featured],
+    alreadySelected: [...newReleases, ...indies],
   });
 
   const classic = classicCandidates[0] || null;
@@ -1334,7 +1315,6 @@ async function selectGamesForArticles(
     newReleasesReserves,
     indies,
     indieReserves,
-    featured,
     classic,
   };
 }
@@ -1434,7 +1414,6 @@ async function main(): Promise<void> {
   });
   console.log(`New Releases: ${selectedGames.newReleases.length}`);
   console.log(`Indies: ${selectedGames.indies.length}`);
-  console.log(`Featured: ${selectedGames.featured?.title || 'None'}`);
   console.log(`Classic: ${selectedGames.classic?.title || 'None'}`);
 
   // 選定済みゲームのストア URL を Identity Resolver で補完・検証（Issue #116 対策）

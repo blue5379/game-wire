@@ -58,7 +58,6 @@ function makeSelected(overrides: Partial<SelectedGames> = {}): SelectedGames {
     newReleasesReserves: [],
     indies: [],
     indieReserves: [],
-    featured: null,
     classic: null,
     ...overrides,
   };
@@ -130,19 +129,6 @@ describe('removeZombieGames - Issue #103 zombie ゲーム除去', () => {
     expect(selected.newReleases).toHaveLength(1);
   });
 
-  it('featured が zombie なら null に置き換える', () => {
-    const zombie = makeGame({
-      title: 'Zombie Featured',
-      coverImage: 'https://example.com/cover.jpg',
-      // sourceUrls なし
-    });
-    const selected = makeSelected({ featured: zombie });
-
-    removeZombieGames(selected);
-
-    expect(selected.featured).toBeNull();
-  });
-
   it('classic が zombie なら null に置き換える', () => {
     const zombie = makeGame({
       title: 'Zombie Classic',
@@ -169,11 +155,10 @@ describe('removeZombieGames - Issue #103 zombie ゲーム除去', () => {
     expect(selected.indies).toHaveLength(1);
   });
 
-  it('featured が null の場合は何も変えない（クラッシュしない）', () => {
-    const selected = makeSelected({ featured: null, classic: null });
+  it('classic が null の場合は何も変えない（クラッシュしない）', () => {
+    const selected = makeSelected({ classic: null });
 
     expect(() => removeZombieGames(selected)).not.toThrow();
-    expect(selected.featured).toBeNull();
     expect(selected.classic).toBeNull();
   });
 
@@ -1358,7 +1343,7 @@ describe('buildClassicCandidates', () => {
     expect(result).toHaveLength(0);
   });
 
-  it('号内重複除外が newReleases / indies / featured の3方向すべてに効く', () => {
+  it('号内重複除外が newReleases / indies の2方向に効く', () => {
     const inNewReleases = makeGame({
       title: 'Already New Release',
       normalizedTitle: 'already new release',
@@ -1375,32 +1360,23 @@ describe('buildClassicCandidates', () => {
       coverImage: 'https://example.com/2.jpg',
       summary: 's',
     });
-    const isFeatured = makeGame({
-      title: 'Already Featured',
-      normalizedTitle: 'already featured',
-      totalRating: 90,
-      totalRatingCount: 400,
-      coverImage: 'https://example.com/3.jpg',
-      summary: 's',
-    });
     const untouchedCandidate = makeGame({
       title: 'Untouched Classic',
       normalizedTitle: 'untouched classic',
       totalRating: 90,
       totalRatingCount: 400,
       gameType: 0,
-      coverImage: 'https://example.com/4.jpg',
+      coverImage: 'https://example.com/3.jpg',
       summary: 's',
     });
 
     const result = buildClassicCandidates(
-      [inNewReleases, inIndies, isFeatured, untouchedCandidate],
+      [inNewReleases, inIndies, untouchedCandidate],
       {
         cooldown: new Set(),
         alreadySelected: [
           makeGame({ title: 'Already New Release', normalizedTitle: 'already new release' }),
           makeGame({ title: 'Already Indie', normalizedTitle: 'already indie' }),
-          makeGame({ title: 'Already Featured', normalizedTitle: 'already featured' }),
         ],
       }
     );
@@ -1408,7 +1384,7 @@ describe('buildClassicCandidates', () => {
     expect(result.map((g) => g.title)).toEqual(['Untouched Classic']);
   });
 
-  it('featured が null のときに候補が誤って落ちない', () => {
+  it('alreadySelected に null/undefined が含まれても候補が誤って落ちない', () => {
     const game = makeGame({
       title: 'Should Survive',
       normalizedTitle: 'should survive',
@@ -1516,6 +1492,95 @@ describe('buildClassicCandidates', () => {
 
     expect(result.map((g) => g.title)).not.toContain('Splatoon Raiders');
     expect(result.map((g) => g.title)).toContain('Well-Established Classic');
+  });
+
+  it('Issue #289 回帰防止: ジャンルで削られることなく、高評価母数のゲームが名作候補に含まれる', () => {
+    // 実データに基づく GTA V 相当のゲーム（genres に Racing を含む、高評価母数）
+    const gtaVLike = makeGame({
+      title: 'Grand Theft Auto V',
+      normalizedTitle: 'grand theft auto v',
+      genres: ['Shooter', 'Racing', 'Adventure'],
+      totalRating: 88.89,
+      totalRatingCount: 5896,
+      gameType: 0,
+      coverImage: 'https://example.com/gtav.jpg',
+      summary: 'An action-adventure game.',
+    });
+    // Witcher 3 相当（評価母数は GTA V より低い）
+    const witcher3Like = makeGame({
+      title: 'The Witcher 3: Wild Hunt',
+      normalizedTitle: 'the witcher 3 wild hunt',
+      genres: ['RPG', 'Adventure'],
+      totalRating: 92.0,
+      totalRatingCount: 5430,
+      gameType: 0,
+      coverImage: 'https://example.com/witcher3.jpg',
+      summary: 'An open world RPG.',
+    });
+
+    const result = buildClassicCandidates([gtaVLike, witcher3Like], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    // GTA V は含まれる（ジャンルで除外されない）
+    expect(result.map((g) => g.title)).toContain('Grand Theft Auto V');
+    // 評価母数降順なので GTA V が上位
+    expect(result[0].title).toBe('Grand Theft Auto V');
+    expect(result[1].title).toBe('The Witcher 3: Wild Hunt');
+  });
+
+  it('Issue #289 回帰防止: alreadySelected が空でも null 要素を含んでもクラッシュしない', () => {
+    const game = makeGame({
+      title: 'Stable Game',
+      normalizedTitle: 'stable game',
+      totalRating: 90,
+      totalRatingCount: 400,
+      gameType: 0,
+      coverImage: 'https://example.com/cover.jpg',
+      summary: 'summary',
+    });
+
+    const resultEmpty = buildClassicCandidates([game], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+    expect(resultEmpty.map((g) => g.title)).toContain('Stable Game');
+
+    const resultWithNull = buildClassicCandidates([game], {
+      cooldown: new Set(),
+      alreadySelected: [null, undefined],
+    });
+    expect(resultWithNull.map((g) => g.title)).toContain('Stable Game');
+  });
+
+  it('Issue #289 回帰防止: 重複除外機構は動作する（alreadySelected に含まれるゲームは除外される）', () => {
+    const toExclude = makeGame({
+      title: 'To Exclude',
+      normalizedTitle: 'to exclude',
+      totalRating: 90,
+      totalRatingCount: 500,
+      gameType: 0,
+      coverImage: 'https://example.com/exclude.jpg',
+      summary: 'summary',
+    });
+    const toInclude = makeGame({
+      title: 'To Include',
+      normalizedTitle: 'to include',
+      totalRating: 90,
+      totalRatingCount: 400,
+      gameType: 0,
+      coverImage: 'https://example.com/include.jpg',
+      summary: 'summary',
+    });
+
+    const result = buildClassicCandidates([toExclude, toInclude], {
+      cooldown: new Set(),
+      alreadySelected: [toExclude],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('To Exclude');
+    expect(result.map((g) => g.title)).toContain('To Include');
   });
 });
 
@@ -2694,7 +2759,6 @@ describe('toPersistableSelectedGames — newReleasesReserves を直列化対象�
     });
     const indieGame = makeGame({ title: 'Cozy Indie Game', normalizedTitle: 'cozy indie game' });
     const indieReserveGame = makeGame({ title: 'Indie Reserve Game', normalizedTitle: 'indie reserve game' });
-    const featuredGame = makeGame({ title: 'Featured Sports Game', normalizedTitle: 'featured sports game' });
     const classicGame = makeGame({ title: 'Classic Masterpiece', normalizedTitle: 'classic masterpiece' });
 
     const selected = makeSelected({
@@ -2702,7 +2766,6 @@ describe('toPersistableSelectedGames — newReleasesReserves を直列化対象�
       newReleasesReserves: [newReleaseReserveGame],
       indies: [indieGame],
       indieReserves: [indieReserveGame],
-      featured: featuredGame,
       classic: classicGame,
     });
 
@@ -2715,7 +2778,6 @@ describe('toPersistableSelectedGames — newReleasesReserves を直列化対象�
     expect(persistable.indieReserves).toEqual([indieReserveGame]);
     expect(persistable.newReleases).toEqual([newReleaseGame]);
     expect(persistable.indies).toEqual([indieGame]);
-    expect(persistable.featured).toEqual(featuredGame);
     expect(persistable.classic).toEqual(classicGame);
   });
 });
