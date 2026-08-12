@@ -208,7 +208,7 @@ export async function finalizeGameMetadata(
         }
 
         // developer / publisher（品質ガード）
-        // steamRawDeveloper は品質ガード通過前の生値を保存（話題性ルートの個人開発ラベル生成に使用）
+        // steamRawDeveloper は品質ガード通過前の生値を保存（話題性ルートで developer が欠落した場合のフォールバックとして使用）
         if (Array.isArray(data.developers) && data.developers.length > 0) {
           const raw = String(data.developers[0]).trim();
           game.steamRawDeveloper = game.steamRawDeveloper ?? raw;

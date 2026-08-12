@@ -12,7 +12,6 @@ vi.mock('./finalize-game-metadata.js', async (importActual) => {
 import {
   selectIndieGamesWithFallback,
   meetsPopularityThreshold,
-  formatIndividualDeveloper,
   vetIndieCandidate,
 } from './select-indie-with-fallback';
 import { finalizeGameMetadata } from './finalize-game-metadata.js';
@@ -82,19 +81,6 @@ describe('meetsPopularityThreshold', () => {
 });
 
 // ────────────────────────────────────────────────
-// formatIndividualDeveloper
-// ────────────────────────────────────────────────
-describe('formatIndividualDeveloper', () => {
-  it('アカウント名を「個人開発（）」形式に変換する', () => {
-    expect(formatIndividualDeveloper('lemorion_1224')).toBe('個人開発（lemorion_1224）');
-  });
-
-  it('スペース入り名前でも変換できる', () => {
-    expect(formatIndividualDeveloper('Tour De Pizza')).toBe('個人開発（Tour De Pizza）');
-  });
-});
-
-// ────────────────────────────────────────────────
 // selectIndieGamesWithFallback
 // ────────────────────────────────────────────────
 describe('selectIndieGamesWithFallback - 通常ルート', () => {
@@ -157,7 +143,7 @@ describe('selectIndieGamesWithFallback - 通常ルート', () => {
 });
 
 describe('selectIndieGamesWithFallback - 話題性ルート', () => {
-  it('developer のみ欠落 + 話題性閾値 OK → 個人開発ラベル付きで採用', async () => {
+  it('developer のみ欠落 + 話題性閾値 OK → steamRawDeveloper をそのまま developer に採用', async () => {
     const candidate = makeGame({
       title: 'Popular Indie',
       normalizedTitle: 'popular indie',
@@ -180,7 +166,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     const result = await selectIndieGamesWithFallback([candidate], 1);
 
     expect(result.adopted).toHaveLength(1);
-    expect(result.adopted[0].developer).toBe('個人開発（dev_account）');
+    expect(result.adopted[0].developer).toBe('dev_account');
     expect(result.rejected).toHaveLength(0);
   });
 
@@ -232,11 +218,11 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     expect(result.adopted).toHaveLength(0);
     expect(result.rejected).toHaveLength(1);
-    // developer ではなく cover が原因の場合は 個人開発ラベル付与しない
+    // developer ではなく cover が原因の場合は補完できないため不採用
     expect(result.rejected[0].title).toBe('No Cover Game');
   });
 
-  it('steamRawDeveloper が undefined のとき → developer="個人開発（unknown）"', async () => {
+  it('steamRawDeveloper が undefined のとき → developer を埋められないため不採用', async () => {
     const candidate = makeGame({
       title: 'Mystery Dev Game',
       normalizedTitle: 'mystery dev game',
@@ -255,8 +241,9 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     const result = await selectIndieGamesWithFallback([candidate], 1);
 
-    expect(result.adopted).toHaveLength(1);
-    expect(result.adopted[0].developer).toBe('個人開発（unknown）');
+    expect(result.adopted).toHaveLength(0);
+    expect(result.rejected).toHaveLength(1);
+    expect(result.rejected[0].title).toBe('Mystery Dev Game');
   });
 
   // Vol.12 再発防止テスト: めっちゃカメレオン相当の fixture
@@ -287,7 +274,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
     expect(result.adopted).toHaveLength(1);
     const adopted = result.adopted[0];
-    expect(adopted.developer).toBe('個人開発（lemorion_1224）');
+    expect(adopted.developer).toBe('lemorion_1224');
     expect(adopted.coverImage).toBe('https://cdn.akamai.steamstatic.com/steam/apps/4704690/header.jpg');
     expect(adopted.coverImageOrientation).toBe('landscape');
     expect(adopted.steamRecommendations).toBe(11179);
@@ -327,7 +314,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       const result = await selectIndieGamesWithFallback([candidate], 1);
 
       expect(result.adopted).toHaveLength(1);
-      expect(result.adopted[0].developer).toBe('個人開発（solo_dev_account）');
+      expect(result.adopted[0].developer).toBe('solo_dev_account');
       expect(result.adopted[0].steamRecommendations).toBe(11179);
       expect(result.rejected).toHaveLength(0);
     });
@@ -389,7 +376,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
       const result = await selectIndieGamesWithFallback([candidate], 1);
 
       expect(result.adopted).toHaveLength(1);
-      expect(result.adopted[0].developer).toBe('個人開発（solo_dev_account_3）');
+      expect(result.adopted[0].developer).toBe('solo_dev_account_3');
       expect(result.adopted[0].steamRecommendations).toBe(5000);
     });
   });
@@ -510,6 +497,36 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     expect(mockFinalize).toHaveBeenCalledTimes(2);
   });
 
+  // Issue #298: 話題性ルートで採用された developer に「個人開発」ラベルが含まれないこと（回帰防止）
+  it('話題性ルートで採用された developer に「個人開発」という文字列が含まれず、steamRawDeveloper と一致する', async () => {
+    const candidate = makeGame({
+      title: 'Regression Test Game',
+      normalizedTitle: 'regression test game',
+      steamRawDeveloper: 'test_developer',
+      steamRecommendations: 8000,
+      coverImage: 'https://example.com/regression.jpg',
+      sourceUrls: { steam: 'https://store.steampowered.com/app/999999' },
+    });
+    const gameAfterFinalize = {
+      ...candidate,
+      // developer is still missing after finalize
+    };
+
+    mockFinalize.mockResolvedValueOnce({
+      ok: false,
+      reason: 'still-missing-required' as const,
+      game: gameAfterFinalize,
+    });
+
+    const result = await selectIndieGamesWithFallback([candidate], 1);
+
+    expect(result.adopted).toHaveLength(1);
+    // ネガティブアサーション: 「個人開発」という文字列が含まれないこと
+    expect(result.adopted[0].developer).not.toContain('個人開発');
+    // ポジティブアサーション: steamRawDeveloper の生値と一致すること
+    expect(result.adopted[0].developer).toBe('test_developer');
+  });
+
   // Issue #280 A: 話題性ルートの大手ゲートは steamRawDeveloper を見るべき
   describe('Issue #280 A: 話題性ルートの大手ゲート（steamRawDeveloper）', () => {
     it('話題性ルートで steamRawDeveloper="Capcom"（単一トークンの大手、developer未設定）→ rejected になる', async () => {
@@ -539,7 +556,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
     });
 
     // ポジティブコントロール: 中小の steamRawDeveloper で developerGameCount 未設定 → 採用される
-    it('ポジティブコントロール: steamRawDeveloper="NaipSoft"（実データで到達を確認した中小）で developerGameCount 未設定 → 個人開発ラベルで採用される', async () => {
+    it('ポジティブコントロール: steamRawDeveloper="NaipSoft"（実データで到達を確認した中小）で developerGameCount 未設定 → steamRawDeveloper をそのまま採用', async () => {
       const candidate = makeGame({
         title: 'NaipSoft Indie Game',
         normalizedTitle: 'naipsoft indie game',
@@ -561,7 +578,7 @@ describe('selectIndieGamesWithFallback - 話題性ルート', () => {
 
       const result = await selectIndieGamesWithFallback([candidate], 1);
       expect(result.adopted).toHaveLength(1);
-      expect(result.adopted[0].developer).toBe('個人開発（NaipSoft）');
+      expect(result.adopted[0].developer).toBe('NaipSoft');
       expect(result.rejected).toHaveLength(0);
     });
 

@@ -628,7 +628,7 @@ describe('isIndieGame', () => {
 
   it('めっちゃカメレオン (lemorion_1224) is indie (individual dev, passes indie check)', () => {
     // developer がアカウント名でも isIndieGame は ok を返す
-    // （個人開発ラベルへの変換は select-indie-with-fallback で行う）
+    // （話題性ルートで steamRawDeveloper をそのまま developer に採用する処理は select-indie-with-fallback で行う）
     const game = makeGame({ title: 'めっちゃカメレオン', developer: 'lemorion_1224' });
     expect(isIndieGame(game)).toEqual({ ok: true });
   });
