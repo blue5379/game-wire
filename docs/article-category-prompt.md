@@ -35,6 +35,7 @@
 | **#232 対応** | `fix/issue-232-feature-fangame-filter` | ✅ **マージ済み**（2026-08-12。マージコミット `6829685`。通常マージ、squashではない） | **#232**（Closed）/ 関連 **#289**（本PRの着手前検証で新規起票） / PR #288 | 29ファイル / **1189テスト**（着手前 1184。新規5件）。コミット1本（`8d5911e`）。`deduplicated`（経路1・経路2の合流点）への1箇所適用で qualified / fringe の両分岐をカバー。実測: qualified 227 → 225（−2。Black Mesa / Pokémon Infinite Fusion）。Issue本文の対象が実経路でないことを着手前検証で判明（`fetch-data.ts:1316` の `featured` は特集記事に使われていない → Issue #289）。リメイク非適用はユーザー判断（継承元が3通りに割れる）。`/code-review` 4件すべてスコア80未満で分離なし |
 | **#277 対応** | `fix/issue-277-canonical-display-name` | ✅ **マージ済み**（2026-08-12。マージコミット `50e2c7a`。通常マージ、squashではない） | **#277**（Closed）/ 関連 **#236**（本Issueの出所）・**#180**（ラベル方針の起源）・**#175**（上位タスク） / PR #291 | 29ファイル / **1212テスト**（着手前 1189。新規23件）。コミット1本（`fc191d1`）。`DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games` と `PUBG Studios` は対象外と判断（別法人に化ける構造ではない）。**レビューで回帰を検出**: 初回実装は `game.developer` を `displayName` で上書きしていたが、これは `matchGameToSteamEntity` の company 軸を `disagree` へ転落させ、severity `high` の `game-source-mismatch` を誤発報する。管理者の実測で実害を確認し、上書き自体を撤去した。`/code-review` 指摘0件だが、docs stale 1件を管理者判断で採用（本docs PRで対応） |
 | **#289 対応** | `fix/issue-289-remove-featured` | ✅ **マージ済み**（2026-08-12。マージコミット `2c12b4d`。通常マージ、squashではない） | **#289**（Closed）/ 関連 **#232**（本Issueの出所）・**#293**（本PRの検討中に新規起票） / PR #294 | 29ファイル / **1214テスト**（着手前 1212。新規2件）。コミット1本（`5116768`）。**対処 (c) 削除を採用**: `SelectedGames.featured` フィールドと全消費者を削除。**Issue本文の「単調な変化」は不正確だった**: 実測で名作候補数は 176→177 件の単調増だが、**採用される1位が Witcher 3 → GTA V に入れ替わる非単調な変化**が生じた（`totalRatingCount` 降順で GTA V = 5896 > Witcher 3 = 5430）。`featured` は死んだ値ではなく、名作枠から1件を締め出すフィルタとして実質機能していた。削除を選んだ根拠3点: ①**ジャンル条件**に設計判断の記録が無い（ジャンルリストは Initial commit から不変。ただしスコア条件の側は `bb7cda2` / `5c9e9b4` で2度受動的に変化しており、当初「条件全体が不変」と書いたのは誤りだった → 実施結果節に訂正表あり） ②仕様 §4.2・§4.5 と正面から矛盾（特に **§4.6 は IGDB のテーマ分類を明示的に棄却済み**） ③除外は常に1件で順序が意味を持たない（`find` vs `filter`）。ミュータント検証4種のうち3種を検出、1種は構造的限界（`selectGamesForArticles` が export されていない）。`/code-review` は PR #294 で3件・本docs PR #295 で3件を検出。PR #294 側は全件不採用、**PR #295 側は1件（スコア条件の履歴の誤り）を管理者が `git show` で実在確認して採用** |
+| **#298 対応** | `fix/issue-298-remove-individual-developer-label` | ✅ **マージ済み**（2026-08-12。マージコミット `6dde6b5`。通常マージ、squashではない） | **#298**（Closed）/ 関連 **#284**（本Issueの出所）・**#297**（実例に重なっていた別作品メタデータ混入）・**#296**（同一性照合のスキップ）・**#300**（`/code-review` 指摘から新規起票）・**#97**（`個人開発` 表記の出所） / PR #299 | 29ファイル / **1213テスト**（着手前 1214。削除2件 + 追加1件）。コミット1本（`f5ddcf5`。`/code-review` 指摘は本PRでは修正せず Issue #300 に分離したため追加コミットは無い）。**着手前検証で Issue #284 の実例が別の欠陥の産物と判明**: `個人開発（Petroglyph）` は別作品メタデータ混入（→ #297）で、それが検出されなかった理由は同一性照合のスキップ（→ #296）。**ラベルは症状であって原因ではない**。実装: `formatIndividualDeveloper` 削除、`developer: finalizeResult.game.steamRawDeveloper` に変更、`?? 'unknown'` フォールバック削除。Steam生値は一次ソースの事実で、`NORMAL_REQUIRED.developer = true` を通り供給が減らない（案A）。**自前の検証機構が high で警告していた**: LLM-as-a-judge（`validation-report-019.json`）が「本作は個人開発（Petroglyph）によって制作された」を確信度95%で「明確な誤情報」と判定。同一性照合への影響は中立（実測）。ミュータント検証3種すべて検出。`/code-review` 2件のうち1件を **Issue #300** に分離（スコア75。`deduplicateGames` が `steamRawDeveloper` をマージしない既存問題） |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -2494,9 +2495,11 @@ Issue #280 本文は Nintendo / Capcom / SEGA / Valve / Konami / Ubisoft / Bethe
 
 ### 仕様書に記述が存在しない「個人開発」ラベル経路
 
+**✅ PR #299 で経路自体が廃止された**（2026-08-12。マージコミット `6dde6b5`）。以下は PR #299 以前の記録。
+
 `個人開発` ラベル経路は **`docs/article-category-spec.md` に記述が存在しない**（`grep -r '個人開発'` でヒット0件）。出所は Issue #97 の**コメント**（本文ではない）で、「『個人開発（〇〇）』表記の品位: アカウント名そのまま括弧内に入れることが許容範囲か運用後に判断」と保留項目として書かれたまま仕様に昇格していない。
 
-### 公開記事への実害の確認
+### 公開記事への実害の確認（PR #299 以前）
 
 `grep -r '個人開発（' src/content/issues/` を実行したところ、ヒットは `src/content/issues/issue-012.md` の `個人開発（lemorion_1224）` のみで、これは実際のSteamアカウント名なので誤りではない。`個人開発（Petroglyph）` は DEV_MODE 出力（`issues-dev/issue-019.md`）にのみ存在し、公開記事には出ていない。
 
@@ -3044,3 +3047,180 @@ PR #279・#282・#288・#294。測定の前に「そのスナップショット�
 ### 「Issue が書いた影響予測（単調/非単調）も検証対象」
 
 Issue #289 は「単調な変化」としていたが、候補数は単調でも採用結果は非単調だった。
+
+---
+
+# PR #299: 根拠のない「個人開発」断定を廃止する（Issue #298）
+
+- **Issue**: #298（Closed）
+- **関連**: #284（本Issueの出所。同じ症状を「実装バグ」として扱っていた）、#297（実例に重なっていた別作品メタデータ混入。本セッションで新規起票）、#296（同一性照合のスキップ。本セッションで新規起票）、#300（`/code-review` 指摘から新規起票）、#97（`個人開発` 表記の出所）
+- **PR**: #299
+- **ブランチ**: `fix/issue-298-remove-individual-developer-label`
+- **マージ**: 2026-08-12（マージコミット `6dde6b5`。通常マージ、squashではない）
+- **コミット**: 1本（`f5ddcf5`）。`/code-review` 指摘は本PRでは修正せず Issue #300 に分離したため、追加コミットは無い
+- **テスト**: 29ファイル / **1213テスト**全通過（着手前 1214。削除2件 + 追加1件）
+
+## 何が問題だったか
+
+### 「個人開発」判定の実体
+
+`scripts/` を `solo` / `individual` / `一人` / `ひとり` / `teamSize` / `team_size` で grep した結果、**開発規模・チーム人数・法人格を判定するロジックは存在しない**。ヒットしたのは `formatIndividualDeveloper` という関数名だけで、実質の判定内容は「IGDB に開発元情報が無く、Steam の文字列が `isQualifiedCompanyName` に弾かれ、静的大手リストにも載っていない」＝**メタデータが揃わなかったことの証拠**にすぎない。
+
+`isLargeStudio` の否定は「大手ではない」であって「個人開発」ではない（中小スタジオが丸ごと含まれる）。
+
+### 誤情報が出力される機構
+
+`generate-articles.ts:509` が `developer: game.developer` を `buildUserMessage` に渡し、`bedrock-client.ts:461-462` が `開発: ${gameInfo.developer}` としてプロンプトに載せる。同プロンプトの `:431` が「※以下のタイトル・各メタデータは正確な公式情報です。本文内では一字一句正確に転記し、短縮・翻訳・並べ替え・改変は禁止です。」と宣言している。indie のシステムプロンプト `:204` が「※提供された開発者情報を参考にしてください。情報がない場合は開発者/開発チームの紹介に留めてください」と本文への展開を促している。
+
+**LLM はハルシネーション防止ルールを守って忠実に転記しており、誤情報を作ったのはデータ供給側。**
+
+### 判定が文字列の形に依存する実測表
+
+管理者が実コードを直接実行して確認した結果:
+
+| 社名 | isQualifiedCompanyName | isLargeStudio | 「個人開発」と断定されるか |
+|---|---|---|---|
+| Petroglyph | false | false | する（実在スタジオ） |
+| Supergiant | false | false | する（実在スタジオ） |
+| Supergiant Games（正式名） | true | false | しない |
+| Klei | false | false | する（実在スタジオ） |
+| Klei Entertainment（正式名） | true | false | しない |
+| tinyBuild | false | false | する（実在スタジオ） |
+| ConcernedApe | false | false | する（実際に個人開発。偶然の一致） |
+| ZA/UM | true | false | しない（記号を含むため） |
+
+`Supergiant` と `Supergiant Games` で結果が変わる = **判定しているのは開発規模ではなく文字列の形**。
+
+### 自前の検証機構が high で警告していた
+
+LLM-as-a-judge（`data/validation-dev/validation-report-019.json` の `llmJudge.warnings[6]`）が、severity=high / type=`llm-judge-contradicted` / 確信度95%で次のメッセージを出していた:
+
+> 主張「本作は個人開発（Petroglyph）によって制作された」は検索結果と矛盾します（確信度 95%）。検索結果[4][5]で開発スタジオはCD PROJEKT REDであることが明記されており、個人開発でもPetroglyphでもない。明確な誤情報
+
+**自前の事実性チェックが「明確な誤情報」と判定する内容を、自前のパイプラインが生成していた。**
+
+### 仕様上の裏付けが無い
+
+`docs/article-category-spec.md` を `grep '個人開発'` で確認すると**0件**。出所は Issue #97 のコメント（本文ではない）で、「『個人開発（〇〇）』表記の品位: アカウント名そのまま括弧内に入れることが許容範囲か運用後に判断」と保留項目として書かれたまま仕様に昇格していない。
+
+## 調査で判明したこと
+
+### Issue #284 の実例は別の欠陥の産物だった
+
+Issue #284 が「実例」として挙げた `個人開発（Petroglyph）` を実データでトレースした結果、**ラベルは症状であって原因ではない**ことが判明した:
+
+- 記事の `game.title` は「サイバーパンク2077 アルティメットエディション」（`issues-dev/issue-019.md:166`）だが、`game.developer` は `個人開発（Petroglyph）`、`releaseDate` は `2010-05-25`、`screenshots` 5枚はすべて `apps/32470/`
+- **appid 32470 の実体は別作品**（Steam Storefront API を実際に叩いて確認）: `name=STAR WARS™ Empire at War - Gold Pack` / `developers=['Petroglyph']` / `publishers=['LucasArts','Lucasfilm','Disney']` / `release_date=2010年5月25日`。記事の開発元・発売日・スクリーンショットは**すべて Empire at War 側と整合**しており、タイトルと本文だけが Cyberpunk 2077
+- したがって **`Petroglyph` は誤ラベルではなく別作品の正しい開発元**（Cyberpunk 2077 の実際の開発元は CD PROJEKT RED）。混入がどの段階で起きたかは**未特定**（→ **Issue #297**。`issues-dev/` は gitignore 対象で当時のスナップショットが残らず、ローカル `data/aggregated.json` は `fetchedAt=2026-05-16` で当該候補を含まないため追跡できない）
+- **混入が検出されなかった理由**: この記事の `sourceUrls` は `official` のみで `steam` を持たないため、`extractSteamAppIdFromArticle`（`validate-article.ts:658-672`）が `undefined` を返し、`:710` の早期 return で同一性照合が**丸ごとスキップ**されていた。スクリーンショット URL に appid 32470 が5回出現しているのに参照していない（→ **Issue #296**。公開19号では88記事中49件・55.7%が同様にスキップされている）
+
+つまり、ラベルを直しても Issue #284 が挙げた実例は解消されない。Issue #284 は原因を取り違えていた。
+
+### Issue #284 本文の誤りを指摘した内容
+
+#284 は「単一トークン社名は枠を問わず `developer` 未設定になり得る（新作枠・名作枠を含む）」と書いていたが**後半は不正確**。IGDB 由来の `developer` 代入は `isQualifiedCompanyName` を1度も呼ばない（`grep -c isQualifiedCompanyName scripts/fetch-igdb.ts` = 0）。両呼び出し箇所（`finalize-game-metadata.ts:215` / `fetch-data.ts:484`）は `!game.developer` ガード付きなので、Steam の短縮形で未設定になるのは **IGDB に developer が無い候補に限られる**。
+
+新作枠・名作枠では未設定＝`hasAllRequiredFields` 不通過で**候補が落ちるだけ**でラベルは付かない（`select-newreleases-with-fallback.ts:12` の `NEW_RELEASE_REQUIRED`、`fetch-data.ts:782` の classic 側 `developer: false`）。**表記が壊れるのは indie 枠の話題性ルートのみ。** この点をIssue #284 にコメントで指摘済み。
+
+### 実害の範囲
+
+公開記事（`src/content/issues/`）の `個人開発（` のヒットは `issue-012.md` の `個人開発（lemorion_1224）` のみ。これは実際に個人開発者のアカウント名なので結果としては誤りではないが、**正しさは偶然でシステムが検証した結果ではない**。
+
+DEV_MODE 出力は `issues-dev/issue-019.md` の `個人開発（Petroglyph）` 1件（誤情報）。
+
+## 採用した案（案A）とその理由
+
+4案を提示してユーザーが選択:
+
+- **案A: 生値を入れる**（採用）
+- 案B: `開発元情報なし`
+- 案C: `developer` を空にし必須条件から外す
+- 案D: 現状維持を仕様承認
+
+### 理由
+
+1. 生値は Steam Storefront `developers[0]` の一次ソースの事実
+2. `developer` に値が入るため `hasAllRequiredFields`（`NORMAL_REQUIRED.developer = true`）を通り供給が減らない
+3. 案B は事実に反する（開発元名は取得できており「情報が無い」のではなく「正規社名かアカウント名か判別できない」だけ）
+4. `vetNewReleaseCandidate`（`select-newreleases-with-fallback.ts:66-81`）が Issue #277 で確立した「上書きせず生値を保持する」方針と一致
+
+### 受容した副作用
+
+`lemorion_1224` のようなアカウント名が装飾なしで表示される。Issue #97 が「表記の品位」として保留した論点だが、品位のために事実でない断定を付けるのは逆方向のトレードオフという判断。
+
+## 実装
+
+- `formatIndividualDeveloper` を削除（`f5ddcf5^` 時点の `scripts/select-indie-with-fallback.ts:57-63`）
+- `developer: formatIndividualDeveloper(rawName)` → `developer: finalizeResult.game.steamRawDeveloper`
+- `?? 'unknown'` フォールバックを削除。`steamRawDeveloper` が undefined なら `developer` も undefined のままとし、既存の `hasAllRequiredFields(adoptedGame, NORMAL_REQUIRED)` が false を返して不採用に落ちる（新たな条件分岐は追加していない）
+- コメント修正4ファイル（`select-indie-with-fallback.ts` / `finalize-game-metadata.ts` / `fetch-data.ts` 3箇所 / `indie-classifier.test.ts`）
+
+## 同一性照合への影響は中立
+
+実測:
+
+```
+companyNamesOverlap('個人開発（Petroglyph）',   'Petroglyph')    = true
+companyNamesOverlap('個人開発（lemorion_1224）','lemorion_1224') = true
+companyNamesOverlap('Petroglyph',              'Petroglyph')    = true
+```
+
+`tokenizeCompanyName` が括弧を除去するため、ラベルの有無で company 軸の判定は変わらない。
+
+## テスト
+
+29ファイル / **1213テスト**全通過（着手前 1214。削除2件 + 追加1件）。
+
+- 削除2件: `formatIndividualDeveloper` の単体テスト（`f5ddcf5^` 時点の `select-indie-with-fallback.test.ts:84-95`。関数ごと削除したため）
+- 追加1件: 回帰防止テスト（現在の `select-indie-with-fallback.test.ts:500-527`）。`developer` に `個人開発` が含まれないこと（ネガティブ）と、`steamRawDeveloper` の生値と一致すること（**ポジティブコントロール**）を同時に assert する。「含まれない」だけでは `developer` が undefined でも通ってしまうため
+- 期待値変更7件: 話題性ルートの採用結果を検証する既存テストを生値に変更。うち「`steamRawDeveloper` が undefined → `個人開発（unknown）`」テストは仕様変更に伴い**「不採用」の検証に改訂**（`:225-247`）
+
+### ミュータント検証（管理者が実施。3件すべて検出）
+
+| ミュータント | 結果 |
+|---|---|
+| ラベルを復活させる（`個人開発（${raw}）`） | ✅ 6件失敗 |
+| `?? 'unknown'` フォールバックを復活させる | ✅ 1件失敗 |
+| `developer: undefined` 固定にする | ✅ 6件失敗（回帰防止テストのポジティブコントロールが機能） |
+
+## `/code-review` の結果
+
+5観点すべて実行し、**検出は2件**。いずれもスコア80未満で自動投稿はされておらず、管理者が一次ソースで再検証して採否を判断した:
+
+| 指摘 | スコア | 採否 | 根拠 |
+|---|---|---|---|
+| `deduplicateGames` が `steamRawDeveloper` をマージしない | 75 | **別Issue（#300）で採用** | 実在するが本PRの変更行外の既存問題 |
+| spread時に `developerGameCount: undefined` を明示すべき | 25 | 不採用 | 到達条件が `!game.developer` で常に undefined。既存コメントが理由を明記済み |
+
+レビュアー5人のうち3人（CLAUDE.md準拠 / バグスキャン / コメント整合）は指摘0件。
+
+## 分離した Issue
+
+### Issue #300
+
+`deduplicateGames`（`fetch-data.ts:596-`）は `primary.<field> =` で **24フィールド**をマージするが `steamRawDeveloper` だけが漏れている。`developer` は `:607` でマージ、直後の `developerGameCount` は `:611-618` で `pickDeveloperGameCount` ガード付きでマージされている。
+
+影響2方向:
+
+1. **供給**: `developer` を埋められず候補が落ちる
+2. **大手ゲートの無効化**: `isLargeStudio(undefined)` は即 `{hit:false}` を返すため Issue #280 欠陥1の再発経路になり得る。こちらの方が重い
+
+緩和要因: `steamRawDeveloper` は vet 時の Storefront 呼び出し（`finalize-game-metadata.ts:214`）で再取得される。`needsStorefrontCompletion`（`:303-309`）が `required.developer && !game.developer` で true を返すため話題性ルート候補では必ず発火する（前提: `steamAppId` が存在すること）。したがって実害になるのは `steamAppId` が無いか Storefront 取得が失敗した場合（Issue #227 の fail-closed と重なったとき）。
+
+**実データでの発生は未測定**（ローカル `data/aggregated.json` は `fetchedAt=2026-05-16` で `steamRawDeveloper` の出現件数が0件のため検出力ゼロ）。
+
+## 教訓
+
+### 未検証の推測値をプロンプトに「正確な公式情報」として渡す構造そのものが誤情報の発生源になる
+
+LLM 側のハルシネーション対策（転記の厳格化、省略・改変の禁止）を固めても、データ供給側が推測を事実として渡せば誤情報は出る。`formatIndividualDeveloper` は判定ロジックを持たず、メタデータの欠損を装飾していただけだった。
+
+### 自前の検証機構が high で警告している内容を放置していた
+
+LLM-as-a-judge の指摘（Issue #156 が扱う「Validation Report の活用方法」）が運用に反映されていなかった。severity=high / 確信度95%で「明確な誤情報」と警告されている記述が生成されていた。
+
+### 症状の実例が別の欠陥の産物である可能性を疑う
+
+Issue が挙げた実例（`個人開発（Petroglyph）`）を追跡したら、そのIssueとは別の2つの欠陥（#296 の同一性照合スキップ / #297 の別作品メタデータ混入）が見つかった。ラベルを直しても実例は直らない。Issue の「実例」は、その Issue の原因の証拠とは限らない。
+
+---
