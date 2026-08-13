@@ -44,6 +44,7 @@ import { validateArticle, buildFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { pickNewReleaseLabelCompany } from './indie-classifier.js';
 import { normalizeTitle } from './normalize.js';
+import { resolvePublishDateString } from './jst-date.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -1305,8 +1306,11 @@ async function main(): Promise<void> {
     };
   }
 
-  // 発行日を設定（環境変数で上書き可能）
-  const publishDateStr = process.env.PUBLISH_DATE || new Date().toISOString().split('T')[0];
+  // 発行日を設定（環境変数 PUBLISH_DATE で上書き可能。未指定なら JST の当日）。
+  // JST で決めるのは、schedule 実行（cron: 金曜 UTC 21:00 = 土曜 JST 6:00）で
+  // PUBLISH_DATE が空になり、UTC 基準だと金曜が入ってしまうため（§9.3-2 / Issue #308）。
+  // publishDateStr は時刻を含まないので new Date() は UTC 0 時になる（PR-C の前提）。
+  const publishDateStr = resolvePublishDateString(process.env.PUBLISH_DATE);
   const publishDate = new Date(publishDateStr);
 
   // 次の号番号を取得
