@@ -19,6 +19,7 @@ import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 import { getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
 import {
+  ARTICLE_CATEGORY_LABELS,
   computeReportStatus,
   formatReportMarkdown,
   type ReportStatus,
@@ -47,6 +48,20 @@ export interface ValidationWarning {
  * どの実行由来かを JSON 内・ファイル名の双方で明示して混同を防ぐ（Issue #193）。
  */
 export type ReportMode = 'production' | 'dev' | 'manual';
+
+/**
+ * 記事カテゴリ。値域が二重定義になって drift しないよう GeneratedArticle から導出する。
+ */
+export type ArticleCategory = GeneratedArticle['category'];
+
+/** 1 カテゴリの記事本数不足（Issue #311） */
+export interface ArticleCountShortfall {
+  category: ArticleCategory;
+  /** 期待本数（EXPECTED_ARTICLE_COUNTS もしくは環境変数の上書き値） */
+  expected: number;
+  /** 実際に読者に届く本数（hidden 記事は除外して数える） */
+  actual: number;
+}
 
 export interface ValidationReport {
   issueNumber: number;
@@ -93,6 +108,17 @@ export interface ValidationReport {
     skippedArticles: number;
     warnings: ValidationWarning[];
   };
+  /**
+   * カテゴリごとの記事本数不足（Issue #311）。期待本数を下回ったカテゴリだけが入る。
+   * 不足が無い場合は空配列（`undefined` は「未計測」= 本フィールド追加前の旧レポート）。
+   *
+   * 正規表現バリデータ由来の `warnings` とは分離して持つ。理由: 本数不足は記事本文の
+   * 品質ではなく号の構成の問題であり、`warningsBySeverity.high` に混ぜると
+   * 「high 警告の重大性の再定義」（仕様 §9.1 保留1）の議論対象がさらに不均一になる。
+   * ステータス判定への算入は computeReportStatus が別項として行う（#222 の
+   * adultScreeningFailures と同じ構造）。
+   */
+  articleCountShortfalls?: ArticleCountShortfall[];
   /** 公式URL未取得の記事一覧。Issue #117 P3 */
   missingOfficialUrls?: Array<{ articleTitle: string; category: string; gameTitle: string }>;
 }
@@ -1047,7 +1073,78 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
 }
 
 /**
+ * カテゴリごとの期待記事本数（仕様 §1 の 1 号の構成。新作 2 / インディー 2 / 特集 1 / 名作 1）。
+ *
+ * 定数ではなく環境変数で上書き可能にした理由（仕様 §9.2-10 の下位判断）: 本数不足は
+ * 「不足に気づける状態にする」ための検証項目であり（§6.4）、構成の見直しや一時的な運用
+ * （例: 供給が細い時期に新作枠を 1 本に絞る判断）で期待値が動いたときに、コード変更なしで
+ * 追随できる必要がある。既定値そのものは仕様が定める構成なのでここに置く。
+ */
+export const EXPECTED_ARTICLE_COUNTS: Record<ArticleCategory, number> = {
+  newRelease: 2,
+  indie: 2,
+  feature: 1,
+  classic: 1,
+};
+
+/** カテゴリ別の期待本数を上書きする環境変数名 */
+const EXPECTED_ARTICLE_COUNT_ENV: Record<ArticleCategory, string> = {
+  newRelease: 'EXPECTED_ARTICLE_COUNT_NEWRELEASE',
+  indie: 'EXPECTED_ARTICLE_COUNT_INDIE',
+  feature: 'EXPECTED_ARTICLE_COUNT_FEATURE',
+  classic: 'EXPECTED_ARTICLE_COUNT_CLASSIC',
+};
+
+/**
+ * カテゴリ別の期待記事本数を読む（環境変数で上書き可能）。
+ * `0` はそのカテゴリの検出を無効化する有効な指定なので、`Number(raw) || default` とは
+ * 書かない（0 が既定値に化ける）。負数・非整数は不正な指定として既定値に落とす。
+ */
+export function readExpectedArticleCounts(): Record<ArticleCategory, number> {
+  const result = { ...EXPECTED_ARTICLE_COUNTS };
+  for (const category of Object.keys(result) as ArticleCategory[]) {
+    const raw = process.env[EXPECTED_ARTICLE_COUNT_ENV[category]];
+    if (raw === undefined || raw === '') continue;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) continue;
+    result[category] = n;
+  }
+  return result;
+}
+
+/**
+ * カテゴリごとの記事本数不足を算出する（Issue #311。仕様 §6.5）。
+ *
+ * hidden 記事（`hiddenArticleTitles`）は読者に届かないため不足として数える。
+ * build-issue.ts が criticallyIncomplete / game-source-mismatch でクールダウン対象から
+ * 除外しているのと同じ扱いに揃えている。
+ *
+ * 期待本数を「上回る」ケースは不足ではないので何も返さない。
+ */
+export function detectArticleCountShortfalls(
+  articles: GeneratedArticle[],
+  hiddenArticleTitles?: ReadonlySet<string>
+): ArticleCountShortfall[] {
+  const expectedCounts = readExpectedArticleCounts();
+  const visible = hiddenArticleTitles
+    ? articles.filter((a) => !hiddenArticleTitles.has(a.title))
+    : articles;
+
+  const shortfalls: ArticleCountShortfall[] = [];
+  for (const category of Object.keys(expectedCounts) as ArticleCategory[]) {
+    const expected = expectedCounts[category];
+    const actual = visible.filter((a) => a.category === category).length;
+    if (actual < expected) {
+      shortfalls.push({ category, expected, actual });
+    }
+  }
+  return shortfalls;
+}
+
+/**
  * 全記事を検証してレポートを生成
+ *
+ * @param hiddenArticleTitles hidden: true が付く記事のタイトル集合（Issue #311 の本数計上から除外）
  */
 export function validateArticles(
   articles: GeneratedArticle[],
@@ -1058,7 +1155,8 @@ export function validateArticles(
     adultScreeningFailures?: number;
     unrecognizedScreeningResponses?: number;
   },
-  publishDate?: Date
+  publishDate?: Date,
+  hiddenArticleTitles?: ReadonlySet<string>
 ): ValidationReport {
   const warnings: ValidationWarning[] = [];
   for (const article of articles) {
@@ -1088,6 +1186,8 @@ export function validateArticles(
     warningsBySeverity,
     warnings,
     webSearchStats,
+    // 不足0件でも空配列を入れる（undefined =「未計測」= 旧レポートと区別するため。Issue #311）
+    articleCountShortfalls: detectArticleCountShortfalls(articles, hiddenArticleTitles),
     missingOfficialUrls: missingOfficialUrls.length > 0 ? missingOfficialUrls : undefined,
   };
 }
@@ -1184,6 +1284,21 @@ export function writeAndCheckReport(
         `  [${w.severity.toUpperCase()}][${w.type}] (${w.category}) ${w.articleTitle}\n    ${w.message}`
       );
     }
+  }
+
+  // 記事本数の不足（Issue #311）。status=error に算入されるため、未計測と 0 件を区別して出す。
+  if (report.articleCountShortfalls === undefined) {
+    console.log(`  Article count shortfalls: unmeasured (old cache)`);
+  } else if (report.articleCountShortfalls.length > 0) {
+    console.warn('');
+    console.warn('=== ⚠️  Article Count Shortfall ===');
+    for (const s of report.articleCountShortfalls) {
+      console.warn(
+        `  [${ARTICLE_CATEGORY_LABELS[s.category]}] ${s.actual} / ${s.expected} 本（${s.expected - s.actual} 本不足）`
+      );
+    }
+  } else {
+    console.log(`  Article count shortfalls: 0`);
   }
 
   // 公式URL未取得の記事（記録のみ。fail 判定には算入しない）

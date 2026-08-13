@@ -21,8 +21,11 @@ import {
   extractNumericUnitKey,
   resolveReportMode,
   writeAndCheckReport,
+  readExpectedArticleCounts,
+  detectArticleCountShortfalls,
 } from './validate-article.js';
 import type { ValidationWarning, ValidationReport } from './validate-article.js';
+import { computeReportStatus, shouldFileIssue } from './format-validation-report.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import { clearSteamEntityCache } from './steam-entity.js';
 import * as fs from 'node:fs';
@@ -2254,5 +2257,233 @@ describe('validateUpcomingEvaluationClaims', () => {
     expect(instruction).toContain('発売前でレビューも評価も存在しません');
     expect(instruction).toContain('削除してください');
     expect(instruction).not.toContain('提供データで裏付けられません'); // 汎用文ではない
+  });
+});
+
+describe('readExpectedArticleCounts（Issue #311。仕様 §9.2-10 の下位判断）', () => {
+  const ENV_KEYS = [
+    'EXPECTED_ARTICLE_COUNT_NEWRELEASE',
+    'EXPECTED_ARTICLE_COUNT_INDIE',
+    'EXPECTED_ARTICLE_COUNT_FEATURE',
+    'EXPECTED_ARTICLE_COUNT_CLASSIC',
+  ];
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    for (const k of ENV_KEYS) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it('環境変数が無ければ仕様 §1 の構成（新作2/インディー2/特集1/名作1）を返す', () => {
+    expect(readExpectedArticleCounts()).toEqual({
+      newRelease: 2,
+      indie: 2,
+      feature: 1,
+      classic: 1,
+    });
+  });
+
+  it('環境変数でカテゴリ単位に上書きできる', () => {
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = '3';
+    process.env.EXPECTED_ARTICLE_COUNT_CLASSIC = '2';
+    const counts = readExpectedArticleCounts();
+    expect(counts.newRelease).toBe(3);
+    expect(counts.classic).toBe(2);
+    // 指定していないカテゴリは既定値のまま
+    expect(counts.indie).toBe(2);
+    expect(counts.feature).toBe(1);
+  });
+
+  it('0 を指定するとそのカテゴリの検出を無効化できる（0 が既定値に化けない）', () => {
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = '0';
+    expect(readExpectedArticleCounts().newRelease).toBe(0);
+    // 実際に不足として検出されなくなる
+    expect(detectArticleCountShortfalls([]).map((s) => s.category)).not.toContain('newRelease');
+  });
+
+  it('負数・非整数・空文字は不正な指定として既定値に落とす', () => {
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = '-1';
+    expect(readExpectedArticleCounts().newRelease).toBe(2);
+
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = '1.5';
+    expect(readExpectedArticleCounts().newRelease).toBe(2);
+
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = 'abc';
+    expect(readExpectedArticleCounts().newRelease).toBe(2);
+
+    process.env.EXPECTED_ARTICLE_COUNT_NEWRELEASE = '';
+    expect(readExpectedArticleCounts().newRelease).toBe(2);
+  });
+});
+
+describe('detectArticleCountShortfalls（Issue #311。仕様 §6.5）', () => {
+  /** 指定した内訳の記事配列を作る（タイトルはカテゴリ+連番で一意にする） */
+  function makeIssueArticles(counts: {
+    newRelease?: number;
+    indie?: number;
+    feature?: number;
+    classic?: number;
+  }): GeneratedArticle[] {
+    const articles: GeneratedArticle[] = [];
+    for (const [category, n] of Object.entries(counts)) {
+      for (let i = 0; i < (n ?? 0); i++) {
+        articles.push(
+          makeArticle({
+            title: `${category}-${i}`,
+            category: category as GeneratedArticle['category'],
+          })
+        );
+      }
+    }
+    return articles;
+  }
+
+  it('期待どおり6本揃っていれば不足なし（vol.001〜012 等の正常系）', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 1 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([]);
+  });
+
+  it('vol.019 相当（新作0本・他は充足）で newRelease の不足を1件検出する', () => {
+    const articles = makeIssueArticles({ newRelease: 0, indie: 2, feature: 1, classic: 1 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([
+      { category: 'newRelease', expected: 2, actual: 0 },
+    ]);
+  });
+
+  it('vol.013 相当（名作0本）で classic の不足を検出する', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 0 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([
+      { category: 'classic', expected: 1, actual: 0 },
+    ]);
+  });
+
+  it('vol.015 / vol.018 相当（新作1本）で不足を検出する（期待の1本手前の境界値）', () => {
+    const articles = makeIssueArticles({ newRelease: 1, indie: 2, feature: 1, classic: 1 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([
+      { category: 'newRelease', expected: 2, actual: 1 },
+    ]);
+  });
+
+  it('期待本数と同数なら不足ではない（境界値）', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 1 });
+    expect(detectArticleCountShortfalls(articles)).toHaveLength(0);
+  });
+
+  it('期待本数を上回っても不足として扱わない（上限の検査はしない）', () => {
+    const articles = makeIssueArticles({ newRelease: 3, indie: 4, feature: 2, classic: 2 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([]);
+  });
+
+  it('複数カテゴリが同時に不足したら全件返す', () => {
+    const articles = makeIssueArticles({ newRelease: 0, indie: 1, feature: 0, classic: 0 });
+    expect(detectArticleCountShortfalls(articles)).toEqual([
+      { category: 'newRelease', expected: 2, actual: 0 },
+      { category: 'indie', expected: 2, actual: 1 },
+      { category: 'feature', expected: 1, actual: 0 },
+      { category: 'classic', expected: 1, actual: 0 },
+    ]);
+  });
+
+  it('記事が1本も無ければ全4カテゴリが不足になる', () => {
+    expect(detectArticleCountShortfalls([]).map((s) => s.category)).toEqual([
+      'newRelease',
+      'indie',
+      'feature',
+      'classic',
+    ]);
+  });
+
+  it('hidden 記事は読者に届かないので不足として数える（vol.001 の indie 1本 hidden 相当）', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 1 });
+    const hidden = new Set(['indie-1']);
+    expect(detectArticleCountShortfalls(articles, hidden)).toEqual([
+      { category: 'indie', expected: 2, actual: 1 },
+    ]);
+  });
+
+  it('hiddenArticleTitles を渡さなければ全記事を数える（hidden 情報が無い呼び出し元との互換）', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 1 });
+    expect(detectArticleCountShortfalls(articles, undefined)).toEqual([]);
+  });
+
+  it('hidden 集合に一致しないタイトルが入っていても本数は減らない', () => {
+    const articles = makeIssueArticles({ newRelease: 2, indie: 2, feature: 1, classic: 1 });
+    const hidden = new Set(['存在しない記事タイトル']);
+    expect(detectArticleCountShortfalls(articles, hidden)).toEqual([]);
+  });
+});
+
+describe('validateArticles の記事本数不足の集計（Issue #311）', () => {
+  it('不足が無い号でも articleCountShortfalls に空配列を入れる（undefined =「未計測」と区別する）', () => {
+    const articles: GeneratedArticle[] = [
+      makeArticle({ title: 'nr1', category: 'newRelease' }),
+      makeArticle({ title: 'nr2', category: 'newRelease' }),
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ];
+    const report = validateArticles(articles, 20);
+    expect(report.articleCountShortfalls).toEqual([]);
+  });
+
+  it('新作0本の号では articleCountShortfalls に newRelease が入る', () => {
+    const articles: GeneratedArticle[] = [
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ];
+    const report = validateArticles(articles, 19);
+    expect(report.articleCountShortfalls).toEqual([
+      { category: 'newRelease', expected: 2, actual: 0 },
+    ]);
+  });
+
+  it('本数不足は warningsBySeverity.high を増やさない（fail 閾値・自動再生成の判断を汚さない）', () => {
+    const report = validateArticles([], 21);
+    expect(report.articleCountShortfalls).toHaveLength(4);
+    expect(report.warningsBySeverity.high).toBe(0);
+    expect(report.warnings).toHaveLength(0);
+    expect(report.totalWarnings).toBe(0);
+  });
+
+  it('hiddenArticleTitles を渡すと本数から除外される', () => {
+    const articles: GeneratedArticle[] = [
+      makeArticle({ title: 'nr1', category: 'newRelease' }),
+      makeArticle({ title: 'nr2', category: 'newRelease' }),
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ];
+    const report = validateArticles(articles, 22, undefined, undefined, new Set(['nr2']));
+    expect(report.articleCountShortfalls).toEqual([
+      { category: 'newRelease', expected: 2, actual: 1 },
+    ]);
+    // totalArticles は生成された記事数のままで、hidden を引いた値にはしない
+    expect(report.totalArticles).toBe(6);
+  });
+
+  it('本数不足だけで status=error になり、Issue 自動起票の条件を満たす', () => {
+    const articles: GeneratedArticle[] = [
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ];
+    const report = validateArticles(articles, 19);
+    expect(report.warningsBySeverity.high).toBe(0);
+    expect(computeReportStatus(report)).toBe('error');
+    expect(shouldFileIssue(report)).toBe(true);
   });
 });

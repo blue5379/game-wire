@@ -12,6 +12,7 @@ import {
   formatReportMarkdown,
   webSearchFailureCount,
   adultScreeningFailureCount,
+  articleCountShortfallCount,
 } from './format-validation-report.js';
 import type { ValidationReport, ValidationWarning } from './validate-article.js';
 
@@ -454,5 +455,108 @@ describe('formatReportMarkdown', () => {
     expect(md).toContain('LLM 事実性チェック');
     expect(md).toContain('| ❌ 矛盾 | 1 |');
     expect(md).toContain('| ❓ 裏付け不能 | 2 |');
+  });
+});
+
+describe('記事本数の不足（Issue #311。仕様 §6.4 / §6.5）', () => {
+  const shortfall = (
+    category: 'newRelease' | 'indie' | 'feature' | 'classic',
+    expected: number,
+    actual: number
+  ) => ({ category, expected, actual });
+
+  describe('articleCountShortfallCount', () => {
+    it('不足したカテゴリ数を返す（不足本数の合計ではない）', () => {
+      const report = makeReport({
+        articleCountShortfalls: [shortfall('newRelease', 2, 0), shortfall('classic', 1, 0)],
+      });
+      // 不足本数の合計は 3 本だが、返すのはカテゴリ数の 2
+      expect(articleCountShortfallCount(report)).toBe(2);
+    });
+
+    it('空配列なら 0', () => {
+      expect(articleCountShortfallCount(makeReport({ articleCountShortfalls: [] }))).toBe(0);
+    });
+
+    it('undefined（本フィールド追加前の旧レポート）は未計測として 0 扱い', () => {
+      expect(articleCountShortfallCount(makeReport())).toBe(0);
+    });
+  });
+
+  describe('computeReportStatus', () => {
+    it('本数不足があれば（high 0・Web検索失敗 0・成人向け失敗 0 でも）error', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        articleCountShortfalls: [shortfall('newRelease', 2, 0)],
+      });
+      expect(computeReportStatus(report)).toBe('error');
+      expect(shouldFileIssue(report)).toBe(true);
+    });
+
+    it('vol.019 の実データ相当（high 0 / medium 1 / 新作0本）は warning ではなく error になる', () => {
+      // 修正前は high=0 のため warning に落ち、Issue が自動起票されなかった
+      const report = makeReport({
+        totalArticles: 4,
+        warningsBySeverity: { high: 0, medium: 1, low: 0 },
+        articleCountShortfalls: [shortfall('newRelease', 2, 0)],
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('本数不足が空配列（計測して不足なし）なら判定に影響しない', () => {
+      const report = makeReport({ articleCountShortfalls: [] });
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('articleCountShortfalls が無い旧レポートは未計測として ok 側の判定に影響しない', () => {
+      expect(computeReportStatus(makeReport())).toBe('ok');
+    });
+  });
+
+  describe('buildRecommendedActions', () => {
+    it('不足したカテゴリ名と掲載/期待本数を内訳付きで示す', () => {
+      const actions = buildRecommendedActions(
+        makeReport({ articleCountShortfalls: [shortfall('newRelease', 2, 0), shortfall('classic', 1, 0)] })
+      );
+      const line = actions.find((a) => a.includes('記事本数の不足'));
+      expect(line).toBeDefined();
+      expect(line).toContain('2 カテゴリ');
+      expect(line).toContain('新作紹介 0/2本');
+      expect(line).toContain('名作深掘り 0/1本');
+    });
+
+    it('不足が無ければ本数の行を出さない（0件でも「対応は不要です」に落ちる）', () => {
+      const actions = buildRecommendedActions(makeReport({ articleCountShortfalls: [] }));
+      expect(actions.some((a) => a.includes('記事本数の不足'))).toBe(false);
+      expect(actions).toEqual(['✅ 対応は不要です。']);
+    });
+  });
+
+  describe('formatReportMarkdown', () => {
+    it('不足カテゴリ数のサマリ行と内訳テーブルを出す', () => {
+      const md = formatReportMarkdown(
+        makeReport({
+          status: 'error',
+          totalArticles: 4,
+          articleCountShortfalls: [shortfall('newRelease', 2, 0)],
+        })
+      );
+      expect(md).toContain('| 📉 記事本数の不足（カテゴリ数） | 1 |');
+      expect(md).toContain('### 📉 記事本数が不足したカテゴリ（1件）');
+      expect(md).toContain('| 新作紹介 | 0 | 2 |');
+      expect(md).toContain('hidden');
+    });
+
+    it('計測して不足0件のときは 0 と表示し、内訳テーブルは出さない', () => {
+      const md = formatReportMarkdown(makeReport({ articleCountShortfalls: [] }));
+      expect(md).toContain('| ✅ 記事本数の不足 | 0 |');
+      expect(md).not.toContain('記事本数が不足したカテゴリ');
+    });
+
+    it('旧レポート（undefined）は「未計測」と表示して 0 件と区別する', () => {
+      const md = formatReportMarkdown(makeReport());
+      expect(md).toContain('| ❓ 記事本数の不足 | 未計測 |');
+      expect(md).not.toContain('| ✅ 記事本数の不足 | 0 |');
+    });
   });
 });
