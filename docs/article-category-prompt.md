@@ -37,6 +37,7 @@
 | **#289 対応** | `fix/issue-289-remove-featured` | ✅ **マージ済み**（2026-08-12。マージコミット `2c12b4d`。通常マージ、squashではない） | **#289**（Closed）/ 関連 **#232**（本Issueの出所）・**#293**（本PRの検討中に新規起票） / PR #294 | 29ファイル / **1214テスト**（着手前 1212。新規2件）。コミット1本（`5116768`）。**対処 (c) 削除を採用**: `SelectedGames.featured` フィールドと全消費者を削除。**Issue本文の「単調な変化」は不正確だった**: 実測で名作候補数は 176→177 件の単調増だが、**採用される1位が Witcher 3 → GTA V に入れ替わる非単調な変化**が生じた（`totalRatingCount` 降順で GTA V = 5896 > Witcher 3 = 5430）。`featured` は死んだ値ではなく、名作枠から1件を締め出すフィルタとして実質機能していた。削除を選んだ根拠3点: ①**ジャンル条件**に設計判断の記録が無い（ジャンルリストは Initial commit から不変。ただしスコア条件の側は `bb7cda2` / `5c9e9b4` で2度受動的に変化しており、当初「条件全体が不変」と書いたのは誤りだった → 実施結果節に訂正表あり） ②仕様 §4.2・§4.5 と正面から矛盾（特に **§4.6 は IGDB のテーマ分類を明示的に棄却済み**） ③除外は常に1件で順序が意味を持たない（`find` vs `filter`）。ミュータント検証4種のうち3種を検出、1種は構造的限界（`selectGamesForArticles` が export されていない）。`/code-review` は PR #294 で3件・本docs PR #295 で3件を検出。PR #294 側は全件不採用、**PR #295 側は1件（スコア条件の履歴の誤り）を管理者が `git show` で実在確認して採用** |
 | **#298 対応** | `fix/issue-298-remove-individual-developer-label` | ✅ **マージ済み**（2026-08-12。マージコミット `6dde6b5`。通常マージ、squashではない） | **#298**（Closed）/ 関連 **#284**（本Issueの出所）・**#297**（実例に重なっていた別作品メタデータ混入）・**#296**（同一性照合のスキップ）・**#300**（`/code-review` 指摘から新規起票）・**#97**（`個人開発` 表記の出所） / PR #299 | 29ファイル / **1213テスト**（着手前 1214。削除2件 + 追加1件）。コミット1本（`f5ddcf5`。`/code-review` 指摘は本PRでは修正せず Issue #300 に分離したため追加コミットは無い）。**着手前検証で Issue #284 の実例が別の欠陥の産物と判明**: `個人開発（Petroglyph）` は別作品メタデータ混入（→ #297）で、それが検出されなかった理由は同一性照合のスキップ（→ #296）。**ラベルは症状であって原因ではない**。実装: `formatIndividualDeveloper` 削除、`developer: finalizeResult.game.steamRawDeveloper` に変更、`?? 'unknown'` フォールバック削除。Steam生値は一次ソースの事実で、`NORMAL_REQUIRED.developer = true` を通り供給が減らない（案A）。**自前の検証機構が high で警告していた**: LLM-as-a-judge（`validation-report-019.json`）が「本作は個人開発（Petroglyph）によって制作された」を確信度95%で「明確な誤情報」と判定。同一性照合への影響は中立（実測）。ミュータント検証3種すべて検出。`/code-review` 2件のうち1件を **Issue #300** に分離（スコア75。`deduplicateGames` が `steamRawDeveloper` をマージしない既存問題） |
 | **#296 対応** | `fix/issue-296-visualize-identity-check-skip` | ✅ **マージ済み**（2026-08-13。マージコミット `490fd11`。通常マージ、squashではない） | **#296**（Closed）/ 関連 **#297**（別作品メタデータ混入）・**#298**（PR #299。本Issueの発覚源） / PR #303 | 29ファイル / **1220テスト**（着手前 1213。新規7件 + 既存1件の期待値更新）。コミット1本（`3e4e532`）。**着手前検証で Issue 本文の中心数値が誤りと判明**: `extractSteamAppIdFromArticle` は2経路を持つが集計で片方を数え落とし、スキップ率を実測の2倍（55.7% → 実測29.5%）に見積もっていた。対処案1（スクリーンショットから appId 抽出）の救済は「5件」ではなく **0件**。対処案2（`steamAppId` を `GeneratedArticle` に持たせる）は `completeness-gate.ts` の **R5**（`steamAppId` を直接読む同一性照合。`:311-370`）と重複。**同一性照合は二重化されており、上流側は appId を直接見ていた**。案3（スキップを観測可能にする）を採用。`validateGameSourceConsistency` に `severity=low` / `type=game-source-unchecked` 警告を追加（`:710-722`）。バッチ関数は `continue` を残したまま直前で警告を収集（API 呼び出し増加なし。レート制限対策は維持）。`build-issue.ts` で CI 出力（`:532-540`）とレポート記録（`:682-687`）。ミュータント検証3種すべて検出。`/code-review` 2件は両方とも不採用（誤検知）: `format-validation-report.ts` が総称レンダリングするため専用コードは不要（PR #271 の `adultScreeningFailures` はカウンタで構造が違う）/ JSDoc の fail-open は API 呼び出し後の別条件を指しており stale ではない |
+| **#300 対応** | `fix/issue-300-dedup-merge-gaps` | ✅ **マージ済み**（2026-08-13。マージコミット `c0862ef`。通常マージ、squashではない） | **#300**（Closed）/ 関連 **#299**（PR #299。本Issueの出所）・**#296**（同一性照合スキップ）・**#297**（別作品メタデータ混入） / PR #305 | 29ファイル / **1227テスト**（着手前 1220。新規7件）。コミット1本（`01fe60f`）。**着手前検証で Issue 本文の指摘（1件）に加え同種の漏れが2件判明**: `deduplicateGames` のマージ対象から抜けていたのは `steamRawDeveloper` だけではなく **3フィールド**（`steamRawDeveloper` / `steamRecommendations` / `igdbWebsites`）。うち `steamRawDeveloper` と `steamRecommendations` は **同じ if ブロック内に隣接して書き込まれる**（`fetch-data.ts:483` / `:492-493`、`steamAppId` 存在が前提）にもかかわらず両方とも漏れていた。GameData の総34フィールド中、マージ対象は本PRで27フィールド（着手前24）。対象外7フィールドの内訳: ①記事生成段階で書かれる値（`coverImageOrientation` / `isAiInferred` / `aiInferredFields`） ②正式名称採用ロジックで意図的に別扱い（`title` / `normalizedTitle`） ③グループ化キー・マージ先選定に使う値（`steamAppId` / `source`）。実害の構造的限界: `steamRawDeveloper` / `steamRecommendations` の書き込み2箇所は `steamAppId` 存在が前提で、dedup のグループ化も同一 `steamAppId` でまとめるため、漏れを持つ dup があるグループでは primary も同じ `steamAppId` を持ち vet 時の Storefront 再取得の前提が構造的に満たされる（実害は Storefront 取得失敗と重なった場合のみ）。`bySlug` グループはどのエントリも書き込み対象外で無関係。`igdbWebsites` には再取得経路が無いため緩和されない。実害の実績は未測定（修正が単調なため測定を待たずに実施。PR #279 の前例に従う）。**`??` 使用の理由**: `steamRecommendations` は `number` 型で `0` が有効値（`\|\|` だと dup 側の値に置き換わる）。`igdbWebsites` は書き込み側が空配列を入れず undefined にする設計（`fetch-data.ts:358-360`）のため `screenshots` 系と同じく `??` が適切。ミュータント検証6種すべて検出。`/code-review` 2件は両方とも不採用（誤検知）: 詳細は下記「実施結果」節 |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -3468,5 +3469,217 @@ Issue #296 は `extractSteamAppIdFromArticle` の2経路を正しく引用して
 `completeness-gate.ts` の R5（選定段階）と `validate-article.ts` の `validateGameSourceConsistency`（発行段階）は、両方とも `matchGameToSteamEntity` の3軸照合を使う同一チェック。R5 は `steamAppId` を直接読むため `sourceUrls` に依存しない。Issue が問題にしていたスキップは **二重チェックの後段が動かないだけ**という位置づけだった。
 
 コードには設計判断が書かれている（`completeness-gate.ts:15` の「前倒し版」というコメント）が、Issue #296 の起票時にはこの二重化が参照されていなかった。**同種の機構が複数レイヤーに分かれている場合、片方だけを見て実害を見積もると誤る。**
+
+---
+
+# PR #305: deduplicateGames のマージ漏れ3フィールドを塞ぐ（Issue #300）
+
+- **Issue**: #300（Closed）
+- **関連**: #299（`steamRawDeveloper` 経由で `developer` を充填）、#296（同一性照合スキップ）、#297（別作品メタデータ混入。Issue #284 の実例）
+- **PR**: #305
+- **ブランチ**: `fix/issue-300-dedup-merge-gaps`
+- **マージ**: 2026-08-13（マージコミット `c0862ef`。通常マージ、squashではない）
+- **コミット**: 1本（`01fe60f`）
+- **テスト**: 29ファイル / **1227テスト**全通過（着手前 1220。新規7件）
+
+## 何が問題だったか
+
+### Issue 本文の主張
+
+Issue #300 は「`deduplicateGames` が `steamRawDeveloper` をマージせず、IGDB側がprimaryになると生値が失われる（24フィールド中これだけ漏れている）」とし、3つのデータ例を挙げていた:
+
+- `steamRawDeveloper` の書き込み2箇所は Steam Storefront 由来（`fetch-data.ts:483` / `:492-493` の隣接した if ブロック内）
+- 緩和要因として、vet 時の Storefront 再取得で復元される経路がある
+
+**Issue 本文の記述はおおむね正確だった**。書き込み箇所の引用、緩和要因の指摘、マージ対象24フィールドという数え方（後述の内訳と一致）はいずれも検証可能で、Issue が単純な誤認に基づくものではないことを示していた。
+
+### 着手前の独立検証で判明した追加の発見
+
+管理者が `GameData` 型定義（`scripts/types.ts:96-148`）の全フィールドと `deduplicateGames` のマージ処理（`fetch-data.ts:601-647`）を突き合わせた結果、**漏れは3件あった**:
+
+| フィールド | 由来 | 用途 |
+|---|---|---|
+| `steamRawDeveloper` | Steam Storefront | 話題性ルートの大手ゲート（`select-indie-with-fallback.ts:134`）+ PR #299 以降は `developer` の充填元 |
+| `steamRecommendations` | Steam Storefront | 話題性閾値の判定軸（`meetsPopularityThreshold`。`select-indie-with-fallback.ts:36-40`） |
+| `igdbWebsites` | IGDB | reconcile で `resolveGameIdentity` に渡され store URL 解決に使われる（`fetch-data.ts:359`） |
+
+**Issue のタイトル「24フィールド中これだけ漏れている」は不正確で、実際は3件あった。** 特に重要な点として、`steamRawDeveloper` と `steamRecommendations` は **同じ if ブロック内に隣接して書き込まれる**（`fetch-data.ts:480-493`。両方とも `game.steamAppId` の存在が前提）にもかかわらず、両方ともマージ対象外だった。
+
+#### GameData の全フィールドとマージ対象の内訳
+
+GameData は総**34フィールド**（`types.ts:96-148` を正規表現 `^\s+[a-zA-Z_]+(\?)?:` でフィルタして計数。コメント行を除外）。本PR後のマージ対象は **27フィールド**（`fetch-data.ts:601-647` で `primary.<field> =` の行を計数）。
+
+**対象外7フィールド**（34 − 27）の内訳と理由:
+
+| フィールド | 対象外の理由 |
+|---|---|
+| `coverImageOrientation` | 記事生成段階で書かれる値（`finalize-game-metadata.ts:152` / `:187` / `:254`）。dedup 時点に存在しない |
+| `isAiInferred` / `aiInferredFields` | 記事生成段階で書かれる値（`generate-articles.ts:151` / `:557`、`build-issue.ts:293-295`）。dedup 時点に存在しない |
+| `title` / `normalizedTitle` | 正式名称採用ロジックで意図的に別扱い（`fetch-data.ts:591-594`。IGDB 由来のタイトルを primary に上書き） |
+| `steamAppId` / `source` | グループ化キー（`steamAppId` は `:541-549` の `byAppId`、`:555-564` の `bySlug`）およびマージ先選定（`source.length` は `:579`）に使う値。マージ処理の入力自体なので対象外 |
+
+本PRで追加したのは3行（`fetch-data.ts:605` / `:611` / `:628`）で、マージ対象は 24 → **27フィールド**になった。
+
+### 発見2: 実害の条件は Issue 本文よりさらに狭い（構造的な理由）
+
+`steamRawDeveloper` / `steamRecommendations` の書き込み2箇所は **どちらも `game.steamAppId` の存在が前提**（`fetch-data.ts:446-448` の早期 `continue` で `!game.steamAppId` は弾かれる）。
+
+一方、dedup のグループ化は `steamAppId` が **同じ**ものをまとめる（`:541-549` の `byAppId`）。したがって、`steamRawDeveloper` または `steamRecommendations` を持つ dup があるグループでは、**primary も必ず同じ `steamAppId` を持つ**ため、vet 時の Storefront 再取得（`select-indie-with-fallback.ts` / `select-newreleases-with-fallback.ts` が呼ぶ `finalizeGameMetadata` の内部。`finalize-game-metadata.ts:192` の `if (game.steamAppId && needsStorefrontCompletion(game, required))` で発火し `:195` で `appids=${appId}` を叩く）の前提が構造的に満たされる。
+
+実害は **Storefront 取得失敗**（Issue #227。API 不達やタイムアウト）と重なった場合に限られる。
+
+`bySlug` グループ（`steamAppId` なし組。`:555-564`）ではどのエントリも `steamAppId` を持たず、書き込み処理に到達しないため `steamRawDeveloper` / `steamRecommendations` が存在し得ない。無関係。
+
+`igdbWebsites` には Storefront 再取得の経路が無いため、この緩和は適用されない。
+
+### 実害の実績は未測定のまま実施
+
+ローカル `data/aggregated.json` は `fetchedAt=2026-05-16` で `steamRawDeveloper` の出現件数が0件のため、検出力が無い。
+
+修正が **単調**（未設定の値を埋めるだけで既存値を上書きしない。`??` による補完のため、primary が既に値を持つ場合は何も起きない。供給が減るリスクが構造的にゼロ）なので、Issue #274 対応（PR #279）の前例に従い測定を待たずに実施した。
+
+## 実装内容
+
+3行追加のみ。既存24フィールドの行には手を触れていない。
+
+```typescript
+// fetch-data.ts:605 (igdbWebsites)
+primary.igdbWebsites = primary.igdbWebsites ?? dup.igdbWebsites;
+
+// fetch-data.ts:611 (steamRawDeveloper)
+primary.steamRawDeveloper = primary.steamRawDeveloper ?? dup.steamRawDeveloper;
+
+// fetch-data.ts:628 (steamRecommendations)
+primary.steamRecommendations = primary.steamRecommendations ?? dup.steamRecommendations;
+```
+
+配置と、`??` を選んだ理由:
+
+### `steamRecommendations` に `??` を使った理由
+
+`steamRecommendations` は `number` 型で、**`0` は「おすすめ数0件」という有効な実測値**。`||` 演算子だと `0` が偽値として扱われ、primary が `0` を持つ場合に dup 側の値（例えば `5000`）に置き換わってしまう。これは「より良い値を採る」方針に反し、primary の実測値を消去する。
+
+`??` は `undefined` / `null` のみを偽として扱うため、`0` を保持する。
+
+### `igdbWebsites` に `??` を使った理由
+
+`igdbWebsites` は配列だが、書き込み側が **空配列を入れず undefined にする設計**（`fetch-data.ts:358-360` の `if (igdb.websites?.length)` ガード。`websites` が空配列なら書き込まない）。
+
+したがって、`genres` / `platforms` 系の `.length ?` パターン（`:607-608`）ではなく、`screenshots` / `keywords` と同じく `??` が適切（`:624` / `:642`）。
+
+## テスト
+
+7件追加（`fetch-data.test.ts`）。テスト数は 1220 → **1227**。
+
+### 新規7件の内訳
+
+テスト名で記録する（行番号は今後のテスト追加でずれるため、`grep -n "  it(" scripts/fetch-data.test.ts` で引き直すこと）。いずれも `describe('deduplicateGames — steamRawDeveloper/steamRecommendations/igdbWebsites のマージ (Issue #300)')` 配下。
+
+| # | テスト名 | 検証内容 |
+|---|---|---|
+| 1 | 「Steam側がprimaryに選ばれるとき、IGDB側の重複から igdbWebsites を引き継ぐ」 | `steamRank` を持つ Steam 側が primary になり、IGDB 側 dup の `igdbWebsites` を引き継ぐ |
+| 2 | 「Steam由来の2フィールド（steamRawDeveloper/steamRecommendations）を dup 側が持ち primary が持たない場合に引き継がれる」 | Steam Storefront 由来の2フィールドの補完 |
+| 3 | 「境界値: dup.steamRecommendations が 0 のとき primary の undefined に対して 0 が正しく引き継がれる」 | **`0` が有効値として通ること**（`\|\|` 実装なら失敗する） |
+| 4 | 「境界値: primary が steamRecommendations = 0 を持ち dup が大きい値を持つ場合、primary の 0 が保持される」 | `??` の意味（既存値が `0` でも上書きしない） |
+| 5 | 「primary の既存値が上書きされないこと（3フィールドすべて）。ポジティブコントロールとして primary が値を持たないケースを同居させる」 | 3フィールドの非上書き。**同一テスト内にポジティブコントロール（primary が値を持たず補完されるケース）を同居** |
+| 6 | 「回帰の実害: steamRawDeveloper がマージされることで、isLargeStudio(merged.steamRawDeveloper).hit が true になる（大手ゲートが機能する）」 | マージにより大手ゲートが機能する。`Ubisoft Montreal` → `{hit: true, matched: 'Ubisoft'}`（`indie-classifier.ts:40` に `'ubisoft montreal'` が実在。管理者が `isLargeStudio` を実行して確認）／**ポジティブコントロール**として `Tiny Indie Studio` → `{hit: false}` |
+| 7 | 「igdbWebsites が undefined のまま残るケース（両方持たない）」 | 空配列への暗黙変換が起きないことの確認 |
+
+## ミュータント検証（管理者が実施。6種すべてテストが検出）
+
+検出したテストは行番号ではなくテスト名で記録する（行番号は今後のテスト追加でずれるため）。
+
+| ミュータント | 結果 | 検出したテスト |
+|---|---|---|
+| `steamRecommendations` を `??` → `\|\|` に変える | 1件 failed | 「境界値: primary が steamRecommendations = 0 を持ち dup が大きい値を持つ場合、primary の 0 が保持される」 |
+| `steamRawDeveloper` のマージ行を削除（元の欠陥に戻す） | 3件 failed | 「Steam由来の2フィールド…を dup 側が持ち primary が持たない場合に引き継がれる」「primary の既存値が上書きされないこと（3フィールドすべて）…」「回帰の実害: steamRawDeveloper がマージされることで、`isLargeStudio(merged.steamRawDeveloper).hit` が true になる…」 |
+| `steamRecommendations` のマージ行を削除 | 3件 failed | 「Steam由来の2フィールド…」「境界値: dup.steamRecommendations が 0 のとき primary の undefined に対して 0 が正しく引き継がれる」「primary の既存値が上書きされないこと…」 |
+| `igdbWebsites` のマージ行を削除 | 2件 failed | 「Steam側がprimaryに選ばれるとき、IGDB側の重複から igdbWebsites を引き継ぐ」「primary の既存値が上書きされないこと…」 |
+| `steamRawDeveloper` の上書き方向を反転（`dup.steamRawDeveloper ?? primary.steamRawDeveloper`） | 1件 failed | 「primary の既存値が上書きされないこと（3フィールドすべて）…」 |
+| `igdbWebsites` の上書き方向を反転 | 1件 failed | 「primary の既存値が上書きされないこと（3フィールドすべて）…」 |
+
+## `/code-review` の結果
+
+5エージェントのうち3件が指摘ゼロ、2件が指摘。両方とも管理者が一次ソースで再検証して **不採用**（誤検知）と判定した。
+
+### 指摘1（スコア25。不採用）: 「`steamRecommendations` は人気指標なので JSDoc の方針に反する。`??` ではなく `Math.max` にすべき」
+
+#### 指摘の根拠
+
+`deduplicateGames` の JSDoc（`fetch-data.ts:533-537`）が「スコア・人気指標は合算ではなく『より良い値』を採用する（重複加算を防ぐ）」と述べており、マージブロックに「スコア・人気指標は『より良い値』を採用」という節（`:629-633`）があって `steamRank` が `Math.min`（`:631`。小さいほうが上位）、`youtubePopularity` が `Math.max`（`:633`。大きいほうが人気）を使っている。
+
+指摘は「`steamRecommendations` も人気指標なので `Math.max` にすべき。`??` では primary=10 / dup=50000 のペアで primary の 10 が採用され、閾値5000を誤って落とす」という失敗シナリオを挙げた。
+
+#### 不採用の根拠（到達不能）
+
+`steamRecommendations` の書き込み2箇所は **どちらも `game.steamAppId` の存在が前提**（`fetch-data.ts:446-448` の早期 `continue` が `!game.steamAppId` を弾く。書き込みは `:492-493`）。値は `appids=${game.steamAppId}` で取得される（`:458`）。
+
+一方、dedup は **同一 `steamAppId`** でグループ化する（`:541-549` の `byAppId`）。同一グループのメンバーは **同じ appId = 同じ API 応答**から値を得る。異なる値を持つ状態が構造的に発生しない。
+
+`bySlug` グループ（`:555-564`）は appId がなく、そもそも書き込み処理に到達しないため `steamRecommendations` が存在し得ない。
+
+#### 対比として重要: なぜ `youtubePopularity` は `Math.max` を必要とするか
+
+`youtubePopularity` の書き込み（`:269`）は `steamAppId` に依存せず、**タイトル正規化でマッチした動画ごとに加算される**（`:265-275`。`isSameGameIdentity` の照合が通るたびに `+=`）。
+
+したがって、同一グループ内のメンバーが **異なる動画とマッチ**した場合、値が分岐し得る。`Math.max` はこの分岐を「より人気が高い方を採る」で解決する。
+
+`steamRank` も Top Sellers（`fetch-data.ts:192-213`）と Top Played（`:215-236`）で別の順位が入り得るため、`Math.min` が必要。
+
+**`steamRecommendations` はこの2つと構造が異なる。** 書き込みガードとグループ化キーが同じ `steamAppId` であるため、値が分岐しない。
+
+### 指摘2（スコア25。不採用）: 「`steamRawDeveloper` は `developer` と対なので `developerGameCount` と同様のペアリングガードが必要」
+
+#### 指摘の要旨
+
+「`developerGameCount` は `pickDeveloperGameCount` 関数（`indie-classifier.ts:347-360`）を使ってペアリングガードしている（`fetch-data.ts:612-622`。コメントが `:612-614`、呼び出しが `:615-622`）が、`steamRawDeveloper` は `developer` と対になる値なので、同様のガードを追加すべき」という指摘。
+
+#### 不採用の根拠
+
+`steamRawDeveloper` の消費は話題性ルート（`select-indie-with-fallback.ts`）の2箇所（`:134` の `isLargeStudio(finalizeResult.game.steamRawDeveloper).hit` / `:147-148` の `game.developer = game.steamRawDeveloper` への充填）のみ。
+
+到達条件が **`isOnlyDeveloperMissing`**（同ファイル `:117` の呼び出し）= `developer` が未設定であること（定義は同ファイル `:46-54`。`:54` が `return hasCover && hasSourceUrl && !game.developer;`）。
+
+つまり、`developer` と併存した状態で読まれる経路が無く、不一致が観測されない。
+
+#### 対比: `developerGameCount` のガード（`pickDeveloperGameCount`）が必要な理由
+
+「名前と件数が別ソース由来で取り違わる」実害を防ぐもの（PR #237 のレビューで追加）。`developer` は IGDB / Steam の複数経路から書かれ（`fetch-data.ts:131-136` / `:337-342` / `:485`）、`developerGameCount` は IGDB 単独由来（`:337-342`）。
+
+ペアリングガードは「マージ後の `primary.developer` と dup 側の名前が一致する場合のみ dup の件数を採る」（`:612-614` のコメント）。
+
+`steamRawDeveloper` は Steam 単独由来（`:483`）で、同種の実害が生じない。
+
+## 教訓
+
+### 1. Issue が指摘した1件を直す前に、同じ構造の漏れが他にないか型定義と突き合わせる
+
+Issue #300 は正確に1件（`steamRawDeveloper`）を指摘していたが、実際は同種の漏れが **3件**あった。
+
+うち1件（`steamRecommendations`）は指摘された `steamRawDeveloper` と **同じ if ブロック内に隣接して書き込まれる**フィールドだった（`fetch-data.ts:480-493`）。1件だけ直せば、次に同じ Issue を立てることになっていた。
+
+**型定義の全フィールド（34件）を列挙し、マージ処理の全行（27件）と突き合わせて、漏れの全件（3件）を先に確定してから修正する必要がある。**
+
+### 2. 手で列挙するマージ処理は構造的に漏れる
+
+24フィールドを1行ずつ列挙する形（`fetch-data.ts:601-647`）は、`GameData` にフィールドを追加したときの更新漏れを防げない。
+
+今回の3件はいずれもその産物:
+
+- `steamRawDeveloper`: PR #280（2026-08-11）で追加。dedup への反映漏れ
+- `steamRecommendations`: PR #226（2026-08-08）で追加。dedup への反映漏れ
+- `igdbWebsites`: Issue #234（2026-08-09）対応で `websites` が復活。dedup への反映漏れ
+
+対処案3として Issue #239 と合わせて別途検討する。
+
+### 3. 「方針に反する」という指摘は、その方針が守るべき実害が到達可能かまで確認して採否を決める
+
+`steamRecommendations` を `Math.max` にすべきという指摘は、JSDoc の記述（「スコア・人気指標は『より良い値』を採用」）としては筋が通る。
+
+しかし、書き込みガードとグループ化キーが同じ `steamAppId` であるため、**値が分岐する状態が構造的に発生しない**。指摘が想定する失敗シナリオ（primary=10 / dup=50000）は到達不能。
+
+`youtubePopularity` は書き込みが `steamAppId` に依存しないため値が分岐し得る。`steamRecommendations` とは構造が異なる。
+
+**方針への適合だけでなく、その方針が防ごうとする実害が実際に起こり得るかまで確認する必要がある。**
 
 ---
