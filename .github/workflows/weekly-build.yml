@@ -101,7 +101,10 @@ jobs:
           [ -d "public/images/features" ] && git add public/images/features/ || true
           # 本番 validation レポート（JSON=調査用 / Markdown=人間向け）をリポジトリに保存（Issue #202）
           [ -d "data/validation" ] && git add data/validation/ || true
-          git diff --staged --quiet || git commit -m "Add issue for $(date '+%Y-%m-%d')"
+          # 号を指す日付なので JST で表記する（runner の TZ は UTC で、schedule 実行では
+          # 金曜になってしまう）。発行日そのものの決定は generate-articles.ts 側で
+          # JST 化済み（Issue #308）で、こちらはコミットメッセージの表記のみ
+          git diff --staged --quiet || git commit -m "Add issue for $(TZ=Asia/Tokyo date '+%Y-%m-%d')"
           git stash --include-untracked || true
           git pull --rebase origin main
           git stash pop || true
