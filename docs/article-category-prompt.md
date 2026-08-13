@@ -3636,7 +3636,7 @@ primary.steamRecommendations = primary.steamRecommendations ?? dup.steamRecommen
 
 #### 不採用の根拠
 
-`steamRawDeveloper` の消費は話題性ルート（`select-indie-with-fallback.ts`）の2箇所（`:134` の `isLargeStudio(finalizeResult.game.steamRawDeveloper).hit` / `:147-148` の `game.developer = game.steamRawDeveloper` への充填）のみ。
+`steamRawDeveloper` の消費は話題性ルート（`select-indie-with-fallback.ts`）の2箇所（`:134` の `isLargeStudio(finalizeResult.game.steamRawDeveloper).hit` / `:154` の `developer: finalizeResult.game.steamRawDeveloper` による充填。`:147-151` はその理由を述べたコメント）のみ。
 
 到達条件が **`isOnlyDeveloperMissing`**（同ファイル `:117` の呼び出し）= `developer` が未設定であること（定義は同ファイル `:46-54`。`:54` が `return hasCover && hasSourceUrl && !game.developer;`）。
 
@@ -3644,7 +3644,7 @@ primary.steamRecommendations = primary.steamRecommendations ?? dup.steamRecommen
 
 #### 対比: `developerGameCount` のガード（`pickDeveloperGameCount`）が必要な理由
 
-「名前と件数が別ソース由来で取り違わる」実害を防ぐもの（PR #237 のレビューで追加）。`developer` は IGDB / Steam の複数経路から書かれ（`fetch-data.ts:131-136` / `:337-342` / `:485`）、`developerGameCount` は IGDB 単独由来（`:337-342`）。
+「名前と件数が別ソース由来で取り違わる」実害を防ぐもの（PR #237 のレビューで追加）。`developer` は IGDB / Steam の複数経路から書かれる（`fetch-data.ts:132` の `enrichGameWithIGDB` 内、`:334` の `aggregateGames` 内、`:384` の新規エントリ生成、`:484` の Steam Storefront 補完）。一方 `developerGameCount` は IGDB 単独由来で、書き込みは `pickDeveloperGameCount` 経由の `:337-342` のみ。
 
 ペアリングガードは「マージ後の `primary.developer` と dup 側の名前が一致する場合のみ dup の件数を採る」（`:612-614` のコメント）。
 
