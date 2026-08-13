@@ -55,7 +55,7 @@
 | 計画表を前進させた最後の PR | **#258**（2026-08-10 00:22）。仕様の決定を実装した最後は #273（同日 17:08） |
 | それ以降にマージされた code PR | **10 本**（#276 / #279 / #282 / #287 / #288 / #291 / #294 / #299 / #303 / #305）。**#287（サイトデザイン）以外の 9 本すべてが派生 Issue で、計画表は 1 行も進んでいない** |
 | 派生チェーンの最大深さ | **6 段**（§3.5 → #235 → #274 → #280 → #284 → #298 → #300） |
-| 実装開始（08-08）以降に起票された Issue | 33 件（closed 23 / open 10）。**open 10 件はすべて派生で、§8 の項目は 1 件も含まれない** |
+| 実装開始（08-08）から**本棚卸しの直前**（08-13。#307〜#311 の起票前）までに起票された Issue | 33 件（closed 23 / open 10）。**open 10 件はすべて派生で、§8 の項目は 1 件も含まれなかった**。⚠️ **これは棚卸し時点のスナップショット。** 本棚卸しで #307〜#311 を起票したので、以降に同じ条件で数えると 38 件（closed 23 / open 15）になり、うち 5 件が §8 の項目になる |
 | 直近の派生 PR 9 本のうち実害が観測できなかったもの | **4 本**（#279「実害0件」/ #282「判定が変わった候補0件」/ #303「可観測性のみ・severity=low」/ #305「実害の実績は未測定」） |
 
 ### 仕様書が修正対象に挙げた故障 9 件の達成度
@@ -1441,7 +1441,7 @@ Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
 
 # PR-C: 未発売記事の構成分岐 + 発売状態の3値化とJST統一
 
-- ブランチ: `feat/unreleased-article-branching`
+- ブランチ: `fix/issue-309-unreleased-article-branching`（当初案は `feat/unreleased-article-branching`。→ **Issue #309**）
 - 仕様: §2.5、§2.6、§2.7、§2.8、§3.2（インディーは発売済みのみ）
 - 決着ブロック: `grep -n "N-5" docs/article-category-spec-review.md`
 - **PR-E と同じ箇所を触る**ため、どちらかを先に入れて他方をリベース
@@ -2010,7 +2010,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 
 # PR-E: 検索結果の抜粋を 300 → 1,500 字に統一
 
-- ブランチ: `fix/prompt-excerpt-length`
+- ブランチ: `fix/issue-307-prompt-excerpt-length`（当初案は `fix/prompt-excerpt-length`。→ **Issue #307**）
 - 仕様: §5.6 の「修正2」
 - **PR-C と同じ箇所を触る**。どちらかを先に入れてリベース
 
@@ -2039,7 +2039,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 
 # PR-F0: 発行日をJST基準で決める
 
-- ブランチ: `fix/publish-date-jst`
+- ブランチ: `fix/issue-308-publish-date-jst`（当初案は `fix/publish-date-jst`。→ **Issue #308**）
 - 仕様: §9.3-2（原因は特定済み）
 - **PR-F の直前に入れる**（PR-F の測定前提になる）
 
@@ -2070,7 +2070,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 
 # PR-F: 特集のイベント0件週フォールバック
 
-- ブランチ: `feat/feature-event-fallback`
+- ブランチ: `fix/issue-310-feature-event-fallback`（当初案は `feat/feature-event-fallback`。→ **Issue #310**）
 - 仕様: §4.3、§4.4
 - **PR-F0 の後**
 
@@ -2114,7 +2114,7 @@ Issueが提示した3案（①📜と同型のスコープ付きガードを追�
 
 # PR-G: 本数不足の検出
 
-- ブランチ: `feat/article-count-validation`
+- ブランチ: `feat/issue-311-article-count-validation`（当初案は `feat/article-count-validation`。→ **Issue #311**）
 - 仕様: §6.4、§6.5
 - **PR-B・名作枠PR より後**（不足が実際に減ったかを観測できる）
 
