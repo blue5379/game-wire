@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { isCriticallyIncompleteArticle, formatArticleForFrontmatter } from './build-issue.js';
+import {
+  isCriticallyIncompleteArticle,
+  formatArticleForFrontmatter,
+  collectFeatureEventHistoryEntries,
+} from './build-issue.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import type { RecommendedGame, SourceUrls } from './types.js';
 
@@ -240,5 +244,109 @@ describe('formatArticleForFrontmatter: sourceUrls.official の後方互換ゲー
 
     const result = await formatArticleForFrontmatter(article);
     expect(result).not.toContain('official: "https://www.megacrit.com/games/"');
+  });
+});
+
+/**
+ * 特集がテーマとして使った記念日の履歴化（Issue #310 / PR-F）
+ */
+describe('collectFeatureEventHistoryEntries', () => {
+  function featureArticle(featureEvent?: GeneratedArticle['featureEvent']): GeneratedArticle {
+    return {
+      title: '俳句の日特集：和の情緒を味わうゲーム',
+      category: 'feature',
+      summary: 'summary',
+      content: 'content',
+      featureEvent,
+    };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('記念日名が同定できた特集記事を履歴エントリに変換する', () => {
+    const entries = collectFeatureEventHistoryEntries(
+      [featureArticle({ eventName: '俳句の日', source: 'backward', dayOffset: -3 })],
+      20,
+      '2026-08-22'
+    );
+
+    expect(entries).toEqual([
+      { eventName: '俳句の日', issueNumber: 20, publishDate: '2026-08-22', source: 'backward' },
+    ]);
+  });
+
+  it('記念日名が同定できなかった場合は履歴に残さない（誤った記念日で次号の除外を汚さない）', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const entries = collectFeatureEventHistoryEntries(
+      [featureArticle({ source: 'backward', dayOffset: -3 })],
+      20,
+      '2026-08-22'
+    );
+
+    expect(entries).toEqual([]);
+    // 同定できなくてもフォールバックの発火自体は出力に残す（§9.2-9）
+    expect(
+      logSpy.mock.calls.some(
+        (c) => typeof c[0] === 'string' && c[0].includes('[feature-event-fallback]')
+      )
+    ).toBe(true);
+  });
+
+  it('通常週（source=forward）ではフォールバックのログを出さない', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const entries = collectFeatureEventHistoryEntries(
+      [featureArticle({ eventName: '山の日', source: 'forward', dayOffset: 3 })],
+      20,
+      '2026-08-08'
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(
+      logSpy.mock.calls.some(
+        (c) => typeof c[0] === 'string' && c[0].includes('[feature-event-fallback]')
+      )
+    ).toBe(false);
+  });
+
+  it('featureEvent を持たない記事・特集以外の記事は無視する', () => {
+    const nonFeature: GeneratedArticle = {
+      title: '新作記事',
+      category: 'newRelease',
+      summary: 'summary',
+      content: 'content',
+      // 特集以外に featureEvent が付いていても記録しない
+      featureEvent: { eventName: '混入した記念日', source: 'forward' },
+    };
+
+    const entries = collectFeatureEventHistoryEntries(
+      [nonFeature, featureArticle(undefined)],
+      20,
+      '2026-08-22'
+    );
+
+    expect(entries).toEqual([]);
+  });
+});
+
+describe('formatArticleForFrontmatter: featureEvent は公開 Markdown に出さない（Issue #310）', () => {
+  it('featureEvent を持つ特集記事でも frontmatter に featureEvent が現れない', async () => {
+    const article: GeneratedArticle = {
+      title: '俳句の日特集',
+      category: 'feature',
+      summary: 'summary',
+      content: 'content',
+      featureEvent: { eventName: '俳句の日', source: 'backward', dayOffset: -3 },
+    };
+
+    const yaml = await formatArticleForFrontmatter(article);
+
+    expect(yaml).not.toContain('featureEvent');
+    // source / dayOffset のような内部値も漏れていないこと
+    expect(yaml).not.toContain('backward');
+    expect(yaml).not.toContain('dayOffset');
   });
 });

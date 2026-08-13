@@ -12,7 +12,7 @@ config({ path: '.env' });
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SelectedGames, GameData, RecommendedGame } from './types.js';
-import { getCooldownTitles } from './game-history.js';
+import { getCooldownTitles, getRecentFeatureEventNames } from './game-history.js';
 import { isQualifiedGame, isFanGame } from './game-filter.js';
 import {
   invokeClaudeModel,
@@ -29,7 +29,8 @@ import {
   buildNewReleaseSystemPrompt,
 } from './bedrock-client.js';
 import type { FeatureSelectedGame, FeatureCandidateBase, FeatureCandidateWithSearch } from './bedrock-client.js';
-import { getEventsInRange } from './fetch-japanese-events.js';
+import { selectFeatureEventCandidates } from './fetch-japanese-events.js';
+import type { FeatureEventSource } from './fetch-japanese-events.js';
 import { generateFeatureImage } from './generate-feature-image.js';
 import {
   searchGameInfo,
@@ -131,6 +132,26 @@ export interface RegenerateOptions {
 }
 
 // 生成された記事の型定義
+/**
+ * 特集記事のテーマ起点になった記念日の情報（Issue #310 / §9.2-9）。
+ *
+ * 目的は 2 つ。
+ * 1. `build-issue.ts` が「実際にテーマとして使った記念日」を履歴に記録できるようにする（§4.4 の除外に必要）
+ * 2. **0 件週のフォールバックが発火した号を後から判別できるようにする**。従来は固定文言に
+ *    落ちたことが出力から追えず、実際に発火した vol.2 / vol.8 は特集タイトルの傾向から
+ *    推測するしかなかった
+ *
+ * `formatArticleForFrontmatter` には出さない（読者に見せる値ではないため、公開 Markdown には載らない）。
+ */
+export interface FeatureEventInfo {
+  /** テーマとして使った記念日名。LLM の選択を候補に紐づけられなかった場合は undefined */
+  eventName?: string;
+  /** どの探索段階で見つけた候補か（`forward` 以外はフォールバックが発火している） */
+  source: FeatureEventSource;
+  /** 発行日から採用した記念日までの日数差（過去方向は負） */
+  dayOffset?: number;
+}
+
 export interface GeneratedArticle {
   title: string;
   category: 'newRelease' | 'indie' | 'feature' | 'classic';
@@ -138,6 +159,7 @@ export interface GeneratedArticle {
   content: string;
   featureImage?: string; // 特集記事用のAI生成画像パス
   recommendedGames?: RecommendedGame[]; // 特集記事のおすすめゲーム
+  featureEvent?: FeatureEventInfo; // 特集記事のテーマ起点になった記念日（Issue #310）
   sourceUrls?: SourceUrls; // 参照元URL
   webSearchSources?: WebSearchSource[]; // 生成時に参照した Tavily 検索結果
   game?: {
@@ -691,6 +713,8 @@ interface FeatureArticleContext {
   webSearchSources: WebSearchSource[];
   featureImagePath?: string;
   publishDate: Date;
+  /** テーマ起点の記念日（Issue #310）。再生成でも同じテーマを使うためコンテキストに載せる */
+  featureEvent: FeatureEventInfo;
 }
 
 /**
@@ -728,6 +752,7 @@ async function buildFeatureArticleFromContext(
     featureImage: ctx.featureImagePath,
     recommendedGames: ctx.recommendedGames.length > 0 ? ctx.recommendedGames : undefined,
     webSearchSources: ctx.webSearchSources.length > 0 ? ctx.webSearchSources : undefined,
+    featureEvent: ctx.featureEvent,
   };
 }
 
@@ -744,16 +769,44 @@ export async function generateFeatureArticle(
   issueNumber: number,
   relatedGames?: GameData[],
   excludeTitles?: string[],
-  stats?: GenerationStats
+  stats?: GenerationStats,
+  excludeEventNames?: Iterable<string>
 ): Promise<{ article: GeneratedArticle; context: FeatureArticleContext }> {
   // --- フェーズ1: テーマ選定 ---
-  const events = getEventsInRange(publishDate, 7);
-  console.log(`  Found ${events.length} events in the next 7 days`);
+  // 未来方向 7 日 → 0 件なら過去方向に最大 7 日 → それでも 0 件なら 8 日目以降の未来方向
+  // という段階的フォールバック（§4.3 / §4.4。Issue #310）。
+  // 除外するのは直近 N 号が実際にテーマとして使った記念日のみ（窓に入っただけの記念日は除外しない）
+  const eventSelection = selectFeatureEventCandidates(publishDate, { excludeEventNames });
+  const events = eventSelection.events;
+  if (eventSelection.source === 'forward') {
+    console.log(`  Found ${events.length} events in the next 7 days`);
+  } else if (eventSelection.source === 'none') {
+    console.warn(
+      '  [feature-event-fallback] source=none — 前後の探索範囲に記念日が無いため固定文言にフォールバックします'
+    );
+  } else {
+    // 0 件週のフォールバックが発火した号を出力から判別できるようにする（§9.2-9）
+    console.warn(
+      `  [feature-event-fallback] source=${eventSelection.source} offset=${eventSelection.dayOffset}日 ` +
+        `events=${events.map((e) => e.name).join(', ')}（未来方向 7 日にイベントが無い週）`
+    );
+  }
 
-  const theme = await selectFeatureThemeWithAI(
+  const { theme, selectedEventName } = await selectFeatureThemeWithAI(
     events.map((e) => ({ name: e.name, gameThemeHint: e.gameThemeHint }))
   );
   console.log(`  Feature theme: ${theme}`);
+  if (events.length > 0 && !selectedEventName) {
+    // 履歴に残せないと次号の除外が効かなくなるため、観測できるようにしておく
+    console.warn(
+      `  [feature-event] テーマ "${theme}" を候補の記念日に紐づけられませんでした（履歴に記念日を記録しません）`
+    );
+  }
+  const featureEvent: FeatureEventInfo = {
+    eventName: selectedEventName,
+    source: eventSelection.source,
+    dayOffset: eventSelection.dayOffset,
+  };
 
   // --- フェーズ2: ゲーム選定（候補リストから確定タイトルを得る）---
   // 候補プールはテーマ非依存の人気順で並んでいるため、先頭を機械的に切ると
@@ -1103,6 +1156,7 @@ export async function generateFeatureArticle(
     webSearchSources,
     featureImagePath,
     publishDate,
+    featureEvent,
   };
   const article = await buildFeatureArticleFromContext(context);
 
@@ -1427,12 +1481,22 @@ async function main(): Promise<void> {
       ...[...featureCooldownTitles],
     ];
 
+    // 直近 N 号が実際にテーマとして使った記念日を除外する（§4.4。Issue #310）。
+    // クールダウンと同じく main() 側で履歴を読み、生成関数には値を渡す
+    const recentFeatureEventNames = getRecentFeatureEventNames(nextIssueNumber);
+    if (recentFeatureEventNames.size > 0) {
+      console.log(
+        `  Feature events used recently (excluded): ${[...recentFeatureEventNames].join(', ')}`
+      );
+    }
+
     const { article: featureArticle, context: featureContext } = await generateFeatureArticle(
       publishDate,
       nextIssueNumber,
       filteredAllGames,
       featureExcludeTitles,
-      webSearchStats
+      webSearchStats,
+      recentFeatureEventNames
     );
     regenerables.push({
       article: featureArticle,
@@ -1561,6 +1625,7 @@ export const __test = {
   verifyProposedGames,
   screenOutAdultGames,
   generateClassicArticle,
+  buildFeatureArticleFromContext,
 };
 
 // スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）

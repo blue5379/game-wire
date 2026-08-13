@@ -28,6 +28,7 @@ import {
   getReleaseStatus,
   buildNewReleaseSystemPrompt,
   isUpcomingForBody,
+  selectFeatureThemeWithAI,
 } from './bedrock-client.js';
 
 describe('buildUserMessage - 発売状況の判定', () => {
@@ -623,5 +624,130 @@ describe('titleSystem - 本日発売の条項追加（§2.8）', () => {
 
   it('「本日発売」の条項に未発売ニュアンス禁止が含まれる', () => {
     expect(PromptTemplates.titleSystem).toContain('「発表」「近日」「もうすぐ」「予定」等の未発売ニュアンスを使わない');
+  });
+});
+
+describe('selectFeatureThemeWithAI — 採用した記念日名の同定（Issue #310 / PR-F）', () => {
+  beforeEach(() => {
+    mockSend.mockReset();
+  });
+
+  const events = [
+    { name: '駅弁の日', gameThemeHint: '鉄道・旅ゲーム' },
+    { name: '発明の日', gameThemeHint: 'クラフト・発明ゲーム' },
+  ];
+
+  it('LLM が選んだ記念日名が候補と一致すればそれを返す', async () => {
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '駅弁の日', theme: '駅弁の日特集：鉄道と旅のゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.theme).toBe('駅弁の日特集：鉄道と旅のゲーム');
+    expect(result.selectedEventName).toBe('駅弁の日');
+  });
+
+  it('別候補の名前を含む記念日でも完全一致を優先する（部分一致だけだと短い方に誤同定する）', async () => {
+    // '海の日' は '海の日記念フェア' の部分文字列。部分一致だけで同定すると配列の先頭にある
+    // '海の日' に吸われてしまうため、完全一致を先に見る必要がある
+    const overlapping = [
+      { name: '海の日', gameThemeHint: '海洋・航海ゲーム' },
+      { name: '海の日記念フェア', gameThemeHint: 'イベント連動ゲーム' },
+    ];
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '海の日記念フェア', theme: '海の日記念フェア特集' })
+    );
+
+    const result = await selectFeatureThemeWithAI(overlapping);
+
+    expect(result.selectedEventName).toBe('海の日記念フェア');
+  });
+
+  it('飾り付きの selectedEvent では、包含関係のある候補のうち長い方を選ぶ', async () => {
+    // 実データに存在する包含ペア（猫の日 ⊂ 世界猫の日）。日付順に並ぶため短い方が先に来ることがある。
+    // 先頭一致で拾うと '猫の日' に誤同定し、次号が見当違いの記念日を除外する
+    const overlapping = [
+      { name: '猫の日', gameThemeHint: '動物ゲーム' },
+      { name: '世界猫の日', gameThemeHint: '動物・癒しゲーム' },
+    ];
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '8月8日 世界猫の日', theme: '猫と過ごすゲーム特集' })
+    );
+
+    const result = await selectFeatureThemeWithAI(overlapping);
+
+    expect(result.selectedEventName).toBe('世界猫の日');
+  });
+
+  it('テーマ文からの同定でも包含関係のある候補のうち長い方を選ぶ', async () => {
+    const overlapping = [
+      { name: '猫の日', gameThemeHint: '動物ゲーム' },
+      { name: '世界猫の日', gameThemeHint: '動物・癒しゲーム' },
+    ];
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '候補外の文字列', theme: '世界猫の日特集：猫と暮らすゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(overlapping);
+
+    expect(result.selectedEventName).toBe('世界猫の日');
+  });
+
+  it('selectedEvent に飾りが付いていても候補名を部分一致で同定する', async () => {
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '4月10日 駅弁の日', theme: '駅弁の日特集：鉄道と旅のゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.selectedEventName).toBe('駅弁の日');
+  });
+
+  it('selectedEvent が候補外でもテーマ文に候補名が含まれていれば同定する', async () => {
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '不明なイベント', theme: '発明の日特集：ものづくりゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.selectedEventName).toBe('発明の日');
+  });
+
+  it('どの候補にも紐づけられない場合は selectedEventName を返さない（誤った記念日を履歴に残さない）', async () => {
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '謎の日', theme: '今週のおすすめゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.theme).toBe('今週のおすすめゲーム');
+    expect(result.selectedEventName).toBeUndefined();
+  });
+
+  it('JSON が取り出せない応答では先頭の候補にフォールバックし、その記念日名を返す', async () => {
+    mockClaudeText('JSONではない応答');
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.theme).toBe('駅弁の日特集');
+    expect(result.selectedEventName).toBe('駅弁の日');
+  });
+
+  it('LLM 呼び出しが失敗しても先頭の候補にフォールバックする', async () => {
+    mockSend.mockRejectedValueOnce(new Error('bedrock unavailable'));
+
+    const result = await selectFeatureThemeWithAI(events);
+
+    expect(result.theme).toBe('駅弁の日特集');
+    expect(result.selectedEventName).toBe('駅弁の日');
+  });
+
+  it('候補が 0 件のときは固定文言に落ち、記念日名は無い（探索側で見つからなかった場合の最後の砦）', async () => {
+    const result = await selectFeatureThemeWithAI([]);
+
+    expect(result.theme).toBe('今週の注目ゲーム特集');
+    expect(result.selectedEventName).toBeUndefined();
+    expect(mockSend).not.toHaveBeenCalled();
   });
 });
