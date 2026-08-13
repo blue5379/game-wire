@@ -755,6 +755,12 @@ export interface FeatureThemeSelection {
  * 返したりする。履歴に残すのは候補リストに実在する名前だけにしたいので、
  * 完全一致 → `selectedEvent` への部分一致 → テーマ文への部分一致の順で同定し、
  * どれにも当たらなければ `undefined` を返す。
+ *
+ * ⚠️ **部分一致は最長の候補を選ぶ。** 記念日名には包含関係のあるペアが実在するため
+ * （`data/japanese-events.json` version 1.2 で 5 組: `肉の日 ⊂ 焼肉の日` / `猫の日 ⊂ 世界猫の日` /
+ * `猫の日 ⊂ 招き猫の日` / `クリスマス ⊂ クリスマスツリーの日` / `クリスマス ⊂ クリスマスイブ`）、
+ * 先頭一致で拾うと短い方に誤同定し、次号が見当違いの記念日を除外してしまう。
+ * 2026 年の探索窓では短い側が先に並ぶケースは 0 件（実測）だが、データ改訂で成立し得る。
  */
 function matchSelectedEventName(
   events: Array<{ name: string }>,
@@ -764,13 +770,21 @@ function matchSelectedEventName(
   const exact = events.find((e) => e.name === selectedEvent);
   if (exact) return exact.name;
 
+  /** text に含まれる候補のうち最も長い名前（= 最も具体的な記念日）を返す */
+  const longestContainedIn = (text: string): string | undefined =>
+    events
+      .filter((e) => text.includes(e.name))
+      .reduce<string | undefined>(
+        (longest, e) => (longest === undefined || e.name.length > longest.length ? e.name : longest),
+        undefined
+      );
+
   if (selectedEvent) {
-    const inSelected = events.find((e) => selectedEvent.includes(e.name));
-    if (inSelected) return inSelected.name;
+    const inSelected = longestContainedIn(selectedEvent);
+    if (inSelected) return inSelected;
   }
 
-  const inTheme = events.find((e) => theme.includes(e.name));
-  return inTheme?.name;
+  return longestContainedIn(theme);
 }
 
 /**

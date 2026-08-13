@@ -664,6 +664,36 @@ describe('selectFeatureThemeWithAI — 採用した記念日名の同定（Issue
     expect(result.selectedEventName).toBe('海の日記念フェア');
   });
 
+  it('飾り付きの selectedEvent では、包含関係のある候補のうち長い方を選ぶ', async () => {
+    // 実データに存在する包含ペア（猫の日 ⊂ 世界猫の日）。日付順に並ぶため短い方が先に来ることがある。
+    // 先頭一致で拾うと '猫の日' に誤同定し、次号が見当違いの記念日を除外する
+    const overlapping = [
+      { name: '猫の日', gameThemeHint: '動物ゲーム' },
+      { name: '世界猫の日', gameThemeHint: '動物・癒しゲーム' },
+    ];
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '8月8日 世界猫の日', theme: '猫と過ごすゲーム特集' })
+    );
+
+    const result = await selectFeatureThemeWithAI(overlapping);
+
+    expect(result.selectedEventName).toBe('世界猫の日');
+  });
+
+  it('テーマ文からの同定でも包含関係のある候補のうち長い方を選ぶ', async () => {
+    const overlapping = [
+      { name: '猫の日', gameThemeHint: '動物ゲーム' },
+      { name: '世界猫の日', gameThemeHint: '動物・癒しゲーム' },
+    ];
+    mockClaudeText(
+      JSON.stringify({ selectedEvent: '候補外の文字列', theme: '世界猫の日特集：猫と暮らすゲーム' })
+    );
+
+    const result = await selectFeatureThemeWithAI(overlapping);
+
+    expect(result.selectedEventName).toBe('世界猫の日');
+  });
+
   it('selectedEvent に飾りが付いていても候補名を部分一致で同定する', async () => {
     mockClaudeText(
       JSON.stringify({ selectedEvent: '4月10日 駅弁の日', theme: '駅弁の日特集：鉄道と旅のゲーム' })
