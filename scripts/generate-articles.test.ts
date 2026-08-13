@@ -459,7 +459,7 @@ describe('generateClassicArticle — 歴史検索クエリへの発売年の伝�
     await __test.generateClassicArticle(game, new Date('2026-08-08'));
 
     expect(mockSearchGameInfo).toHaveBeenCalledTimes(1);
-    expect(mockSearchGameInfo).toHaveBeenCalledWith('Chrono Trigger', 'classic', 'Square', 1995);
+    expect(mockSearchGameInfo).toHaveBeenCalledWith('Chrono Trigger', 'classic', 'Square', { releaseYear: 1995 });
   });
 
   it('境界値: releaseDate が undefined のとき、年を渡さない（第4引数が undefined）', async () => {

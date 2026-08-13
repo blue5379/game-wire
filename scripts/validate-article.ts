@@ -17,7 +17,7 @@ import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
-import { getReleaseStatus } from './bedrock-client.js';
+import { getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
 import {
   computeReportStatus,
   formatReportMarkdown,
@@ -809,6 +809,15 @@ const UNRELEASED_TITLE_PATTERNS = /発表(?!会)|次回作|近日|もうすぐ|�
  * 未発売ニュアンスの表現が含まれる場合に high 警告を出す。
  * high にすることで VALIDATION_AUTO_REGENERATE=true 時の自動修正対象になる。
  * publishDate が渡されていない場合は検証をスキップする（後方互換）。
+ *
+ * ## § 2.8 本日発売の扱い
+ *
+ * `getReleaseStatus` が「本日発売」を返す場合も検証を続ける。
+ * 理由: 発売日当日の記事に「発売予定」「もうすぐ」等の未発売表現が含まれるのは不適切。
+ * セクション5『📅 発売情報』では「本日発売」と書くが（§ 2.5）、
+ * 記事タイトルに未発売ニュアンスが混入していないかは検証が必要。
+ *
+ * 参照: `docs/article-category-spec.md` § 2.8
  */
 export function validateReleasedTitleExpression(
   article: GeneratedArticle,
@@ -822,7 +831,9 @@ export function validateReleasedTitleExpression(
   const releaseDate = article.game?.releaseDate;
   if (!releaseDate) return warnings;
 
-  if (getReleaseStatus(releaseDate, publishDate) !== '発売済み') return warnings;
+  const status = getReleaseStatus(releaseDate, publishDate);
+  // 「本日発売」も発売済み側として扱う（§ 2.8）
+  if (status !== '発売済み' && status !== '本日発売') return warnings;
 
   if (!UNRELEASED_TITLE_PATTERNS.test(article.title)) return warnings;
 
@@ -842,6 +853,129 @@ export function validateReleasedTitleExpression(
 }
 
 /**
+ * 文を区切り文字で分割するヘルパー（区切りは `。`, `！`, `？`, 改行）
+ *
+ * `「先行プレイで高く評価されています。」`
+ *  → `['「先行プレイで高く評価されています。」']`（1文）
+ *
+ * 空の文は除外する。
+ */
+function splitIntoSentences(text: string): string[] {
+  return text
+    .split(/[。！？\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+// 未発売タイトルの記事で検出する評価語彙
+// 指示: `評価が高|高く評価|高評価|好評|絶賛|支持を得`
+const EVALUATION_PATTERN = /評価が高|高く評価|高評価|好評|絶賛|支持を得/;
+
+// 発売前の先行プレイ等の限定語（同じ文に含まれていれば正当な文脈として除外）
+// 指示: `先行プレイ|先行体験|先行レビュー|体験版|デモ版|試遊|プレビュー|発売前|クローズドテスト|オープンベータ|ベータテスト|βテスト`
+const PRE_RELEASE_QUALIFIER_PATTERN = /先行プレイ|先行体験|先行レビュー|体験版|デモ版|試遊|プレビュー|発売前|クローズドテスト|オープンベータ|ベータテスト|βテスト/;
+
+/**
+ * 未発売タイトルの記事が評価を断定していないかを検証（§ 2.7 / §11.3.4）
+ *
+ * 発売予定または本日発売のタイトルの記事で、「高く評価されている」「好評」等の
+ * 評価・受容に関する記述を検出する。
+ *
+ * ## 発火条件
+ * - article.category が 'newRelease' または 'indie'
+ *   （インディー枠には未発売作が来ない設計だが、防御的に indie も対象にする。
+ *    理由: §11.3.2 は「インディー枠は未発売タイトルを扱わない」としているが、
+ *    §11.3.4 が「防御的に indie も対象にしてよい」と明記している）
+ * - publishDate が渡されている（未指定なら検証をスキップ。後方互換）
+ * - article.game?.releaseDate がある
+ * - isUpcomingForBody(getReleaseStatus(releaseDate, publishDate)) が true
+ *   （発売予定 または 本日発売。§ 2.8 の本日発売の扱い）
+ *
+ * ## 検査対象
+ * article.content と article.summary の両方。
+ * §11.3.2 の実測で、vol.3 の事故は summary にも「高く評価されている」が入っていた。
+ *
+ * ## 除外設計: 文単位の除外ウィンドウ
+ * §2.7 は「発売前の先行プレイで好評」は正当な文脈であり誤検出しないことを要求。
+ * 検査対象テキストを文に分割し、評価語彙にマッチした文が同じ文の中に
+ * 限定語（先行プレイ / 体験版 / プレビュー等）を含むなら、その文は正当として除外する。
+ *
+ * ## 警告の形
+ * - severity: 'high'（§11.3.4。low だと VALIDATION_AUTO_REGENERATE の対象外）
+ * - type: 'upcoming-evaluation-claim'
+ * - フィールドごとに最大1件（1記事で最大2件: content + summary）
+ *   理由（§11.3.4）: writeAndCheckReport は high が5件超で fail する。
+ *   既存レポートにちょうど5件のものがあり、1記事から多数の警告を出すと
+ *   レポートが fail に転落する余地がある。
+ *
+ * 参照: `docs/article-category-spec.md` § 2.7, `docs/article-category-spec-review.md` § 11.3.4
+ */
+export function validateUpcomingEvaluationClaims(
+  article: GeneratedArticle,
+  publishDate?: Date
+): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  // 発火条件のチェック
+  if (article.category !== 'newRelease' && article.category !== 'indie') return warnings;
+  if (!publishDate) return warnings;
+
+  const releaseDate = article.game?.releaseDate;
+  if (!releaseDate) return warnings;
+
+  const status = getReleaseStatus(releaseDate, publishDate);
+  if (!isUpcomingForBody(status)) return warnings; // 発売済みなら評価の言及は正当
+
+  // 検査対象のフィールドを定義
+  const fieldsToCheck: Array<{ name: string; text: string }> = [
+    { name: '本文', text: article.content },
+    { name: '要約', text: article.summary },
+  ];
+
+  for (const field of fieldsToCheck) {
+    if (!field.text) continue;
+
+    const sentences = splitIntoSentences(field.text);
+    let foundInThisField = false;
+    let matchedEvidence: string | undefined;
+    let matchedSentence: string | undefined;
+
+    for (const sentence of sentences) {
+      const evalMatch = sentence.match(EVALUATION_PATTERN);
+      if (!evalMatch) continue;
+
+      // 同じ文に限定語が含まれているかチェック
+      if (PRE_RELEASE_QUALIFIER_PATTERN.test(sentence)) {
+        // 正当な文脈として除外
+        continue;
+      }
+
+      // 限定語が無い場合は検出対象
+      foundInThisField = true;
+      matchedEvidence = evalMatch[0];
+      matchedSentence = sentence;
+      break; // フィールドごとに最大1件なので、最初のマッチで終了
+    }
+
+    if (foundInThisField) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity: 'high',
+        type: 'upcoming-evaluation-claim',
+        message:
+          `未発売タイトル（releaseDate=${releaseDate}）の記事${field.name}に評価断定「${matchedEvidence}」が含まれています。` +
+          `発売前でレビューも評価も存在しません。` +
+          `該当箇所: 「${matchedSentence?.slice(0, 100)}${(matchedSentence?.length ?? 0) > 100 ? '...' : ''}」`,
+        evidence: matchedEvidence,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 1つの記事に対して全バリデーションを実行
  */
 export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
@@ -855,6 +989,7 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
     ...validateFeaturePersonAttribution(article),
     ...validateFeatureNumericClaims(article),
     ...validateReleasedTitleExpression(article, publishDate),
+    ...validateUpcomingEvaluationClaims(article, publishDate),
   ];
 }
 
@@ -890,6 +1025,12 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
     } else if (w.type.startsWith('person-')) {
       instructions.add(
         `人物「${ev}」への言及・発言引用は提供データにありません。人物の名前・肩書き・発言を記載しないでください。`
+      );
+    } else if (w.type === 'upcoming-evaluation-claim') {
+      // §11.3.4: 未発売タイトルの評価断定に対する専用指示
+      instructions.add(
+        `本作は発売前でレビューも評価も存在しません。「${ev}」のような評価・受容に関する記述を削除してください` +
+          `（提供データに発売前の先行プレイ評として明示されている場合を除く）。`
       );
     } else {
       // その他の type は汎用指示

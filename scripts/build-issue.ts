@@ -688,7 +688,7 @@ async function main(): Promise<void> {
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。
-  report.llmJudge = await judgeArticles(generatedIssue.articles);
+  report.llmJudge = await judgeArticles(generatedIssue.articles, publishDate);
 
   const validationDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
   // 環境変数 VALIDATION_HIGH_THRESHOLD で fail 閾値を上書き可能（デフォルト: 5）

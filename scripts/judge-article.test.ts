@@ -19,9 +19,13 @@ import type { GeneratedArticle } from './generate-articles.js';
 // Bedrock / Tavily への依存をモック
 const mockInvoke = vi.fn();
 const mockIsTavilyAvailable = vi.fn();
-vi.mock('./bedrock-client.js', () => ({
-  invokeClaudeModel: (...args: unknown[]) => mockInvoke(...args),
-}));
+vi.mock('./bedrock-client.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as typeof import('./bedrock-client.js');
+  return {
+    ...actual,
+    invokeClaudeModel: (...args: unknown[]) => mockInvoke(...args),
+  };
+});
 vi.mock('./fetch-web-search.js', () => ({
   isTavilyAvailable: () => mockIsTavilyAvailable(),
 }));
@@ -426,5 +430,135 @@ describe('judgeArticles', () => {
     // 実行自体は試みた（judgedArticles はカウント）が、claims は空
     expect(report.judgedArticles).toBe(1);
     expect(report.warnings).toHaveLength(0);
+  });
+});
+
+describe('buildJudgeUserMessage with publishDate (§11.3.5)', () => {
+  it('発売予定の記事で user メッセージに追記行が含まれる', () => {
+    const article = makeArticle({
+      title: 'Test Game',
+      content: '本文テキスト',
+      category: 'newRelease',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC'],
+        releaseDate: '2026-09-01', // 未来
+      },
+      webSearchSources: [
+        { url: 'https://example.com', title: 'Source', snippet: 'snippet' },
+      ],
+    });
+
+    const publishDate = new Date('2026-08-13');
+    const msg = buildJudgeUserMessage(article, publishDate);
+
+    // 追記行が含まれることを確認
+    expect(msg).toContain('この記事は発売前のタイトルを扱っている');
+    expect(msg).toContain('「評価が高い」「好評」「絶賛」');
+    // 追記位置が最後の指示文の直前であること
+    const lines = msg.split('\n');
+    const instructionLineIdx = lines.findIndex((l) =>
+      l.includes('上記の本文から事実主張を抽出し、外部参照データのみを根拠に判定')
+    );
+    const addedLineIdx = lines.findIndex((l) => l.includes('この記事は発売前のタイトルを扱っている'));
+    expect(instructionLineIdx).toBeGreaterThan(0);
+    expect(addedLineIdx).toBeGreaterThan(0);
+    expect(addedLineIdx).toBeLessThan(instructionLineIdx);
+  });
+
+  it('本日発売の記事でも追記行が含まれる', () => {
+    const article = makeArticle({
+      title: 'Test Game',
+      content: '本文テキスト',
+      category: 'newRelease',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC'],
+        releaseDate: '2026-08-13', // 当日
+      },
+      webSearchSources: [
+        { url: 'https://example.com', title: 'Source', snippet: 'snippet' },
+      ],
+    });
+
+    const publishDate = new Date('2026-08-13');
+    const msg = buildJudgeUserMessage(article, publishDate);
+
+    expect(msg).toContain('この記事は発売前のタイトルを扱っている');
+  });
+
+  it('発売済み記事では追記行が含まれない', () => {
+    const article = makeArticle({
+      title: 'Test Game',
+      content: '本文テキスト',
+      category: 'newRelease',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC'],
+        releaseDate: '2026-08-01', // 過去
+      },
+      webSearchSources: [
+        { url: 'https://example.com', title: 'Source', snippet: 'snippet' },
+      ],
+    });
+
+    const publishDate = new Date('2026-08-13');
+    const msg = buildJudgeUserMessage(article, publishDate);
+
+    expect(msg).not.toContain('この記事は発売前のタイトルを扱っている');
+  });
+
+  it('releaseDate 無しの記事では追記行が含まれない', () => {
+    const article = makeArticle({
+      title: 'Test Game',
+      content: '本文テキスト',
+      category: 'newRelease',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC'],
+        // releaseDate なし
+      },
+      webSearchSources: [
+        { url: 'https://example.com', title: 'Source', snippet: 'snippet' },
+      ],
+    });
+
+    const publishDate = new Date('2026-08-13');
+    const msg = buildJudgeUserMessage(article, publishDate);
+
+    expect(msg).not.toContain('この記事は発売前のタイトルを扱っている');
+  });
+
+  it('publishDate 無しの場合は追記行が含まれない', () => {
+    const article = makeArticle({
+      title: 'Test Game',
+      content: '本文テキスト',
+      category: 'newRelease',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC'],
+        releaseDate: '2026-09-01',
+      },
+      webSearchSources: [
+        { url: 'https://example.com', title: 'Source', snippet: 'snippet' },
+      ],
+    });
+
+    const msg = buildJudgeUserMessage(article, undefined);
+
+    expect(msg).not.toContain('この記事は発売前のタイトルを扱っている');
+  });
+
+  it('system プロンプトが分岐していないこと（judgeSystemPrompt は定数）', () => {
+    // judgeSystemPrompt は定数なので、発売状態によって変わらない
+    expect(judgeSystemPrompt).toBeTruthy();
+    expect(typeof judgeSystemPrompt).toBe('string');
+    // 内容の検証（主観的表現の除外ルールが含まれていること）
+    expect(judgeSystemPrompt).toContain('主観的表現・感想・期待感');
   });
 });

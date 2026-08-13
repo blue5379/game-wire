@@ -5,6 +5,7 @@
 
 import type { IGDBGame, IGDBData, FetchResult } from './types.js';
 import { meetsClassicPoolThresholds, readClassicTotalRatingMin, readClassicTotalRatingCountMin } from './classic-pool.js';
+import { getJstDayStartUnixSec } from './jst-date.js';
 
 const TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/token';
 const IGDB_API_URL = 'https://api.igdb.com/v4';
@@ -545,20 +546,10 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
   };
 }
 
-/**
- * JST（日本時間）当日 0 時の Unix 秒を算出する（§11.1 確定事項 #6）。
- *
- * 発売済み／未発売の境界として使う純関数。`now` を引数で注入できるようにし、
- * テストで日境界をまたぐ挙動を検証できるようにする（既定値は `new Date()`）。
- *
- * 算出式は `docs/article-category-spec-review.md` §11.1 確定事項 #6 で確定済み:
- * `Math.floor((nowSec + 9*3600) / 86400) * 86400 - 9*3600`
- */
-export function getJstDayStartUnixSec(now: Date = new Date()): number {
-  const nowSec = Math.floor(now.getTime() / 1000);
-  const JST_OFFSET_SEC = 9 * 3600;
-  return Math.floor((nowSec + JST_OFFSET_SEC) / 86400) * 86400 - JST_OFFSET_SEC;
-}
+// getJstDayStartUnixSec は jst-date.ts に移設済み。
+// 既存テスト（fetch-igdb.test.ts:16）が ./fetch-igdb.js から import しているため、
+// ここで再エクスポートして後方互換性を保つ。
+export { getJstDayStartUnixSec } from './jst-date.js';
 
 // テスト用にエクスポート
 export const __test = {
@@ -802,7 +793,8 @@ export const IGDB_POOL_QUERY_FIELDS = `name, slug, summary, genres.name, platfor
              websites.url, websites.category, websites.type,
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
              total_rating, total_rating_count,
-             parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count`;
+             parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count,
+             release_dates.date, release_dates.date_format`;
 
 /**
  * 母集団クエリの生レスポンス（IGDB_POOL_QUERY_FIELDS に対応する形）。
@@ -837,6 +829,8 @@ interface IGDBPoolRawGame {
   total_rating_count?: number;
   /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
   parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
+  /** 発売日エントリ。§2.4 の「確定日のみ」判定に使う（date_format=0 が確定日） */
+  release_dates?: { date?: number; date_format?: number }[];
 }
 
 /**
@@ -1017,10 +1011,49 @@ async function fetchRecentPopularGamesByRatingCount(
  * `limit` を 20 から 50 に引き上げてユーザー判断確定済み。発売済み側の2軸クエリ
  * （Issue #241 / PR #243）が既に採用している `limit 50` と値を揃えている。
  *
- * ⚠️ §2.4 が規定する「確定日のみ」フィルタ（`release_dates.date_format`）はここでは
- * 実装しない。担当は PR-C（別 PR）。このクエリは曖昧な発売日（「2026年Q3」等）の
- * タイトルも含んだままになる。
+ * §2.4 が規定する「確定日のみ」フィルタは `hasConfirmedReleaseDate` による後段フィルタで
+ * 実装する（IGDB の where 句で `release_dates.date_format = 0` を書くと「いずれかの発売日
+ * エントリが確定日」にマッチし、`first_release_date` に対応するエントリの精度を保証できない
+ * ため。この理由により、フィルタは取得後の生レスポンスに対して掛ける）。
  */
+
+/**
+ * 発売日の精度が確定日（date_format=0）であるか判定する（§2.4）。
+ *
+ * `first_release_date` に一致する `release_dates` エントリのいずれかが `date_format === 0`
+ * なら true を返す。プラットフォームごとに精度が異なるケース（例: Xbox版は確定日・PC版は
+ * 四半期）を正しく扱うため、**すべてのエントリの `date_format` が 0** という判定にしては
+ * ならない。管理者が実測（2026-08-13）した `Gears of War: E-Day` は `first_release_date` に
+ * 一致するエントリの `date_format` は `[0]` だが、**全エントリでは `[0, 2]`** だった。
+ * 「全部 0」で判定すると本作を誤って除外する。
+ *
+ * 実測値の記録（2026-08-13、ライブ IGDB API。管理者測定済みのため再測定不要）:
+ * `fetchUpcomingGames` と同じ条件の母集団 33 件のうち、非確定日は 4 件:
+ * - Grave Seasons (date_format=5, human='Q3 2026')
+ * - Acts of Blood (date_format=5, human='Q3 2026')
+ * - Aniimo (date_format=5, human='Q3 2026')
+ * - Neverway (date_format=1, human='Oct 2026')
+ *
+ * これらの `first_release_date` は `2026-09-30` / `2026-10-01` に落ちるため、フィルタが
+ * 無いと記事に「発売日: 2026年9月30日」という**IGDB が保証していない確定日**が載る。
+ * これが §2.5 セクション5「発売日と対応機種を明示（確定日が保証されている）」の前提を
+ * 崩していた。
+ *
+ * @param game - 判定対象のゲーム（`first_release_date` と `release_dates` を持つ生レスポンス）
+ * @returns 確定日であれば true、そうでなければ false
+ */
+export function hasConfirmedReleaseDate(
+  game: { first_release_date?: number; release_dates?: { date?: number; date_format?: number }[] }
+): boolean {
+  if (!game.first_release_date) return false;
+  if (!game.release_dates || game.release_dates.length === 0) return false;
+
+  // first_release_date に一致するエントリのいずれかが date_format === 0 なら true
+  return game.release_dates.some(
+    (entry) => entry.date === game.first_release_date && entry.date_format === 0
+  );
+}
+
 async function fetchUpcomingGames(
   clientId: string,
   accessToken: string
@@ -1045,7 +1078,10 @@ async function fetchUpcomingGames(
       accessToken
     );
 
-    return games.map(mapPoolRawGameToIGDBGame);
+    // §2.4 の「確定日のみ」フィルタを適用（生レスポンスの段階で掛ける）
+    const confirmedGames = games.filter(hasConfirmedReleaseDate);
+
+    return confirmedGames.map(mapPoolRawGameToIGDBGame);
   } catch (error) {
     console.error('Failed to fetch upcoming games:', error);
     return [];

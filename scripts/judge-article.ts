@@ -12,7 +12,7 @@
 
 import type { GeneratedArticle } from './generate-articles.js';
 import type { ValidationWarning, Severity } from './validate-article.js';
-import { invokeClaudeModel } from './bedrock-client.js';
+import { invokeClaudeModel, getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
 import { isTavilyAvailable } from './fetch-web-search.js';
 
 /** judge が下す各主張の判定 */
@@ -126,7 +126,10 @@ export function buildGameMetadataSection(article: GeneratedArticle): string {
  * 一般名タイトルで同名別物に検索が流れた場合でも正しいゲームを判定対象にできるようにする。
  * 検索結果はインジェクション対策のマーカーで囲んで渡す。
  */
-export function buildJudgeUserMessage(article: GeneratedArticle): string {
+export function buildJudgeUserMessage(
+  article: GeneratedArticle,
+  publishDate?: Date
+): string {
   const lines: string[] = [];
 
   lines.push(`【記事タイトル】`);
@@ -154,6 +157,22 @@ export function buildJudgeUserMessage(article: GeneratedArticle): string {
 
   lines.push(`=== 外部参照データ ここまで ===`);
   lines.push('');
+
+  // §11.3.5: 未発売タイトルの記事には評価断定に関する追記指示を加える
+  // 追記位置は最後の指示文の直前（外部参照データブロックの外側＝注入されたテキストと混ざらない位置）
+  if (publishDate && article.game?.releaseDate) {
+    const status = getReleaseStatus(article.game.releaseDate, publishDate);
+    if (isUpcomingForBody(status)) {
+      lines.push(
+        'この記事は発売前のタイトルを扱っている。' +
+          '「評価が高い」「好評」「絶賛」等の受容に関する記述は、' +
+          '検索結果に発売前の先行プレイ評として明示されている場合を除き、' +
+          '`contradicted` または `unverifiable` と判定すること。'
+      );
+      lines.push('');
+    }
+  }
+
   lines.push(`上記の本文から事実主張を抽出し、外部参照データのみを根拠に判定してJSONで出力してください。`);
 
   return lines.join('\n');
@@ -273,9 +292,15 @@ export interface LlmJudgeReport {
  * webSearchSources が無い記事は照合元が無く judge 自身がハルシネーションするため、
  * 呼び出し側でスキップ判定する想定（ここでは空 claims を返す）。
  * Bedrock 呼び出しや JSON パースに失敗してもビルドを止めず、空配列で返す。
+ *
+ * @param article - 判定対象の記事
+ * @param publishDate - 発行日（未発売記事の判定に使用。未指定なら未発売判定をスキップ）
  */
-export async function judgeArticle(article: GeneratedArticle): Promise<JudgeClaim[]> {
-  const userMessage = buildJudgeUserMessage(article);
+export async function judgeArticle(
+  article: GeneratedArticle,
+  publishDate?: Date
+): Promise<JudgeClaim[]> {
+  const userMessage = buildJudgeUserMessage(article, publishDate);
   try {
     const raw = await invokeClaudeModel(judgeSystemPrompt, userMessage, {
       maxTokens: 2048,
@@ -295,8 +320,14 @@ export async function judgeArticle(article: GeneratedArticle): Promise<JudgeClai
  * - LLM-judge が無効（VALIDATION_LLM_JUDGE=false）
  * - Tavily 未設定（照合元が無いと judge 自身が暴走するため）
  * - 記事ごとに webSearchSources が無い/空
+ *
+ * @param articles - 判定対象の記事一覧
+ * @param publishDate - 発行日（未発売記事の判定に使用。未指定なら未発売判定をスキップ）
  */
-export async function judgeArticles(articles: GeneratedArticle[]): Promise<LlmJudgeReport> {
+export async function judgeArticles(
+  articles: GeneratedArticle[],
+  publishDate?: Date
+): Promise<LlmJudgeReport> {
   const empty: LlmJudgeReport = {
     claimsByVerdict: { supported: 0, contradicted: 0, unverifiable: 0 },
     judgedArticles: 0,
@@ -322,7 +353,7 @@ export async function judgeArticles(articles: GeneratedArticle[]): Promise<LlmJu
     }
 
     console.log(`  LLM judging: ${article.title}`);
-    const claims = await judgeArticle(article);
+    const claims = await judgeArticle(article, publishDate);
     report.judgedArticles++;
     for (const c of claims) {
       report.claimsByVerdict[c.verdict]++;

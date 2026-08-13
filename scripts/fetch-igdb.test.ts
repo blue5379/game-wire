@@ -16,6 +16,7 @@ import {
   getJstDayStartUnixSec,
   IGDB_POOL_QUERY_FIELDS,
   IGDB_WEBSITE_TYPE,
+  hasConfirmedReleaseDate,
 } from './fetch-igdb.js';
 
 const {
@@ -1442,8 +1443,20 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
         { id: 9004, name: 'RatingCount Only', slug: 'rating-count-only' },
       ],
       upcoming: [
-        { id: 9001, name: 'Dup Game', slug: 'dup-game' }, // recent と同一 id
-        { id: 9003, name: 'Upcoming Only', slug: 'upcoming-only' },
+        {
+          id: 9001,
+          name: 'Dup Game',
+          slug: 'dup-game',
+          first_release_date: 1723680000,
+          release_dates: [{ date: 1723680000, date_format: 0 }],
+        }, // recent と同一 id
+        {
+          id: 9003,
+          name: 'Upcoming Only',
+          slug: 'upcoming-only',
+          first_release_date: 1723766400, // 2026-08-16
+          release_dates: [{ date: 1723766400, date_format: 0 }],
+        },
       ],
     });
 
@@ -1470,6 +1483,8 @@ describe('fetchIGDBData - 発売済み/未発売クエリ分離 (§2.3/§2.4, Is
           id: 9101,
           name: 'Upcoming Pool Game',
           slug: 'upcoming-pool-game',
+          first_release_date: 1723680000, // 2026-08-15 00:00 UTC
+          release_dates: [{ date: 1723680000, date_format: 0 }], // 確定日（§2.4 フィルタを通過するため）
           websites: [{ url: 'https://store.steampowered.com/app/9101', type: 13 }],
           involved_companies: [
             {
@@ -1809,5 +1824,88 @@ describe('fetchClassicGames（§5.4/§5.5決着後）: where/sort/limit の書�
     expect(ids).toContain(202); // 親が母集団条件を満たさない → 許可
     expect(ids).not.toContain(203); // 親が母集団条件を満たす → 除外
     expect(ids).toContain(204); // parent_game 無し → mapper が true を返すため残る
+  });
+});
+
+// サブ項目7: 未発売枠の母集団に「確定日のみ」フィルタを追加（§2.4）
+describe('hasConfirmedReleaseDate — 発売日の精度判定（§2.4）', () => {
+  it('first_release_date に一致するエントリが date_format===0 なら true（確定日）', () => {
+    const game = {
+      first_release_date: 1723680000, // 2026-08-15 00:00 UTC
+      release_dates: [
+        { date: 1723680000, date_format: 0 }, // 確定日
+      ],
+    };
+    expect(hasConfirmedReleaseDate(game)).toBe(true);
+  });
+
+  it('Gears of War: E-Day 型の回帰テスト: first_release_date に一致するエントリは date_format=0、別プラットフォームのエントリが date_format=2 → true（「全部0」判定なら false になる）', () => {
+    const game = {
+      first_release_date: 1723680000,
+      release_dates: [
+        { date: 1723680000, date_format: 0 }, // 確定日（Xbox Series X|S）
+        { date: 1723680000, date_format: 2 }, // プラットフォームごとに精度が違う（PC）
+      ],
+    };
+    expect(hasConfirmedReleaseDate(game)).toBe(true);
+    // 「すべてのエントリの date_format が 0」で判定すると本作を誤って除外する
+  });
+
+  it('Q3 2026 型: 一致エントリが date_format=5（四半期）なら false', () => {
+    const game = {
+      first_release_date: 1727740800, // 2026-09-30（四半期の末日にフォールバック）
+      release_dates: [{ date: 1727740800, date_format: 5 }], // Q3 2026
+    };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  it('Oct 2026 型: 一致エントリが date_format=1（月のみ）なら false', () => {
+    const game = {
+      first_release_date: 1728000000, // 2026-10-01（月の初日にフォールバック）
+      release_dates: [{ date: 1728000000, date_format: 1 }], // Oct 2026
+    };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  it('release_dates が無い場合は false（確定日と確認できない）', () => {
+    const game = { first_release_date: 1723680000 };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  it('release_dates が空配列の場合は false', () => {
+    const game = { first_release_date: 1723680000, release_dates: [] };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  it('first_release_date に一致するエントリが1つも無い場合は false', () => {
+    const game = {
+      first_release_date: 1723680000,
+      release_dates: [{ date: 1728000000, date_format: 0 }], // 日付が不一致
+    };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  it('first_release_date が undefined の場合は false', () => {
+    const game = { release_dates: [{ date: 1723680000, date_format: 0 }] };
+    expect(hasConfirmedReleaseDate(game)).toBe(false);
+  });
+
+  // 実測値の記録（2026-08-13、ライブ IGDB API。管理者測定済みのため再測定不要）
+  it('実測: Grave Seasons（Q3 2026）は date_format=5 で非確定日として除外される', () => {
+    const graveSeasonsActual = {
+      first_release_date: 1727740800, // 2026-09-30
+      release_dates: [{ date: 1727740800, date_format: 5 }], // Q3 2026
+    };
+    expect(hasConfirmedReleaseDate(graveSeasonsActual)).toBe(false);
+  });
+});
+
+describe('IGDB_POOL_QUERY_FIELDS に release_dates が含まれること（§2.4）', () => {
+  it('IGDB_POOL_QUERY_FIELDS に "release_dates.date" が含まれる', () => {
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('release_dates.date');
+  });
+
+  it('IGDB_POOL_QUERY_FIELDS に "release_dates.date_format" が含まれる', () => {
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('release_dates.date_format');
   });
 });
