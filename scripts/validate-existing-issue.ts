@@ -19,6 +19,8 @@ interface FrontmatterArticle {
   category: 'newRelease' | 'indie' | 'feature' | 'classic';
   summary: string;
   articleBody: string;
+  /** 読者に表示されない記事（メタデータ欠落・別ゲーム混入）。記事本数の計上から除く。Issue #311 */
+  hidden?: boolean;
   game?: {
     title: string;
     titleJa?: string;
@@ -151,7 +153,18 @@ async function main(): Promise<void> {
 
   const articles = frontmatter.articles.map(toGeneratedArticle);
   const publishDateFromFrontmatter = frontmatter.publishDate ? new Date(frontmatter.publishDate) : undefined;
-  const report = validateArticles(articles, frontmatter.issueNumber, undefined, publishDateFromFrontmatter);
+  // 公開済みの号は hidden: true が frontmatter に残っているので、そこから復元して
+  // 記事本数の計上から除く（build-issue.ts と同じ扱いに揃える。Issue #311）
+  const hiddenArticleTitles = new Set(
+    frontmatter.articles.filter((fa) => fa.hidden === true).map((fa) => fa.title)
+  );
+  const report = validateArticles(
+    articles,
+    frontmatter.issueNumber,
+    undefined,
+    publishDateFromFrontmatter,
+    hiddenArticleTitles
+  );
 
   // レポートを一時ディレクトリに出力（CIには影響させない）
   const tmpDir = path.join(process.cwd(), 'data', 'validation-manual');

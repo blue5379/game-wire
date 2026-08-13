@@ -7,12 +7,20 @@
  *
  * 総合ステータスの定義:
  *  - error   (🔴 要対応):   high 警告が1件以上、または Web 検索失敗がある、
- *                           または AI成人向けスクリーニング失敗（fail-open）がある
+ *                           または AI成人向けスクリーニング失敗（fail-open）がある、
+ *                           または記事本数が期待を下回ったカテゴリがある
  *  - warning (🟡 要確認):   error ではないが、medium 警告・公式URL未取得・
  *                           LLM judge の矛盾/裏付け不能のいずれかがある
  *  - ok      (🟢 対応不要): 上記いずれも無い
  *
  * error の定義は「Issue 自動起票の条件」と一致させている（起票される号は必ず 🔴）。
+ *
+ * 記事本数の不足（Issue #311）は high 警告としては数えず、独立した判定項として error に
+ * 昇格させる。理由: high 警告は記事本文の品質（ハルシネーション・整合性）の指標であり、
+ * 号の構成の問題である本数不足を同じバケットに混ぜると「high 警告の重大性の再定義」
+ * （仕様 §9.1 保留1）の議論対象がさらに不均一になる。また `warningsBySeverity.high` は
+ * writeAndCheckReport の fail 閾値（既定 5 件）と自動再生成の判断にも使われる数値なので、
+ * 本文品質以外の要因で動かさない。
  *
  * AI成人向けスクリーニング失敗（Issue #222）は、Web 検索失敗と同様「本来行うべき安全確認が
  * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
@@ -26,9 +34,20 @@
  * 観測してから、昇格の要否・閾値を検討する（Issue #222 code review 対応）。
  */
 
-import type { ValidationReport, ValidationWarning } from './validate-article.js';
+import type { ArticleCategory, ValidationReport, ValidationWarning } from './validate-article.js';
 
 export type ReportStatus = 'ok' | 'warning' | 'error';
+
+/**
+ * 記事カテゴリの日本語表示名。
+ * レポート（stdout / Markdown）と公開 Markdown の見出しで共用する。
+ */
+export const ARTICLE_CATEGORY_LABELS: Record<ArticleCategory, string> = {
+  newRelease: '新作紹介',
+  indie: 'インディーゲーム',
+  feature: '特集',
+  classic: '名作深掘り',
+};
 
 /** Web 検索の失敗総数（キーワード検索失敗 + ページ取得失敗） */
 export function webSearchFailureCount(report: ValidationReport): number {
@@ -46,6 +65,16 @@ export function adultScreeningFailureCount(report: ValidationReport): number {
   return report.webSearchStats?.adultScreeningFailures ?? 0;
 }
 
+/**
+ * 記事本数が期待を下回ったカテゴリ数（Issue #311）。
+ * 旧レポート（本フィールド追加前）では undefined = 未計測なので 0 として扱う。
+ * 「不足した本数の合計」ではなく「不足したカテゴリ数」を返す（判定は 1 カテゴリでも
+ * 下回れば error。仕様 §6.5）。
+ */
+export function articleCountShortfallCount(report: ValidationReport): number {
+  return report.articleCountShortfalls?.length ?? 0;
+}
+
 /** LLM judge が矛盾・裏付け不能と判定した claim の総数 */
 function judgeProblemCount(report: ValidationReport): number {
   const j = report.llmJudge;
@@ -58,7 +87,12 @@ function judgeProblemCount(report: ValidationReport): number {
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
   const high = report.warningsBySeverity.high;
-  if (high > 0 || webSearchFailureCount(report) > 0 || adultScreeningFailureCount(report) > 0) {
+  if (
+    high > 0 ||
+    webSearchFailureCount(report) > 0 ||
+    adultScreeningFailureCount(report) > 0 ||
+    articleCountShortfallCount(report) > 0
+  ) {
     return 'error';
   }
 
@@ -74,7 +108,8 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 /**
  * この号について Issue を自動起票すべきか。
  * 条件: high 警告が1件以上、または Web 検索失敗がある、
- * または AI成人向けスクリーニング失敗（fail-open）がある（= 総合ステータスが error）。
+ * または AI成人向けスクリーニング失敗（fail-open）がある、
+ * または記事本数が期待を下回ったカテゴリがある（= 総合ステータスが error）。
  */
 export function shouldFileIssue(report: ValidationReport): boolean {
   return computeReportStatus(report) === 'error';
@@ -100,7 +135,18 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   const contradicted = report.llmJudge?.claimsByVerdict.contradicted ?? 0;
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
+  const shortfalls = report.articleCountShortfalls ?? [];
 
+  if (shortfalls.length > 0) {
+    const detail = shortfalls
+      .map((s) => `${ARTICLE_CATEGORY_LABELS[s.category]} ${s.actual}/${s.expected}本`)
+      .join('、');
+    actions.push(
+      `📉 **記事本数の不足 ${shortfalls.length} カテゴリ**（${detail}）: ` +
+        `枠を埋めるために不適格なゲームを載せる対応はしません（号は少ない本数のまま発行済み）。` +
+        `選定ログを確認し、どの段階で候補が落ちたかを調べてください。`
+    );
+  }
   if (high > 0) {
     actions.push(
       `🔴 **HIGH 警告 ${high} 件**: 該当記事の本文を確認し、事実誤り・ハルシネーションを修正してください。`
@@ -198,6 +244,15 @@ export function formatReportMarkdown(report: ValidationReport): string {
   out.push('| 項目 | 件数 |');
   out.push('|------|------|');
   out.push(`| 記事数 | ${report.totalArticles} |`);
+  // 記事本数の不足（Issue #311）。undefined（未計測＝旧レポート）と 0（計測して不足なし）を区別する。
+  const shortfalls = report.articleCountShortfalls;
+  if (shortfalls === undefined) {
+    out.push('| ❓ 記事本数の不足 | 未計測 |');
+  } else if (shortfalls.length > 0) {
+    out.push(`| 📉 記事本数の不足（カテゴリ数） | ${shortfalls.length} |`);
+  } else {
+    out.push('| ✅ 記事本数の不足 | 0 |');
+  }
   out.push(`| 警告合計 | ${report.totalWarnings} |`);
   out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high} |`);
   out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium} |`);
@@ -236,6 +291,22 @@ export function formatReportMarkdown(report: ValidationReport): string {
     for (const w of report.warnings) {
       out.push(formatWarningBlock(w));
     }
+  }
+
+  // 記事本数の不足（Issue #311）
+  if (shortfalls && shortfalls.length > 0) {
+    out.push('');
+    out.push(`### 📉 記事本数が不足したカテゴリ（${shortfalls.length}件）`);
+    out.push('');
+    out.push('| カテゴリ | 掲載本数 | 期待本数 |');
+    out.push('|------|------|------|');
+    for (const s of shortfalls) {
+      out.push(`| ${ARTICLE_CATEGORY_LABELS[s.category]} | ${s.actual} | ${s.expected} |`);
+    }
+    out.push('');
+    out.push(
+      '※ 掲載本数は hidden（メタデータ欠落・別ゲーム混入で読者に表示されない記事）を除いた数です。'
+    );
   }
 
   // 公式URL未取得

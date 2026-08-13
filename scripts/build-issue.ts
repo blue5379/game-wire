@@ -17,6 +17,7 @@ import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
 import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
+import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 
 // 開発モード判定
@@ -139,18 +140,12 @@ function generateIssueDescription(
 }
 
 /**
- * カテゴリ名を日本語に変換
+ * カテゴリ名を日本語に変換（表示名は検証レポートと共用する。Issue #311）
  */
 function categoryToJapanese(
   category: 'newRelease' | 'indie' | 'feature' | 'classic'
 ): string {
-  const map = {
-    newRelease: '新作紹介',
-    indie: 'インディーゲーム',
-    feature: '特集',
-    classic: '名作深掘り',
-  };
-  return map[category];
+  return ARTICLE_CATEGORY_LABELS[category];
 }
 
 /**
@@ -166,6 +161,27 @@ export function isCriticallyIncompleteArticle(article: GeneratedArticle): boolea
   const hasCover = Boolean(game.coverImage);
   const hasAnyMeta = Boolean(game.developer || game.publisher || game.releaseDate);
   return !hasCover && !hasAnyMeta;
+}
+
+/**
+ * 号の Markdown で `hidden: true` が付く記事のタイトル集合を返す（Issue #311）。
+ *
+ * hidden の条件は 2 つあり、いずれも `formatArticleForFrontmatter` が `hidden: true` を書く条件と
+ * 一致させている: ①メタデータが極端に欠落している（Issue #94） ②別ゲームのメタが混入している
+ * （game-source-mismatch。Issue #179）。
+ *
+ * 用途は記事本数の計上からの除外。hidden 記事は読者に表示されないため、掲載本数としては
+ * 数えない（クールダウン対象からの除外と同じ扱い。Issue #94 の `historyEntries` を参照）。
+ */
+export function collectHiddenArticleTitles(
+  articles: GeneratedArticle[],
+  sourceMismatchTitles: ReadonlySet<string>
+): Set<string> {
+  return new Set(
+    articles
+      .filter((a) => isCriticallyIncompleteArticle(a) || sourceMismatchTitles.has(a.title))
+      .map((a) => a.title)
+  );
 }
 
 /**
@@ -714,7 +730,17 @@ async function main(): Promise<void> {
   }
 
   // 記事の事後検証（ハルシネーション・タイトル整合性等）
-  const report = validateArticles(generatedIssue.articles, issueNumber, generatedIssue.webSearchStats, publishDate);
+  const hiddenArticleTitles = collectHiddenArticleTitles(
+    generatedIssue.articles,
+    sourceMismatchTitles
+  );
+  const report = validateArticles(
+    generatedIssue.articles,
+    issueNumber,
+    generatedIssue.webSearchStats,
+    publishDate,
+    hiddenArticleTitles
+  );
 
   // game-source-mismatch を事後レポートにも記録する（pre-write で検出した内容の再確認・記録）
   if (sourceMismatchWarnings.size > 0) {

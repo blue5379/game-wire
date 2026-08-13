@@ -9,6 +9,7 @@ import {
   isCriticallyIncompleteArticle,
   formatArticleForFrontmatter,
   collectFeatureEventHistoryEntries,
+  collectHiddenArticleTitles,
 } from './build-issue.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import type { RecommendedGame, SourceUrls } from './types.js';
@@ -348,5 +349,66 @@ describe('formatArticleForFrontmatter: featureEvent は公開 Markdown に出さ
     // source / dayOffset のような内部値も漏れていないこと
     expect(yaml).not.toContain('backward');
     expect(yaml).not.toContain('dayOffset');
+  });
+});
+
+describe('collectHiddenArticleTitles（Issue #311）', () => {
+  /** hidden 判定を通る（＝メタデータが揃った）通常記事 */
+  function completeArticle(title: string, category: GeneratedArticle['category']): GeneratedArticle {
+    return {
+      title,
+      category,
+      summary: '',
+      content: '',
+      game: {
+        title: `${title} (game)`,
+        genre: [],
+        platforms: ['PC'],
+        developer: 'Some Studio',
+        coverImage: 'https://example.com/cover.jpg',
+      },
+    };
+  }
+
+  it('メタデータが揃った記事だけなら空集合', () => {
+    const articles = [completeArticle('A', 'newRelease'), completeArticle('B', 'indie')];
+    expect(collectHiddenArticleTitles(articles, new Set())).toEqual(new Set());
+  });
+
+  it('criticallyIncomplete な記事を hidden として拾う（Issue #94 の条件と一致させる）', () => {
+    const incomplete: GeneratedArticle = {
+      title: '不完全記事',
+      category: 'indie',
+      summary: '',
+      content: '',
+      game: { title: 'X', genre: [], platforms: [] },
+    };
+    const articles = [completeArticle('A', 'newRelease'), incomplete];
+    expect(collectHiddenArticleTitles(articles, new Set())).toEqual(new Set(['不完全記事']));
+  });
+
+  it('game-source-mismatch の記事を hidden として拾う', () => {
+    const articles = [completeArticle('A', 'newRelease'), completeArticle('混入記事', 'indie')];
+    expect(collectHiddenArticleTitles(articles, new Set(['混入記事']))).toEqual(
+      new Set(['混入記事'])
+    );
+  });
+
+  it('両方の条件に該当しても集合なので1件にまとまる', () => {
+    const incomplete: GeneratedArticle = {
+      title: '両方該当',
+      category: 'indie',
+      summary: '',
+      content: '',
+      game: { title: 'X', genre: [], platforms: [] },
+    };
+    expect(collectHiddenArticleTitles([incomplete], new Set(['両方該当']))).toEqual(
+      new Set(['両方該当'])
+    );
+  });
+
+  it('mismatch 集合に号内に存在しないタイトルが入っていても集合には含めない', () => {
+    const articles = [completeArticle('A', 'newRelease')];
+    expect(collectHiddenArticleTitles(articles, new Set(['別の号の記事']))).toEqual(new Set());
   });
 });
