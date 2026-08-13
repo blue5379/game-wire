@@ -15,7 +15,7 @@
 | **次に着手する 1 件** | **なし。** 計画表・Milestone とも完了した。以後は `monitoring` の再開条件を満たしたものだけ |
 | ブロック中 | なし |
 | `monitoring`（着手しない） | #239 / #240 / #251 / #285 / #317 / #318 / #323（**#324 は 2026-08-13 に PR #326 で解消・クローズ**） |
-| 未起票の欠陥（ユーザー判断待ち） | **エントリポイントガードの欠落**（`build-issue.ts` / `fetch-data.ts` / `validate-existing-issue.ts`。下記「申し送り」参照） |
+| 計画表の外にある着手候補 | **#330**（エントリポイントガードの欠落。`npm run test` が本番パイプラインを起動し実 API を叩く。**実測済み**） / **#331**（`launch.astro` のカテゴリ別カードの断定。表現の方針決定が先） |
 
 > ⚠️ **キューが空になったので、次セッションは「何を着手するか」ではなく「着手すべきものがあるか」から始まる。**
 > 計画表を前進させる作業は残っていない。`monitoring` の Issue を勝手に開けないこと（各 Issue が
@@ -27,7 +27,8 @@
 - **「理論上の欠陥」と書かれた Issue でも、起票時点で既に実害が出ていることがある。** #311 が予測した「high が 0 件なら新作 0 本でも気づけない」は、**起票の 3 日前に発行された vol.019 で実際に起きていた**（`data/validation/validation-report-019.json` が `status=warning` / high=0 / 新作 0 本。Issue は起票されていない）。**Issue が挙げていない直近号の本番レポートを読むだけで見つかった。** `data/validation*/` を着手前に読む手順（下記「自前の検証機構が出している警告を先に読む」節）は、症状の原因究明だけでなく**実害の発生確認**にも効く
 - **仕様書が指定した severity をそのまま実装しないほうがよい場合がある。** §6.5 は「重大度 high」と書いていたが、high 警告は ①§9.1 保留 1（high の重大性の再定義）の議論対象そのもの ②`writeAndCheckReport` の fail 閾値と自動再生成の判断にも使われる数値、という 2 つの理由で「混ぜると困る」バケットだった。**独立した判定項（`articleCountShortfalls`）にしたことで、保留 1 の結論に依存しなくなった**（ユーザー確認済み）。前例は #222 の `adultScreeningFailures`。**仕様の「重大度」欄は、その重大度が他の何に使われているかを確認してから実装すること**
 - **ミュータント検証は 9 種すべてが初回で検出された（2 セッション続いた「1 種生存」が止まった）。** 効いたのは**境界値を「同数 / 1 本手前 / 超過」の 3 点で書いたこと**で、`actual < expected` を `<=` に緩めるミュータントと `expected - 1` に狭めるミュータントの両方が別々のテストで落ちた。**不等号を含む判定は、片側だけのテストでは両方向のミュータントを区別できない**
-- **副産物: `main()` をエントリポイントガード無しで実行しているスクリプトが 3 本ある**（`build-issue.ts` / `fetch-data.ts` / `validate-existing-issue.ts`。`generate-articles.ts` / `validate-article.ts` は ``if (import.meta.url === `file://${process.argv[1]}`)`` を持つ）。**`build-issue.test.ts` と `fetch-data.test.ts` はこの 2 本を import しているので、テスト実行時に本番パイプラインが起動している**（本セッションで一時スクリプトから import して実際に走り出すのを確認。`Next issue number: 20` まで進んだが、テスト・スクリプトが先に終了するため書き込み前に落ちており実害は出ていない）。**「現に壊れていない」のは偶然のタイミングに依存している。** #311 とは別層なので未起票（ユーザー判断待ち）
+- **副産物: `main()` をエントリポイントガード無しで実行しているスクリプトが 3 本ある**（→ **#330**）。`build-issue.ts:793` / `fetch-data.ts:1536` / `validate-existing-issue.ts:180`。`generate-articles.ts:1632` / `validate-article.ts:1374` は ``if (import.meta.url === `file://${process.argv[1]}`)`` を持つので、**規約は認識されていて 3 本だけ漏れている**。`build-issue.test.ts:13` と `fetch-data.test.ts:26` がこの 2 本を import しているため、**`npm run test` のたびに本番パイプラインが起動して Steam / YouTube / IGDB へ実リクエストが飛ぶ**（`build-issue.ts` は `Mode: PRODUCTION` / 出力先 `src/content/issues` で起動する）。⚠️ **この実害は当初「出ていない」と記録したが誤りだった**: **デフォルトのレポータがモジュールレベルの stdout を隠していただけ**で、`--reporter=verbose` を付けると実 API 取得の開始が見える。**「ログに出ていない」を「起きていない」と読んだのが誤り**——観測手段の設定を先に確認すること
+- **`--reporter=verbose` は vitest の観測レバーとして覚えておく。** vitest のデフォルト出力は**テスト本体の外（import 時のトップレベル実行）で出た stdout を表示しない**。import 時副作用を疑うときは必ずこれを付ける
 - **`hidden` を本数に数えない判断の効果は実測 1 号だった。** vol.001 の indie 1 本が `hidden: true`（過去 19 号で hidden は**この 1 件だけ**）。この判断で新たに不足として検出されるのは vol.001 のみ
 
 **前セッション（#310 / #309）からの申し送りのうち、まだ有効なもの**
@@ -2910,10 +2911,12 @@ hidden を除外しているのと同じ扱いに揃えた（`collectHiddenArtic
 （`:1019` / `:1036` / `:1100` / `:1163` / `:1202`）は全件正確**で、`grep -rn "6本\|6記事" src/`
 で**他ファイルに該当が無いこと**も確認した（範囲は狭すぎなかった）。
 
-**未対応（別途判断）**: `:1216` 以降のカテゴリ別カード「毎号 2 本掲載」等は Issue が対象外と
-しているため変更していない。ただし**新作紹介の「毎号 2 本掲載」は vol.017 / 019 で実際に 0 本**
-なので、断定としては同じ問題を抱えている。サマリ側が「最大6本」になったことで内訳との
-整合も気になるため、次に触るときに判断する。
+**未対応（別途判断）→ Issue #331**: `:1216` / `:1228` / `:1240` / `:1251` のカテゴリ別カード
+「毎号 2 本掲載」等は #311 が対象外としているため変更していない。ただし実測では
+**新作紹介の「毎号 2 本掲載」が 19 号中 4 号（015 / 017 / 018 / 019）で成立していない**（名作の
+「毎号 1 本」も vol.013 で不成立）ので、断定としては同じ問題を抱えている。加えて
+**サマリを「最大6本」にしたことで内訳を足すとちょうど 6 本になり**、上限か確約かが読者に
+判別できない不整合が生じた。表現の方針決定が先なので Issue に分離した。
 
 ### 検証
 
@@ -2946,11 +2949,40 @@ hidden を除外しているのと同じ扱いに揃えた（`collectHiddenArtic
 新設した根拠として「`main()` は `import.meta.url` ガードで守られているため import 時副作用なし」と
 書いている。**つまり規約は認識されていて、3 本だけ漏れている**という非対称。
 
-**`build-issue.test.ts` と `fetch-data.test.ts` はこの 2 本を import している**ので、
-テスト実行時に本番パイプラインが起動している。`git status` で確認した限り
-`src/content/` / `data/` に差分は出ておらず、**テストが先に終了するため書き込み前に落ちている**
-だけ。「現に壊れていない」がタイミング依存なので、Issue 化の候補（#311 とは別層のため本 PR では
-対応せず、ユーザー判断待ち）。
+**`build-issue.test.ts:13` と `fetch-data.test.ts:26` はこの 2 本を import している**ので、
+`npm run test` のたびに本番パイプラインが起動する。→ **Issue #330**（#311 とは別層のため PR #328 には含めない）。
+
+⚠️ **当初この節に「実害は出ていない」と書いたが誤りだった。** `git status` に差分が出ず、
+テスト出力にもログが見えなかったため「書き込み前に落ちている」と判断したが、**vitest の
+デフォルトレポータが import 時のトップレベル実行で出た stdout を表示しない**だけだった。
+`--reporter=verbose` で実測すると:
+
+```
+$ npx vitest run scripts/fetch-data.test.ts --reporter=verbose
+stdout | scripts/fetch-data.test.ts
+=== Game Wire Data Fetch ===
+Fetching data from all sources...
+Fetching Steam data... / Fetching YouTube data... / Fetching IGDB data...
+
+$ npx vitest run scripts/build-issue.test.ts --reporter=verbose
+stdout | scripts/build-issue.test.ts
+=== Game Wire Issue Builder ===
+Mode: PRODUCTION
+Output directory: .../src/content/issues
+Next issue number: 20
+```
+
+**確認済みの実害**: テストが Steam / YouTube / IGDB に実リクエストを飛ばしている
+（`.env.local` は dotenv が読むのでキーも渡る。CLAUDE.md が「API レート制限に注意（特に
+YouTube Data API）」と明記しているクォータをテストが消費している）。`build-issue.ts` は
+**PRODUCTION モード**で起動する（テストでは `DEV_MODE` 未設定のため `:24` の判定が false）。
+
+**未観測（コード実読による推論）**: 完走した場合の書き込み先は `build-issue.ts:661`
+（`issue-020.md` 新規作成）/ `:721`（`saveHistory` で `history.json` 書き換え）/ `:778`
+（`data/validation/` に本番レポート）。**実際に書かれたのは観測していない**が、到達しない保証も無い。
+
+**教訓: 「ログに出ていない」を「起きていない」と読んではいけない。** 観測手段の設定
+（レポータの verbosity）を先に確認する。
 
 ### 行番号のずれ（本 PR による）
 
