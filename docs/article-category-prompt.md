@@ -578,31 +578,31 @@ JSDoc を大幅に追記したため、**`formatSearchResultsForPrompt` より�
 | `buildNewReleaseSystemPrompt`（本PRで新設） | — | **:206** | 新設 |
 | `PromptTemplates.newReleaseSystem`（**関数生成に変更**。文字列リテラルではなくなった） | :123 | **:308** | +185 |
 | `PromptTemplates.indieSystem` | :189 | **:313** | +124 |
-| `PromptTemplates.featureSystem` | — | **:380** | — |
+| `PromptTemplates.featureSystem` | :256 | **:380** | +124 |
 | `PromptTemplates.classicSystem` | :306 | **:430** | +124 |
-| `PromptTemplates.titleSystem`（「本日発売」条項を追加） | — | **:488** | — |
-| `buildUserMessage`（`bedrock-client.ts`） | :412 | **:536** | +124 |
-| `searchReviews`（`fetch-web-search.ts`） | — | **:95** | 0 |
-| `searchDeveloperInfo`（`fetch-web-search.ts`。**OR は意図的に現状維持**） | — | **:107** | 0 |
+| `PromptTemplates.titleSystem`（「本日発売」条項を追加） | :364 | **:488** | +124 |
+| `buildUserMessage`（`bedrock-client.ts`） | :410 | **:536** | +126 |
+| `searchReviews`（`fetch-web-search.ts`） | :92 | **:95** | +3 |
+| `searchDeveloperInfo`（`fetch-web-search.ts`。**OR は意図的に現状維持**） | :104 | **:107** | +3 |
 | `searchUpcomingInfo`（本PRで新設） | — | **:155** | 新設 |
 | `searchGameInfo`（**第4引数が options オブジェクトに変更**） | :149 | **:169** | +20 |
 | `DEFAULT_SEARCH_CONTENT_MAX_LENGTH` | :226 | **:256** | +30 |
 | `readSearchContentMaxLength` | :240 | **:270** | +30 |
 | `formatSearchResultsForPrompt`（`【発売日・最新情報】`ブロック追加） | :257 | **:287** | +30 |
 | `flattenSearchResults`（`upcomingInfo` を連結に追加） | :319 | **:359** | +40 |
-| `UNRELEASED_TITLE_PATTERNS`（`validate-article.ts`） | — | **:803** | — |
-| `validateReleasedTitleExpression`（`validate-article.ts`） | :814 | **:822** | +8 |
+| `UNRELEASED_TITLE_PATTERNS`（`validate-article.ts`） | :803 | **:803** | 0 |
+| `validateReleasedTitleExpression`（`validate-article.ts`） | :813 | **:822** | +9 |
 | `splitIntoSentences`（本PRで新設） | — | **:863** | 新設 |
 | `EVALUATION_PATTERN` / `PRE_RELEASE_QUALIFIER_PATTERN`（本PRで新設） | — | **:872** / **:876** | 新設 |
 | `validateUpcomingEvaluationClaims`（本PRで新設） | — | **:913** | 新設 |
 | `validateArticle`（`validate-article.ts`） | :847 | **:981** | +134 |
-| `buildFixInstruction`（`upcoming-evaluation-claim` 分岐を追加） | :865 | **:1005** | +140 |
+| `buildFixInstruction`（`upcoming-evaluation-claim` 分岐を追加） | :870 | **:1005** | +135 |
 | `validateArticles`（`validate-article.ts`） | :911 | **:1052** | +141 |
 | `getJstDayStartUnixSec`（`fetch-igdb.ts`。**再エクスポートに変更**） | :557 | **:552**（`export {...} from './jst-date.js'`） | 移設 |
 | `IGDB_POOL_QUERY_FIELDS`（`release_dates.date` / `.date_format` を追加） | :796 | **:787** | −9 |
 | `hasConfirmedReleaseDate`（本PRで新設） | — | **:1045** | 新設 |
 | `fetchUpcomingGames`（`fetch-igdb.ts`） | :1024 | **:1057** | +33 |
-| `fetchClassicGames` / `fetchIndieGames`（`fetch-igdb.ts`） | — | **:1117** / **:1156** | — |
+| `fetchClassicGames` / `fetchIndieGames`（`fetch-igdb.ts`） | :1081 / :1120 | **:1117** / **:1156** | +36 |
 | `isWithinIndieReleaseWindow`（`fetch-data.ts`。JST基準・当日除外に変更） | :1065 | **:1070** | +5 |
 | `buildIndieCandidates`（`fetch-data.ts`） | :1120 | **:1129** | +9 |
 | `buildJudgeUserMessage`（`judge-article.ts`。`publishDate?` を追加） | :129 | **:129** | 0 |
