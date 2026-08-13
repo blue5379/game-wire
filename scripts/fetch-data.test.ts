@@ -2781,3 +2781,229 @@ describe('toPersistableSelectedGames — newReleasesReserves を直列化対象�
     expect(persistable.classic).toEqual(classicGame);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// deduplicateGames — steamRawDeveloper/steamRecommendations/igdbWebsites のマージ
+// （Issue #300: マージ漏れ3フィールドを塞ぐ）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('deduplicateGames — steamRawDeveloper/steamRecommendations/igdbWebsites のマージ (Issue #300)', () => {
+  it('Steam側がprimaryに選ばれるとき、IGDB側の重複から igdbWebsites を引き継ぐ', () => {
+    // primary 選定基準: steamRank を持つ Steam 側が primary になる
+    const steamEntry = makeGame({
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      steamAppId: 123,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const igdbEntry = makeGame({
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      steamAppId: 123,
+      source: ['igdb'],
+      igdbWebsites: [
+        { url: 'https://example.com/official', category: 1, type: 1 },
+        { url: 'https://store.steampowered.com/app/123', category: 13, type: 13 },
+      ],
+    });
+
+    const result = deduplicateGames([steamEntry, igdbEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].igdbWebsites).toEqual([
+      { url: 'https://example.com/official', category: 1, type: 1 },
+      { url: 'https://store.steampowered.com/app/123', category: 13, type: 13 },
+    ]);
+  });
+
+  it('Steam由来の2フィールド（steamRawDeveloper/steamRecommendations）を dup 側が持ち primary が持たない場合に引き継がれる', () => {
+    // dup 側が Steam 由来のフィールドを持つシナリオ（Steam 側が後から追加されて primary になる等）
+    const primaryEntry = makeGame({
+      title: 'Game A',
+      normalizedTitle: 'game a',
+      steamAppId: 111,
+      steamRank: 1,
+      source: ['igdb'],
+    });
+    const dupEntry = makeGame({
+      title: 'Game A',
+      normalizedTitle: 'game a',
+      steamAppId: 111,
+      source: ['steam'],
+      steamRawDeveloper: 'Ubisoft',
+      steamRecommendations: 5000,
+    });
+
+    const result = deduplicateGames([primaryEntry, dupEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].steamRawDeveloper).toBe('Ubisoft');
+    expect(result[0].steamRecommendations).toBe(5000);
+  });
+
+  it('境界値: dup.steamRecommendations が 0 のとき primary の undefined に対して 0 が正しく引き継がれる（|| 実装なら失敗）', () => {
+    const primaryEntry = makeGame({
+      title: 'Zero Rec',
+      normalizedTitle: 'zero rec',
+      steamAppId: 999,
+      steamRank: 1,
+      source: ['igdb'],
+      // steamRecommendations は undefined
+    });
+    const dupEntry = makeGame({
+      title: 'Zero Rec',
+      normalizedTitle: 'zero rec',
+      steamAppId: 999,
+      source: ['steam'],
+      steamRecommendations: 0, // 0 は有効値
+    });
+
+    const result = deduplicateGames([primaryEntry, dupEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].steamRecommendations).toBe(0); // ?? だけが正しく通す
+  });
+
+  it('境界値: primary が steamRecommendations = 0 を持ち dup が大きい値を持つ場合、primary の 0 が保持される', () => {
+    const primaryWith0 = makeGame({
+      title: 'Keep Zero',
+      normalizedTitle: 'keep zero',
+      steamAppId: 888,
+      steamRank: 1,
+      source: ['steam'],
+      steamRecommendations: 0,
+    });
+    const dupWithLarge = makeGame({
+      title: 'Keep Zero',
+      normalizedTitle: 'keep zero',
+      steamAppId: 888,
+      source: ['igdb'],
+      steamRecommendations: 9999,
+    });
+
+    const result = deduplicateGames([primaryWith0, dupWithLarge]);
+
+    expect(result[0].steamRecommendations).toBe(0); // 既存値を上書きしない
+  });
+
+  it('primary の既存値が上書きされないこと（3フィールドすべて）。ポジティブコントロールとして primary が値を持たないケースを同居させる', () => {
+    // ケース1: primary が全フィールドを持つ
+    const primaryFull = makeGame({
+      title: 'Full Primary',
+      normalizedTitle: 'full primary',
+      steamAppId: 111,
+      steamRank: 1,
+      source: ['steam'],
+      steamRawDeveloper: 'EA',
+      steamRecommendations: 100,
+      igdbWebsites: [{ url: 'https://primary.example.com' }],
+    });
+    const dupFull = makeGame({
+      title: 'Full Primary',
+      normalizedTitle: 'full primary',
+      steamAppId: 111,
+      source: ['igdb'],
+      steamRawDeveloper: 'Ubisoft',
+      steamRecommendations: 999,
+      igdbWebsites: [{ url: 'https://dup.example.com' }],
+    });
+
+    // ケース2: primary が全フィールドを持たない（ポジティブコントロール）
+    const primaryEmpty = makeGame({
+      title: 'Empty Primary',
+      normalizedTitle: 'empty primary',
+      steamAppId: 222,
+      steamRank: 2,
+      source: ['igdb'],
+    });
+    const dupEmpty = makeGame({
+      title: 'Empty Primary',
+      normalizedTitle: 'empty primary',
+      steamAppId: 222,
+      source: ['steam'],
+      steamRawDeveloper: 'Ubisoft',
+      steamRecommendations: 500,
+      igdbWebsites: [{ url: 'https://empty.example.com' }],
+    });
+
+    const result = deduplicateGames([primaryFull, dupFull, primaryEmpty, dupEmpty]);
+
+    const full = result.find((g) => g.title === 'Full Primary')!;
+    const empty = result.find((g) => g.title === 'Empty Primary')!;
+
+    // 既存値は上書きされない
+    expect(full.steamRawDeveloper).toBe('EA');
+    expect(full.steamRecommendations).toBe(100);
+    expect(full.igdbWebsites).toEqual([{ url: 'https://primary.example.com' }]);
+
+    // 値がない場合は補完される
+    expect(empty.steamRawDeveloper).toBe('Ubisoft');
+    expect(empty.steamRecommendations).toBe(500);
+    expect(empty.igdbWebsites).toEqual([{ url: 'https://empty.example.com' }]);
+  });
+
+  it('回帰の実害: steamRawDeveloper がマージされることで、isLargeStudio(merged.steamRawDeveloper).hit が true になる（大手ゲートが機能する）', async () => {
+    // isLargeStudio を import して使う
+    const { isLargeStudio } = await import('./indie-classifier.js');
+
+    // ケース1: Ubisoft（大手）
+    const largeSteam = makeGame({
+      title: 'Large Studio Game',
+      normalizedTitle: 'large studio game',
+      steamAppId: 333,
+      steamRank: 1,
+      source: ['igdb'],
+    });
+    const largeDup = makeGame({
+      title: 'Large Studio Game',
+      normalizedTitle: 'large studio game',
+      steamAppId: 333,
+      source: ['steam'],
+      steamRawDeveloper: 'Ubisoft Montreal', // LARGE_DEVELOPERS に含まれる
+    });
+
+    // ケース2: 大手でない社名（ポジティブコントロール）
+    const smallSteam = makeGame({
+      title: 'Small Studio Game',
+      normalizedTitle: 'small studio game',
+      steamAppId: 444,
+      steamRank: 2,
+      source: ['igdb'],
+    });
+    const smallDup = makeGame({
+      title: 'Small Studio Game',
+      normalizedTitle: 'small studio game',
+      steamAppId: 444,
+      source: ['steam'],
+      steamRawDeveloper: 'Tiny Indie Studio', // LARGE_DEVELOPERS に含まれない
+    });
+
+    const result = deduplicateGames([largeSteam, largeDup, smallSteam, smallDup]);
+
+    const large = result.find((g) => g.title === 'Large Studio Game')!;
+    const small = result.find((g) => g.title === 'Small Studio Game')!;
+
+    expect(isLargeStudio(large.steamRawDeveloper).hit).toBe(true);
+    expect(isLargeStudio(small.steamRawDeveloper).hit).toBe(false);
+  });
+
+  it('igdbWebsites が undefined のまま残るケース（両方持たない）', () => {
+    const primary = makeGame({
+      title: 'No Websites',
+      normalizedTitle: 'no websites',
+      steamAppId: 555,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const dup = makeGame({
+      title: 'No Websites',
+      normalizedTitle: 'no websites',
+      steamAppId: 555,
+      source: ['igdb'],
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result[0].igdbWebsites).toBeUndefined();
+  });
+});

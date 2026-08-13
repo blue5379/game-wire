@@ -601,10 +601,14 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       if (!primary.titleJa && dup.titleJa) primary.titleJa = dup.titleJa;
       // メタデータ: primary に欠けていれば補完
       primary.igdbSlug = primary.igdbSlug ?? dup.igdbSlug;
+      // igdbWebsites: Identity Resolver の store URL 解決に使う。空配列は undefined なので ?? で十分 (Issue #300)
+      primary.igdbWebsites = primary.igdbWebsites ?? dup.igdbWebsites;
       primary.genres = primary.genres.length ? primary.genres : dup.genres;
       primary.platforms = primary.platforms.length ? primary.platforms : dup.platforms;
       primary.releaseDate = primary.releaseDate ?? dup.releaseDate;
       primary.developer = primary.developer ?? dup.developer;
+      // steamRawDeveloper: 話題性ルートの大手ゲート + developer 充填元 (Issue #300)
+      primary.steamRawDeveloper = primary.steamRawDeveloper ?? dup.steamRawDeveloper;
       // developerGameCount は「マージ後の primary.developer」と dup 側の名前が一致する場合のみ
       // dup の件数を採る（コードレビュー指摘）。primary が既に件数を持つならそのまま
       // （pickDeveloperGameCount は currentCount が undefined のときだけ呼ばれる）。
@@ -620,6 +624,8 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.developerCountry = primary.developerCountry ?? dup.developerCountry;
       primary.coverImage = primary.coverImage ?? dup.coverImage;
       primary.screenshots = primary.screenshots ?? dup.screenshots;
+      // steamRecommendations: 話題性閾値判定用。0 は有効値なので ?? を使う (Issue #300)
+      primary.steamRecommendations = primary.steamRecommendations ?? dup.steamRecommendations;
       primary.summary = primary.summary ?? dup.summary;
       // スコア・人気指標は「より良い値」を採用
       primary.steamRank = Math.min(primary.steamRank ?? Infinity, dup.steamRank ?? Infinity);
