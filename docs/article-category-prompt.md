@@ -36,6 +36,7 @@
 | **#277 対応** | `fix/issue-277-canonical-display-name` | ✅ **マージ済み**（2026-08-12。マージコミット `50e2c7a`。通常マージ、squashではない） | **#277**（Closed）/ 関連 **#236**（本Issueの出所）・**#180**（ラベル方針の起源）・**#175**（上位タスク） / PR #291 | 29ファイル / **1212テスト**（着手前 1189。新規23件）。コミット1本（`fc191d1`）。`DeveloperEntry` に `displayName` フィールドを追加し、規模判定用の内部識別子（`canonical`）と読者向け表示名を分離。`displayName` を付けたのは3エントリのみ（`Nintendo EPD` → `任天堂`、`Xbox Game Studios` → `Microsoft`、`Bethesda Game Studios` → `Bethesda`）。`2K Games` と `PUBG Studios` は対象外と判断（別法人に化ける構造ではない）。**レビューで回帰を検出**: 初回実装は `game.developer` を `displayName` で上書きしていたが、これは `matchGameToSteamEntity` の company 軸を `disagree` へ転落させ、severity `high` の `game-source-mismatch` を誤発報する。管理者の実測で実害を確認し、上書き自体を撤去した。`/code-review` 指摘0件だが、docs stale 1件を管理者判断で採用（本docs PRで対応） |
 | **#289 対応** | `fix/issue-289-remove-featured` | ✅ **マージ済み**（2026-08-12。マージコミット `2c12b4d`。通常マージ、squashではない） | **#289**（Closed）/ 関連 **#232**（本Issueの出所）・**#293**（本PRの検討中に新規起票） / PR #294 | 29ファイル / **1214テスト**（着手前 1212。新規2件）。コミット1本（`5116768`）。**対処 (c) 削除を採用**: `SelectedGames.featured` フィールドと全消費者を削除。**Issue本文の「単調な変化」は不正確だった**: 実測で名作候補数は 176→177 件の単調増だが、**採用される1位が Witcher 3 → GTA V に入れ替わる非単調な変化**が生じた（`totalRatingCount` 降順で GTA V = 5896 > Witcher 3 = 5430）。`featured` は死んだ値ではなく、名作枠から1件を締め出すフィルタとして実質機能していた。削除を選んだ根拠3点: ①**ジャンル条件**に設計判断の記録が無い（ジャンルリストは Initial commit から不変。ただしスコア条件の側は `bb7cda2` / `5c9e9b4` で2度受動的に変化しており、当初「条件全体が不変」と書いたのは誤りだった → 実施結果節に訂正表あり） ②仕様 §4.2・§4.5 と正面から矛盾（特に **§4.6 は IGDB のテーマ分類を明示的に棄却済み**） ③除外は常に1件で順序が意味を持たない（`find` vs `filter`）。ミュータント検証4種のうち3種を検出、1種は構造的限界（`selectGamesForArticles` が export されていない）。`/code-review` は PR #294 で3件・本docs PR #295 で3件を検出。PR #294 側は全件不採用、**PR #295 側は1件（スコア条件の履歴の誤り）を管理者が `git show` で実在確認して採用** |
 | **#298 対応** | `fix/issue-298-remove-individual-developer-label` | ✅ **マージ済み**（2026-08-12。マージコミット `6dde6b5`。通常マージ、squashではない） | **#298**（Closed）/ 関連 **#284**（本Issueの出所）・**#297**（実例に重なっていた別作品メタデータ混入）・**#296**（同一性照合のスキップ）・**#300**（`/code-review` 指摘から新規起票）・**#97**（`個人開発` 表記の出所） / PR #299 | 29ファイル / **1213テスト**（着手前 1214。削除2件 + 追加1件）。コミット1本（`f5ddcf5`。`/code-review` 指摘は本PRでは修正せず Issue #300 に分離したため追加コミットは無い）。**着手前検証で Issue #284 の実例が別の欠陥の産物と判明**: `個人開発（Petroglyph）` は別作品メタデータ混入（→ #297）で、それが検出されなかった理由は同一性照合のスキップ（→ #296）。**ラベルは症状であって原因ではない**。実装: `formatIndividualDeveloper` 削除、`developer: finalizeResult.game.steamRawDeveloper` に変更、`?? 'unknown'` フォールバック削除。Steam生値は一次ソースの事実で、`NORMAL_REQUIRED.developer = true` を通り供給が減らない（案A）。**自前の検証機構が high で警告していた**: LLM-as-a-judge（`validation-report-019.json`）が「本作は個人開発（Petroglyph）によって制作された」を確信度95%で「明確な誤情報」と判定。同一性照合への影響は中立（実測）。ミュータント検証3種すべて検出。`/code-review` 2件のうち1件を **Issue #300** に分離（スコア75。`deduplicateGames` が `steamRawDeveloper` をマージしない既存問題） |
+| **#296 対応** | `fix/issue-296-visualize-identity-check-skip` | ✅ **マージ済み**（2026-08-13。マージコミット `490fd11`。通常マージ、squashではない） | **#296**（Closed）/ 関連 **#297**（別作品メタデータ混入）・**#298**（PR #299。本Issueの発覚源） / PR #303 | 29ファイル / **1220テスト**（着手前 1213。新規7件 + 既存1件の期待値更新）。コミット1本（`3e4e532`）。**着手前検証で Issue 本文の中心数値が誤りと判明**: `extractSteamAppIdFromArticle` は2経路を持つが集計で片方を数え落とし、スキップ率を実測の2倍（55.7% → 実測29.5%）に見積もっていた。対処案1（スクリーンショットから appId 抽出）の救済は「5件」ではなく **0件**。対処案2（`steamAppId` を `GeneratedArticle` に持たせる）は `completeness-gate.ts` の **R5**（`steamAppId` を直接読む同一性照合。`:311-370`）と重複。**同一性照合は二重化されており、上流側は appId を直接見ていた**。案3（スキップを観測可能にする）を採用。`validateGameSourceConsistency` に `severity=low` / `type=game-source-unchecked` 警告を追加（`:710-722`）。バッチ関数は `continue` を残したまま直前で警告を収集（API 呼び出し増加なし。レート制限対策は維持）。`build-issue.ts` で CI 出力（`:532-540`）とレポート記録（`:682-687`）。ミュータント検証3種すべて検出。`/code-review` 2件は両方とも不採用（誤検知）: `format-validation-report.ts` が総称レンダリングするため専用コードは不要（PR #271 の `adultScreeningFailures` はカウンタで構造が違う）/ JSDoc の fail-open は API 呼び出し後の別条件を指しており stale ではない |
 
 状態は `未着手` / `実装中` / `レビュー中` / `マージ済み` のいずれかで更新する。
 
@@ -3282,5 +3283,190 @@ LLM-as-a-judge の指摘（Issue #156 が扱う「Validation Report の活用方
 ### 症状の実例が別の欠陥の産物である可能性を疑う
 
 Issue が挙げた実例（`個人開発（Petroglyph）`）を追跡したら、そのIssueとは別の2つの欠陥（#296 の同一性照合スキップ / #297 の別作品メタデータ混入）が見つかった。ラベルを直しても実例は直らない。Issue の「実例」は、その Issue の原因の証拠とは限らない。
+
+---
+
+# PR #303: 同一性照合のスキップを可視化する（Issue #296）
+
+- **Issue**: #296（Closed）
+- **関連**: #297（別作品メタデータ混入。Issue #284 の実例の真因）、#298（`個人開発` ラベル。PR #299 の出所）
+- **PR**: #303
+- **ブランチ**: `fix/issue-296-visualize-identity-check-skip`
+- **マージ**: 2026-08-13（マージコミット `490fd11`。通常マージ、squashではない）
+- **コミット**: 1本（`3e4e532`）
+- **テスト**: 29ファイル / **1220テスト**全通過（着手前 1213。新規7件 + 既存1件の期待値更新）
+
+## 何が問題だったか
+
+### Issue 本文の主張
+
+Issue #296 は「`sourceUrls.steam` を持たない記事で同一性照合が丸ごとスキップされる（公開19号で88記事中49件・55.7%）」とし、3つの対処案を提示していた:
+
+1. スクリーンショットURLから appId を抽出する（救済5件）
+2. `GeneratedArticle` に `steamAppId` を持たせて `extractSteamAppIdFromArticle` の依存を減らす
+3. スキップされた記事を観測可能にする（**採用**）
+
+### 着手前の独立検証で判明した Issue 本文の誤り
+
+管理者が実コードとデータで検証した結果、**中心数値が誤っていた**:
+
+#### 訂正1: スキップ率は 49件・55.7% ではなく **26件・29.5%**
+
+`extractSteamAppIdFromArticle`（`validate-article.ts:658-672`）は appId の取得元を **2経路**持つ:
+
+- `sourceUrls.steam`
+- `sourceUrls.stores[]` の `platform==='steam'` の `url`
+
+Issue 本文はこの2経路を正しく引用していながら、集計では `stores[]` 経路を数え落としていたと考えられる。
+
+- `sourceUrls.steam` のみを見る数え方: **48件・54.5%**（Issue 本文の49件にほぼ一致。差1件は端の記事の扱いによると考えられる）
+- 実コードと同じ2経路で数える: **26件・29.5%**
+
+食い違いは新しい号に集中する（`stores[]` 形式が使われ始めたため）。号別の実測値:
+
+| 号 | Issue本文の主張 | 実測 |
+|---|---|---|
+| 013 | 3件 | 0件 |
+| 014 | 5件（全件） | 0件 |
+| 015 | 2件 | 0件 |
+| 016 | 4件 | 0件 |
+| 017 | 3件（全件） | 1件 |
+| 018 | 4件（全件） | 0件 |
+| 019 | 3件（全件） | 1件 |
+
+Issue 本文が「全件スキップで最悪」とした号のうち 014 / 018 は **実際には全件カバー済み**だった。
+
+なお `stores[]` の URL は末尾スラッシュ付き（例 `https://store.steampowered.com/app/3768760/`）だが、正規表現 `store\.steampowered\.com\/app\/(\d+)` は末尾の有無に依存しないため問題なく appId を抽出できることを実行確認した。
+
+#### 訂正2: 対処案1（スクリーンショットからの appId 抽出）の救済は5件ではなく **0件**
+
+Issue 本文は「救済できるのは49件中5件のみ（issue-013 / 014×2 / 017 / 019）」としていた。しかし **真にスキップされる26件**を対象に測ると救済は0件。Issue 本文が挙げた5件は、いずれも `stores[]` 経路で **すでに appId が取れている**記事だった。
+
+26件の `game` ブロックを走査したが、Steam CDN の `apps/<appid>/` を含む URL を持つ記事は1件も無い（カバー画像・スクリーンショットはすべて `images.igdb.com` 由来）。
+
+#### 訂正3: Issue 本文に記載のない既存機構 **R5**（`checkR5`）がある
+
+`scripts/completeness-gate.ts:311-370` に、`sourceUrls` に一切依存しない appId ベースの同一性照合が既に存在する:
+
+- `game.steamAppId` を直接読むため、Issue が問題にしているスキップが構造的に起きない
+- `matchGameToSteamEntity` の3軸照合を使う（`build-issue.ts` の `validateGameSourceConsistency` と共通）
+- `verdict=different` なら `ruleId: 'R5'` の violation を出す（`:337`。`RULE_REPLACEABLE` テーブル（`:43-53`）の `:52` で `R5: true` と定義されており、差し替え適格）
+- コード自身のコメント（ファイル冒頭のルール一覧、`:15`）が「生成後の `validateGameSourceConsistency`（build-issue）の前倒し版」と述べている
+- 実行順序: R5 は `fetch-data.ts` の `runCompletenessGate` 呼び出しで選定段階（`removeZombieGames` の直後・`selected-games.json` 書き出し前）、`validateGameSourceConsistency` は `build-issue.ts` で発行直前。**同一性照合は二重化されており、上流側は appId を直接見ている**
+- `data/validation-dev/completeness-report.json` の直近 dev 実行では R5 violation 0件・`uncertainIdentity` 0件（記録されていた違反は R1（`:6-8`）と R3（`:10-13`）が各1件）
+
+#### 訂正4: 対処案2（`GeneratedArticle` に `steamAppId` を持たせる）の効果は小さい見込み
+
+`data/selected-games.json`（n=6）の実測で `steamAppId` と `sourceUrls.steam` が完全に相関していた（両方あるか両方ないか）。これは設計によるもので、`fetch-data.ts` の reconcile 処理が「Resolver が Steam を解決できなくても `steamAppId` が既知なら `sourceUrls.steam` を保持する」「Steam URL が解決できたら `steamAppId` も埋める」という双方向の補完構造になっている。
+
+ただし n=6 かつ `fetchedAt=2026-05-16` の古いスナップショットなので、**ライブ測定で確定はしていない**。
+
+### 実測で裏付けられた点（案3を実施した根拠）
+
+1. **スキップは完全に silent**。appId 不在時の早期 return（修正前は `3e4e532^` 時点の `validate-article.ts:710` の `if (appId === undefined) return warnings;`）は警告を1件も出さない
+2. **`game-source-mismatch` / `game-source-uncertain` の発報実績が0件**。`data/validation*/validation-report-*.json` 全30件を JSON 走査して確認（**Issue 本文は「31レポート」としていたが実測30件**）
+
+## 採用した案（案3）とその理由
+
+案3「スキップされた記事を観測可能にする」を採用。理由:
+
+- 対処案1は救済0件（実測）
+- 対処案2は `steamAppId` と `sourceUrls.steam` が相関しており効果不明（n=6の小標本。ライブ測定は未実施）
+- 既存の R5（選定段階）が `steamAppId` を直接見て照合済みで、Issue が扱う発行段階の照合スキップは二重チェックの後段が動かないだけという位置づけ
+- スキップは silent で、照合が動いたが問題なかった場合と、そもそも照合が動かなかった場合の区別がつかない（実害は観測されていないが、観測手段が無い）
+
+## 実装
+
+### validate-article.ts
+
+`validateGameSourceConsistency`（`:698-769`）に `severity=low` / `type=game-source-unchecked` 警告を追加（`:710-722`）:
+
+- appId 未取得時に警告を push
+- feature 記事と `game` ブロック無し記事は対象外（`:704-707`。既存のガードより後ろに置いたので母数が水膨れしない）
+- メッセージに「appId は `sourceUrls.steam` または `sourceUrls.stores[]` の `platform='steam'` から抽出されます」と明記（`:719`）
+
+`validateGameSourceConsistencyForArticles`（`:775-797`）の変更:
+
+- 元は `appId === undefined` の場合に `continue` だけで丸ごとスキップしていた（`3e4e532^` 時点の `:771`）
+- 修正後も `continue` は残したまま、その直前に `validateGameSourceConsistency` を呼んで警告を収集する（`:786-789` のブロック。収集が `:787`、`continue` が `:788`）
+- **API 呼び出しは増えない**。appId が無い場合は `validateGameSourceConsistency` 内の早期 return（`:710`）で `fetchSteamEntity`（`:725`）を呼ぶ前に抜けるため。レート制限対策のディレイ（`STOREFRONT_REQUEST_DELAY_MS`）も、`first` フラグ（`:780`）を更新せずに `continue` するので実 API 呼び出しの間隔だけに効き続ける
+
+### build-issue.ts
+
+2箇所の変更:
+
+1. CI stdout への出力（`:532-540`。フィルタが `:532`、メッセージが `:536`）:
+   - `sourceCheckWarnings` を `game-source-unchecked` でフィルタし `uncheckedWarnings` に分離
+   - 件数と記事タイトルのリストを `console.warn` で出力
+   - `:536` のメッセージ `⚠️  game-source-unchecked (appId 未取得のため照合スキップ):`
+
+2. レポートへの反映（`:682-687`。コメント行が `:682`、加算が `:685-686`）:
+   - `uncheckedWarnings` を `report.warnings` に追加
+   - `report.totalWarnings` / `report.warningsBySeverity.low` をインクリメント
+
+### severity=low を選んだ理由
+
+fail 閾値は `VALIDATION_HIGH_THRESHOLD`（`:695`。コメントは `:694`）で high 件数のみを見る。`build-issue.ts` の hidden 化・号停止は `game-source-mismatch` のみが対象（2件以上で `process.exit(1)` が `:563`、1件なら hidden で続行が `:574`）。**severity=low なら号の発行判定に一切影響しない**。
+
+### 総称レンダリングが機能する理由
+
+`format-validation-report.ts` は `report.warnings` を総称的に全件レンダリングする（`:233-238` の `for (const w of report.warnings)` → `formatWarningBlock(w)`）。`ValidationWarning` として追加すれば既存経路に自動的に乗るため、新しい `type` ごとの専用コードは不要。
+
+PR #271 の `adultScreeningFailures` は `webSearchStats` の **カウンタ**で `report.warnings` に入らないため、専用の描画コードが必要だった（推奨アクションへの反映が `format-validation-report.ts:114-117`）。`/code-review` の指摘はこの構造の違いを見落としており、**類推が成立しない**。
+
+## テスト
+
+29ファイル / **1220テスト**全通過（着手前 1213。新規7件 + 既存1件の期待値更新）。
+
+### 新規7件
+
+`validate-article.test.ts` に追加:
+
+1. appId が取れない記事 → `game-source-unchecked` 警告（severity=low）が1件出る
+2. ポジティブコントロール: `sourceUrls.steam` を持つ記事 → unchecked 警告は出ない
+3. ポジティブコントロール: `sourceUrls.stores[]` 経由で appId が取れる記事 → unchecked 警告は出ない
+4. feature 記事は appId が無くても unchecked 警告を出さない
+5. `game` ブロック無し記事も unchecked 警告を出さない
+6. バッチ実行（`validateGameSourceConsistencyForArticles`）で appId 無し記事の警告を収集する
+7. バッチ実行で appId 無し記事のみの場合、Storefront fetch が1回も呼ばれない（レート制限対策の最適化が維持される）
+
+### 既存1件の期待値更新
+
+「Steam URL が無い記事は検証対象外（警告なし・API も呼ばない）」テスト（`3e4e532^` 時点の `:1220`）を、unchecked 警告が出る動作に合わせて改題・期待値変更した（現在の `:1221`）。
+
+### ミュータント検証（管理者が実施。3種すべて検出）
+
+| ミュータント | 結果 |
+|---|---|
+| `severity` を `low` → `medium` に変える | 2件 failed |
+| バッチ関数の警告収集を元の `continue` に戻す | 2件 failed |
+| 警告 push を feature / `game` ガードより前に移す（母数の水膨れ） | 2件 failed |
+
+## `/code-review` の結果
+
+5エージェントのうち3件が指摘ゼロ、2件が指摘。両方とも管理者が一次ソースで再検証して **不採用**（誤検知）と判定した:
+
+| 指摘 | スコア | 採否 | 根拠 |
+|---|---|---|---|
+| `format-validation-report.ts` にサマリ行・推奨アクション・ヘルパー関数を追加しておらず PR #271 の観測性パターンを完遂していない | 25 | **不採用** | `format-validation-report.ts:233-238` が `report.warnings` を総称的に全件レンダリングするため、`ValidationWarning` として追加すれば既存経路に自動的に乗る。PR #271 の `adultScreeningFailures` は `webSearchStats` の **カウンタ**で総称レンダリングの対象外だったため専用コードが必要だった＝**類推が成立しない** |
+| `validateGameSourceConsistency` の JSDoc「fail-open: …警告を出さない」が stale になった | 50 | **不採用** | JSDoc の当該文（`:695`）の主語は「Storefront API 不達・実体取得失敗時」で、これは `fetchSteamEntity`（`:725`）後の `if (!entity) return warnings;`（`:726`）を指す。この行は本PRで変更していないため記述は現在も正確。appId 不在は API 呼び出し前の別条件 |
+
+## 教訓
+
+### Issue 本文の数値は、その Issue 自身が引用しているコードと突き合わせて検算する必要がある
+
+Issue #296 は `extractSteamAppIdFromArticle` の2経路を正しく引用していながら、自分の集計では片方しか数えていなかった。その結果:
+
+- 実害の見積もりが約2倍に膨らんだ（55.7% → 29.5%）
+- 対処案の優先順位まで歪んだ（案1は「救済5件」ではなく救済0件、案2は既存 R5 と重複）
+- 「全件スキップで最悪」とした号（014 / 018）が実際には全件カバー済みだった
+
+**Issue の数値を信じる前に、Issue が根拠として引用しているコードで実データを追跡し、独立に測り直す必要がある。**
+
+### 同一性照合は二重化されていたが、片方しか知られていなかった
+
+`completeness-gate.ts` の R5（選定段階）と `validate-article.ts` の `validateGameSourceConsistency`（発行段階）は、両方とも `matchGameToSteamEntity` の3軸照合を使う同一チェック。R5 は `steamAppId` を直接読むため `sourceUrls` に依存しない。Issue が問題にしていたスキップは **二重チェックの後段が動かないだけ**という位置づけだった。
+
+コードには設計判断が書かれている（`completeness-gate.ts:15` の「前倒し版」というコメント）が、Issue #296 の起票時にはこの二重化が参照されていなかった。**同種の機構が複数レイヤーに分かれている場合、片方だけを見て実害を見積もると誤る。**
 
 ---
