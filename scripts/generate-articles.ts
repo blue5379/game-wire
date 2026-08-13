@@ -109,7 +109,10 @@ import type { SourceUrls } from './types.js';
 export interface WebSearchSource {
   url: string;
   title: string;
-  snippet: string; // content の先頭部分（sourcedFrom 判定用。最大長は fetch-web-search の SNIPPET_MAX_LENGTH）
+  // content の先頭部分（sourcedFrom 判定用）。最大長は fetch-web-search の
+  // readSearchContentMaxLength()（既定 1500）で、プロンプトに渡す抜粋と同一の上限を共有する
+  // （§5.6 修正2 / Issue #307。分けると根拠照合の偽陰性が復活する）
+  snippet: string;
 }
 
 /**
