@@ -734,13 +734,58 @@ export const featureThemeSelectionPrompt = `あなたはゲーム情報Webマガ
 - 出力: { "selectedEvent": "バレンタインデー", "theme": "バレンタイン特集：大切な人と一緒に遊べる協力ゲーム" }`;
 
 /**
+ * 特集テーマの選定結果（Issue #310 / PR-F）
+ */
+export interface FeatureThemeSelection {
+  /** 生成された特集テーマ（記事タイトル・ゲーム提案プロンプトに渡る） */
+  theme: string;
+  /**
+   * 実際にテーマとして使った記念日名（候補リストの `name` と一致するもの）。
+   *
+   * §4.4 の「除外対象は実際にテーマとして使った記念日のみ」を成立させるために返す。
+   * どの候補にも紐づけられなかった場合は `undefined`（誤った記念日を履歴に残さないため）。
+   */
+  selectedEventName?: string;
+}
+
+/**
+ * LLM が返した `selectedEvent` を候補リストの記念日名に紐づける（Issue #310）。
+ *
+ * LLM は `selectedEvent` に「4月10日 駅弁の日」のような飾りを付けたり、候補外の文字列を
+ * 返したりする。履歴に残すのは候補リストに実在する名前だけにしたいので、
+ * 完全一致 → `selectedEvent` への部分一致 → テーマ文への部分一致の順で同定し、
+ * どれにも当たらなければ `undefined` を返す。
+ */
+function matchSelectedEventName(
+  events: Array<{ name: string }>,
+  selectedEvent: string | undefined,
+  theme: string
+): string | undefined {
+  const exact = events.find((e) => e.name === selectedEvent);
+  if (exact) return exact.name;
+
+  if (selectedEvent) {
+    const inSelected = events.find((e) => selectedEvent.includes(e.name));
+    if (inSelected) return inSelected.name;
+  }
+
+  const inTheme = events.find((e) => theme.includes(e.name));
+  return inTheme?.name;
+}
+
+/**
  * AIを使って最適な特集テーマを選定
+ *
+ * 候補イベントの探索（未来方向 7 日 → 0 件なら過去方向 → 拡張未来方向）は呼び出し側の責務で、
+ * `selectFeatureEventCandidates`（`fetch-japanese-events.ts`）が担う。ここに残っている
+ * 「候補 0 件 → 固定文言」は、どの探索段階でも記念日が見つからなかったときの最後の砦
+ * （実データの 2026 年では到達しない。Issue #310）。
  */
 export async function selectFeatureThemeWithAI(
   events: Array<{ name: string; gameThemeHint: string }>
-): Promise<string> {
+): Promise<FeatureThemeSelection> {
   if (events.length === 0) {
-    return '今週の注目ゲーム特集';
+    return { theme: '今週の注目ゲーム特集' };
   }
 
   const eventList = events
@@ -765,7 +810,7 @@ JSON形式で出力してください。`;
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       console.warn('Failed to extract JSON from theme selection response');
-      return `${events[0].name}特集`;
+      return { theme: `${events[0].name}特集`, selectedEventName: events[0].name };
     }
 
     const parsed = JSON.parse(jsonMatch[0]) as {
@@ -774,14 +819,17 @@ JSON形式で出力してください。`;
     };
 
     if (parsed.theme && typeof parsed.theme === 'string') {
-      return parsed.theme;
+      return {
+        theme: parsed.theme,
+        selectedEventName: matchSelectedEventName(events, parsed.selectedEvent, parsed.theme),
+      };
     }
 
-    return `${events[0].name}特集`;
+    return { theme: `${events[0].name}特集`, selectedEventName: events[0].name };
   } catch (error) {
     console.error('Failed to select feature theme with AI:', error);
     // フォールバック: 最初のイベントを使用
-    return `${events[0].name}特集`;
+    return { theme: `${events[0].name}特集`, selectedEventName: events[0].name };
   }
 }
 

@@ -37,7 +37,14 @@ vi.mock('./fetch-igdb.js', () => ({
 vi.mock('./bedrock-client.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./bedrock-client.js')>()),
   invokeClaudeModel: vi.fn(),
-  selectFeatureThemeWithAI: vi.fn().mockResolvedValue('テスト特集テーマ'),
+  // 実装と同じ契約（{ theme, selectedEventName }）を返す。selectedEventName は
+  // 「候補の先頭を採用した」相当の値にして、記念日が記事データへ流れることを検証できるようにする
+  selectFeatureThemeWithAI: vi
+    .fn()
+    .mockImplementation(async (events: Array<{ name: string }>) => ({
+      theme: 'テスト特集テーマ',
+      selectedEventName: events[0]?.name,
+    })),
   proposeThemeGamesFromKnowledge: vi.fn().mockResolvedValue({ proposals: [] }),
   prefilterFeatureCandidatesByTheme: vi
     .fn()
@@ -65,12 +72,13 @@ vi.mock('./fetch-web-search.js', async (importOriginal) => ({
 
 import { __test, generateFeatureArticle } from './generate-articles.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
-import { invokeClaudeModel, selectFeatureGames } from './bedrock-client.js';
+import { invokeClaudeModel, selectFeatureGames, selectFeatureThemeWithAI } from './bedrock-client.js';
 import { isTavilyAvailable, searchGameInfo } from './fetch-web-search.js';
 
 const mockEnrich = vi.mocked(enrichGameWithIGDB);
 const mockInvoke = vi.mocked(invokeClaudeModel);
 const mockSelectFeatureGames = vi.mocked(selectFeatureGames);
+const mockSelectFeatureThemeWithAI = vi.mocked(selectFeatureThemeWithAI);
 const mockIsTavilyAvailable = vi.mocked(isTavilyAvailable);
 const mockSearchGameInfo = vi.mocked(searchGameInfo);
 
@@ -633,6 +641,125 @@ describe('generateFeatureArticle — ファンゲーム除外フィルタ (Issue
     } finally {
       // アサーション失敗時に console.log のスタブが後続テストへ漏れないよう finally で復元する
       logSpy.mockRestore();
+    }
+  });
+});
+
+/**
+ * 特集テーマのイベント探索と 0 件週フォールバック（Issue #310 / PR-F）
+ *
+ * `selectFeatureEventCandidates` 自体の単体テストは fetch-japanese-events.test.ts にある。
+ * ここでは generateFeatureArticle が
+ * (1) 探索結果をテーマ選定に渡し、(2) 採用した記念日を記事データ（featureEvent）に残し、
+ * (3) 除外リストを探索に伝える、という結線を実データで検証する。
+ */
+describe('generateFeatureArticle — イベント探索と 0 件週フォールバックの結線（Issue #310）', () => {
+  /** テーマ選定以降を最小構成で通すためのモック設定 */
+  function setupMinimalFeatureRun(): void {
+    mockSelectFeatureGames.mockResolvedValue(['Game A', 'Game B', 'Game C']);
+    mockInvoke.mockImplementation(async (systemPrompt: string) => {
+      if (systemPrompt.includes('コンテンツモデレーター')) return 'NO';
+      return 'テスト用ダミー応答。';
+    });
+    mockIsTavilyAvailable.mockReturnValue(false);
+  }
+
+  const candidates = [
+    makeGame({ title: 'Game A', normalizedTitle: 'game a', steamRank: 1 }),
+    makeGame({ title: 'Game B', normalizedTitle: 'game b', steamRank: 2 }),
+    makeGame({ title: 'Game C', normalizedTitle: 'game c', steamRank: 3 }),
+  ];
+
+  it('通常週（未来方向にイベントがある）は source=forward で記事データに記録される', async () => {
+    setupMinimalFeatureRun();
+
+    const { article } = await generateFeatureArticle(new Date('2026-08-08'), 999, candidates, []);
+
+    expect(article.featureEvent).toEqual({
+      eventName: '世界猫の日', // 2026-08-08 の窓の先頭
+      source: 'forward',
+      dayOffset: 0,
+    });
+    // 未来方向の窓の全件がテーマ選定に渡る（従来の挙動）
+    expect(mockSelectFeatureThemeWithAI).toHaveBeenCalledWith(
+      expect.arrayContaining([{ name: '山の日', gameThemeHint: expect.any(String) }])
+    );
+  });
+
+  it('イベント 0 件週（2026-08-22）は過去方向の記念日を採用し、固定文言に落ちない', async () => {
+    setupMinimalFeatureRun();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const { article, context } = await generateFeatureArticle(
+        new Date('2026-08-22'),
+        999,
+        candidates,
+        []
+      );
+
+      expect(article.featureEvent).toEqual({
+        eventName: '俳句の日', // 3 日前
+        source: 'backward',
+        dayOffset: -3,
+      });
+      // 固定文言ではなく記念日由来のテーマが使われている
+      expect(context.theme).not.toBe('今週の注目ゲーム特集');
+      // 過去方向の記念日の gameThemeHint がテーマ選定に渡る
+      expect(mockSelectFeatureThemeWithAI).toHaveBeenCalledWith([
+        { name: '俳句の日', gameThemeHint: '和文化ゲーム' },
+      ]);
+      // フォールバックの発火が出力に残る（§9.2-9）
+      expect(
+        warnSpy.mock.calls.some(
+          (c) => typeof c[0] === 'string' && c[0].includes('[feature-event-fallback]')
+        )
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('直近号が使った記念日は除外され、その次に近い記念日が採用される', async () => {
+    setupMinimalFeatureRun();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const { article } = await generateFeatureArticle(
+        new Date('2026-08-22'),
+        999,
+        candidates,
+        [],
+        undefined,
+        ['俳句の日']
+      );
+
+      expect(article.featureEvent).toEqual({
+        eventName: 'パイナップルの日', // 5 日前（-3 日の俳句の日は前号が使ったので除外）
+        source: 'backward',
+        dayOffset: -5,
+      });
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('再生成した記事にも同じ featureEvent が引き継がれる（履歴の記録が消えない）', async () => {
+    setupMinimalFeatureRun();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const { article, context } = await generateFeatureArticle(
+        new Date('2026-08-22'),
+        999,
+        candidates,
+        []
+      );
+      const regenerated = await __test.buildFeatureArticleFromContext(context, '修正指示');
+
+      expect(regenerated.featureEvent).toEqual(article.featureEvent);
+    } finally {
+      warnSpy.mockRestore();
     }
   });
 });

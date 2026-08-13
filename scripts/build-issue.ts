@@ -14,7 +14,8 @@ import * as path from 'node:path';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
-import { saveHistory, createHistoryEntry } from './game-history.js';
+import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
+import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
 import { judgeArticles } from './judge-article.js';
 
@@ -165,6 +166,50 @@ export function isCriticallyIncompleteArticle(article: GeneratedArticle): boolea
   const hasCover = Boolean(game.coverImage);
   const hasAnyMeta = Boolean(game.developer || game.publisher || game.releaseDate);
   return !hasCover && !hasAnyMeta;
+}
+
+/**
+ * 特集が実際にテーマとして使った記念日を履歴エントリに変換する（§4.4 / Issue #310）。
+ *
+ * 記録するのは記念日名が同定できたものだけ（誤った記念日を履歴に残すと、次号以降の除外が
+ * 見当違いの記念日を弾いてしまう）。同定できなかった場合も、`source` がフォールバックなら
+ * その事実は出力に残す（§9.2-9。フォールバックが発火した号を後から判別できるようにする）。
+ *
+ * hidden 記事のフィルタは掛けない。特集ゲームの履歴記録（上記 recommendedGames のループ）と
+ * 同じ扱いで、テーマの反復を防ぐこと自体は記事の掲載可否と独立しているため。
+ */
+export function collectFeatureEventHistoryEntries(
+  articles: GeneratedArticle[],
+  issueNumber: number,
+  publishDateStr: string
+): FeatureEventHistoryEntry[] {
+  const entries: FeatureEventHistoryEntry[] = [];
+
+  for (const article of articles) {
+    const featureEvent = article.category === 'feature' ? article.featureEvent : undefined;
+    if (!featureEvent) continue;
+
+    if (featureEvent.source !== 'forward') {
+      console.log(
+        `  [feature-event-fallback] issue #${issueNumber}: source=${featureEvent.source}` +
+          `${featureEvent.dayOffset !== undefined ? ` offset=${featureEvent.dayOffset}日` : ''}` +
+          `${featureEvent.eventName ? ` event=${featureEvent.eventName}` : ''}`
+      );
+    }
+
+    if (featureEvent.eventName) {
+      entries.push(
+        createFeatureEventHistoryEntry(
+          featureEvent.eventName,
+          featureEvent.source,
+          issueNumber,
+          publishDateStr
+        )
+      );
+    }
+  }
+
+  return entries;
 }
 
 /**
@@ -650,9 +695,20 @@ async function main(): Promise<void> {
     }
   }
 
-  if (historyEntries.length > 0) {
-    saveHistory(historyEntries);
-    console.log(`Added ${historyEntries.length} entries to history`);
+  const featureEventEntries = collectFeatureEventHistoryEntries(
+    generatedIssue.articles,
+    issueNumber,
+    publishDateStr
+  );
+
+  if (historyEntries.length > 0 || featureEventEntries.length > 0) {
+    saveHistory(historyEntries, featureEventEntries);
+    console.log(
+      `Added ${historyEntries.length} entries to history` +
+        (featureEventEntries.length > 0
+          ? ` (+ ${featureEventEntries.length} feature event(s))`
+          : '')
+    );
   } else {
     console.log('No entries to add to history');
   }
