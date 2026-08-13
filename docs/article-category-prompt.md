@@ -2,7 +2,7 @@
 
 ---
 
-# 🧭 現在地（最終更新: 2026-08-13）
+# 🧭 現在地（最終更新: 2026-08-13。#309 のセッション終了時点）
 
 > **このブロックは毎セッションの終わりに必ず更新する。** 本ファイルは 3,800 行を超えており、
 > セッション冒頭に全体を掴む入口が必要なため先頭に置いてある。
@@ -10,19 +10,20 @@
 
 | | |
 |---|---|
-| **§8 実装計画表** | **11 / 15 行 完了** |
-| **次に着手する 1 件** | **#309**（PR-C。未発売記事の分岐・3値化・JST統一） |
-| その次 | #308（PR-F0）→ #310（PR-F）→ #311（PR-G） |
+| **§8 実装計画表** | **12 / 15 行 完了** |
+| **次に着手する 1 件** | **#308**（PR-F0。発行日の JST 化） |
+| その次 | #310（PR-F）→ #311（PR-G） |
 | ブロック中 | なし |
-| `monitoring`（着手しない） | #239 / #240 / #251 / #285 / **#317** / **#318** |
+| `monitoring`（着手しない） | #239 / #240 / #251 / #285 / #317 / #318 |
 
-**直近セッションからの申し送り（2026-08-13。#297 のセッション）**
+**直近セッションからの申し送り（2026-08-13。#309 のセッション）**
 
-- **#297 は原因が既修正だった。** 発生源は Steam Featured Categories の `(item.id, item.name)` ペア崩れで、**Issue #102 / #103（PR #104。`a1e4f40`）が 2026-06-20 22:03 に修正済み**。混入記事 `issues-dev/issue-019.md` は同日 19:52 生成 = 修正の 2 時間 11 分前の生成物だった。**#239 の監視解除条件には該当しない**（原因候補2ではなかった）
-- **事後の同一性照合の verdict ではこのクラスを落とせない。** 混入した値が照合の裏付け軸（year / company）を自分で供給するため、判定表の規則5で `uncertain` にしかならず `different` にならない（#296 の実測）。**混入を止める防御は採用時点にしか置けない。** ただし**指紋（`title=disagree` かつ `year=agree`）を観測するだけなら事後でも可能**で、それが #317 の対処案(c) → 未防御経路を **#317**、それに使える孤立関数を **#318** として分離（どちらも実測0件で `monitoring`）
-- **#316 は本番コード無変更（テスト+フィクスチャのみ）なので、行番号の追加のずれは無い**
-- PR-E（#307）以降 **#309 は `fetch-web-search.ts` の行番号がずれたまま**（`formatSearchResultsForPrompt` 以降 +41〜+45）。下記「行番号は必ず自分で確認する」節の PR #313 の表に、#309 が引き直すべき現在位置をまとめてある
-- DEV_MODE 実行で judge が『ほの暮しの庭』の「発売中」を確信度 95% で contradicted と判定。**#309 の担当範囲に実データの裏付けがある**
+- **#309 は Issue が 6 サブ項目としていたが実際は 7 項目だった。** §2.4 の「確定日のみ」フィルタ（`release_dates.date_format`）を **PR-C の担当と明記した箇所が 2 つ**あった（`fetch-igdb.ts` の `fetchUpcomingGames` JSDoc / 本ファイルの「PR-A 実施結果」節）のに、Issue 本文と PR-C 節のどちらにも無かった。`grep date_format scripts/` は**そのコメント 1 件だけ**で実装ゼロ。**「§8 に行があるのに Issue が無い」の変種として、「コードのコメントが担当PRを指しているのに Issue にも指示書の該当節にも無い」がある。** 着手時は担当PR名で `grep -rn "PR-<X>" scripts/` を必ず打つこと
+- **`getReleaseStatus` の UTC の穴は潜在的で到達不能だった。** 本番の `publishDate` は 4 経路すべて `new Date('YYYY-MM-DD')`（UTC 0時）由来なので、日付同士の比較になっていた。実際に到達していたのは `isWithinIndieReleaseWindow` の `now.toISOString()` 側で、**JST 09:00〜23:59 の間だけ当日発売作が `>` をすり抜けて indie 枠に入り得た**（JST 00:00〜08:59 は偶然除外できていた）。**Issue の「9時間の穴」の記述は場所が違う**
+- **vol.3 の回帰テストと「発売前の先行プレイで好評」の非誤検出は両立する。** vol.3 の本文はまさに「先行プレイしたユーザーからは…高く評価されています」だったので一見矛盾するが、**文単位の除外ウィンドウ**にすれば summary（限定語なし）と本文2文目（「…点が好評です」）で検出され、限定語を含む1文目だけが除外される。実データで独立確認済み（警告2件 / 負例0件）
+- **プロンプト全文スナップショットテストは強力な検証レバー。** `bedrock-client.test.ts` の `newReleaseSystem` 全文アサートを**1文字も書き換えずに**通せたことが「発売済み記事の挙動を変えていない」証明になった。プロンプトを関数生成に変える改修では、この不変性を先に固定してから分岐を足すこと
+- **`buildIndieCandidates` は `publishDate` を使っていない**（`fetch-data.ts:1129` が `isWithinIndieReleaseWindow(g)` を引数なしで呼ぶため実時刻判定）。PR-C のスコープ外として残した。**#308（発行日の決定を JST 化）と同じレイヤーの話なので、#308 の着手時に一緒に見ると効率がよい**
+- **#308 は PR-C の成果物を再利用できる。** 新設した `scripts/jst-date.ts` の `getJstDateString` がそのまま使える（レイヤーは違うが道具は共通）
 - `IGDB enrich rejected` のログは `fetch-data.ts:113` と `:321` で**別物**。#239 の監視解除条件は `:321` のみ（`:113` は該当しない）
 
 ## 進め方（2026-08-13 にユーザーと合意。以後これに従う）
@@ -72,7 +73,7 @@
 | PR-B2 | `feat/issue-238-domestic-sales-axis` | ✅ **マージ済み**（2026-08-09。`0a304eb`。squash） | **#238 / #244**（両方 Closed）/ PR #249 | **ブランチ名は当初案の `feat/domestic-sales-axis` から `feat/issue-238-domestic-sales-axis` に変更**。27ファイル / **1021テスト**（着手前 26 / 973）。コミット2本（実装 → レビュー対応）。**新規スクリプト `scripts/fetch-amazon-ranking.ts` を追加**。`/code-review` の指摘6件の内訳は **3件を本PRで修正 / 1件を一部修正（投機的な部分は見送り） / 2件を別Issueに分離**（#250 / #251。うち #251 は実データで懸念が再現しなかったもの）。**#244 の受け入れ条件は実データで再現しなかった**（下記「実施結果」に詳述）。**ミュータント検証20種を管理者が実施し、全種でテストが検出することを確認した** |
 | **#241 対応** | `fix/issue-241-newrelease-population-window` | ✅ **マージ済み**（2026-08-09。`31770bc`。squash） | **#241**（Closed）/ 関連 #238・**#244** / PR #243 | 26ファイル / **968テスト**（着手前 960）。コミット2本（実装 → レビュー対応）。発売済みクエリに上限を追加 + 未発売クエリ `fetchUpcomingGames` を新設 + レビュー指摘を受けて発売済みを **2 本立て**（`hypes desc` / `rating_count desc` の和集合）に。実測: プール内の 60 日窓の発売済み **4 → 73 件**、未発売 16 → 23 件（供給維持）、実行時間 2:39 → 2:45。**選定結果は今週のデータでは不変**（下流の品質条件が Steam 依存のため。→ #238）。**仕様の矛盾を 1 件発見 → #244** |
 | **#234 対応** | `fix/issue-234-website-type` | ✅ **マージ済み**（2026-08-09。`bd71e4f`。squash） | **#234**（Closed）/ 分離 **#247** / PR #246 | 26ファイル / **973テスト**（着手前 968）。コミット2本（実装 → レビュー対応）。`websites.category` → `type` 改名に追従し `pickOfficialUrlFromWebsites` を復旧。`IGDB_WEBSITE_TYPE` 定数を新設し `website_types` の実測値域を記録。mapper 2 箇所の `category ?? 0` 握り潰しを廃止。**Issue の影響表に無い3箇所目 `fetchGameImageAndUrl` を発見し削除**（呼び出し元ゼロだが #117 で廃止したブロックリスト方式フォールバックを保持していた）。実測: `enrichGameWithIGDB` で 8 タイトル中 **5 件**が `officialUrl` 取得（修正前は構造的に 0 件）。**レビュー指摘から既存欠陥 1 件を分離 → #247** |
-| PR-C | `fix/issue-309-unreleased-article-branching` | 未着手 | **#309** | PR-E と同じ箇所を触る。どちらか先に入れて他方をリベース。**残り5件のうち最大**（サブ項目6つ）。ブランチ名は当初案の `feat/unreleased-article-branching` から Issue 番号入りに変更 |
+| PR-C | `fix/issue-309-unreleased-article-branching` | ✅ **マージ済み**（2026-08-13。マージコミット `7a64275`。通常マージ、squashではない） | **#309**（Closed）/ PR #320 | 30ファイル / **1337テスト**（着手前 29 / 1237。**新規1ファイル・+100テスト**）。コミット2本（実装 `2953dd6` → `/code-review` 指摘対応 `b79c8d2`）。**Issue は6サブ項目だったが実際は7項目**（§2.4 の確定日フィルタが漏れていた。上記「申し送り」参照）。新設 `scripts/jst-date.ts`。**`PromptTemplates.newReleaseSystem` はバイト単位で不変**（全文スナップショットを書き換えずに通した = 発売済み記事の挙動不変の証明）。`/code-review` は5エージェント中4つが指摘なし、1件（本日発売プロンプトの矛盾指示）を採点100で採用し本PRで修正。ブランチ名は当初案の `feat/unreleased-article-branching` から Issue 番号入りに変更 |
 | PR-D | `refactor/remove-metacritic-path` | ✅ **完了**（単独ブランチではなく PR #258 に吸収） | - | **このブランチ自体は使われなかった。** 実際の作業は下記 **`#253` 対応**行（PR #258）としてマージされた。名作枠PR（#254）マージ後に着手されたため、当初想定していた競合は発生しなかった |
 | **#253 対応** | `fix/issue-253-qualified-game-cleanup` | ✅ **マージ済み**（2026-08-10。マージコミット `0af2a36`。通常マージ、squashではない） | **#253**（Closed）/ 関連 **#251**（Open のまま。コード変更なし） / PR #258 | PR-D が担当する予定だった `metascore` 削除を吸収 + `steamPlayers` の恒常的デッドコードを発見して削除 + `igdbRating` レスキュー経路を維持して仕様書に明文化。29ファイル / **1101テスト**（着手前 1106）。コミット2本（実装 `5c9e9b4` → `/code-review` 指摘2件の対応 `44bec5b`） |
 | 名作枠PR | `feat/issue-classic-slot-population` | ✅ **マージ済み**（2026-08-09。`0a2b025`。merge commit） | 関連 **#238** / PR #254 | **ブランチ名は当初案の `feat/classic-slot-redesign` から変更**。29ファイル / **1106テスト**（着手前 27 / 1021）。コミット2本（実装 → レビュー対応）。母集団条件を評価母数ベース（`total_rating >= 85 & total_rating_count >= 200`）に変更し、選定側 `buildClassicCandidates` も同条件に一本化。実測: **名作枠選定が `Splatoon Raiders` → `The Witcher 3: Wild Hunt` に変化**、他枠は不変。**着手前検証で `parent_game` が展開可能なことを発見**し、決着ブロックが前提としていた ID 集合照合が不要になった（`igdbId` 追加も不要）。**レビューで欠陥1件を検出・修正**（親の `game_type` を見ずに `Final Fantasy VII Remake` を誤除外）。**`/code-review` 指摘4件のうち2件を本PRで対応**（選定側の `game_type` ゲート欠落・`limit 200` の非対称）、**2件を #255 / #256 に分離**（Creator's Eye の影響記述要求・特集プレフィルタのプロンプト肥大） |
@@ -129,7 +130,7 @@
 | 4 | Steam 経路の DLC・サントラ混入（§6.1） | ✅ #226 | 選定 |
 | 5 | 特集の実在検証にフィルタが無く成人向け・DLC が素通り（§4.5） | ✅ #219 / #220 / #288 | 選定 |
 | 6 | 特集がイベント 0 件週に「人気順の先頭」へ収束（重複 50%。§4.3） | ❌ **#310 / #308** | 生成 |
-| 7 | 未発売タイトルへの評価断定ハルシネーション（vol.3 / vol.9。§2.5-2.7） | ❌ **#309** | 生成 |
+| 7 | 未発売タイトルへの評価断定ハルシネーション（vol.3 / vol.9。§2.5-2.7） | ✅ **#309 / PR #320**（2026-08-13） | 生成 |
 | 8 | 抜粋 300 字 vs バリデータ 1,500 字 → ハルシネーションが「根拠あり」判定（§5.6） | ✅ **#307 / PR #313**（2026-08-13） | 検証 |
 | 9 | 本数不足に気づけない（vol.13 の名作 0 本が今回初めて判明。§6.4） | ❌ **#311** | 検証 |
 
@@ -145,8 +146,9 @@
 |---|---|---|
 | ~~1~~ | ~~**#297**（別作品メタデータ混入）~~ | ✅ **完了**（2026-08-13。PR #316。マージ `df47cc4`）。**原因は既修正の #102 / #103 だった**（Featured Categories の `(id, name)` ペア崩れ。混入記事は修正の 2 時間 11 分前の生成物）。対処は回帰テストのみ・本番コード無変更。未防御経路を #317 / #318 に分離 |
 | ~~2~~ | ~~**#307**（PR-E。抜粋 300→1,500字）~~ | ✅ **完了**（2026-08-13。PR #313。マージ `dd8e8e9`）。受け入れ条件の DEV_MODE 検証まで実施済み |
-| **1**（繰り上げ） | **#309**（PR-C。未発売記事の分岐・3値化・JST統一） | 実際に事故が 2 件（vol.3 / vol.9）。**#307 が先に入ったので PR-C 側がリベースする**（`fetch-web-search.ts` の行番号が +41〜+45 ずれている。上記「行番号は必ず自分で確認する」節の PR #313 の表を参照。**#316 は本番コード無変更なので追加のずれは無い**）。DEV_MODE 検証で judge が『ほの暮しの庭』の「発売中」を確信度 95% で contradicted と判定しており、**この症状が PR-C の担当範囲にあることが実データで確認できている** |
-| **2** | **#308**（PR-F0）→ **#310**（PR-F） | 特集がイベント0件週に重複50%へ収束する。#308 が #310 の測定前提 |
+| ~~3~~ | ~~**#309**（PR-C。未発売記事の分岐・3値化・JST統一）~~ | ✅ **完了**（2026-08-13。PR #320。マージ `7a64275`）。**Issue の6サブ項目に対し実装は7項目**（§2.4 の確定日フィルタが Issue にも PR-C 節にも無かった）。実測で未発売母集団33件中4件が非確定日 |
+| **1**（繰り上げ） | **#308**（PR-F0。発行日の JST 化） | **#310 の測定前提**（§9.3-2 自身が「PR-F の着手前に対応する」と定めている）。発行日が1日ずれると `getEventsInRange(publishDate, 7)` が拾う記念日が変わるため、#310 を先にやると測定基準が動く。**PR-C が新設した `scripts/jst-date.ts` の `getJstDateString` を再利用できる。** 併せて `buildIndieCandidates` が `publishDate` を使っていない件（PR-C の申し送り）も同レイヤーなので一緒に見るとよい |
+| **2** | **#310**（PR-F。特集のイベント0件週フォールバック） | 特集がイベント0件週に重複50%へ収束する。#308 の後 |
 | **3** | **#311**（PR-G。本数不足の検出） | 着手前に §9.1 保留1（high の再定義）をユーザー確認 |
 
 **#297 を #309 より先にすることは 2026-08-13 にユーザーが確認済みだった**（観測済みの実害があり、かつ `issues-dev/` が gitignore のため先送りのコストが増え続ける唯一の項目だったから）。結果として**原因は既修正で、先送りのコストという判断根拠は正しかった**（`issues-dev/issue-019.md` はまだ残っていたので指紋照合ができた。あと数日で失われていた可能性がある）。
@@ -563,7 +565,62 @@ JSDoc を大幅に追記したため、**`formatSearchResultsForPrompt` より�
 **`generate-articles.ts` はコメントを3行に分けたため `:112` 以降が +3 ずれた**（型定義そのものの位置 `:109` は不変）。
 `_releaseStatus` は :197 → **:200**。
 
-**PR-C（#309）が着手時に引き直すべき現在位置**（2026-08-13。`dd8e8e9` 時点の実測）:
+⚠️ **さらに PR #320（Issue #309 / PR-C。マージ `7a64275`）で 7 ファイルの行番号が大きくずれ、`scripts/jst-date.ts` が新設された。**
+`bedrock-client.ts` は `getReleaseStatus` の JSDoc 追記と `buildNewReleaseSystemPrompt` の新設で **`:99` 以降が +100 前後**ずれる。
+`validate-article.ts` は `validateUpcomingEvaluationClaims` の新設で **`:822` 以降が +40 前後**。**ずれ幅は一様ではない。**
+マージ後の実測値（2026-08-13。`2953dd6^` → `7a64275`）:
+
+| シンボル（ファイル） | PR #320 前 | PR #320 後 | ずれ |
+|---|---|---|---|
+| `ReleaseStatus` 型（`bedrock-client.ts`。本PRで新設） | — | **:99** | 新設 |
+| `getReleaseStatus`（`bedrock-client.ts`） | :99 | **:128** | +29 |
+| `isUpcomingForBody`（本PRで新設） | — | **:170** | 新設 |
+| `buildNewReleaseSystemPrompt`（本PRで新設） | — | **:206** | 新設 |
+| `PromptTemplates.newReleaseSystem`（**関数生成に変更**。文字列リテラルではなくなった） | :123 | **:308** | +185 |
+| `PromptTemplates.indieSystem` | :189 | **:313** | +124 |
+| `PromptTemplates.featureSystem` | :256 | **:380** | +124 |
+| `PromptTemplates.classicSystem` | :306 | **:430** | +124 |
+| `PromptTemplates.titleSystem`（「本日発売」条項を追加） | :364 | **:488** | +124 |
+| `buildUserMessage`（`bedrock-client.ts`） | :410 | **:536** | +126 |
+| `searchReviews`（`fetch-web-search.ts`） | :92 | **:95** | +3 |
+| `searchDeveloperInfo`（`fetch-web-search.ts`。**OR は意図的に現状維持**） | :104 | **:107** | +3 |
+| `searchUpcomingInfo`（本PRで新設） | — | **:155** | 新設 |
+| `searchGameInfo`（**第4引数が options オブジェクトに変更**） | :149 | **:169** | +20 |
+| `DEFAULT_SEARCH_CONTENT_MAX_LENGTH` | :226 | **:256** | +30 |
+| `readSearchContentMaxLength` | :240 | **:270** | +30 |
+| `formatSearchResultsForPrompt`（`【発売日・最新情報】`ブロック追加） | :257 | **:287** | +30 |
+| `flattenSearchResults`（`upcomingInfo` を連結に追加） | :319 | **:359** | +40 |
+| `UNRELEASED_TITLE_PATTERNS`（`validate-article.ts`） | :803 | **:803** | 0 |
+| `validateReleasedTitleExpression`（`validate-article.ts`） | :813 | **:822** | +9 |
+| `splitIntoSentences`（本PRで新設） | — | **:863** | 新設 |
+| `EVALUATION_PATTERN` / `PRE_RELEASE_QUALIFIER_PATTERN`（本PRで新設） | — | **:872** / **:876** | 新設 |
+| `validateUpcomingEvaluationClaims`（本PRで新設） | — | **:913** | 新設 |
+| `validateArticle`（`validate-article.ts`） | :847 | **:981** | +134 |
+| `buildFixInstruction`（`upcoming-evaluation-claim` 分岐を追加） | :870 | **:1005** | +135 |
+| `validateArticles`（`validate-article.ts`） | :911 | **:1052** | +141 |
+| `getJstDayStartUnixSec`（`fetch-igdb.ts`。**再エクスポートに変更**） | :557 | **:552**（`export {...} from './jst-date.js'`） | 移設 |
+| `IGDB_POOL_QUERY_FIELDS`（`release_dates.date` / `.date_format` を追加） | :796 | **:787** | −9 |
+| `hasConfirmedReleaseDate`（本PRで新設） | — | **:1045** | 新設 |
+| `fetchUpcomingGames`（`fetch-igdb.ts`） | :1024 | **:1057** | +33 |
+| `fetchClassicGames` / `fetchIndieGames`（`fetch-igdb.ts`） | :1081 / :1120 | **:1117** / **:1156** | +36 |
+| `isWithinIndieReleaseWindow`（`fetch-data.ts`。JST基準・当日除外に変更） | :1065 | **:1070** | +5 |
+| `buildIndieCandidates`（`fetch-data.ts`） | :1120 | **:1129** | +9 |
+| `buildJudgeUserMessage`（`judge-article.ts`。`publishDate?` を追加） | :129 | **:129** | 0 |
+| `judgeArticle` / `judgeArticles`（`publishDate?` を追加） | :277 / :299 | **:299** / **:327** | +22 / +28 |
+| `generateNewReleaseArticle`（`generate-articles.ts`） | :353 | **:354** | +1 |
+| `_releaseStatus`（`generate-articles.ts` の `generateTitle` 内） | :200 | **:201** | +1 |
+
+新設ファイル `scripts/jst-date.ts` の主要シンボル（新規なので初出の位置として別記）:
+`getJstDateString` **:45** / `getJstDayStartUnixSec` **:68**。
+
+**特筆すべき点**: `PromptTemplates.newReleaseSystem` は **`buildNewReleaseSystemPrompt('発売済み')` の呼び出しになった**ので、
+プロンプト文面を探して `grep` しても `PromptTemplates` 付近には無い。文面は `buildNewReleaseSystemPrompt`（`:206`）の中にある。
+`searchGameInfo` は**第4引数が `{ releaseYear?, releaseStatus? }` の options オブジェクトに変わった**ので、
+過去の「第4引数に発売年を渡す」という記述はすべて無効。
+
+---
+
+**PR-C（#309）が着手時に引き直すべき現在位置**（2026-08-13。`dd8e8e9` 時点の実測。**#309 は完了済みなのでこの表は歴史的記録**）:
 
 | シンボル | 位置 |
 |---|---|
@@ -1540,6 +1597,10 @@ Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
 
 # PR-C: 未発売記事の構成分岐 + 発売状態の3値化とJST統一
 
+> ✅ **実装完了・レビュー対応済み・マージ済み（2026-08-13）。PR #320（マージ `7a64275`）。Issue #309 は Closed。**
+> 以下は当初の指示だが、**着手前検証で「実装内容（5つ）」の見出しに対し実際は 7 項目だったことが判明**したので、
+> **「実施結果」節を必ず読むこと。**
+
 - ブランチ: `fix/issue-309-unreleased-article-branching`（当初案は `feat/unreleased-article-branching`。→ **Issue #309**）
 - 仕様: §2.5、§2.6、§2.7、§2.8、§3.2（インディーは発売済みのみ）
 - 決着ブロック: `grep -n "N-5" docs/article-category-spec-review.md`
@@ -1586,6 +1647,92 @@ Fire Emblem: Fortune's Weave / Onimusha: Way of the Sword / Star Fox。
 ## テスト
 
   境界値が多い。JST当日0時の前後1秒、当日発売、翌日0時をそれぞれ検証する。
+
+## 実施結果（2026-08-13）
+
+- PR #320（マージ `7a64275`。通常マージ）。コミット2本（実装 `2953dd6` → `/code-review` 指摘対応 `b79c8d2`）
+- 30ファイル / **1337テスト**（着手前 29 / 1237。新規1ファイル `scripts/jst-date.ts`・**+100テスト**）
+
+### 🚨 Issue は6サブ項目だったが実際は7項目だった（範囲の見落とし）
+
+**§2.4 の「確定日のみ」フィルタ（`release_dates.date_format`）を PR-C の担当と明記した箇所が2つあった**のに、
+**Issue #309 本文にも上記の PR-C 節にも無かった**:
+
+- `scripts/fetch-igdb.ts` の `fetchUpcomingGames` JSDoc:「§2.4 が規定する『確定日のみ』フィルタ（`release_dates.date_format`）はここでは実装しない。担当は PR-C（別 PR）」
+- 本ファイルの「PR-A 実施結果 → スコープから外した判断」節:「`date_format`（§2.4 の未発売枠）は PR-C の担当」
+
+`grep date_format scripts/` は**そのコメント1件だけ**で、実装はゼロだった。
+
+**含めた根拠（ライブ IGDB API 実測。2026-08-13）**: `fetchUpcomingGames` と同条件の母集団 **33 件のうち 4 件が非確定日**。
+
+| タイトル | `date_format` | `human` | `first_release_date` が落ちる値 |
+|---|---|---|---|
+| Grave Seasons | 5 | `Q3 2026` | 2026-09-30 |
+| Acts of Blood | 5 | `Q3 2026` | 2026-09-30 |
+| Aniimo | 5 | `Q3 2026` | 2026-09-30 |
+| Neverway | 1 | `Oct 2026` | 2026-10-01 |
+
+§2.5 のセクション5は「発売日と対応機種を明示（**確定日が保証されている**）」、§11.3.1 は「`date_format=0` 保証済み」を前提にしているが、
+**その保証はコードに存在しなかった。** 含めずに出荷すると「IGDB が Q3 2026 としか知らないタイトルに『発売日: 2026年9月30日』と断定させるプロンプト」を入れることになるため、**ユーザー確認のうえ同 PR に含めた**。
+
+**出荷後の実測**: 母集団33件 → 通過29件 / 除外4件（除外は上表の4件だけ）。**発売日昇順の先頭5件は不変**（除外分は17〜20番目）なので今週の選定結果は変わらない。
+
+> 📌 **再発防止**: 「§8 に行があるのに Issue が無い」の変種として **「コードのコメントが担当PRを指しているのに Issue にも指示書の該当節にも無い」** がある。
+> 着手時は担当PR名で `grep -rn "PR-<X>" scripts/` を必ず打つこと。
+
+### Issue の記述と食い違った点（2件）
+
+**(1) 「9時間の穴」の場所が Issue の記述と違った。**
+`getReleaseStatus` 側の UTC 解釈は**潜在的で到達不能**だった。本番の `publishDate` は4経路すべて `new Date('YYYY-MM-DD')`（UTC 0時）由来で、実質カレンダー日付同士の比較になっていた（`generate-articles.ts` / `build-issue.ts` / `validate-article.ts` の `main` / `validate-existing-issue.ts` を実読）。
+実際に到達していたのは **`isWithinIndieReleaseWindow` の `now.toISOString()`** 側で、**JST 09:00〜23:59 の間だけ当日発売作が `>` をすり抜けて indie 枠に入り得た**（JST 00:00〜08:59 は UTC 日付が前日になるため偶然除外できていた）。
+
+**(2) 「vol.3 型の回帰テスト」と「『発売前の先行プレイで好評』を誤検出しない」は一見矛盾していた。**
+vol.3 の本文（`src/content/issues/issue-003.md:155`）は**まさに**「先行プレイしたユーザーからは…高く評価されています」だった。
+**文単位の除外ウィンドウ**にすることで両立させた（実データで独立検証済み）:
+
+| 対象 | 実テキスト | 判定 |
+|---|---|---|
+| summary（`:139`） | 「日本独自のカーカルチャーを体験できる点が高く評価されている。」 | **検出**（限定語なし） |
+| 本文の文1（`:155`） | 「先行プレイしたユーザーからは、…高く評価されています。」 | 検出しない（§2.7 が正当とする文脈） |
+| 本文の文2（`:155`） | 「…楽しめる点が好評です。」 | **検出**（限定語なし） |
+
+vol.3 は summary と本文の2箇所で high 検出され、§2.7 の負例は誤検出しない。
+
+### 設計上の判断
+
+- **プロンプトを2本に複製しなかった。** `buildNewReleaseSystemPrompt(status)` が単一の定義元から組み立て、差分のある3ブロック（セクション2 / セクション5の注意書き / セクション6の1行）だけを分岐させる。§11.3.5 が judge の system プロンプトについて複製を退けた理由（2本の同期メンテナンスで共通ルールの変更漏れ）が本文プロンプトにも当てはまる
+- 🚨 **`PromptTemplates.newReleaseSystem` はバイト単位で不変に保った。** `bedrock-client.test.ts` の全文スナップショット回帰テストを**1文字も書き換えずに**通しており、**これが「発売済み記事の挙動を一切変えていない」ことの唯一の証明**になっている。プロンプトを関数生成に変える改修では、この不変性を先に固定してから分岐を足すこと（次回以降も再利用できる型）
+- **`upcomingInfo` を下流2経路の両方に通した**（`formatSearchResultsForPrompt` と `flattenSearchResults`）。片方だけだと Issue #307（§5.6 修正2）で塞いだ非対称が再発するうえ、`webSearchSources` が空になって **judge がその記事を丸ごとスキップする**（`judge-article.ts` のスキップ条件）。初回実装がここを落としていたので管理者が差し戻した
+- **確定日判定は `first_release_date` に一致するエントリだけを見る。** 「全エントリの `date_format` が 0」で判定すると、プラットフォームごとに精度が違う `Gears of War: E-Day`（一致エントリは `[0]`、全エントリでは `[0, 2]`）を誤除外する。実測で発見し回帰テストで固定した
+- **評価断定の警告はフィールドごとに最大1件**（1記事で最大2件）。§11.3.6 の実測で既存レポート28件の high 分布に**ちょうど5件のものが2件**あり、1文ごとに警告を出すと fail 閾値（high > 5）に転落する余地があるため
+- **確定日フィルタは `fetchUpcomingGames` にだけ適用した。** §2.4 は未発売枠の母集団条件なので、他4クエリ（発売済み2 / 名作 / インディー）に広げると理由なく供給が減る
+- **IGDB の where 句ではなく後段フィルタにした。** ネストした `release_dates.date_format = 0` を where に書くと「いずれかの発売日エントリが確定日」にマッチしてしまい、`first_release_date` に対応するエントリの精度を保証できない
+
+### `/code-review` の結果（指摘1件・採用1件）
+
+5エージェント中**4つが指摘なし**。1件だけが採点100を通り、管理者の実読でも実在を確認した。
+
+- **本日発売プロンプトの矛盾指示**: `本日発売` 分岐に「※発売日に「発売予定」と明記されている場合は「発売予定」と記載すること」が入っており、直前の行の「「発売予定」とは書かないこと」と正面衝突していた。さらに `buildUserMessage` は3値をそのままラベルに出すため、本日発売の記事の【ゲーム情報】欄は常に「（本日発売）」になり「（発売予定）」にはならない = **その指示は到達しない**。`発売予定` 分岐にのみ残す形に修正
+- 同種の「同じプロンプト内で正面衝突する指示」は **§5.6 が `classicSystem` から重複禁止項目を削除した前例**がある。§11.3.7 が「プロンプトの指示が実際に守られていない」ことを実測記録している以上、矛盾指示は無害なノイズではない
+- **ミュータント検証**: 矛盾行を復活させると追加した回帰テストが**ちょうど1件**落ちることを確認（他は落ちない = 当該挙動だけを捕捉している）
+
+レビューが**独立に裏付けた「クリアな点」**（後続PRで再調査不要）:
+
+- Issue #307 の「抜粋長を単一の定義元で共有する」不変条件は、新しい `upcomingInfo` ブロックでも保たれている
+- `validateReleasedTitleExpression` で `本日発売` を発売済み側に寄せても Issue #181 の修正は壊れない（`本日発売` は `UNRELEASED_TITLE_PATTERNS` に含まれないため）
+
+### ⚠️ 後続PRへの申し送り
+
+- **`buildIndieCandidates`（`fetch-data.ts:1129`）は `publishDate` を使っていない。** `isWithinIndieReleaseWindow(g)` を引数なしで呼ぶため実時刻で判定している。本PRのスコープ外として残した。**#308（発行日そのものの決定を JST 化）と同じレイヤーなので、#308 の着手時に一緒に見るとよい**
+- **#308 は本PRの成果物を再利用できる。** `scripts/jst-date.ts` の `getJstDateString` がそのまま使える
+- `searchGameInfo` は**第4引数が `{ releaseYear?, releaseStatus? }` の options オブジェクトに変わった。** 過去の「第4引数に発売年を渡す」という記述はすべて無効
+- `PromptTemplates.newReleaseSystem` は**関数呼び出しになった**ので、プロンプト文面は `buildNewReleaseSystemPrompt` の中にある
+
+### 品質ゲート
+
+- `npm run test`（typecheck + vitest）: **30ファイル / 1337テスト 全通過**
+- `grep -rn "PR-C" scripts/` で「別PRの担当」と書いた stale コメントが残っていないことを確認
+- `getJstDayStartUnixSec` の移設について残存参照が壊れていないことを確認（`fetch-igdb.ts` からの再エクスポートで後方互換。`fetch-igdb.test.ts` は `./fetch-igdb.js` から import し続けている）
 
 ---
 
