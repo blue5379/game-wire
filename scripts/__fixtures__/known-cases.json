@@ -112,5 +112,24 @@
     "expected": {
       "stores": [{ "platform": "steam", "confidence": "high" }]
     }
+  },
+  {
+    "issue": 297,
+    "scenario": "knownSteamAppId が別作品を指す（appId 取り違え）— Steam URL を出さない",
+    "input": {
+      "title": "サイバーパンク2077 アルティメットエディション",
+      "releaseDate": "2010-05-25",
+      "platforms": ["PC"],
+      "knownSteamAppId": 32470
+    },
+    "steamAppDetailsMock": {
+      "appId": 32470,
+      "name": "STAR WARS™ Empire at War - Gold Pack",
+      "date": "May 25, 2010"
+    },
+    "expected": {
+      "stores": []
+    },
+    "expectedSteamEmpty": true
   }
 ]

@@ -561,4 +561,106 @@ describe('fetchSteamData - Steam 経路の DLC 除外（PR-A）', () => {
       expect.stringContaining(`Skipping non-game app`)
     );
   });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Issue #297（別作品メタデータ混入）の回帰
+  //
+  // #297 の混入源は Featured Categories が返す (item.id, item.name) ペアの崩れで、
+  // Issue #102 / PR #104（`a1e4f40`。2026-06-20 22:03 JST）で修正済み。
+  // 混入記事 `issues-dev/issue-019.md` は同日 19:52 生成 = 修正の2時間11分前の生成物。
+  //
+  // top_sellers 経路の取り違え除外自体は上記 :510 で既に回帰済みなので、
+  // ここで塞ぐのは既存スイートが検出できない次の2点:
+  //   ① new_releases / coming_soon 経路にも同じガードが結線されていること
+  //      （現状はどちらのガードを削除してもスイートは落ちない）
+  //   ② 採用時の name が必ず Storefront 側から来ること
+  //      （既存の採用系フィクスチャは Featured 名と Storefront 名が同一で、
+  //        `storefrontName ?? item.name` の優先順を固定していない）
+  // ② が #297 の「混入不能」条件そのもの: name を appId と同じ一次ソースから
+  // 採ってさえいれば、Featured 側が崩れていても組み合わせは整合する。
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // 2026-08-13 に Steam Storefront API を実際に叩いて確認した実データ
+  /** appId 32470 の実体。developers=['Petroglyph'] / 2010年5月25日（混入記事の developer・releaseDate と一致） */
+  const EMPIRE_AT_WAR = { appId: 32470, name: 'STAR WARS™ Empire at War - Gold Pack' };
+  /** サイバーパンク2077 本体。type=game / developers=['CD PROJEKT RED'] / 2020年12月9日 */
+  const CYBERPUNK_2077 = { appId: 1091500, name: 'サイバーパンク2077' };
+  /** Issue #102 で Featured Categories が appId 32470 に対して返していた name */
+  const CONTAMINATED_FEATURED_NAME = 'サイバーパンク2077 アルティメットエディション';
+
+  it('new_releases 経路: appId 取り違えペア（32470 ⇔ サイバーパンク2077 アルティメットエディション）は除外され、同居する正しいペアは採用される', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSteamFetch({
+      newReleases: [
+        { id: TIANLIANG_ZHIHOU.appId, name: TIANLIANG_ZHIHOU.name },
+        { id: EMPIRE_AT_WAR.appId, name: CONTAMINATED_FEATURED_NAME },
+      ],
+      appDetails: {
+        [TIANLIANG_ZHIHOU.appId]: { name: TIANLIANG_ZHIHOU.name, type: 'game' },
+        // type=game にすることで、除外しているのが PR-A の type ゲートではなく
+        // isSameSteamApp の name 照合であることを分離する
+        [EMPIRE_AT_WAR.appId]: { name: EMPIRE_AT_WAR.name, type: 'game' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    // ポジティブコントロール: new_releases のループが生きていること
+    expect(
+      result.data!.topSellers.find((g) => g.appId === TIANLIANG_ZHIHOU.appId)
+    ).toBeDefined();
+    expect(result.data!.topSellers.find((g) => g.appId === EMPIRE_AT_WAR.appId)).toBeUndefined();
+    // 除外が new_releases 経路のガードによるものだと特定する
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `appId/name mismatch in new_releases: featured="${CONTAMINATED_FEATURED_NAME}" storefront="${EMPIRE_AT_WAR.name}" (appId: ${EMPIRE_AT_WAR.appId})`
+      )
+    );
+  });
+
+  it('coming_soon 経路: appId 取り違えペア（32470 ⇔ サイバーパンク2077 アルティメットエディション）は除外され、同居する正しいペアは採用される', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockSteamFetch({
+      comingSoon: [
+        { id: PIGHT.appId, name: PIGHT.name },
+        { id: EMPIRE_AT_WAR.appId, name: CONTAMINATED_FEATURED_NAME },
+      ],
+      appDetails: {
+        [PIGHT.appId]: { name: PIGHT.name, type: 'game' },
+        [EMPIRE_AT_WAR.appId]: { name: EMPIRE_AT_WAR.name, type: 'game' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    // ポジティブコントロール: coming_soon のループが生きていること
+    expect(result.data!.topSellers.find((g) => g.appId === PIGHT.appId)).toBeDefined();
+    expect(result.data!.topSellers.find((g) => g.appId === EMPIRE_AT_WAR.appId)).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `appId/name mismatch in coming_soon: featured="${CONTAMINATED_FEATURED_NAME}" storefront="${EMPIRE_AT_WAR.name}" (appId: ${EMPIRE_AT_WAR.appId})`
+      )
+    );
+  });
+
+  it('混入不能の不変条件: Featured 名がエディション名で Storefront 名と異なっても前方一致なら採用され、採用される name は Storefront の正規名になる（同じ Featured 名でも appId が正しければ通る）', async () => {
+    mockSteamFetch({
+      topSellers: [
+        // 取り違えテスト（:510 / 上記2件）と同一の Featured 名を、正しい appId と組んで渡す。
+        // isSameSteamApp は前方一致を許容するので採用側に倒れる
+        { id: CYBERPUNK_2077.appId, name: CONTAMINATED_FEATURED_NAME },
+      ],
+      appDetails: {
+        [CYBERPUNK_2077.appId]: { name: CYBERPUNK_2077.name, type: 'game' },
+      },
+    });
+
+    const result = await runFetchSteamData();
+
+    const adopted = result.data!.topSellers.find((g) => g.appId === CYBERPUNK_2077.appId);
+    expect(adopted).toBeDefined();
+    // appId と name が同じ一次ソース（Storefront）から来ていること
+    expect(adopted!.name).toBe(CYBERPUNK_2077.name);
+    expect(adopted!.name).not.toBe(CONTAMINATED_FEATURED_NAME);
+  });
 });
