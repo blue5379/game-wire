@@ -46,6 +46,7 @@ import { isBlockedAdultGame } from './adult-blocklist.js';
 import { pickNewReleaseLabelCompany } from './indie-classifier.js';
 import { normalizeTitle } from './normalize.js';
 import { resolvePublishDateString } from './jst-date.js';
+import { isMainModule } from './entrypoint.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -1629,7 +1630,7 @@ export const __test = {
 };
 
 // スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない）
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);

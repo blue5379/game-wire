@@ -18,6 +18,7 @@ import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 import { getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
+import { isMainModule } from './entrypoint.js';
 import {
   ARTICLE_CATEGORY_LABELS,
   computeReportStatus,
@@ -1371,7 +1372,7 @@ async function mainCli(): Promise<void> {
 }
 
 // このスクリプトが直接実行された場合のみ CLI を起動
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   mainCli().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
