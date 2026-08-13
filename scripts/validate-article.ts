@@ -904,11 +904,11 @@ const PRE_RELEASE_QUALIFIER_PATTERN = /先行プレイ|先行体験|先行レビ
  * - severity: 'high'（§11.3.4。low だと VALIDATION_AUTO_REGENERATE の対象外）
  * - type: 'upcoming-evaluation-claim'
  * - フィールドごとに最大1件（1記事で最大2件: content + summary）
- *   理由（§11.3.4）: writeAndCheckReport は high が5件超で fail する。
- *   既存レポートにちょうど5件のものがあり、1記事から多数の警告を出すと
- *   レポートが fail に転落する余地がある。
+ *   理由（**§11.3.6**。§11.3.4 ではない）: writeAndCheckReport は high が5件超（6件以上）で fail する。
+ *   §11.3.6 の実測では既存レポート28件の high 分布に**ちょうど5件のものが2件**あり、
+ *   1記事から多数の警告を出すとレポートが fail に転落する余地がある。
  *
- * 参照: `docs/article-category-spec.md` § 2.7, `docs/article-category-spec-review.md` § 11.3.4
+ * 参照: `docs/article-category-spec.md` § 2.7, `docs/article-category-spec-review.md` § 11.3.4（設計）/ § 11.3.6（fail 閾値）
  */
 export function validateUpcomingEvaluationClaims(
   article: GeneratedArticle,
