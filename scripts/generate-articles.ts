@@ -26,6 +26,7 @@ import {
   parseArticleResponse,
   parseTitleResponse,
   getReleaseStatus,
+  buildNewReleaseSystemPrompt,
 } from './bedrock-client.js';
 import type { FeatureSelectedGame, FeatureCandidateBase, FeatureCandidateWithSearch } from './bedrock-client.js';
 import { getEventsInRange } from './fetch-japanese-events.js';
@@ -358,13 +359,16 @@ async function generateNewReleaseArticle(
 ): Promise<GeneratedArticle> {
   console.log(`  Generating new release article: ${game.title}`);
 
+  // 発売状態を計算（検索セット分岐とシステムプロンプト選択の両方で使用）
+  const releaseStatus = game.releaseDate ? getReleaseStatus(game.releaseDate, publishDate) : null;
+
   // Web検索で追加情報を取得（再生成時は前回の検索結果を流用し再検索しない）
   let webSearchContext = regenOpts?.cachedSearch?.context ?? '';
   let webSearchSources: WebSearchSource[] = regenOpts?.cachedSearch?.sources ?? [];
   if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
     try {
       console.log(`    Searching web for additional info...`);
-      const searchResults = await searchGameInfo(game.title, 'newRelease', game.developer);
+      const searchResults = await searchGameInfo(game.title, 'newRelease', game.developer, { releaseStatus });
       webSearchContext = formatSearchResultsForPrompt(searchResults);
       webSearchSources = flattenSearchResults(searchResults);
     } catch (error) {
@@ -408,7 +412,7 @@ async function generateNewReleaseArticle(
   );
 
   const content = parseArticleResponse(
-    await invokeClaudeModel(PromptTemplates.newReleaseSystem, userMessage, {
+    await invokeClaudeModel(buildNewReleaseSystemPrompt(releaseStatus), userMessage, {
       maxTokens: 3000,
       temperature: 0.2,
     })
@@ -1138,7 +1142,7 @@ async function generateClassicArticle(
         game.title,
         'classic',
         game.developer,
-        releaseYear !== undefined && !isNaN(releaseYear) ? releaseYear : undefined
+        releaseYear !== undefined && !isNaN(releaseYear) ? { releaseYear } : undefined
       );
       const webSearchContext = formatSearchResultsForPrompt(searchResults);
       if (webSearchContext) {

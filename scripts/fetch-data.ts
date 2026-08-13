@@ -17,6 +17,7 @@ import { fetchAmazonRanking, type AmazonRankIndex } from './fetch-amazon-ranking
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { isFanGame, isQualifiedGame } from './game-filter.js';
+import { getJstDateString, getJstDayStartUnixSec } from './jst-date.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { isIndieGame, pickDeveloperGameCount } from './indie-classifier.js';
 import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
@@ -1055,23 +1056,31 @@ function readIndieReleaseWindowDays(): number {
  * インディー枠の母集団条件「発売日: 過去 INDIE_RELEASE_WINDOW_DAYS 日以内」を判定する（§3.4）。
  *
  * - releaseDate を持たない候補は窓内と確認できないため除外する
- * - 未来日（未発売）の候補も除外する（§3.3「インディー枠は未発売タイトルを扱わない」）
- * - 日付比較は既存コード（.toISOString().split('T')[0] で YYYY-MM-DD 文字列化する流儀）に
- *   合わせ、YYYY-MM-DD 文字列の比較で行う。「日本時間当日0時以前」のようなタイムゾーンの
- *   厳密化（JST統一）はこのPRの対象外（§2.8 の JST 統一は PR-C の担当）。
+ * - **境界: 当日発売は未発売扱いで除外する**（§11.3.2 の実装タスク。`releaseDate >= JST当日0時`
+ *   で除外する。「`>`」ではなく「`>=`」にすることで当日を含める）
+ * - **タイムゾーン: JST 基準で統一する**（§2.8 / §3.3 / §11.3.2）。`getJstDateString` を使って
+ *   JST カレンダー日付で比較する。窓の開始日も JST 基準で算出する（`getJstDayStartUnixSec(now)`
+ *   から N 日分の秒を引いて `getJstDateString` に通す）。
+ *
+ * §3.3 の背景: インディー記事の「💬 プレイヤーの声」セクションは未発売作には原理的に存在
+ * し得ないため、インディー枠は発売済みタイトルのみを扱う（未発売作は新作紹介枠で扱う）。
  *
  * `now` を注入できるようにし、テストが実時刻に依存しないようにする。
  */
 export function isWithinIndieReleaseWindow(game: GameData, now: Date = new Date()): boolean {
   if (!game.releaseDate) return false;
 
-  const todayStr = now.toISOString().split('T')[0];
-  if (game.releaseDate > todayStr) return false;
+  // JST カレンダー日付で比較（§2.8 / §3.3）
+  const jstTodayStr = getJstDateString(now);
+  // 当日発売は除外（§11.3.2: 境界は JST 当日 0 時。当日発売は未発売扱い = indie 枠から除外）
+  if (game.releaseDate >= jstTodayStr) return false;
 
   const windowDays = readIndieReleaseWindowDays();
-  const windowStart = new Date(now);
-  windowStart.setDate(windowStart.getDate() - windowDays);
-  const windowStartStr = windowStart.toISOString().split('T')[0];
+  // JST 基準で窓の開始日を算出（JST 当日 0 時 - N 日）
+  const jstDayStart = getJstDayStartUnixSec(now);
+  const windowStartSec = jstDayStart - windowDays * 24 * 60 * 60;
+  const windowStartDate = new Date(windowStartSec * 1000);
+  const windowStartStr = getJstDateString(windowStartDate);
 
   return game.releaseDate >= windowStartStr;
 }

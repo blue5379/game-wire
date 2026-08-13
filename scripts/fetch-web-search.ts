@@ -4,6 +4,8 @@
  */
 
 import { tavily } from '@tavily/core';
+import type { ReleaseStatus } from './bedrock-client.js';
+import { isUpcomingForBody } from './bedrock-client.js';
 
 // Tavily クライアント（シングルトン）
 let tavilyClient: ReturnType<typeof tavily> | null = null;
@@ -42,6 +44,7 @@ export interface GameWebSearchResults {
   developerInfo?: WebSearchResult[];
   steamReviews?: WebSearchResult[];
   history?: WebSearchResult[];
+  upcomingInfo?: WebSearchResult[];
   searchedAt: string;
 }
 
@@ -141,16 +144,33 @@ export async function searchGameHistory(
 }
 
 /**
- * ゲームに関する全ての必要な情報を検索
+ * 未発売ゲームの発売日・最新情報を検索（§2.6）。
+ * 用途: 新作紹介（未発売）「なぜ注目されているか」
  *
- * releaseYear（発売年）は省略可能。classic カテゴリの歴史検索にのみ使用し、
- * 他カテゴリの検索挙動には影響しない。
+ * クエリ定式化: `"{gameTitle}" ゲーム 発売日 最新情報`
+ * - OR 演算子を使わない（§11.3.3(3) の実測により決定）
+ * - OR 入りクエリは 5 件中 2 件が完全に失敗した（score 0.097 等）
+ * - OR を外すと両方救済され score 0.889 / 0.911 になった
+ */
+export async function searchUpcomingInfo(
+  gameTitle: string
+): Promise<WebSearchResult[]> {
+  const query = `"${gameTitle}" ゲーム 発売日 最新情報`;
+  console.log(`  Searching upcoming info: ${gameTitle}`);
+  return search(query, { maxResults: 3, searchDepth: 'basic' });
+}
+
+/**
+ * ゲームに関する全ての必要な情報を検索。
+ *
+ * 引数の形式を options オブジェクトに統一（releaseYear を渡しているのは classic だけ）。
+ * releaseStatus は newRelease カテゴリの検索セット分岐（§2.6）に使用する。
  */
 export async function searchGameInfo(
   gameTitle: string,
   category: 'newRelease' | 'indie' | 'classic' | 'feature',
   developerName?: string,
-  releaseYear?: number
+  options?: { releaseYear?: number; releaseStatus?: ReleaseStatus | null }
 ): Promise<GameWebSearchResults> {
   console.log(`Searching web for: ${gameTitle} (${category})`);
 
@@ -161,12 +181,22 @@ export async function searchGameInfo(
 
   // カテゴリに応じた検索を実行
   switch (category) {
-    case 'newRelease':
-      // 大手新作: レビュー + 開発者情報
-      results.reviews = await searchReviews(gameTitle);
+    case 'newRelease': {
+      // 新作紹介: 発売状態に応じて検索セットを分岐（§2.6）
+      // 未発売扱い（発売予定・本日発売）: レビュー検索を実行せず、発売日・最新情報検索 + 開発者情報検索
+      // 発売済み（発売済み・null）: 従来どおりレビュー検索 + 開発者情報検索
+      const releaseStatus = options?.releaseStatus;
+      const isUpcoming = isUpcomingForBody(releaseStatus ?? null);
+
+      if (isUpcoming) {
+        results.upcomingInfo = await searchUpcomingInfo(gameTitle);
+      } else {
+        results.reviews = await searchReviews(gameTitle);
+      }
       await delay(500); // レート制限対策
       results.developerInfo = await searchDeveloperInfo(gameTitle, developerName);
       break;
+    }
 
     case 'indie':
       // インディー: レビュー + 開発者情報 + Steamレビュー
@@ -181,7 +211,7 @@ export async function searchGameInfo(
       // 名作: レビュー + 歴史
       results.reviews = await searchReviews(gameTitle);
       await delay(500);
-      results.history = await searchGameHistory(gameTitle, releaseYear);
+      results.history = await searchGameHistory(gameTitle, options?.releaseYear);
       break;
 
     case 'feature':
@@ -273,6 +303,16 @@ export function formatSearchResultsForPrompt(
     }
   }
 
+  if (results.upcomingInfo && results.upcomingInfo.length > 0) {
+    sections.push('');
+    sections.push('【発売日・最新情報】');
+    for (const r of results.upcomingInfo) {
+      sections.push(`- ${sanitizeWebContent(r.title)}`);
+      sections.push(`  ${sanitizeWebContent(r.content.slice(0, contentMaxLength))}`);
+      sections.push(`  出典: ${r.url}`);
+    }
+  }
+
   if (results.developerInfo && results.developerInfo.length > 0) {
     sections.push('');
     sections.push('【開発者情報】');
@@ -322,6 +362,7 @@ export function flattenSearchResults(
   const contentMaxLength = readSearchContentMaxLength();
   const all = [
     ...(results.reviews ?? []),
+    ...(results.upcomingInfo ?? []),
     ...(results.developerInfo ?? []),
     ...(results.steamReviews ?? []),
     ...(results.history ?? []),

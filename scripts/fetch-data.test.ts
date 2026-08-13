@@ -2381,6 +2381,69 @@ describe('isWithinIndieReleaseWindow — 発売日90日窓フィルタ（§3.4�
     expect(isWithinIndieReleaseWindow(within90, FIXED_NOW)).toBe(true);
     expect(isWithinIndieReleaseWindow(beyond90, FIXED_NOW)).toBe(false);
   });
+
+  // サブ項目6: インディー枠の未発売除外を JST 基準にする（§3.3 / §11.3.2 / §2.8）
+  describe('JST 基準での当日発売除外と日付境界（§3.3 / §11.3.2）', () => {
+    it('境界値: 当日発売は除外する（修正前は通っていた）', () => {
+      // JST 2026-08-15 12:00 = UTC 2026-08-15 03:00
+      const now = new Date('2026-08-15T03:00:00Z');
+      const game = makeGame({ releaseDate: '2026-08-15' });
+      expect(isWithinIndieReleaseWindow(game, now)).toBe(false);
+      // 修正前: UTC の日付比較で '2026-08-15' > '2026-08-15' が false → 当日発売が通っていた
+    });
+
+    it('前日発売は通る', () => {
+      const now = new Date('2026-08-15T03:00:00Z'); // JST 2026-08-15 12:00
+      const game = makeGame({ releaseDate: '2026-08-14' });
+      expect(isWithinIndieReleaseWindow(game, now)).toBe(true);
+    });
+
+    it('翌日（未発売）は除外する', () => {
+      const now = new Date('2026-08-15T03:00:00Z'); // JST 2026-08-15 12:00
+      const game = makeGame({ releaseDate: '2026-08-16' });
+      expect(isWithinIndieReleaseWindow(game, now)).toBe(false);
+    });
+
+    it('UTC と JST で日付が食い違う時刻帯: JST 00:00（UTC 前日 15:00）', () => {
+      // JST 2026-08-15 00:00 = UTC 2026-08-14 15:00
+      const now = new Date('2026-08-14T15:00:00Z');
+      const todayGame = makeGame({ releaseDate: '2026-08-15' });
+      const yesterdayGame = makeGame({ releaseDate: '2026-08-14' });
+
+      // JST カレンダー日付で比較: 当日発売は除外、前日発売は通る
+      expect(isWithinIndieReleaseWindow(todayGame, now)).toBe(false);
+      expect(isWithinIndieReleaseWindow(yesterdayGame, now)).toBe(true);
+    });
+
+    it('修正前に穴が開いていた時刻帯: JST 09:00〜23:59（UTC と JST の日付が一致する時間帯）', () => {
+      // JST 2026-08-15 12:00 = UTC 2026-08-15 03:00
+      // この時刻帯で UTC 日付を使うと、当日発売が「releaseDate > todayStr」をすり抜けて通っていた
+      const now = new Date('2026-08-15T03:00:00Z');
+      const todayGame = makeGame({ releaseDate: '2026-08-15' });
+
+      expect(isWithinIndieReleaseWindow(todayGame, now)).toBe(false);
+      // 修正前: UTC '2026-08-15' を基準にすると '2026-08-15' > '2026-08-15' が false → 通っていた
+    });
+
+    it('窓の下限境界（JST 基準）: 90日前の発売日ちょうどは通る', () => {
+      const now = new Date('2026-08-15T03:00:00Z'); // JST 2026-08-15 12:00
+      // JST カレンダー日付 2026-08-15 の 90 日前 = 2026-05-17
+      const windowStartGame = makeGame({ releaseDate: '2026-05-17' });
+      expect(isWithinIndieReleaseWindow(windowStartGame, now)).toBe(true);
+    });
+
+    it('窓の下限境界（JST 基準）: 90日前の1日前（91日前）は除外', () => {
+      const now = new Date('2026-08-15T03:00:00Z'); // JST 2026-08-15 12:00
+      const tooOldGame = makeGame({ releaseDate: '2026-05-16' }); // 91日前
+      expect(isWithinIndieReleaseWindow(tooOldGame, now)).toBe(false);
+    });
+
+    it('窓の下限境界（JST 基準）: 90日前の1日後（89日前）は通る', () => {
+      const now = new Date('2026-08-15T03:00:00Z'); // JST 2026-08-15 12:00
+      const withinWindowGame = makeGame({ releaseDate: '2026-05-18' }); // 89日前
+      expect(isWithinIndieReleaseWindow(withinWindowGame, now)).toBe(true);
+    });
+  });
 });
 
 describe('buildIndieCandidates — 発売日90日窓フィルタの統合テスト（§3.4, 実データ回帰）', () => {

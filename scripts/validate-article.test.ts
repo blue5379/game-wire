@@ -16,6 +16,7 @@ import {
   validateGameSourceConsistency,
   validateGameSourceConsistencyForArticles,
   validateReleasedTitleExpression,
+  validateUpcomingEvaluationClaims,
   buildFixInstruction,
   extractNumericUnitKey,
   resolveReportMode,
@@ -1723,6 +1724,62 @@ describe('validateReleasedTitleExpression', () => {
     const warnings = validateReleasedTitleExpression(article, publishDate);
     expect(warnings).toHaveLength(0);
   });
+
+  // § 2.8 本日発売の扱い: validateReleasedTitleExpression では「本日発売」を発売済みとして扱う
+  it('本日発売（releaseDate = publishDate の JST 日付）の見出しに「発売予定」が含まれる場合に high 警告を出す（新規検出ケース）', () => {
+    // publishDate を JST 8/15 0:00 とする（UTC では 8/14 15:00）
+    const publishDate = new Date('2026-08-15T00:00:00+09:00');
+    const article = makeArticle({
+      title: "『Awesome Game』発売予定、注目のインディー作品",
+      category: 'indie',
+      game: {
+        title: 'Awesome Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-08-15', // JST で本日発売
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    // § 2.8: 本日発売は発売済み側として扱うため、未発売表現を検出する
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('released-title-expression');
+    expect(warnings[0].severity).toBe('high');
+  });
+
+  it('本日発売の見出しに未発売表現がない場合は警告を出さない', () => {
+    const publishDate = new Date('2026-08-15T00:00:00+09:00');
+    const article = makeArticle({
+      title: "『Awesome Game』本日発売、注目のインディー作品",
+      category: 'indie',
+      game: {
+        title: 'Awesome Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-08-15',
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売予定（翌日）の見出しに「発売予定」が含まれる場合は警告を出さない（従来どおり）', () => {
+    const publishDate = new Date('2026-08-15');
+    const article = makeArticle({
+      title: "『Future Game』発売予定、期待の新作",
+      category: 'newRelease',
+      game: {
+        title: 'Future Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-08-16', // 翌日
+      },
+    });
+
+    const warnings = validateReleasedTitleExpression(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
 });
 
 describe('resolveReportMode', () => {
@@ -1958,5 +2015,244 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
 
       expect(report.status).toBe('ok');
     });
+  });
+});
+
+describe('validateUpcomingEvaluationClaims', () => {
+  const publishDate = new Date('2026-08-13');
+
+  it('発売予定の newRelease 記事の本文に「高く評価されています」→ high 警告', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01', // 未来
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('upcoming-evaluation-claim');
+    expect(warnings[0].severity).toBe('high');
+    expect(warnings[0].message).toContain('高く評価');
+  });
+
+  it('発売予定の記事の summary だけに「高く評価されている」→ high 警告（本文がクリーンでも検出される）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は注目のタイトルです。',
+      summary: '本作は高く評価されている。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('upcoming-evaluation-claim');
+    expect(warnings[0].severity).toBe('high');
+  });
+
+  it('「発売前の先行プレイでは好評でした。」→ 警告なし（正当な文脈）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '発売前の先行プレイでは好評でした。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「体験版が好評を得ています。」→ 警告なし（正当な文脈）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '体験版が好評を得ています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('vol.3 回帰テスト: summary と本文でそれぞれ検出され、「先行プレイ」の文では検出されない', () => {
+    const article = makeArticle({
+      title: 'Forza Horizon 6',
+      category: 'indie',
+      content:
+        '先行プレイしたユーザーからは、街並みや空気感の再現度の高さが高く評価されています。' +
+        '「実家のような安心感でドライブできる」「日本を走っている雰囲気が素晴らしい」といった声が上がり、' +
+        '見慣れた景色の中でスリルあるレースを楽しめる点が好評です。',
+      summary: '日本独自のカーカルチャーを体験できる点が高く評価されている。',
+      game: {
+        title: 'Forza Horizon 6',
+        genre: ['Racing'],
+        platforms: ['Xbox Series X|S', 'PC', 'PlayStation 5'],
+        releaseDate: '2026-05-19',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, new Date('2026-01-10'));
+    // summary の「高く評価されている」（限定語なし）と、本文の「好評です」（限定語なし）を検出
+    // 本文の「高く評価されています」は「先行プレイ」が同じ文にあるので検出しない
+    expect(warnings).toHaveLength(2);
+    expect(warnings.every((w) => w.severity === 'high')).toBe(true);
+  });
+
+  it('本日発売でも発火する（§2.7 の発火条件は「発売予定 または 本日発売」）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-08-13', // 当日
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].severity).toBe('high');
+  });
+
+  it('発売済み記事では発火しない（評価の言及は正当）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されています。',
+      summary: '高評価のタイトルです。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-08-01', // 過去
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('publishDate 未指定ならスキップ', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, undefined);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('releaseDate 無しならスキップ', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        // releaseDate なし
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('category が feature / classic なら発火しない', () => {
+    const articleFeature = makeArticle({
+      title: 'テストタイトル',
+      category: 'feature',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+    });
+
+    const articleClassic = makeArticle({
+      title: 'テストタイトル',
+      category: 'classic',
+      content: '本作は高く評価されています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    expect(validateUpcomingEvaluationClaims(articleFeature, publishDate)).toHaveLength(0);
+    expect(validateUpcomingEvaluationClaims(articleClassic, publishDate)).toHaveLength(0);
+  });
+
+  it('1フィールドに複数マッチがあっても警告は1件（閾値への影響を固定する）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '本作は高く評価されており、絶賛されています。好評も得ています。',
+      summary: '本作の紹介です。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: ['PC (Steam)'],
+        releaseDate: '2026-09-01',
+      },
+    });
+
+    const warnings = validateUpcomingEvaluationClaims(article, publishDate);
+    // 本文に3つのマッチがあるが、警告は本文フィールドで1件のみ
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].severity).toBe('high');
+  });
+
+  it('buildFixInstruction が upcoming-evaluation-claim に対して汎用文ではなく専用文を返す', () => {
+    const warning: ValidationWarning = {
+      articleTitle: 'テストタイトル',
+      category: 'newRelease',
+      severity: 'high',
+      type: 'upcoming-evaluation-claim',
+      message: 'テストメッセージ',
+      evidence: '高く評価',
+    };
+
+    const instruction = buildFixInstruction([warning]);
+    expect(instruction).toContain('発売前でレビューも評価も存在しません');
+    expect(instruction).toContain('削除してください');
+    expect(instruction).not.toContain('提供データで裏付けられません'); // 汎用文ではない
   });
 });
