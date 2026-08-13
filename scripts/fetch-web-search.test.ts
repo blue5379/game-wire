@@ -120,28 +120,30 @@ describe('formatSearchResultsForPrompt - 抜粋長をバリデータと揃える
   });
 
   it('プロンプトの抜粋と保存 snippet が同じ上限を使う（4ブロックすべて）', () => {
-    const content = 'あ'.repeat(2000);
-    const prompt = formatSearchResultsForPrompt({
+    // ⚠️ 改行を意図的に含める。実測で Tavily の content は 1500 字の窓の中に改行を持つ
+    //（『The Witcher 3』の検索結果 6 件中 4 件。1500 字内の改行数は 33 / 3 / 8 / 14）。
+    // 行分割に依存したアサーションは実装が正しくても落ちるため、抜粋文字列そのものを照合する。
+    const content = `${'あ'.repeat(700)}\n${'い'.repeat(700)}\n${'う'.repeat(700)}`;
+    const results = {
       gameTitle: 'G',
       reviews: [makeResult(content)],
       developerInfo: [makeResult(content)],
       steamReviews: [makeResult(content)],
       history: [makeResult(content)],
       searchedAt: '2026-08-13T00:00:00.000Z',
-    });
-    const snippetLength = flattenSearchResults({
+    };
+    const prompt = formatSearchResultsForPrompt(results);
+    const snippet = flattenSearchResults({
       gameTitle: 'G',
       reviews: [makeResult(content)],
       searchedAt: '2026-08-13T00:00:00.000Z',
-    })[0].snippet.length;
+    })[0].snippet;
 
-    expect(snippetLength).toBe(1500);
-    // 4ブロックそれぞれが snippet と同じ長さの抜粋を持つ
-    const excerpts = prompt.split('\n').filter((l) => l.startsWith('  あ'));
-    expect(excerpts).toHaveLength(4);
-    for (const line of excerpts) {
-      expect(line.trim().length).toBe(snippetLength);
-    }
+    expect(snippet.length).toBe(1500);
+    // snippet と同一の文字列が、4ブロックそれぞれに1回ずつ現れる
+    expect(prompt.split(snippet).length - 1).toBe(4);
+    // 上限を超えた分は入らない（300 字実装でも通ってしまう緩いアサーションにしない）
+    expect(prompt).not.toContain(content.slice(0, 1501));
   });
 
   it('上限より短いコンテンツは切られない', () => {
