@@ -1,5 +1,11 @@
 # 記事カテゴリ仕様の抜本見直し — 検討資料と素案
 
+> 🗑️ **2026-08-14: 公開済みの vol.017 / 018 / 019 を削除した**（PR #343。理由は新作紹介の本数不足で、017 = 0 本 / 018 = 1 本（DLC）/ 019 = 0 本。仕様は 2 本）。
+> **本ファイル中の vol.017 / 018 / 019 への言及と、「19 号」を母集団とする実測値は、すべてこの削除より前の状態を指す**（削除時点の実測で本文中 40 箇所。本注意書き自身は含まない）。
+> 区別すること: **記事本文**を根拠にした引用は `git show c5c9d11:src/content/issues/issue-0NN.md` で参照する（`c5c9d11` = 削除直前の main）。
+> **Validation Report（`data/validation/validation-report-017 / 018 / 019`）は削除していない**ので、レポートを根拠にした引用は今も直接検証できる。
+> なお本ファイルの契機である vol.17 の障害（下記「契機」行）は、この削除とは無関係な別事象である（削除理由は本数不足で、Issue #206 の警告内容ではない）。
+
 作成日: 2026-07-26
 作成者: Claude (Opus 5)
 契機: vol.17 で「新作紹介」が 0 件になった障害（Issue #206 と併発）の原因調査。
@@ -3136,7 +3142,7 @@ Game Wire はバックナンバーが恒久的に残る構成なので、**順�
   - `https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/**`（27 ページ）— operation 一覧・resource 一覧・`browseNodeInfo.browseNodes.salesRank` / `websiteSalesRank` の定義
   - `https://affiliate.amazon.co.jp/help/operating/paapilicenseagreement` — 日本ロケールのライセンス条項 (g) (i) (n) (o)
 - GitHub Actions 実行ログ: run 30129193266（vol.17, schedule, 2026-07-24T21:52:45Z, conclusion=success）
-- `src/content/issues/issue-001.md` 〜 `issue-017.md`（※ vol.017-019 は 2026-08-14 に削除。`git show c5c9d11:src/content/issues/issue-017.md` で参照）
+- `src/content/issues/issue-001.md` 〜 `issue-017.md`（※ この範囲のうち **`issue-017.md` だけ**が 2026-08-14 に削除された（001〜016 は現存）。`git show c5c9d11:src/content/issues/issue-017.md` で参照）
 - `src/content/history.json`（105 件）
 - `要件.md`
 - `scripts/fetch-igdb.ts`, `scripts/game-filter.ts`, `scripts/fetch-data.ts`, `scripts/bedrock-client.ts`,
