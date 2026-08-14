@@ -11,6 +11,8 @@ import {
   buildRecommendedActions,
   formatReportMarkdown,
   webSearchFailureCount,
+  searchFailureCount,
+  pageContentFailureCount,
   adultScreeningFailureCount,
   articleCountShortfallCount,
   earlyAccessStatementIssueCount,
@@ -46,10 +48,10 @@ describe('computeReportStatus', () => {
     expect(computeReportStatus(report)).toBe('error');
   });
 
-  it('Web 検索失敗があれば（high 0 でも）error', () => {
+  it('キーワード検索失敗があれば（high 0 でも）error（Issue #349: pageContentFailures は除く）', () => {
     const report = makeReport({
       warningsBySeverity: { high: 0, medium: 0, low: 0 },
-      webSearchStats: { searchFailures: 0, pageContentFailures: 2 },
+      webSearchStats: { searchFailures: 1, pageContentFailures: 0 },
     });
     expect(computeReportStatus(report)).toBe('error');
   });
@@ -149,6 +151,131 @@ describe('webSearchFailureCount', () => {
   });
 });
 
+describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）', () => {
+  describe('searchFailureCount', () => {
+    it('webSearchStats が無ければ 0', () => {
+      expect(searchFailureCount(makeReport())).toBe(0);
+    });
+
+    it('searchFailures をそのまま返す（pageContentFailures とは独立）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 3, pageContentFailures: 5 },
+      });
+      expect(searchFailureCount(report)).toBe(3);
+    });
+
+    it('searchFailures が 0 なら 0（境界値）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 0, pageContentFailures: 2 },
+      });
+      expect(searchFailureCount(report)).toBe(0);
+    });
+
+    it('searchFailures が 1 なら 1（境界値）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 1, pageContentFailures: 0 },
+      });
+      expect(searchFailureCount(report)).toBe(1);
+    });
+  });
+
+  describe('pageContentFailureCount', () => {
+    it('webSearchStats が無ければ 0', () => {
+      expect(pageContentFailureCount(makeReport())).toBe(0);
+    });
+
+    it('pageContentFailures をそのまま返す（searchFailures とは独立）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 5, pageContentFailures: 3 },
+      });
+      expect(pageContentFailureCount(report)).toBe(3);
+    });
+
+    it('pageContentFailures が 0 なら 0（境界値）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 2, pageContentFailures: 0 },
+      });
+      expect(pageContentFailureCount(report)).toBe(0);
+    });
+
+    it('pageContentFailures が 1 なら 1（境界値）', () => {
+      const report = makeReport({
+        webSearchStats: { searchFailures: 0, pageContentFailures: 1 },
+      });
+      expect(pageContentFailureCount(report)).toBe(1);
+    });
+  });
+
+  describe('computeReportStatus — searchFailures は error / pageContentFailures は warning（Issue #349）', () => {
+    it('searchFailures: 1、他は clean → error', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 1, pageContentFailures: 0 },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+      expect(shouldFileIssue(report)).toBe(true);
+    });
+
+    it('pageContentFailures: 1、他は clean → warning（これが本 Issue で修正する回帰）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 0, pageContentFailures: 1 },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('pageContentFailures: 0 かつ searchFailures: 0 かつ他の trigger なし → ok', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
+      });
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('pageContentFailures: 3 と high: 1 併存 → error（high が支配。変更が high を弱めていないことの証明）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 1, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 0, pageContentFailures: 3 },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('webSearchStats 完全に不在（旧キャッシュ） → ok（これらのカウンタで昇格しない）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      });
+      delete report.webSearchStats;
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('searchFailures と pageContentFailures が両方あっても error（searchFailures が理由）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 1, pageContentFailures: 2 },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('本日の本番実測（run 31792016284）相当: pageContentFailures のみ 2 件 → warning', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 0, pageContentFailures: 2 },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('dev-024 相当: pageContentFailures 3 件のみ → warning', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        webSearchStats: { searchFailures: 0, pageContentFailures: 3 },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+    });
+  });
+});
+
 describe('adultScreeningFailureCount (Issue #222)', () => {
   it('webSearchStats が無ければ 0', () => {
     expect(adultScreeningFailureCount(makeReport())).toBe(0);
@@ -182,10 +309,20 @@ describe('buildRecommendedActions', () => {
     expect(highAction).toContain('修正');
   });
 
-  it('Web 検索失敗があればファクトチェックのアクションを含む', () => {
+  it('キーワード検索失敗と公式ページ本文取得失敗を別のアクションとして出す（Issue #349）', () => {
     const report = makeReport({ webSearchStats: { searchFailures: 1, pageContentFailures: 1 } });
     const actions = buildRecommendedActions(report);
-    expect(actions.some((a) => a.includes('Web 検索失敗 2 件'))).toBe(true);
+    // 合算した「Web 検索失敗 2 件」ではなく、必要な対処が違う 2 件として出る
+    expect(actions.some((a) => a.includes('キーワード検索の失敗 1 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('公式ページ本文の取得失敗 1 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('Web 検索失敗 2 件'))).toBe(false);
+  });
+
+  it('公式ページ本文取得失敗だけの号でも、検索失敗のアクションは出さない（Issue #349）', () => {
+    const report = makeReport({ webSearchStats: { searchFailures: 0, pageContentFailures: 2 } });
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('公式ページ本文の取得失敗 2 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('キーワード検索の失敗'))).toBe(false);
   });
 
   it('AI成人向けスクリーニング失敗があれば手動確認のアクションを含む（Issue #222）', () => {
@@ -297,13 +434,15 @@ describe('formatReportMarkdown', () => {
     expect(md).not.toContain('⚠️ AI成人向けスクリーニング失敗');
   });
 
-  it('webSearchStats が undefined（旧キャッシュ）でも例外を投げない。Web検索失敗は0件扱いだが、AI成人向けスクリーニング失敗は未計測として表示する（Issue #222 code review 対応）', () => {
+  it('webSearchStats が undefined（旧キャッシュ）でも例外を投げない。Web検索失敗もAI成人向けスクリーニング失敗も未計測として表示する（Issue #222 code review / #349）', () => {
     const report = makeReport({ status: 'ok' });
     delete report.webSearchStats;
     expect(() => formatReportMarkdown(report)).not.toThrow();
     const md = formatReportMarkdown(report);
-    // Web検索失敗は元々 webSearchFailureCount() が undefined を 0 として扱う仕様のまま（変更対象外）
-    expect(md).toContain('| ✅ Web検索失敗 | 0 |');
+    // Issue #349: 検索失敗も「未計測」と「計測して0件」を区別する（旧実装は 0 件と断定していた）
+    expect(md).toContain('| ❓ Web検索失敗（キーワード） | 未計測 |');
+    expect(md).toContain('| ❓ Web検索失敗（ページ取得） | 未計測 |');
+    expect(md).not.toContain('| ✅ Web検索失敗（キーワード） | 0 |');
     // AI成人向けスクリーニング失敗は「未計測」であり「0件」と断定してはならない
     expect(md).toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
     expect(md).not.toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');

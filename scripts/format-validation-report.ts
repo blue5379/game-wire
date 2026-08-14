@@ -5,12 +5,12 @@
  *  1. 人間（運用者）向け: 「対応が必要か」「何をすべきか」がひと目で分かる Markdown サマリ
  *  2. 自動起票判定: 総合ステータス（ok/warning/error）を機械的に算出
  *
- * 総合ステータスの定義:
- *  - error   (🔴 要対応):   high 警告が1件以上、または Web 検索失敗がある、
+ * 総合ステータスの定義（Issue #349 で searchFailures と pageContentFailures を分離）:
+ *  - error   (🔴 要対応):   high 警告が1件以上、またはキーワード検索失敗（searchFailures）がある、
  *                           または AI成人向けスクリーニング失敗（fail-open）がある、
  *                           または記事本数が期待を下回ったカテゴリがある
- *  - warning (🟡 要確認):   error ではないが、medium 警告・公式URL未取得・
- *                           LLM judge の矛盾/裏付け不能のいずれかがある
+ *  - warning (🟡 要確認):   error ではないが、medium 警告・公式ページ本文取得失敗（pageContentFailures）・
+ *                           公式URL未取得・LLM judge の矛盾/裏付け不能・早期アクセス表記問題のいずれかがある
  *  - ok      (🟢 対応不要): 上記いずれも無い
  *
  * error の定義は「Issue 自動起票の条件」と一致させている（起票される号は必ず 🔴）。
@@ -22,9 +22,11 @@
  * writeAndCheckReport の fail 閾値（既定 5 件）と自動再生成の判断にも使われる数値なので、
  * 本文品質以外の要因で動かさない。
  *
- * AI成人向けスクリーニング失敗（Issue #222）は、Web 検索失敗と同様「本来行うべき安全確認が
- * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
- * （error に昇格）とする。
+ * AI成人向けスクリーニング失敗（Issue #222）は、キーワード検索失敗（searchFailures）と同様
+ * 「本来行うべき安全確認ができないまま fail-open で通過した」という性質が共通するため、
+ * キーワード検索失敗と同じ扱い（error に昇格）とする。
+ * ※ Issue #349 以降、ここでいう「検索失敗」は searchFailures のみを指す。公式ページの
+ * 本文取得失敗（pageContentFailures）は warning 止まりで、この比較の対象ではない。
  *
  * 早期アクセスの表記漏れ・誤断定（Issue #26）も high 警告には混ぜず独立した判定項として扱うが、
  * error ではなく warning 止まりにする。一次対策はプロンプト側（早期アクセス配信中である事実を
@@ -55,11 +57,37 @@ export const ARTICLE_CATEGORY_LABELS: Record<ArticleCategory, string> = {
   classic: '名作深掘り',
 };
 
-/** Web 検索の失敗総数（キーワード検索失敗 + ページ取得失敗） */
+/**
+ * キーワード検索自体の失敗回数（Issue #349）。
+ * Tavily 検索が失敗すると**その記事は根拠データがゼロのまま生成される**ため、status を error に
+ * 昇格させる（= Issue 自動起票の対象にする）。pageContentFailureCount とは扱いが逆であることに注意。
+ * ⚠️ この判断は「発火したときの影響が大きい」という想定に基づく。実測では 12 号中 0 件で
+ * 一度も発火していないため、実際の頻度と対処可能性は未観測である。Tavily のクォータ切れ等で
+ * 常態的に発火するようになった場合は、pageContentFailures と同じ理由（対処不能な原因で
+ * 号ごとに起票される）で重大度の見直しが必要になる。
+ * 旧キャッシュ（webSearchStats 追加前）では 0 として扱う。
+ */
+export function searchFailureCount(report: ValidationReport): number {
+  return report.webSearchStats?.searchFailures ?? 0;
+}
+
+/**
+ * 公式ページの本文取得失敗回数（Issue #349）。
+ * ページが実在しても JS 重量サイト等で本文が抽出できない場合がある。補助ソース 1 件の欠落なので
+ * status は warning 止まりにする（error に昇格させない）。searchFailureCount とは性質が異なる。
+ * 旧キャッシュ（webSearchStats 追加前）では 0 として扱う。
+ */
+export function pageContentFailureCount(report: ValidationReport): number {
+  return report.webSearchStats?.pageContentFailures ?? 0;
+}
+
+/** Web 検索の失敗総数（キーワード検索失敗 + ページ取得失敗）。表示・集計用。 */
 export function webSearchFailureCount(report: ValidationReport): number {
   const s = report.webSearchStats;
   if (!s) return 0;
-  return s.searchFailures + s.pageContentFailures;
+  // 片方のフィールドだけ欠けた旧キャッシュで NaN にならないよう `?? 0` で潰す
+  // （searchFailureCount / pageContentFailureCount と挙動を揃える）。
+  return (s.searchFailures ?? 0) + (s.pageContentFailures ?? 0);
 }
 
 /**
@@ -97,13 +125,32 @@ function judgeProblemCount(report: ValidationReport): number {
 }
 
 /**
- * レポートから総合ステータスを算出する。
+ * レポートから総合ステータスを算出する（Issue #349 で searchFailures と pageContentFailures を分離）。
+ *
+ * error 条件（Issue 自動起票の対象）:
+ *  - high 警告が 1 件以上
+ *  - キーワード検索失敗（searchFailures > 0）: 根拠データがゼロになる
+ *  - AI 成人向けスクリーニング失敗（adultScreeningFailures > 0）: 安全確認が fail-open で通過
+ *  - 記事本数の不足（articleCountShortfalls > 0）: カテゴリ構成の欠落
+ *
+ * warning 条件（観測のみ・Issue 自動起票しない）:
+ *  - medium 警告が 1 件以上
+ *  - 公式ページの本文取得失敗（pageContentFailures > 0）: 補助ソース 1 件の欠落
+ *  - 公式 URL 未取得（missingOfficialUrls > 0）
+ *  - LLM judge の矛盾・裏付け不能（judgeProblemCount > 0）
+ *  - 早期アクセスの表記問題（earlyAccessStatementIssues > 0）
+ *
+ * pageContentFailures を error ではなく warning にする理由（Issue #349）:
+ *  - 補助ソースの欠落であり「記事が作られない」「読者に見える誤り」の水準ではない
+ *  - 実在する正しい公式ページが JS 重量サイト等で本文抽出に失敗するケースがあり、
+ *    号ごとに Issue 自動起票しても対処できない（同じタイトルが選ばれれば毎週再発する）
+ *  - 前例: earlyAccessStatementIssues も同じ理由で warning 止まり（validate-article.ts:148）
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
   const high = report.warningsBySeverity.high;
   if (
     high > 0 ||
-    webSearchFailureCount(report) > 0 ||
+    searchFailureCount(report) > 0 ||
     adultScreeningFailureCount(report) > 0 ||
     articleCountShortfallCount(report) > 0
   ) {
@@ -114,6 +161,7 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   if (
     medium > 0 ||
+    pageContentFailureCount(report) > 0 ||
     missingUrls > 0 ||
     judgeProblemCount(report) > 0 ||
     earlyAccessStatementIssueCount(report) > 0
@@ -126,7 +174,7 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 
 /**
  * この号について Issue を自動起票すべきか。
- * 条件: high 警告が1件以上、または Web 検索失敗がある、
+ * 条件: high 警告が1件以上、または**キーワード検索失敗**（searchFailures）がある、
  * または AI成人向けスクリーニング失敗（fail-open）がある、
  * または記事本数が期待を下回ったカテゴリがある（= 総合ステータスが error）。
  */
@@ -148,7 +196,8 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const actions: string[] = [];
   const high = report.warningsBySeverity.high;
   const medium = report.warningsBySeverity.medium;
-  const webFail = webSearchFailureCount(report);
+  const searchFail = searchFailureCount(report);
+  const pageContentFail = pageContentFailureCount(report);
   const adultScreeningFail = adultScreeningFailureCount(report);
   const unrecognizedScreeningResponses = report.webSearchStats?.unrecognizedScreeningResponses ?? 0;
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
@@ -172,9 +221,17 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
       `🔴 **HIGH 警告 ${high} 件**: 該当記事の本文を確認し、事実誤り・ハルシネーションを修正してください。`
     );
   }
-  if (webFail > 0) {
+  // Issue #349: 2 種の失敗は必要なアクションが違うので分けて出す。
+  // 合算して「Web 検索失敗」と書くと、status を分離した意味（error / warning）が
+  // 人間向けサマリと自動起票タイトルの表記から失われる。
+  if (searchFail > 0) {
     actions.push(
-      `⚠️ **Web 検索失敗 ${webFail} 件**: 一部の主張が根拠未確認のまま生成されています。手動でファクトチェックしてください。`
+      `🔴 **キーワード検索の失敗 ${searchFail} 件**: 該当記事は根拠データ無しで生成されています。全体を手動でファクトチェックしてください。`
+    );
+  }
+  if (pageContentFail > 0) {
+    actions.push(
+      `⚠️ **公式ページ本文の取得失敗 ${pageContentFail} 件**: 公式サイトの記述と照合できていません（実在するページでも JS 重量サイトでは失敗する）。該当記事の対応機種・発売日を手動で確認してください。`
     );
   }
   if (adultScreeningFail > 0) {
@@ -297,11 +354,19 @@ export function formatReportMarkdown(report: ValidationReport): string {
   out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high} |`);
   out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium} |`);
   out.push(`| 🟢 LOW | ${report.warningsBySeverity.low} |`);
-  if (webFail > 0) {
-    out.push(`| ⚠️ Web検索失敗（キーワード） | ${report.webSearchStats?.searchFailures ?? 0} |`);
-    out.push(`| ⚠️ Web検索失敗（ページ取得） | ${report.webSearchStats?.pageContentFailures ?? 0} |`);
+  // Issue #349: キーワード検索失敗（error 要因）とページ本文取得失敗（warning 要因）は
+  // 重大度が違うので、0 件のときも行を分けて出す（1 行に潰すと分離が表から読み取れない）。
+  // ただし webSearchStats 自体が無い旧キャッシュは「未計測」であり「計測して 0 件」ではない。
+  // 両者を潰すと #222 code review が adultScreeningFailures で指摘したのと同じ誤りになるため 3 分岐する。
+  if (!report.webSearchStats) {
+    out.push('| ❓ Web検索失敗（キーワード） | 未計測 |');
+    out.push('| ❓ Web検索失敗（ページ取得） | 未計測 |');
+  } else if (webFail > 0) {
+    out.push(`| ⚠️ Web検索失敗（キーワード） | ${report.webSearchStats.searchFailures ?? 0} |`);
+    out.push(`| ⚠️ Web検索失敗（ページ取得） | ${report.webSearchStats.pageContentFailures ?? 0} |`);
   } else {
-    out.push('| ✅ Web検索失敗 | 0 |');
+    out.push('| ✅ Web検索失敗（キーワード） | 0 |');
+    out.push('| ✅ Web検索失敗（ページ取得） | 0 |');
   }
   // adultScreeningFailures は undefined（未計測）と 0（計測して失敗ゼロ）を区別して表示する。
   // adultScreeningFailureCount() は computeReportStatus 用に `?? 0` で潰した値を返すため、

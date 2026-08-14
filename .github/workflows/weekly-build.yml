@@ -201,19 +201,24 @@ jobs:
 
           ISSUE_NUM=$(jq -r '.issueNumber' "$REPORT_JSON")
           HIGH=$(jq -r '.warningsBySeverity.high' "$REPORT_JSON")
-          # Web検索失敗数 = searchFailures + pageContentFailures（format-validation-report.ts:59-63）
-          SEARCH_FAIL=$(jq -r '(.webSearchStats.searchFailures // 0) + (.webSearchStats.pageContentFailures // 0)' "$REPORT_JSON")
+          # Issue #349: searchFailures と pageContentFailures を分離（性質が異なる）
+          SEARCH_FAIL=$(jq -r '.webSearchStats.searchFailures // 0' "$REPORT_JSON")
+          PAGE_CONTENT_FAIL=$(jq -r '.webSearchStats.pageContentFailures // 0' "$REPORT_JSON")
           ADULT=$(jq -r '.webSearchStats.adultScreeningFailures // 0' "$REPORT_JSON")
           SHORTFALL=$(jq -r '.articleCountShortfalls // [] | length' "$REPORT_JSON")
-          # HIGH 以外の要因（Web検索失敗 / AI成人向けスクリーニング失敗 / 記事本数の不足）だけで
+          # HIGH 以外の要因（検索失敗 / 公式ページ本文取得失敗 / AI成人向けスクリーニング失敗 / 記事本数の不足）だけで
           # 起票された場合、HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる。
           # 新しい要因が 0 のときは従来通りの表記を維持する（重複防止ロジックが旧Issueと
           # 一致し続けるように保つため、条件付きで後ろに足すだけにする）。
-          # （Issue #222 / #311 対応。Web検索失敗の件は 2026-08-14 の本番実測で
-          #   pageContentFailures 単独の error が「HIGH: 0件」と表示されることが判明して追加）
+          # （Issue #222 / #311 / #349 対応。pageContentFailures 単独では error にならない
+          #   ＝この suffix だけでは起票されないが、error の号に併発していたときに原因の一部として
+          #   見えるようタイトルに出す。起票の要因は SEARCH_FAIL 側）
           DETAIL="HIGH: ${HIGH}件"
           if [ "$SEARCH_FAIL" != "0" ]; then
-            DETAIL="${DETAIL}、Web検索失敗: ${SEARCH_FAIL}件"
+            DETAIL="${DETAIL}、検索失敗: ${SEARCH_FAIL}件"
+          fi
+          if [ "$PAGE_CONTENT_FAIL" != "0" ]; then
+            DETAIL="${DETAIL}、公式ページ本文取得の失敗: ${PAGE_CONTENT_FAIL}件"
           fi
           if [ "$ADULT" != "0" ]; then
             DETAIL="${DETAIL}、AI成人向けスクリーニング失敗: ${ADULT}件"
