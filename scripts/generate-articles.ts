@@ -373,7 +373,7 @@ async function screenOutAdultGames(games: GameData[], stats?: GenerationStats): 
 }
 
 /**
- * 大手企業新作記事を生成
+ * 新作紹介記事を生成
  */
 async function generateNewReleaseArticle(
   game: GameData,
@@ -442,9 +442,13 @@ async function generateNewReleaseArticle(
     })
   );
 
-  // 「大手企業の新作」枠のラベルは大手側の企業名を使う。受託開発タイトル
-  // （developer=受託スタジオ、publisher=大手）で developer をそのまま使うと
-  // 「Game Studio Inc.の新作」のように枠の趣旨と合わないラベルになる（Issue #180）。
+  // 受託開発タイトル（developer=受託スタジオ、publisher=大手）では、ラベルに発売元側の
+  // 企業名を使う。developer をそのまま使うと「Game Studio Inc.の新作」となり、その作品を
+  // 立ち上げていない受託先に帰属させる誤りになるため（Issue #180）。
+  //
+  // これは規模の話ではなく帰属の正確さの話である。どちらも静的リストに載らない場合は
+  // pickNewReleaseLabelCompany が developer をそのまま返すので、小規模スタジオ名がラベルに
+  // なるのは正常な動作（新作紹介枠は企業規模を問わない = 論点A / Issue #336）。
   const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
   const newReleaseCategoryLabel = labelCompany ? `${labelCompany}の新作` : '注目新作';
   const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate);
@@ -1401,7 +1405,7 @@ async function main(): Promise<void> {
     console.warn(`  [ArticleGen] indies has only ${selectedGames.indies.length} game(s) — issue will have fewer indie articles`);
   }
 
-  // 1. 大手企業新作記事（2本）
+  // 1. 新作紹介記事（2本）
   console.log('Generating new release articles...');
   for (const game of selectedGames.newReleases.slice(0, 2)) {
     try {

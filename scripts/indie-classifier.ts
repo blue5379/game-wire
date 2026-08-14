@@ -299,7 +299,7 @@ export function isLargeStudio(
 }
 
 /**
- * 「大手企業の新作」枠の記事カテゴリラベルに使う企業名を選ぶ（Issue #180, #277）。
+ * 新作紹介枠の記事カテゴリラベルに使う企業名を選ぶ（Issue #180, #277）。
  *
  * developer が大手ならその表示名、受託開発（developer は小規模だが
  * publisher が大手）なら publisher の表示名を返す。
