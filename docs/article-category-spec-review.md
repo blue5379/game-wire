@@ -1973,7 +1973,7 @@ coming_soon（生 10 件中 2 件。★本節に記載が無かった。ただ�
 
 ⚠️ **「10 件中 2 件」は生レスポンスに対する測定値である。** `coming_soon` は `fetch-steam.ts:314` の `slice(0, 5)` で上位 5 件しか `getAppDetails` に渡らないため、**実際に候補プールへ入っていた `music` は 1 件**（`Pight Soundtrack`、1 位）。当初この節は 2 件が混入していたかのように書いていたが、順位を実測データで確認して訂正した（レビュー指摘）。混入経路が実在することは 1 件でも変わらない。
 
-**混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）。
+**混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）（※ vol.017-019 は 2026-08-14 に削除。`git show c5c9d11:src/content/issues/issue-018.md` で参照）。
 
 **判定順序**: 成人向け → name 不一致（`isSameSteamApp`）→ type。当初 type を name 不一致より前に置いていたが、appId 取り違え（Issue #102 型）でその appId の実体がたまたま `dlc` / `music` だった場合に、より診断価値の高い `appId/name mismatch` 警告が出なくなるためレビューで後ろに移した。候補の採否は変わらない（観測性のみ）。
 
@@ -3136,7 +3136,7 @@ Game Wire はバックナンバーが恒久的に残る構成なので、**順�
   - `https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/**`（27 ページ）— operation 一覧・resource 一覧・`browseNodeInfo.browseNodes.salesRank` / `websiteSalesRank` の定義
   - `https://affiliate.amazon.co.jp/help/operating/paapilicenseagreement` — 日本ロケールのライセンス条項 (g) (i) (n) (o)
 - GitHub Actions 実行ログ: run 30129193266（vol.17, schedule, 2026-07-24T21:52:45Z, conclusion=success）
-- `src/content/issues/issue-001.md` 〜 `issue-017.md`
+- `src/content/issues/issue-001.md` 〜 `issue-017.md`（※ vol.017-019 は 2026-08-14 に削除。`git show c5c9d11:src/content/issues/issue-017.md` で参照）
 - `src/content/history.json`（105 件）
 - `要件.md`
 - `scripts/fetch-igdb.ts`, `scripts/game-filter.ts`, `scripts/fetch-data.ts`, `scripts/bedrock-client.ts`,
