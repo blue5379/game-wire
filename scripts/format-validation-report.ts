@@ -5,12 +5,12 @@
  *  1. 人間（運用者）向け: 「対応が必要か」「何をすべきか」がひと目で分かる Markdown サマリ
  *  2. 自動起票判定: 総合ステータス（ok/warning/error）を機械的に算出
  *
- * 総合ステータスの定義:
- *  - error   (🔴 要対応):   high 警告が1件以上、または Web 検索失敗がある、
+ * 総合ステータスの定義（Issue #349 で searchFailures と pageContentFailures を分離）:
+ *  - error   (🔴 要対応):   high 警告が1件以上、またはキーワード検索失敗（searchFailures）がある、
  *                           または AI成人向けスクリーニング失敗（fail-open）がある、
  *                           または記事本数が期待を下回ったカテゴリがある
- *  - warning (🟡 要確認):   error ではないが、medium 警告・公式URL未取得・
- *                           LLM judge の矛盾/裏付け不能のいずれかがある
+ *  - warning (🟡 要確認):   error ではないが、medium 警告・公式ページ本文取得失敗（pageContentFailures）・
+ *                           公式URL未取得・LLM judge の矛盾/裏付け不能・早期アクセス表記問題のいずれかがある
  *  - ok      (🟢 対応不要): 上記いずれも無い
  *
  * error の定義は「Issue 自動起票の条件」と一致させている（起票される号は必ず 🔴）。
@@ -55,7 +55,28 @@ export const ARTICLE_CATEGORY_LABELS: Record<ArticleCategory, string> = {
   classic: '名作深掘り',
 };
 
-/** Web 検索の失敗総数（キーワード検索失敗 + ページ取得失敗） */
+/**
+ * キーワード検索自体の失敗回数（Issue #349）。
+ * Tavily 検索が失敗すると記事の根拠データがゼロになるため、status を error に昇格させる。
+ * validate-article.ts:148 が earlyAccessStatementIssues を error ではなく warning にした理由と同じ
+ * （error は Issue 自動起票の条件のため、号ごとに対処不能な原因で起票しない）。
+ * 旧キャッシュ（webSearchStats 追加前）では 0 として扱う。
+ */
+export function searchFailureCount(report: ValidationReport): number {
+  return report.webSearchStats?.searchFailures ?? 0;
+}
+
+/**
+ * 公式ページの本文取得失敗回数（Issue #349）。
+ * ページが実在しても JS 重量サイト等で本文が抽出できない場合がある。補助ソース 1 件の欠落なので
+ * status は warning 止まりにする（error に昇格させない）。searchFailureCount とは性質が異なる。
+ * 旧キャッシュ（webSearchStats 追加前）では 0 として扱う。
+ */
+export function pageContentFailureCount(report: ValidationReport): number {
+  return report.webSearchStats?.pageContentFailures ?? 0;
+}
+
+/** Web 検索の失敗総数（キーワード検索失敗 + ページ取得失敗）。表示・集計用。 */
 export function webSearchFailureCount(report: ValidationReport): number {
   const s = report.webSearchStats;
   if (!s) return 0;
@@ -97,13 +118,32 @@ function judgeProblemCount(report: ValidationReport): number {
 }
 
 /**
- * レポートから総合ステータスを算出する。
+ * レポートから総合ステータスを算出する（Issue #349 で searchFailures と pageContentFailures を分離）。
+ *
+ * error 条件（Issue 自動起票の対象）:
+ *  - high 警告が 1 件以上
+ *  - キーワード検索失敗（searchFailures > 0）: 根拠データがゼロになる
+ *  - AI 成人向けスクリーニング失敗（adultScreeningFailures > 0）: 安全確認が fail-open で通過
+ *  - 記事本数の不足（articleCountShortfalls > 0）: カテゴリ構成の欠落
+ *
+ * warning 条件（観測のみ・Issue 自動起票しない）:
+ *  - medium 警告が 1 件以上
+ *  - 公式ページの本文取得失敗（pageContentFailures > 0）: 補助ソース 1 件の欠落
+ *  - 公式 URL 未取得（missingOfficialUrls > 0）
+ *  - LLM judge の矛盾・裏付け不能（judgeProblemCount > 0）
+ *  - 早期アクセスの表記問題（earlyAccessStatementIssues > 0）
+ *
+ * pageContentFailures を error ではなく warning にする理由（Issue #349）:
+ *  - 補助ソースの欠落であり「記事が作られない」「読者に見える誤り」の水準ではない
+ *  - 実在する正しい公式ページが JS 重量サイト等で本文抽出に失敗するケースがあり、
+ *    号ごとに Issue 自動起票しても対処できない（同じタイトルが選ばれれば毎週再発する）
+ *  - 前例: earlyAccessStatementIssues も同じ理由で warning 止まり（validate-article.ts:148）
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
   const high = report.warningsBySeverity.high;
   if (
     high > 0 ||
-    webSearchFailureCount(report) > 0 ||
+    searchFailureCount(report) > 0 ||
     adultScreeningFailureCount(report) > 0 ||
     articleCountShortfallCount(report) > 0
   ) {
@@ -114,6 +154,7 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   if (
     medium > 0 ||
+    pageContentFailureCount(report) > 0 ||
     missingUrls > 0 ||
     judgeProblemCount(report) > 0 ||
     earlyAccessStatementIssueCount(report) > 0
