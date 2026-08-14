@@ -686,6 +686,84 @@
       "category": "feature",
       "issueNumber": 16,
       "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "ほの暮しの庭",
+      "title": "ほの暮しの庭",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "big walk",
+      "title": "Big Walk",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "palworld",
+      "title": "Palworld",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "scrap mechanic",
+      "title": "Scrap Mechanic",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "grand theft auto v",
+      "title": "Grand Theft Auto V",
+      "category": "classic",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "バイオハザード re 2",
+      "title": "バイオハザード RE:2",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "バイオハザード re 4",
+      "title": "バイオハザード RE:4",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "phasmophobia",
+      "title": "Phasmophobia",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "リトルナイトメア",
+      "title": "リトルナイトメア",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    },
+    {
+      "normalizedTitle": "エイリアン アイソレーション",
+      "title": "エイリアン アイソレーション",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08"
+    }
+  ],
+  "featureEvents": [
+    {
+      "eventName": "お盆",
+      "issueNumber": 17,
+      "publishDate": "2026-08-08",
+      "source": "forward"
     }
   ]
 }
