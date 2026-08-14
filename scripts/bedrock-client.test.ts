@@ -783,3 +783,76 @@ describe('selectFeatureThemeWithAI — 採用した記念日名の同定（Issue
     expect(mockSend).not.toHaveBeenCalled();
   });
 });
+
+describe('buildUserMessage - 早期アクセス（Issue #26。仕様 §2.9）', () => {
+  const publishDate = new Date('2026-05-10');
+
+  it('isEarlyAccess: true のとき「早期アクセス: 配信中（正式リリース前）」を含む', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Slay the Spire 2', isEarlyAccess: true });
+    expect(msg).toContain('早期アクセス: 配信中（正式リリース前）');
+  });
+
+  it('isEarlyAccess: true のとき正式リリース断定を禁じるルールを含む', () => {
+    const msg = buildUserMessage('indie', { title: 'R.E.P.O.', isEarlyAccess: true });
+    expect(msg).toContain('「早期アクセス配信中」であることを必ず明記');
+    expect(msg).toContain('「正式リリース済み」「正式版が発売中」「完成版」のような正式リリース済みと読める断定は絶対に書かないこと');
+  });
+
+  it('isEarlyAccess: false のとき早期アクセスには一切触れない', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game', isEarlyAccess: false });
+    expect(msg).not.toContain('早期アクセス');
+  });
+
+  it('isEarlyAccess: undefined（未判定）のとき早期アクセスには一切触れない', () => {
+    const msg = buildUserMessage('newRelease', { title: 'Test Game' });
+    expect(msg).not.toContain('早期アクセス');
+  });
+
+  it('発売状態（3値）は早期アクセスによって変化しない（直交する軸）', () => {
+    // §2.8 の発売状態は releaseDate と publishDate だけで決まる。早期アクセスは別行で伝える
+    const msg = buildUserMessage(
+      'newRelease',
+      { title: 'Slay the Spire 2', releaseDate: '2026-03-05', isEarlyAccess: true },
+      undefined,
+      publishDate
+    );
+    expect(msg).toContain('発売日: 2026-03-05（発売済み）');
+    expect(msg).toContain('早期アクセス: 配信中（正式リリース前）');
+  });
+});
+
+describe('buildFeatureUserMessage - 早期アクセス（Issue #26。仕様 §2.9）', () => {
+  const date = new Date('2026-05-10');
+
+  it('早期アクセスのゲームにだけ行を出し、ルールは1回だけ出す', () => {
+    const msg = buildFeatureUserMessage('テーマ', date, [
+      { title: 'Timberborn', isEarlyAccess: true },
+      { title: 'Stardew Valley' },
+    ]);
+    // 早期アクセス行は1本目のみ
+    expect(msg.match(/早期アクセス: 配信中（正式リリース前）/g)).toHaveLength(1);
+    // ルールはゲーム数によらず1回
+    expect(msg.match(/「早期アクセス配信中」であることを必ず明記/g)).toHaveLength(1);
+  });
+
+  it('早期アクセスのゲームが1本も無ければルールを出さない', () => {
+    const msg = buildFeatureUserMessage('テーマ', date, [
+      { title: 'Stardew Valley' },
+      { title: 'Hollow Knight', isEarlyAccess: false },
+    ]);
+    expect(msg).not.toContain('早期アクセス');
+  });
+});
+
+describe('PromptTemplates.titleSystem - 早期アクセス（Issue #26。仕様 §2.9）', () => {
+  it('見出しで正式リリース済みと読める表現を禁じるルールがある', () => {
+    expect(PromptTemplates.titleSystem).toContain('「早期アクセス」が「配信中」と示されている場合');
+    expect(PromptTemplates.titleSystem).toContain('正式リリース済みと読める表現を使わない');
+  });
+
+  it('発売状態の既存3ルール（発売済み/本日発売/発売予定）は残っている', () => {
+    expect(PromptTemplates.titleSystem).toContain('「発売状態」が「発売済み」と示されている場合');
+    expect(PromptTemplates.titleSystem).toContain('「発売状態」が「本日発売」と示されている場合');
+    expect(PromptTemplates.titleSystem).toContain('「発売状態」が「発売予定」と示されている場合');
+  });
+});

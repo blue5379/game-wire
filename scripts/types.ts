@@ -73,6 +73,18 @@ export interface IGDBGame {
   /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
   totalRatingCount?: number;
   /**
+   * IGDB の `game_status` 生値（0=Released, 2=Alpha, 3=Beta, **4=Early Access**,
+   * 5=Offline, 6=Cancelled, 7=Rumored, 8=Delisted）。名作枠の早期アクセス除外ゲートに使う（§2.9/§5.4）。
+   *
+   * ⚠️ **記事本文の早期アクセス表記には使わない。** 実測でこの値は両方向に外れる:
+   * `Realm of Ink` は `game_status=4` だが Steam ストアでは既に早期アクセスを終えている（偽陽性）、
+   * `ARK: Survival Ascended` は `null` だが Steam では早期アクセス中（偽陰性）。
+   * 本文で「早期アクセス」と書くかどうかは `isEarlyAccess`（Steam 一次ソース）だけで決める。
+   * 生値のまま持つ理由: 除外ゲートの判定を呼び出し側に委ね、将来 Offline/Delisted 等の
+   * 別状態を扱うときにフィールドを増やさずに済むから。
+   */
+  gameStatus?: number;
+  /**
    * J-3-e（§5.5決着）: game_type が 8（Remake）/9（Remaster）のリメイク・リマスターについて、
    * 名作枠の母集団に含めてよいかを表す。`gameType` が 0（Main Game）や未指定など 8/9 以外の
    * 場合は無関係なので `undefined`。8/9 の場合は「原作（parent_game）が §5.4 の母集団条件
@@ -145,6 +157,23 @@ export interface GameData {
    * ⚠️ 選定側（isClassicRemakeAllowed）では `undefined` を「除外」として扱う。
    */
   classicRemakeEligible?: boolean;
+  /**
+   * 早期アクセス（Early Access）配信中かどうか（Issue #26、§2.9）。
+   *
+   * **一次ソースは Steam Storefront の `genres` に id 70（日本語ラベル「早期アクセス」）が
+   * 含まれるかどうかだけ**。IGDB の `game_status` は使わない（`gameStatus` の JSDoc に理由）。
+   *
+   * `undefined` は「未判定」であって「早期アクセスではない」ではない。
+   * Steam ストアに無いタイトル（例: Hytale）や `steamAppId` が判明していないタイトルは
+   * 常に `undefined` になる。**本文表記・バリデータはどちらも `=== true` でしか発火させない**
+   * （偽陽性で「早期アクセス」と書くと、正式リリース済みの作品に新たな誤情報を足すことになる）。
+   */
+  isEarlyAccess?: boolean;
+  /**
+   * IGDB の `game_status` 生値。名作枠の早期アクセス除外ゲートに使う（§5.4）。
+   * 値の意味と、本文表記に使ってはならない理由は IGDBGame.gameStatus の JSDoc を参照。
+   */
+  igdbGameStatus?: number;
 }
 
 // 統合データ出力

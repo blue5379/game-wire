@@ -16,11 +16,11 @@ import { fetchIGDBData, enrichGameWithIGDB } from './fetch-igdb.js';
 import { fetchAmazonRanking, type AmazonRankIndex } from './fetch-amazon-ranking.js';
 import { getCooldownTitles } from './game-history.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
-import { isFanGame, isQualifiedGame } from './game-filter.js';
+import { isFanGame, isQualifiedGame, isEarlyAccessGame } from './game-filter.js';
 import { getJstDateString, getJstDayStartUnixSec } from './jst-date.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { isIndieGame, pickDeveloperGameCount } from './indie-classifier.js';
-import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName } from './steam-utils.js';
+import { parseSteamReleaseDate as _parseSteamReleaseDate, isQualifiedCompanyName as _isQualifiedCompanyName, detectEarlyAccessFromSteamGenres } from './steam-utils.js';
 import { selectIndieGamesWithFallback, vetIndieCandidate } from './select-indie-with-fallback.js';
 import { selectNewReleasesWithFallback, vetNewReleaseCandidate, hasExistenceEvidence } from './select-newreleases-with-fallback.js';
 import { hasAllRequiredFields } from './finalize-game-metadata.js';
@@ -154,6 +154,7 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.keywords = igdbGame.keywords?.length ? igdbGame.keywords : game.keywords;
   game.totalRating = igdbGame.totalRating ?? game.totalRating;
   game.totalRatingCount = igdbGame.totalRatingCount ?? game.totalRatingCount;
+  game.igdbGameStatus = igdbGame.gameStatus ?? game.igdbGameStatus;
   game.classicRemakeEligible = igdbGame.classicRemakeEligible ?? game.classicRemakeEligible;
   if (!game.source.includes('igdb')) {
     game.source.push('igdb');
@@ -172,6 +173,35 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
     }
   }
   return true;
+}
+
+/**
+ * Steam Storefront（appdetails）で補完すべきゲームかを判定する（純関数）。
+ *
+ * 呼び出し元は `steamAppId` を持つゲームだけをここに渡す（appId が無ければ取得できないため）。
+ *
+ * ## 早期アクセス未判定を条件に含める理由（Issue #26）
+ *
+ * `isEarlyAccess === undefined` は「早期アクセスかどうかまだ判定していない」を意味する
+ * （`false` =「判定した結果、早期アクセスではない」とは別）。これを条件に入れないと、
+ * **他のフィールドが埋まりきっているゲームだけ早期アクセス判定が抜ける**（= 号によって
+ * 発火する記事と発火しない記事が混じる）。
+ *
+ * ⚠️ 2026-08-14 時点では、この条件が単独で判定を変えることはない。`steamRecommendations` を
+ * 書くのはこのループだけなので、1 周目は必ず `undefined` で他の条件が先に true になるからである。
+ * それでも条件として残しているのは、将来 `steamRecommendations` を別経路（キャッシュ等）で
+ * 先に埋めるようになったときに、早期アクセス判定だけが黙って落ちるのを防ぐため。
+ * この関数を切り出したのは、その意図を単体テストで固定できるようにするためでもある。
+ */
+export function needsStorefrontCompletion(game: GameData): boolean {
+  return (
+    !game.coverImage ||
+    !game.developer ||
+    game.steamRecommendations === undefined ||
+    !game.screenshots ||
+    game.screenshots.length === 0 ||
+    game.isEarlyAccess === undefined
+  );
 }
 
 /**
@@ -356,6 +386,7 @@ export async function aggregateGames(
         game.keywords = igdb.keywords?.length ? igdb.keywords : game.keywords;
         game.totalRating = igdb.totalRating ?? game.totalRating;
         game.totalRatingCount = igdb.totalRatingCount ?? game.totalRatingCount;
+        game.igdbGameStatus = igdb.gameStatus ?? game.igdbGameStatus;
         game.classicRemakeEligible = igdb.classicRemakeEligible ?? game.classicRemakeEligible;
         if (igdb.websites?.length) {
           game.igdbWebsites = igdb.websites;
@@ -398,6 +429,7 @@ export async function aggregateGames(
         keywords: igdb.keywords,
         totalRating: igdb.totalRating,
         totalRatingCount: igdb.totalRatingCount,
+        igdbGameStatus: igdb.gameStatus,
         classicRemakeEligible: igdb.classicRemakeEligible,
         igdbWebsites: igdb.websites?.length ? igdb.websites : undefined,
         source: ['igdb'],
@@ -441,6 +473,7 @@ export async function aggregateGames(
   // - 対象: coverImage が未設定で、かつ steamAppId が判明しているゲーム
   // - フィールド単位で空欄のみ埋める（IGDB 由来の値は上書きしない）
   // - summary / genres は埋めない（マーケコピー・表記揺れ回避のため）
+  //   ※ genres 自体は書き込まないが、早期アクセス判定にだけ読む（Issue #26。§2.9）
   console.log('Enriching games with Steam Storefront API...');
   let storefrontEnrichedCount = 0;
   let storefrontFailedCount = 0;
@@ -448,12 +481,7 @@ export async function aggregateGames(
     // steamAppId がなければ Storefront から取得できないのでスキップ
     // coverImage が埋まっていても developer / steamRecommendations の補完は必要なので続行
     if (!game.steamAppId) continue;
-    // developer・steamRecommendations・coverImage・screenshots のどれかが欠けている場合に補完を試みる
-    const needsCompletion =
-      !game.coverImage ||
-      !game.developer || game.steamRecommendations === undefined ||
-      !game.screenshots || game.screenshots.length === 0;
-    if (!needsCompletion) continue;
+    if (!needsStorefrontCompletion(game)) continue;
 
     try {
       const response = await fetch(
@@ -493,6 +521,14 @@ export async function aggregateGames(
       // steamRecommendations: 話題性閾値判定用
       if (game.steamRecommendations === undefined && data.recommendations?.total != null) {
         game.steamRecommendations = Number(data.recommendations.total);
+      }
+
+      // isEarlyAccess: 早期アクセス配信中か（Issue #26、§2.9）。
+      // genres が取得できた場合のみ true/false を確定させる。取得できなければ undefined のまま
+      // （= 未判定）にして、本文にもバリデータにも何も効かせない。
+      const earlyAccess = detectEarlyAccessFromSteamGenres(data.genres);
+      if (game.isEarlyAccess === undefined && earlyAccess !== undefined) {
+        game.isEarlyAccess = earlyAccess;
       }
 
       // coverImage: aggregate フェーズでは CDN URL を無条件代入しない。
@@ -642,6 +678,11 @@ export function deduplicateGames(games: GameData[]): GameData[] {
       primary.keywords = primary.keywords?.length ? primary.keywords : dup.keywords;
       primary.totalRating = primary.totalRating ?? dup.totalRating;
       primary.totalRatingCount = primary.totalRatingCount ?? dup.totalRatingCount;
+      primary.igdbGameStatus = primary.igdbGameStatus ?? dup.igdbGameStatus;
+      // isEarlyAccess: Steam Storefront 由来（Issue #26）。`??` で undefined（未判定）のときだけ
+      // dup の値を採る。`||` では primary の `false`（判定済み・早期アクセスではない）が
+      // dup の `true` に置き換わってしまう
+      primary.isEarlyAccess = primary.isEarlyAccess ?? dup.isEarlyAccess;
       primary.classicRemakeEligible = primary.classicRemakeEligible ?? dup.classicRemakeEligible;
       // source リストをマージ
       for (const s of dup.source) {
@@ -1177,6 +1218,10 @@ export function buildIndieCandidates(
  * リメイク・リマスターの扱いは §5.5（J-3-e）。`isRemakeOrRemaster` による一律除外ではなく、
  * `isClassicRemakeAllowed` で「原作が母集団にいないリメイクだけ許可」する。
  *
+ * 早期アクセス配信中の作品は `isEarlyAccessGame` で除外する（Issue #26、§5.4）。
+ * 母集団クエリ（`fetchClassicGames`）側にも同じゲートがあるが、上記の第2層エンリッチ経路には
+ * クエリのフィルタが効かないため選定側でも再現している（`isClassicPoolGameType` と同じ理由）。
+ *
  * 並び順は評価母数（totalRatingCount）の降順（§5.8決着）。`Array.prototype.sort` は
  * 安定ソートのため、同値時は元の配列順を保つ。
  */
@@ -1187,6 +1232,7 @@ export function buildClassicCandidates(
   return games
     .filter((g) => !isInvalidGameTitle(g.title))
     .filter((g) => !isFanGame(g))
+    .filter((g) => !isEarlyAccessGame(g))
     .filter((g) => isClassicPoolGameType(g))
     .filter((g) => isClassicRemakeAllowed(g))
     .filter((g) => !options.cooldown.has(g.normalizedTitle))

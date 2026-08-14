@@ -1909,3 +1909,77 @@ describe('IGDB_POOL_QUERY_FIELDS に release_dates が含まれること（§2.4
     expect(IGDB_POOL_QUERY_FIELDS).toContain('release_dates.date_format');
   });
 });
+
+describe('game_status（早期アクセス）の取得と名作クエリのゲート（Issue #26。仕様 §2.9 / §5.4）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.IGDB_CLIENT_ID;
+    delete process.env.IGDB_CLIENT_SECRET;
+  });
+
+  it('mapPoolRawGameToIGDBGame: game_status を gameStatus に転記する', () => {
+    // 実測: `Path of Exile 2` は名作枠の母集団条件を満たしつつ game_status=4
+    const result = mapPoolRawGameToIGDBGame({
+      id: 125642,
+      name: 'Path of Exile 2',
+      slug: 'path-of-exile-2',
+      game_status: 4,
+    });
+    expect(result.gameStatus).toBe(4);
+  });
+
+  it('mapPoolRawGameToIGDBGame: game_status が無ければ undefined（名作級は null が普通）', () => {
+    // 実測: Grand Theft Auto V / The Witcher 3 はいずれも game_status=null
+    const result = mapPoolRawGameToIGDBGame({ id: 1, name: 'GTA V', slug: 'gta-v' });
+    expect(result.gameStatus).toBeUndefined();
+  });
+
+  it('mapRawGameToIGDBGame（検索経路）でも game_status を転記する', () => {
+    const result = mapRawGameToIGDBGame({
+      id: 296831,
+      name: 'Slay the Spire II',
+      slug: 'slay-the-spire-ii',
+      game_status: 4,
+    });
+    expect(result.gameStatus).toBe(4);
+  });
+
+  it('母集団クエリの fields に game_status が入っている（転記元が欠けない）', () => {
+    expect(IGDB_POOL_QUERY_FIELDS).toContain('game_status');
+  });
+
+  it('名作クエリは `(game_status = null | game_status != 4)` でゲートする（`!=` 単体は null を落として母集団が崩壊する）', async () => {
+    process.env.IGDB_CLIENT_ID = 'test-client-id';
+    process.env.IGDB_CLIENT_SECRET = 'test-client-secret';
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (String(url).includes('id.twitch.tv')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ access_token: 'test-token', expires_in: 3600 }),
+        });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await fetchIGDBData();
+
+    const bodies = fetchMock.mock.calls.map(([, init]) =>
+      String((init as { body?: string })?.body ?? '')
+    );
+    const classicQuery = bodies.find((b) => b.includes('total_rating >='));
+    expect(classicQuery).toBeDefined();
+    // 実測（2026-08-14 games/count）: `& game_status != 4` だけだと 279 件 → 7 件に崩壊する
+    expect(classicQuery).toContain('(game_status = null | game_status != 4)');
+
+    // 名作以外の母集団クエリにはゲートを入れない（新作・インディー枠は早期アクセスを扱う）
+    const otherQueries = bodies.filter(
+      (b) => b.includes('fields') && !b.includes('total_rating >=')
+    );
+    expect(otherQueries.length).toBeGreaterThan(0);
+    for (const q of otherQueries) {
+      expect(q).not.toContain('game_status = null');
+    }
+  });
+});

@@ -23,6 +23,7 @@ import {
   writeAndCheckReport,
   readExpectedArticleCounts,
   detectArticleCountShortfalls,
+  detectEarlyAccessStatementIssues,
 } from './validate-article.js';
 import type { ValidationWarning, ValidationReport } from './validate-article.js';
 import { computeReportStatus, shouldFileIssue } from './format-validation-report.js';
@@ -2485,5 +2486,185 @@ describe('validateArticles の記事本数不足の集計（Issue #311）', () =
     expect(report.warningsBySeverity.high).toBe(0);
     expect(computeReportStatus(report)).toBe('error');
     expect(shouldFileIssue(report)).toBe(true);
+  });
+});
+
+describe('detectEarlyAccessStatementIssues（Issue #26。仕様 §2.9）', () => {
+  /** 早期アクセス作品の記事を作る（isEarlyAccess は明示的に渡す） */
+  function makeEaArticle(
+    overrides: { content?: string; summary?: string; isEarlyAccess?: boolean } = {}
+  ): GeneratedArticle {
+    return makeArticle({
+      title: '『Slay the Spire 2』新カードで進化したデッキ構築ローグライク',
+      category: 'newRelease',
+      summary: overrides.summary ?? '',
+      content: overrides.content ?? '',
+      game: {
+        title: 'Slay the Spire 2',
+        genre: ['Strategy'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-03-05',
+        isEarlyAccess: overrides.isEarlyAccess,
+      },
+    });
+  }
+
+  it('vol.008『ARK: Survival Ascended』相当: 発売中と書きつつ早期アクセスに一切触れていない記事を検出する', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '## 📅 発売情報\n**発売日**: 発売中\n**対応機種**: PC (Microsoft Windows)',
+        summary: '恐竜サバイバルの決定版が発売中。',
+      })
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe('early-access-unstated');
+    expect(issues[0].gameTitle).toBe('Slay the Spire 2');
+    expect(issues[0].category).toBe('newRelease');
+  });
+
+  it('本文で早期アクセスに触れていれば検出しない', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '## 📅 発売情報\n**発売日**: 2026年3月5日より早期アクセス配信中',
+        summary: '早期アクセスで配信が始まった。',
+      })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('要約だけで早期アクセスに触れていても検出しない（本文・要約のどちらでもよい）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '## 📅 発売情報\n**発売日**: 配信中',
+        summary: '本作はアーリーアクセスとして配信中。',
+      })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('英語表記 Early Access も言及として認める（大小文字・空白の揺れを吸収）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({ isEarlyAccess: true, content: '本作は EARLY  ACCESS で配信中。' })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('正式リリース済みと読める断定を検出する（早期アクセスに触れていても別途1件出る）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '早期アクセスを経て、本作は正式リリース済みとなった。',
+      })
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].type).toBe('early-access-release-claim');
+    expect(issues[0].evidence).toBe('正式リリース');
+  });
+
+  it('「正式版が発売中」も検出する（販売状態を表す完了表現）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({ isEarlyAccess: true, content: '早期アクセス版に続き正式版が発売中だ。' })
+    );
+    expect(issues.map((i) => i.type)).toEqual(['early-access-release-claim']);
+    expect(issues[0].evidence).toBe('正式版');
+  });
+
+  it('「正式リリース前」は正当な記述として検出しない（未来を示す語が同じ文にある）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '本作は正式リリース前の早期アクセス版が配信中である。',
+      })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('「正式版の開発中」は検出しない（`中` 単体を完了表現として拾わない）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '早期アクセス配信中で、正式版の開発が続けられている。',
+      })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('本文と要約の両方に断定があれば2件（フィールドごとに最大1件）', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '早期アクセスの本作は正式リリース済みだ。正式版がリリース中でもある。',
+        summary: 'アーリーアクセスながら完成版が発売中。',
+      })
+    );
+    expect(issues).toHaveLength(2);
+    expect(issues.every((i) => i.type === 'early-access-release-claim')).toBe(true);
+  });
+
+  it('isEarlyAccess が undefined（未判定）なら1件も出さない', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({ isEarlyAccess: undefined, content: '**発売日**: 発売中' })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('isEarlyAccess が false（判定済み・早期アクセスではない）なら1件も出さない', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeEaArticle({ isEarlyAccess: false, content: '**発売日**: 発売中。正式版が発売中だ。' })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('game 自体が無い記事（特集）では1件も出さない', () => {
+    const issues = detectEarlyAccessStatementIssues(
+      makeArticle({ category: 'feature', content: '正式版が発売中のタイトルを紹介する。' })
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('レポートに独立項として載り、status は warning 止まり（error に昇格しない）', () => {
+    const articles: GeneratedArticle[] = [
+      // 本文にゲームタイトルを入れる（入れないと body-title-mismatch の high 警告が出て
+      // 「EA の判定項だけで status がどう動くか」を測れなくなる）
+      makeEaArticle({
+        isEarlyAccess: true,
+        content: '『Slay the Spire 2』の**発売日**: 発売中',
+      }),
+      makeArticle({ title: 'nr2', category: 'newRelease' }),
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ].map((a) =>
+      // 公式URL未取得（それ自体で warning になる）を潰し、EA 判定項の効果だけを見る
+      a.category === 'feature' ? a : { ...a, sourceUrls: { official: 'https://example.com/' } }
+    );
+    const report = validateArticles(articles, 26);
+    expect(report.earlyAccessStatementIssues).toHaveLength(1);
+    // high 警告には混ぜない（fail 閾値・自動再生成の判断を動かさない）
+    expect(report.warningsBySeverity.high).toBe(0);
+    expect(report.missingOfficialUrls).toBeUndefined();
+    expect(computeReportStatus(report)).toBe('warning');
+    expect(shouldFileIssue(report)).toBe(false);
+  });
+
+  it('問題が無い号でも空配列を入れる（undefined =「未計測」と区別する）', () => {
+    const articles: GeneratedArticle[] = [
+      makeArticle({ title: 'nr1', category: 'newRelease' }),
+      makeArticle({ title: 'nr2', category: 'newRelease' }),
+      makeArticle({ title: 'in1', category: 'indie' }),
+      makeArticle({ title: 'in2', category: 'indie' }),
+      makeArticle({ title: 'fe1', category: 'feature' }),
+      makeArticle({ title: 'cl1', category: 'classic' }),
+    ].map((a) =>
+      a.category === 'feature' ? a : { ...a, sourceUrls: { official: 'https://example.com/' } }
+    );
+    const report = validateArticles(articles, 26);
+    expect(report.earlyAccessStatementIssues).toEqual([]);
+    // EA の判定項が 0 件なら status を warning に押し上げない
+    expect(computeReportStatus(report)).toBe('ok');
   });
 });

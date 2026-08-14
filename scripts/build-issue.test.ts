@@ -352,6 +352,33 @@ describe('formatArticleForFrontmatter: featureEvent は公開 Markdown に出さ
   });
 });
 
+describe('formatArticleForFrontmatter: isEarlyAccess は公開 Markdown に出さない（Issue #26）', () => {
+  it('早期アクセス作品の記事でも frontmatter に isEarlyAccess が現れない', async () => {
+    // 読者に伝える手段は本文の「📅 発売情報」であって frontmatter ではない（§2.9）。
+    // Astro のコンテンツスキーマにも無いフィールドなので、漏れるとビルドが壊れる可能性もある
+    const article: GeneratedArticle = {
+      title: '『Slay the Spire 2』早期アクセス配信中',
+      category: 'newRelease',
+      summary: 'summary',
+      content: 'content',
+      game: {
+        title: 'Slay the Spire 2',
+        genre: ['Strategy'],
+        platforms: ['PC (Microsoft Windows)'],
+        releaseDate: '2026-03-05',
+        isEarlyAccess: true,
+      },
+    };
+
+    const yaml = await formatArticleForFrontmatter(article);
+
+    expect(yaml).not.toContain('isEarlyAccess');
+    // ポジティブコントロール: 出すべき値は出ている（テストが空振りしていないことの確認）
+    expect(yaml).toContain('Slay the Spire 2');
+    expect(yaml).toContain('2026-03-05');
+  });
+});
+
 describe('collectHiddenArticleTitles（Issue #311）', () => {
   /** hidden 判定を通る（＝メタデータが揃った）通常記事 */
   function completeArticle(title: string, category: GeneratedArticle['category']): GeneratedArticle {
