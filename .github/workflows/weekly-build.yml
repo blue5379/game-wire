@@ -97,7 +97,7 @@ jobs:
           REPORT_JSON="data/validation/validation-report-${ISSUE_NUM_PADDED}.json"
           REPORT_MD="data/validation/validation-report-${ISSUE_NUM_PADDED}.md"
 
-          # Fix 3: レポートの存在確認を早期に実施（コミット・デプロイ前に失敗させる）
+          # レポートの存在確認は「コミット・デプロイ前」に済ませる（後段でやるとデプロイを止める）
           # Build issue ステップがレポートを生成するため、この時点で存在しないのは異常。
           # 2026-08-14 の本番実測（run 31792016284）では別号のレポートを誤読して
           # error を見逃したため、レポート不在を黙って許すとパイプラインの不整合が
@@ -109,7 +109,7 @@ jobs:
             exit 1
           fi
 
-          # Fix 4: 発行日を frontmatter から取得（auto-filed issue のタイトルに埋め込むため）
+          # 発行日を frontmatter から取得（auto-filed issue のタイトルに埋め込むため）
           # publishDate フィールドは build-issue.ts が `publishDate: ${dateStr}` 形式（引用符なし）で
           # 書き込むが、将来の変更や手動編集で引用符が入る可能性に備えて除去する。
           # また、フィールド自体が存在しない場合は致命的エラーとして早期に落とす
@@ -180,7 +180,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -e
-          # Fix 3（後半）: レポート不在時の処理
+          # ここでのレポート不在は「早期チェックを通ったのに消えた」異常系
           # レポートの存在確認は「Resolve current issue report」ステップで早期実施済み
           # （コミット・デプロイ前に落ちるため、ここに到達する時点でレポートは必ず存在）。
           # 万が一ここでレポートが存在しない場合でも、デプロイを止めないために exit 0 で
@@ -226,7 +226,7 @@ jobs:
           # 同じVol.17を2026-08-15に再生成してerrorになった場合は別Issueとして起票したい。
           TITLE="⚠️ 第${ISSUE_NUM}号（${PUBLISH_DATE_RESOLVED} 発行）検証で要対応の問題（${DETAIL}）"
 
-          # Fix 1: 重複防止の動作を正確に記述
+          # 重複防止の判定はタイトルの完全一致
           # 同一タイトルの Issue が既にあれば起票しない（重複防止）。タイトルには発行日が
           # 含まれるため、同じ号番号でも異なる日に再生成した場合は別 Issue として起票される。
           # 逆に、同じ号番号・同じ発行日・同じ要因内訳で再実行した場合は、過去に起票された
