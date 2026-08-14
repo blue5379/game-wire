@@ -74,13 +74,71 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
 
+      # 6.1. 今回生成した号のバリデーションレポートを特定
+      #      Issue番号は常に既存の最大値+1（getNextIssueNumber の仕様、build-issue.ts:85-97）
+      #      なので src/content/issues/issue-*.md の最大値から逆引きしてレポートパスを固定する。
+      #      号の再利用（削除→再発行）があるため、単純に ls | sort | tail では最新の号ではなく
+      #      番号が一番大きい古い残骸を拾ってしまう（2026-08-14 の本番実測 = run 31792016284:
+      #      Vol.17 再利用時に 019 のレポートを読み、error の号を warning と誤判定して起票を飛ばした）。
+      - name: Resolve current issue report
+        run: |
+          # ファイル名から取り出す番号は "017" のようにゼロ詰めされている。この文字列を
+          # printf '%03d' に渡してはならない（bash は先頭 0 を8進数と解釈し 017 → 015 になる。
+          # 018 のように8進数として不正な値ではエラーになる）。ゼロ詰め文字列はそのまま
+          # レポートのファイル名に使い、数値が必要な箇所だけ 10# で基数を固定して変換する。
+          ISSUE_NUM_PADDED=$(ls src/content/issues/issue-*.md 2>/dev/null \
+            | sed 's#.*/issue-##' | sed 's#\.md$##' \
+            | sort -n | tail -1)
+          if [ -z "$ISSUE_NUM_PADDED" ]; then
+            echo "Error: No issue file found in src/content/issues/" >&2
+            exit 1
+          fi
+          ISSUE_NUM=$((10#$ISSUE_NUM_PADDED))
+          REPORT_JSON="data/validation/validation-report-${ISSUE_NUM_PADDED}.json"
+          REPORT_MD="data/validation/validation-report-${ISSUE_NUM_PADDED}.md"
+
+          # レポートの存在確認は「コミット・デプロイ前」に済ませる（後段でやるとデプロイを止める）
+          # Build issue ステップがレポートを生成するため、この時点で存在しないのは異常。
+          # 2026-08-14 の本番実測（run 31792016284）では別号のレポートを誤読して
+          # error を見逃したため、レポート不在を黙って許すとパイプラインの不整合が
+          # 隠蔽されてしまう。ここで明示的に落として調査ログを残す。
+          if [ ! -f "$REPORT_JSON" ] || [ ! -f "$REPORT_MD" ]; then
+            echo "Error: Validation report not found after build-issue step." >&2
+            echo "  REPORT_JSON=${REPORT_JSON} exists: $([ -f "$REPORT_JSON" ] && echo yes || echo no)" >&2
+            echo "  REPORT_MD=${REPORT_MD} exists: $([ -f "$REPORT_MD" ] && echo yes || echo no)" >&2
+            exit 1
+          fi
+
+          # 発行日を frontmatter から取得（auto-filed issue のタイトルに埋め込むため）
+          # publishDate フィールドは build-issue.ts が `publishDate: ${dateStr}` 形式（引用符なし）で
+          # 書き込むが、将来の変更や手動編集で引用符が入る可能性に備えて除去する。
+          # また、フィールド自体が存在しない場合は致命的エラーとして早期に落とす
+          # （Issue タイトルの一意性に必須のため、空文字での起票は許容しない）。
+          PUBLISH_DATE=$(grep '^publishDate:' "src/content/issues/issue-${ISSUE_NUM_PADDED}.md" \
+            | sed 's/publishDate: *//' | tr -d '\r' | sed 's/^"\(.*\)"$/\1/')
+          if [ -z "$PUBLISH_DATE" ]; then
+            echo "Error: publishDate field is missing or empty in issue-${ISSUE_NUM_PADDED}.md" >&2
+            exit 1
+          fi
+
+          {
+            echo "ISSUE_NUM=${ISSUE_NUM}"
+            echo "REPORT_JSON=${REPORT_JSON}"
+            echo "REPORT_MD=${REPORT_MD}"
+            echo "PUBLISH_DATE_RESOLVED=${PUBLISH_DATE}"
+          } >> "$GITHUB_ENV"
+
+          # GITHUB_ENV は後続ステップにしか効かないので、ログ出力はローカル変数を使う
+          echo "Resolved: issue #${ISSUE_NUM} (file suffix ${ISSUE_NUM_PADDED}), publishDate=${PUBLISH_DATE}"
+          echo "  REPORT_JSON=${REPORT_JSON}"
+          echo "  REPORT_MD=${REPORT_MD}"
+
       # 6.5. バリデーションレポートを Job Summary に出力
       #      整形は scripts/format-validation-report.ts が生成する .md をそのまま利用する
       - name: Validation report summary
         if: always()
         run: |
-          REPORT_MD=$(ls data/validation/validation-report-*.md 2>/dev/null | sort | tail -1)
-          if [ -z "$REPORT_MD" ]; then
+          if [ ! -f "$REPORT_MD" ]; then
             echo "## ⚠️ Article Validation Report" >> "$GITHUB_STEP_SUMMARY"
             echo "レポートファイルが見つかりませんでした。" >> "$GITHUB_STEP_SUMMARY"
             exit 0
@@ -122,9 +180,16 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -e
-          REPORT_JSON=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
-          if [ -z "$REPORT_JSON" ]; then
-            echo "レポート JSON が見つからないため起票をスキップします。"
+          # ここでのレポート不在は「早期チェックを通ったのに消えた」異常系
+          # レポートの存在確認は「Resolve current issue report」ステップで早期実施済み
+          # （コミット・デプロイ前に落ちるため、ここに到達する時点でレポートは必ず存在）。
+          # 万が一ここでレポートが存在しない場合でも、デプロイを止めないために exit 0 で
+          # スキップする（起票ステップの失敗はデプロイをブロックすべきでない）。
+          # ただし、早期チェックを通過してここで消失するケースは異常なので、明示的にログを残す。
+          if [ ! -f "$REPORT_JSON" ]; then
+            echo "Error: REPORT_JSON=$REPORT_JSON does not exist at issue-filing step." >&2
+            echo "This should not happen after the early check in 'Resolve current issue report'." >&2
+            echo "Skipping issue creation to allow deployment to proceed." >&2
             exit 0
           fi
 
@@ -136,23 +201,36 @@ jobs:
 
           ISSUE_NUM=$(jq -r '.issueNumber' "$REPORT_JSON")
           HIGH=$(jq -r '.warningsBySeverity.high' "$REPORT_JSON")
+          # Web検索失敗数 = searchFailures + pageContentFailures（format-validation-report.ts:59-63）
+          SEARCH_FAIL=$(jq -r '(.webSearchStats.searchFailures // 0) + (.webSearchStats.pageContentFailures // 0)' "$REPORT_JSON")
           ADULT=$(jq -r '.webSearchStats.adultScreeningFailures // 0' "$REPORT_JSON")
           SHORTFALL=$(jq -r '.articleCountShortfalls // [] | length' "$REPORT_JSON")
-          # HIGH 以外の要因（AI成人向けスクリーニング失敗 / 記事本数の不足）だけで起票された場合、
-          # HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる
-          # （Issue #222 code review 対応。Issue #311 で記事本数の不足を追加）。
+          # HIGH 以外の要因（Web検索失敗 / AI成人向けスクリーニング失敗 / 記事本数の不足）だけで
+          # 起票された場合、HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる。
           # 新しい要因が 0 のときは従来通りの表記を維持する（重複防止ロジックが旧Issueと
           # 一致し続けるように保つため、条件付きで後ろに足すだけにする）。
+          # （Issue #222 / #311 対応。Web検索失敗の件は 2026-08-14 の本番実測で
+          #   pageContentFailures 単独の error が「HIGH: 0件」と表示されることが判明して追加）
           DETAIL="HIGH: ${HIGH}件"
+          if [ "$SEARCH_FAIL" != "0" ]; then
+            DETAIL="${DETAIL}、Web検索失敗: ${SEARCH_FAIL}件"
+          fi
           if [ "$ADULT" != "0" ]; then
             DETAIL="${DETAIL}、AI成人向けスクリーニング失敗: ${ADULT}件"
           fi
           if [ "$SHORTFALL" != "0" ]; then
             DETAIL="${DETAIL}、記事本数の不足: ${SHORTFALL}カテゴリ"
           fi
-          TITLE="⚠️ 第${ISSUE_NUM}号 検証で要対応の問題（${DETAIL}）"
+          # 号の再利用（削除→再発行）があるため、タイトルに発行日を埋め込んで一意にする。
+          # 例: #206（Vol.17 最初の生成、2026-07-24発行）がクローズ済みでも、
+          # 同じVol.17を2026-08-15に再生成してerrorになった場合は別Issueとして起票したい。
+          TITLE="⚠️ 第${ISSUE_NUM}号（${PUBLISH_DATE_RESOLVED} 発行）検証で要対応の問題（${DETAIL}）"
 
-          # 同一タイトルのオープン Issue が既にあれば起票しない（重複防止）。
+          # 重複防止の判定はタイトルの完全一致
+          # 同一タイトルの Issue が既にあれば起票しない（重複防止）。タイトルには発行日が
+          # 含まれるため、同じ号番号でも異なる日に再生成した場合は別 Issue として起票される。
+          # 逆に、同じ号番号・同じ発行日・同じ要因内訳で再実行した場合は、過去に起票された
+          # Issue が既にクローズされていてもスキップされる（--state all で検索するため）。
           # GitHub 検索インデックスは即時反映されないため、全件取得してローカルで完全一致フィルタする。
           EXISTING=$(gh issue list --state all --limit 100 --json title \
             --jq "[.[] | select(.title == \"${TITLE}\")] | length")
@@ -164,7 +242,6 @@ jobs:
           # F1: validation ラベルを冪等に作成（存在しなければ作る、あれば何もしない）
           gh label create validation --description "Validation report issue" --color "e11d48" --force || true
 
-          REPORT_MD=$(ls data/validation/validation-report-*.md 2>/dev/null | sort | tail -1)
           {
             cat "$REPORT_MD"
             echo ""
@@ -196,10 +273,9 @@ jobs:
           echo "- **Date**: $(date '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Publish Date**: ${{ inputs.publish_date || 'Today' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: Deployed to Cloudflare Pages" >> $GITHUB_STEP_SUMMARY
-          REPORT=$(ls data/validation/validation-report-*.json 2>/dev/null | sort | tail -1)
-          if [ -n "$REPORT" ]; then
-            HIGH=$(jq '.warningsBySeverity.high' "$REPORT")
-            TOTAL=$(jq '.totalWarnings' "$REPORT")
-            STATUS=$(jq -r '.status // "ok"' "$REPORT")
+          if [ -f "$REPORT_JSON" ]; then
+            HIGH=$(jq '.warningsBySeverity.high' "$REPORT_JSON")
+            TOTAL=$(jq '.totalWarnings' "$REPORT_JSON")
+            STATUS=$(jq -r '.status // "ok"' "$REPORT_JSON")
             echo "- **Validation**: status=${STATUS} / 警告 ${TOTAL}件（HIGH: ${HIGH}件）" >> $GITHUB_STEP_SUMMARY
           fi
