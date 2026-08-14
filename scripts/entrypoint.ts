@@ -19,6 +19,7 @@
  * ```
  */
 
+import * as fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 /**
@@ -29,6 +30,9 @@ import { pathToFileURL } from 'node:url';
  * `import.meta.url` 側はパーセントエンコードされる一方で連結側はされないため不一致になり、
  * **CLI 実行なのに `main()` が呼ばれない**（スクリプトが黙って何もせず終了する）という
  * 失敗をする。`pathToFileURL` はエンコードを含めて正規化するのでこの穴が無い。
+ *
+ * 同じ「CLI 実行なのに main() が呼ばれない」失敗は **symlink 経由の起動**でも起きる
+ * （`/code-review` の指摘。実測で再現した）。対処は関数本体のコメントを参照。
  *
  * @param moduleUrl 判定したいモジュールの `import.meta.url`
  * @param scriptPath 実行中スクリプトのパス。既定は `process.argv[1]`
@@ -43,11 +47,35 @@ export function isMainModule(
   // 一致しない）。ミュータント検証でもこの行を消したミュータントは生存する。
   // それでも残しているのは、**node の throw する/しないという実装詳細に依存させない**ため。
   if (!scriptPath) return false;
+
+  // symlink 経由で起動された場合、argv[1] は symlink のパスだが `import.meta.url` は
+  // node が解決した実パスになる（実測: symlink 経由だと argv[1]=/tmp/gw-symlink/probe.ts /
+  // import.meta.url=file:///Users/.../probe.ts）。そのため素の argv[1] だけを見ると
+  // **CLI 実行なのに main() が呼ばれない**。逆に `--preserve-symlinks` 付きで実行すると
+  // `import.meta.url` が symlink 側になるので、実パスだけを見ても取りこぼす。
+  // どちらの向きでも成立させるため、両方の形を候補にして「いずれかが一致」で判定する。
+  for (const candidate of [scriptPath, realPathOrUndefined(scriptPath)]) {
+    if (candidate === undefined) continue;
+    try {
+      if (moduleUrl === pathToFileURL(candidate).href) return true;
+    } catch {
+      // pathToFileURL は不正な入力で throw する。その候補は一致しなかったものとして次へ
+      // （import 時に副作用を起こさない側に倒すのが安全なので、fail-safe の向きはこちら）。
+      continue;
+    }
+  }
+  return false;
+}
+
+/**
+ * symlink を解決した実パスを返す。解決できない場合（存在しないパス等）は undefined。
+ * 実パスが入力と同じなら重複して比較する意味が無いので undefined を返す。
+ */
+function realPathOrUndefined(scriptPath: string): string | undefined {
   try {
-    return moduleUrl === pathToFileURL(scriptPath).href;
+    const real = fs.realpathSync(scriptPath);
+    return real === scriptPath ? undefined : real;
   } catch {
-    // pathToFileURL は不正な入力で throw する。判定不能なら「直接実行ではない」に倒す
-    // （import 時に副作用を起こさない側が安全なので、fail-safe の向きはこちら）。
-    return false;
+    return undefined;
   }
 }

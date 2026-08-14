@@ -2,8 +2,11 @@
  * entrypoint（直接実行判定）のユニットテスト（Issue #330）
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { pathToFileURL } from 'node:url';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { isMainModule } from './entrypoint.js';
 
 describe('isMainModule', () => {
@@ -68,6 +71,52 @@ describe('isMainModule', () => {
     expect(
       isMainModule(pathToFileURL('/app/scripts/build-issue.js').href, '/app/scripts/build-issue.ts')
     ).toBe(false);
+  });
+
+  describe('symlink 経由の起動（/code-review の指摘。実測で再現した失敗）', () => {
+    const created: string[] = [];
+
+    afterEach(() => {
+      for (const p of created.splice(0)) fs.rmSync(p, { recursive: true, force: true });
+    });
+
+    /** 実ファイルと、それを指す symlink のパスを作る */
+    function makeSymlinkedScript(): { realPath: string; linkPath: string } {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gw-entrypoint-'));
+      created.push(dir);
+      // mkdtemp が返すパス自体に symlink が含まれ得る（macOS の /tmp → /private/tmp）ので
+      // 「実パス」側は realpath で確定させる
+      const realDir = fs.realpathSync(dir);
+      const realPath = path.join(realDir, 'script.ts');
+      fs.writeFileSync(realPath, '// test fixture\n');
+
+      const linkDir = `${realDir}-link`;
+      fs.symlinkSync(realDir, linkDir);
+      created.push(linkDir);
+      return { realPath, linkPath: path.join(linkDir, 'script.ts') };
+    }
+
+    it('argv[1] が symlink・import.meta.url が実パスでも true になる（node の既定挙動）', () => {
+      const { realPath, linkPath } = makeSymlinkedScript();
+
+      // 前提の確認: 素の argv[1] を URL 化しただけでは実パスの URL と一致しない
+      expect(pathToFileURL(linkPath).href).not.toBe(pathToFileURL(realPath).href);
+
+      expect(isMainModule(pathToFileURL(realPath).href, linkPath)).toBe(true);
+    });
+
+    it('argv[1] も import.meta.url も symlink 側でも true になる（--preserve-symlinks 実行）', () => {
+      const { linkPath } = makeSymlinkedScript();
+      expect(isMainModule(pathToFileURL(linkPath).href, linkPath)).toBe(true);
+    });
+
+    it('symlink 先が別ファイルなら false のまま（symlink 対応で判定が緩くなっていない）', () => {
+      const { realPath, linkPath } = makeSymlinkedScript();
+      const otherPath = path.join(path.dirname(realPath), 'other.ts');
+      fs.writeFileSync(otherPath, '// another fixture\n');
+
+      expect(isMainModule(pathToFileURL(otherPath).href, linkPath)).toBe(false);
+    });
   });
 
   it('第2引数を省略すると process.argv[1] を見る', () => {
