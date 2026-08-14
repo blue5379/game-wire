@@ -320,7 +320,10 @@ export async function tryQueryForOfficialUrl(
 
   console.log(`    [Query ${queryIndex}] Claude selected: ${selectedUrl}`);
 
-  // Step 3: 内容一致検証
+  // Step 3: 内容一致検証（ページ本文を取得し、当該ゲームの公式かを照合）
+  // HEAD の生存確認だけでは「URL文字列が偶然タイトルに似た無関係サイト」
+  // （例: "Realm of Ink" に対する水墨画ギャラリー "inkrealm.jp"）を弾けない。
+  // mismatch は採用拒否、uncertain（本文取得不可・判定不能）は従来どおり採用する。
   const verification = await dependencies.verify(
     { titleEn, titleJa, developer, publisher },
     selectedUrl
@@ -346,6 +349,26 @@ export async function tryQueryForOfficialUrl(
  * 複数の検索クエリを優先度順に試行し、各クエリで候補取得→Claude選別→内容検証を実行する。
  * Claude選別がnullを返した場合、または内容検証が`mismatch`を返した場合は次のクエリに
  * フォールスルーする（`uncertain`は採用する）。
+ *
+ * ## 精度とリコールのトレードオフ（Issue #135 P2-1 vs Issue #346）
+ *
+ * Issue #135 P2-1 では同名タイトル衝突への耐性を上げるため、query[0] に developer/publisher を
+ * 含めた高精度クエリを採用。これにより無関係な別作品の候補が検索結果から除外される。
+ *
+ * 一方、Issue #346 では query[0] で非公式候補しか得られず Claude が null を返した場合に
+ * フォールスルーを許可するため、低精度クエリ（タイトルのみ）での候補取得を再度試行する。
+ * この結果、query[0] が除外した同名タイトルの別作品が後続クエリで再混入する可能性がある。
+ *
+ * これを防ぐ保護層:
+ * - `isNonOfficialUrl` による SNS/ストア/Wiki フィルタ
+ * - Claude 選別時の developer/publisher によるドメイン整合判定（query[0] 以降も常に渡される）
+ * - 内容検証ゲートによるページ本文とゲーム情報の照合（mismatch は採用拒否）
+ *
+ * 実測では読者が見える実害（英語フォールバックリンク表示）が Issue #346 で確認されたため、
+ * この精度低下リスクを受け入れてリコールを優先する判断を採用した。
+ *
+ * なお、各ステップ（search/select/verify）が自身のエラーを含む（catch で [] / null / uncertain を返す）
+ * ため、ステップ内例外は自動的にフォールスルーする。将来のリファクタでこの前提が崩れないよう注意。
  *
  * @returns URL と内容検証の判定根拠。全クエリで見つからない場合は null
  */

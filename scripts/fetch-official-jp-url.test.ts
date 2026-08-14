@@ -507,4 +507,38 @@ describe('fetchOfficialJpUrl integration (Issue #346: multi-query fallthrough)',
     expect(mockSelect).toHaveBeenCalledTimes(2); // query[0] と query[3] のみ
     expect(mockVerify).toHaveBeenCalledTimes(1); // query[3] のみ
   });
+
+  it('Issue #135 P2-1 + #346: query[0] が非公式のみ → query[1] が同名別作品 → 選別が全拒否して null（保護層が機能）', async () => {
+    // Issue #135 P2-1 で developer-constrained クエリを導入してタイトル衝突を回避したが、
+    // Issue #346 でフォールスルーを許可したため、低精度クエリで同名タイトルが再混入する可能性がある。
+    // このテストは、Claude のドメイン整合判定が query[1] の colliding candidate を拒否することを検証する。
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValueOnce(['https://unrelated-blog.com/']) // query[0]: 非公式候補
+      .mockResolvedValueOnce(['https://different-studio.com/same-title-game']); // query[1]: 同名の別作品
+
+    const mockSelect = vi
+      .fn()
+      .mockResolvedValueOnce(null) // query[0]: Claude が正しく null を返す（非公式）
+      .mockResolvedValueOnce(null); // query[1]: Claude がドメイン整合性で拒否
+
+    const mockVerify = vi.fn(); // 選別が全て null なので呼ばれない
+
+    const queries = ['query 0', 'query 1'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toBeNull();
+    expect(mockSearch).toHaveBeenCalledTimes(2);
+    expect(mockSelect).toHaveBeenCalledTimes(2);
+    expect(mockVerify).not.toHaveBeenCalled(); // 選別が全て null のため検証に至らない
+  });
 });
