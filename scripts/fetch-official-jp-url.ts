@@ -126,14 +126,11 @@ export function buildSearchQueries(
 }
 
 /**
- * Tavily検索でゲームの公式日本語ページ候補を取得
- * 候補が見つからない場合は別クエリでリトライする
+ * Tavily検索でゲームの公式日本語ページ候補を取得（単一クエリ版）
  */
 async function searchOfficialJpUrl(
   titleEn: string,
-  titleJa?: string,
-  developer?: string,
-  publisher?: string
+  query: string
 ): Promise<string[]> {
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) {
@@ -142,21 +139,12 @@ async function searchOfficialJpUrl(
 
   const client = tavily({ apiKey });
 
-  const queries = buildSearchQueries(titleEn, titleJa, developer, publisher);
-
-  for (let i = 0; i < queries.length; i++) {
-    try {
-      const candidates = await searchWithQuery(client, queries[i]);
-      if (candidates.length > 0) {
-        if (i > 0) console.log(`    Retry ${i} succeeded with query: ${queries[i]}`);
-        return candidates;
-      }
-    } catch (error) {
-      console.error(`  Tavily search failed (query ${i + 1}) for "${titleEn}":`, error);
-    }
+  try {
+    return await searchWithQuery(client, query);
+  } catch (error) {
+    console.error(`  Tavily search failed for "${titleEn}" with query "${query}":`, error);
+    return [];
   }
-
-  return [];
 }
 
 /**
@@ -265,8 +253,124 @@ export interface FetchOfficialJpUrlResult {
 }
 
 /**
- * ゲームの公式日本語ページURLを取得する
- * @returns URL と内容検証の判定根拠。見つからない場合は null
+ * 単一クエリで公式日本語ページURLの取得を試行する（テスタビリティ向上）。
+ *
+ * 検索・選別・検証の3ステップを実行し、いずれかが失敗した場合はnullを返す。
+ * 検証結果が `mismatch` の場合はフォールスルー（null）、`uncertain` の場合は採用する。
+ *
+ * @param queryIndex クエリのインデックス（ログ表示用）
+ * @param query 検索クエリ文字列
+ * @param params ゲーム情報
+ * @param dependencies 外部依存（テスト時にモック可能）
+ * @returns URLと検証理由、または null（フォールスルー）
+ */
+export async function tryQueryForOfficialUrl(
+  queryIndex: number,
+  query: string,
+  params: {
+    titleEn: string;
+    titleJa?: string;
+    releaseYear?: string;
+    developer?: string;
+    publisher?: string;
+  },
+  dependencies: {
+    search: (titleEn: string, query: string) => Promise<string[]>;
+    select: (
+      titleEn: string,
+      titleJa: string | undefined,
+      releaseYear: string | undefined,
+      candidates: string[],
+      developer?: string,
+      publisher?: string
+    ) => Promise<string | null>;
+    verify: (
+      identity: { titleEn: string; titleJa?: string; developer?: string; publisher?: string },
+      url: string
+    ) => Promise<{ verdict: 'match' | 'mismatch' | 'uncertain'; reason: string }>;
+  }
+): Promise<FetchOfficialJpUrlResult | null> {
+  const { titleEn, titleJa, releaseYear, developer, publisher } = params;
+
+  // Step 1: 候補URL取得
+  console.log(`    [Query ${queryIndex}] Searching: ${query}`);
+  const candidates = await dependencies.search(titleEn, query);
+
+  if (candidates.length === 0) {
+    console.log(`    [Query ${queryIndex}] No candidates found`);
+    return null;
+  }
+
+  console.log(`    [Query ${queryIndex}] Found ${candidates.length} candidates: ${candidates.join(', ')}`);
+
+  // Step 2: Claude 選別
+  const selectedUrl = await dependencies.select(
+    titleEn,
+    titleJa,
+    releaseYear,
+    candidates,
+    developer,
+    publisher
+  );
+
+  if (!selectedUrl) {
+    console.log(`    [Query ${queryIndex}] Claude selection returned null (no suitable candidate)`);
+    return null;
+  }
+
+  console.log(`    [Query ${queryIndex}] Claude selected: ${selectedUrl}`);
+
+  // Step 3: 内容一致検証（ページ本文を取得し、当該ゲームの公式かを照合）
+  // HEAD の生存確認だけでは「URL文字列が偶然タイトルに似た無関係サイト」
+  // （例: "Realm of Ink" に対する水墨画ギャラリー "inkrealm.jp"）を弾けない。
+  // mismatch は採用拒否、uncertain（本文取得不可・判定不能）は従来どおり採用する。
+  const verification = await dependencies.verify(
+    { titleEn, titleJa, developer, publisher },
+    selectedUrl
+  );
+
+  if (verification.verdict === 'mismatch') {
+    console.log(`    [Query ${queryIndex}] Verification mismatch, falling through: ${selectedUrl} (${verification.reason})`);
+    return null;
+  }
+
+  if (verification.verdict === 'uncertain') {
+    console.log(`    [Query ${queryIndex}] Verification uncertain, accepting anyway: ${selectedUrl} (${verification.reason})`);
+  } else {
+    console.log(`    [Query ${queryIndex}] Verification passed: ${selectedUrl} (${verification.reason})`);
+  }
+
+  return { url: selectedUrl, verifyReason: verification.reason };
+}
+
+/**
+ * ゲームの公式日本語ページURLを取得する（Issue #346 対応版）
+ *
+ * 複数の検索クエリを優先度順に試行し、各クエリで候補取得→Claude選別→内容検証を実行する。
+ * Claude選別がnullを返した場合、または内容検証が`mismatch`を返した場合は次のクエリに
+ * フォールスルーする（`uncertain`は採用する）。
+ *
+ * ## 精度とリコールのトレードオフ（Issue #135 P2-1 vs Issue #346）
+ *
+ * Issue #135 P2-1 では同名タイトル衝突への耐性を上げるため、query[0] に developer/publisher を
+ * 含めた高精度クエリを採用。これにより無関係な別作品の候補が検索結果から除外される。
+ *
+ * 一方、Issue #346 では query[0] で非公式候補しか得られず Claude が null を返した場合に
+ * フォールスルーを許可するため、低精度クエリ（タイトルのみ）での候補取得を再度試行する。
+ * この結果、query[0] が除外した同名タイトルの別作品が後続クエリで再混入する可能性がある。
+ *
+ * これを防ぐ保護層:
+ * - `isNonOfficialUrl` による SNS/ストア/Wiki フィルタ
+ * - Claude 選別時の developer/publisher によるドメイン整合判定（query[0] 以降も常に渡される）
+ * - 内容検証ゲートによるページ本文とゲーム情報の照合（mismatch は採用拒否）
+ *
+ * 実測では読者が見える実害（英語フォールバックリンク表示）が Issue #346 で確認されたため、
+ * この精度低下リスクを受け入れてリコールを優先する判断を採用した。
+ *
+ * なお、各ステップ（search/select/verify）が自身のエラーを含む（catch で [] / null / uncertain を返す）
+ * ため、ステップ内例外は自動的にフォールスルーする。将来のリファクタでこの前提が崩れないよう注意。
+ *
+ * @returns URL と内容検証の判定根拠。全クエリで見つからない場合は null
  */
 export async function fetchOfficialJpUrl(params: {
   titleEn: string;
@@ -279,47 +383,30 @@ export async function fetchOfficialJpUrl(params: {
   console.log(`  Fetching official JP URL: ${titleEn}`);
 
   try {
-    // Step 1: Tavily で候補URL取得（Issue #135: dev/pub をクエリに含めてタイトル衝突を回避）
-    const candidates = await searchOfficialJpUrl(titleEn, titleJa, developer, publisher);
-    if (candidates.length === 0) {
-      console.log(`    No candidates found for "${titleEn}"`);
-      return null;
-    }
-    console.log(`    Candidates: ${candidates.length} URLs`);
+    const queries = buildSearchQueries(titleEn, titleJa, developer, publisher);
+    console.log(`  Trying ${queries.length} queries in order`);
 
-    // Step 2: Claude で公式日本語ページを選別（Issue #135: dev/pub のドメイン整合判断を実施）
-    const selectedUrl = await selectOfficialJpUrlWithClaude(
-      titleEn,
-      titleJa,
-      releaseYear,
-      candidates,
-      developer,
-      publisher
-    );
+    // 各クエリを順番に試行し、最初に成功したものを返す
+    for (let i = 0; i < queries.length; i++) {
+      const result = await tryQueryForOfficialUrl(
+        i,
+        queries[i],
+        { titleEn, titleJa, releaseYear, developer, publisher },
+        {
+          search: searchOfficialJpUrl,
+          select: selectOfficialJpUrlWithClaude,
+          verify: verifyOfficialUrlContent,
+        }
+      );
 
-    if (!selectedUrl) {
-      console.log(`    No official JP URL selected for "${titleEn}"`);
-      return null;
-    }
-
-    // Step 3: 内容一致検証（ページ本文を取得し、当該ゲームの公式かを照合）
-    // HEAD の生存確認だけでは「URL文字列が偶然タイトルに似た無関係サイト」
-    // （例: "Realm of Ink" に対する水墨画ギャラリー "inkrealm.jp"）を弾けない。
-    // mismatch は採用拒否、uncertain（本文取得不可・判定不能）は従来どおり採用する。
-    const verification = await verifyOfficialUrlContent(
-      { titleEn, titleJa, developer, publisher },
-      selectedUrl
-    );
-    if (verification.verdict === 'mismatch') {
-      console.log(`    URL content mismatch, rejected: ${selectedUrl} (${verification.reason})`);
-      return null;
-    }
-    if (verification.verdict === 'uncertain') {
-      console.log(`    URL content unverified (adopting anyway): ${selectedUrl} (${verification.reason})`);
+      if (result) {
+        console.log(`  Official JP URL found with query ${i}: ${result.url}`);
+        return result;
+      }
     }
 
-    console.log(`    Official JP URL: ${selectedUrl}`);
-    return { url: selectedUrl, verifyReason: verification.reason };
+    console.log(`  No official JP URL found after trying all ${queries.length} queries`);
+    return null;
   } catch (error) {
     console.error(`  fetchOfficialJpUrl failed for "${titleEn}":`, error);
     return null;
