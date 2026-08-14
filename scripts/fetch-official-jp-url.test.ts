@@ -3,14 +3,19 @@
  *
  * Issue #135: Tavily クエリと Claude 選別プロンプトに developer/publisher を
  * 含めるよう変更したため、その挙動を回帰防止する。
+ *
+ * Issue #346: Claude 選別が null を返した場合、または検証が mismatch を返した場合に
+ * 次のクエリにフォールスルーする挙動を回帰防止する。
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildSearchQueries,
   buildSelectUserMessage,
   isNonOfficialUrl,
   NON_OFFICIAL_URL_PATTERNS,
+  tryQueryForOfficialUrl,
+  type FetchOfficialJpUrlResult,
 } from './fetch-official-jp-url.js';
 
 describe('buildSearchQueries (Issue #135 P2-1)', () => {
@@ -127,5 +132,379 @@ describe('isNonOfficialUrl (Issue #247: bsky.app / discordapp.com の混入対�
   it('NON_OFFICIAL_URL_PATTERNS に bsky.app と discordapp.com が含まれる', () => {
     expect(NON_OFFICIAL_URL_PATTERNS).toContain('bsky.app');
     expect(NON_OFFICIAL_URL_PATTERNS).toContain('discordapp.com');
+  });
+});
+
+describe('tryQueryForOfficialUrl (Issue #346: query fallthrough)', () => {
+  const gameParams = {
+    titleEn: 'Test Game',
+    titleJa: 'テストゲーム',
+    releaseYear: '2024',
+    developer: 'Test Dev',
+    publisher: 'Test Pub',
+  };
+
+  it('検索が候補を返さない場合、選別・検証を呼ばずに null を返す', async () => {
+    const mockSearch = vi.fn().mockResolvedValue([]);
+    const mockSelect = vi.fn();
+    const mockVerify = vi.fn();
+
+    const result = await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(result).toBeNull();
+    expect(mockSearch).toHaveBeenCalledWith('Test Game', 'test query');
+    expect(mockSelect).not.toHaveBeenCalled();
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('Claude 選別が null を返す場合、検証を呼ばずに null を返す（フォールスルー）', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue(null);
+    const mockVerify = vi.fn();
+
+    const result = await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(result).toBeNull();
+    expect(mockSearch).toHaveBeenCalledOnce();
+    expect(mockSelect).toHaveBeenCalledWith(
+      'Test Game',
+      'テストゲーム',
+      '2024',
+      ['https://example.com/'],
+      'Test Dev',
+      'Test Pub'
+    );
+    expect(mockVerify).not.toHaveBeenCalled();
+  });
+
+  it('検証が mismatch を返す場合、null を返す（フォールスルー）', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://example.com/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'mismatch',
+      reason: 'ドメインが開発元と無関係',
+    });
+
+    const result = await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(result).toBeNull();
+    expect(mockVerify).toHaveBeenCalledWith(
+      {
+        titleEn: 'Test Game',
+        titleJa: 'テストゲーム',
+        developer: 'Test Dev',
+        publisher: 'Test Pub',
+      },
+      'https://example.com/'
+    );
+  });
+
+  it('検証が uncertain を返す場合、URL を採用する（フォールスルーしない）', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://example.com/ja/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://example.com/ja/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'uncertain',
+      reason: 'ページ本文を取得できなかった',
+    });
+
+    const result = await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(result).toEqual({
+      url: 'https://example.com/ja/',
+      verifyReason: 'ページ本文を取得できなかった',
+    });
+  });
+
+  it('検証が match を返す場合、URL を採用する', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://official.example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://official.example.com/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'match',
+      reason: 'タイトル・開発元が一致',
+    });
+
+    const result = await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(result).toEqual({
+      url: 'https://official.example.com/',
+      verifyReason: 'タイトル・開発元が一致',
+    });
+  });
+
+  it('複数の候補がログに記録される', async () => {
+    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValue(['https://a.example.com/', 'https://b.example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://a.example.com/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'match',
+      reason: 'verified',
+    });
+
+    await tryQueryForOfficialUrl(0, 'test query', gameParams, {
+      search: mockSearch,
+      select: mockSelect,
+      verify: mockVerify,
+    });
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('[Query 0] Found 2 candidates: https://a.example.com/, https://b.example.com/')
+    );
+
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('fetchOfficialJpUrl integration (Issue #346: multi-query fallthrough)', () => {
+  // Note: These tests verify the integration behavior of fetchOfficialJpUrl
+  // by using tryQueryForOfficialUrl with mocked dependencies.
+  // We cannot directly test fetchOfficialJpUrl in unit tests because it has
+  // hard dependencies on Tavily/Bedrock, but we can test the fallthrough logic
+  // by building a similar loop structure.
+
+  const gameParams = {
+    titleEn: 'Test Game',
+    titleJa: 'テストゲーム',
+    releaseYear: '2024',
+    developer: 'Test Dev',
+    publisher: 'Test Pub',
+  };
+
+  it('query[0] の選別が null → query[1] で成功する場合、query[1] の URL を返す', async () => {
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValueOnce(['https://junk-site.com/']) // query[0]: ジャンクな候補
+      .mockResolvedValueOnce(['https://official.example.com/']); // query[1]: 正しい候補
+
+    const mockSelect = vi
+      .fn()
+      .mockResolvedValueOnce(null) // query[0]: Claude が null を返す
+      .mockResolvedValueOnce('https://official.example.com/'); // query[1]: 選別成功
+
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'match',
+      reason: 'verified',
+    });
+
+    const queries = ['query 0', 'query 1'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toEqual({
+      url: 'https://official.example.com/',
+      verifyReason: 'verified',
+    });
+    expect(mockSearch).toHaveBeenCalledTimes(2);
+    expect(mockSelect).toHaveBeenCalledTimes(2);
+    expect(mockVerify).toHaveBeenCalledTimes(1); // query[1] でのみ呼ばれる
+  });
+
+  it('query[0] の検証が mismatch → query[1] で成功する場合、query[1] の URL を返す', async () => {
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValueOnce(['https://wrong-domain.com/']) // query[0]: 誤ったドメイン
+      .mockResolvedValueOnce(['https://official.example.com/']); // query[1]: 正しいドメイン
+
+    const mockSelect = vi
+      .fn()
+      .mockResolvedValueOnce('https://wrong-domain.com/')
+      .mockResolvedValueOnce('https://official.example.com/');
+
+    const mockVerify = vi
+      .fn()
+      .mockResolvedValueOnce({
+        verdict: 'mismatch',
+        reason: 'ドメインが開発元と無関係',
+      }) // query[0]: 検証失敗
+      .mockResolvedValueOnce({
+        verdict: 'match',
+        reason: 'verified',
+      }); // query[1]: 検証成功
+
+    const queries = ['query 0', 'query 1'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toEqual({
+      url: 'https://official.example.com/',
+      verifyReason: 'verified',
+    });
+    expect(mockSearch).toHaveBeenCalledTimes(2);
+    expect(mockSelect).toHaveBeenCalledTimes(2);
+    expect(mockVerify).toHaveBeenCalledTimes(2);
+  });
+
+  it('query[0] で成功する場合、後続クエリを試行しない（コスト保全）', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://official.example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://official.example.com/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'match',
+      reason: 'verified',
+    });
+
+    const queries = ['query 0', 'query 1', 'query 2'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toEqual({
+      url: 'https://official.example.com/',
+      verifyReason: 'verified',
+    });
+    // query[0] でのみ呼ばれる（query[1], query[2] は実行されない）
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+    expect(mockSelect).toHaveBeenCalledTimes(1);
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+  });
+
+  it('全クエリが失敗する場合、null を返す', async () => {
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValueOnce(['https://junk1.com/'])
+      .mockResolvedValueOnce(['https://junk2.com/'])
+      .mockResolvedValueOnce([]);
+
+    const mockSelect = vi
+      .fn()
+      .mockResolvedValueOnce(null) // query[0]: Claude が null
+      .mockResolvedValueOnce('https://junk2.com/'); // query[1]: 選別成功だが検証失敗
+
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'mismatch',
+      reason: 'content mismatch',
+    });
+
+    const queries = ['query 0', 'query 1', 'query 2'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toBeNull();
+    expect(mockSearch).toHaveBeenCalledTimes(3);
+  });
+
+  it('検証が uncertain の場合、フォールスルーせず採用する', async () => {
+    const mockSearch = vi.fn().mockResolvedValue(['https://official.example.com/']);
+    const mockSelect = vi.fn().mockResolvedValue('https://official.example.com/');
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'uncertain',
+      reason: 'ページ本文を取得できなかった',
+    });
+
+    const queries = ['query 0', 'query 1'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toEqual({
+      url: 'https://official.example.com/',
+      verifyReason: 'ページ本文を取得できなかった',
+    });
+    // query[0] で採用されるため、query[1] は実行されない
+    expect(mockSearch).toHaveBeenCalledTimes(1);
+  });
+
+  it('Issue #346 の実測ケース: query[0] の候補が非公式 → query[3] で公式が見つかる', async () => {
+    // ほの暮しの庭の実測ケースを再現
+    const mockSearch = vi
+      .fn()
+      .mockResolvedValueOnce([
+        'https://nippon1review.jp/news40',
+        'https://ascii.jp/elem/000/004/423/4423043',
+      ]) // query[0]: レビューサイトとニュース
+      .mockResolvedValueOnce([]) // query[1]: 候補なし
+      .mockResolvedValueOnce([]) // query[2]: 候補なし
+      .mockResolvedValueOnce([
+        'https://nippon1.jp/consumer/honogurashi',
+        'https://nippon1.jp/consumer/midnight.html',
+      ]); // query[3]: 公式サイト
+
+    const mockSelect = vi
+      .fn()
+      .mockResolvedValueOnce(null) // query[0]: Claude が正しく null を返す
+      .mockResolvedValueOnce('https://nippon1.jp/consumer/honogurashi'); // query[3]: 公式を選別
+
+    const mockVerify = vi.fn().mockResolvedValue({
+      verdict: 'match',
+      reason: 'タイトル・開発元が一致',
+    });
+
+    const queries = ['query 0', 'query 1', 'query 2', 'query 3'];
+    let result: FetchOfficialJpUrlResult | null = null;
+
+    for (let i = 0; i < queries.length; i++) {
+      result = await tryQueryForOfficialUrl(i, queries[i], gameParams, {
+        search: mockSearch,
+        select: mockSelect,
+        verify: mockVerify,
+      });
+      if (result) break;
+    }
+
+    expect(result).toEqual({
+      url: 'https://nippon1.jp/consumer/honogurashi',
+      verifyReason: 'タイトル・開発元が一致',
+    });
+    expect(mockSearch).toHaveBeenCalledTimes(4); // 全4クエリが試行される
+    expect(mockSelect).toHaveBeenCalledTimes(2); // query[0] と query[3] のみ
+    expect(mockVerify).toHaveBeenCalledTimes(1); // query[3] のみ
   });
 });
