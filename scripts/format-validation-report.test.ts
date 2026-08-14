@@ -434,13 +434,15 @@ describe('formatReportMarkdown', () => {
     expect(md).not.toContain('⚠️ AI成人向けスクリーニング失敗');
   });
 
-  it('webSearchStats が undefined（旧キャッシュ）でも例外を投げない。Web検索失敗は0件扱いだが、AI成人向けスクリーニング失敗は未計測として表示する（Issue #222 code review 対応）', () => {
+  it('webSearchStats が undefined（旧キャッシュ）でも例外を投げない。Web検索失敗もAI成人向けスクリーニング失敗も未計測として表示する（Issue #222 code review / #349）', () => {
     const report = makeReport({ status: 'ok' });
     delete report.webSearchStats;
     expect(() => formatReportMarkdown(report)).not.toThrow();
     const md = formatReportMarkdown(report);
-    // Web検索失敗は元々 webSearchFailureCount() が undefined を 0 として扱う仕様のまま（変更対象外）
-    expect(md).toContain('| ✅ Web検索失敗 | 0 |');
+    // Issue #349: 検索失敗も「未計測」と「計測して0件」を区別する（旧実装は 0 件と断定していた）
+    expect(md).toContain('| ❓ Web検索失敗（キーワード） | 未計測 |');
+    expect(md).toContain('| ❓ Web検索失敗（ページ取得） | 未計測 |');
+    expect(md).not.toContain('| ✅ Web検索失敗（キーワード） | 0 |');
     // AI成人向けスクリーニング失敗は「未計測」であり「0件」と断定してはならない
     expect(md).toContain('| ❓ AI成人向けスクリーニング失敗 | 未計測 |');
     expect(md).not.toContain('| ✅ AI成人向けスクリーニング失敗 | 0 |');

@@ -210,8 +210,9 @@ jobs:
           # 起票された場合、HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる。
           # 新しい要因が 0 のときは従来通りの表記を維持する（重複防止ロジックが旧Issueと
           # 一致し続けるように保つため、条件付きで後ろに足すだけにする）。
-          # （Issue #222 / #311 / #349 対応。pageContentFailures は warning 扱いだが、
-          #   実測で単独で error になるケースがあったため、タイトルから漏れないよう明示する）
+          # （Issue #222 / #311 / #349 対応。pageContentFailures 単独では error にならない
+          #   ＝この suffix だけでは起票されないが、error の号に併発していたときに原因の一部として
+          #   見えるようタイトルに出す。起票の要因は SEARCH_FAIL 側）
           DETAIL="HIGH: ${HIGH}件"
           if [ "$SEARCH_FAIL" != "0" ]; then
             DETAIL="${DETAIL}、検索失敗: ${SEARCH_FAIL}件"

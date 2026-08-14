@@ -22,9 +22,11 @@
  * writeAndCheckReport の fail 閾値（既定 5 件）と自動再生成の判断にも使われる数値なので、
  * 本文品質以外の要因で動かさない。
  *
- * AI成人向けスクリーニング失敗（Issue #222）は、Web 検索失敗と同様「本来行うべき安全確認が
- * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
- * （error に昇格）とする。
+ * AI成人向けスクリーニング失敗（Issue #222）は、キーワード検索失敗（searchFailures）と同様
+ * 「本来行うべき安全確認ができないまま fail-open で通過した」という性質が共通するため、
+ * キーワード検索失敗と同じ扱い（error に昇格）とする。
+ * ※ Issue #349 以降、ここでいう「検索失敗」は searchFailures のみを指す。公式ページの
+ * 本文取得失敗（pageContentFailures）は warning 止まりで、この比較の対象ではない。
  *
  * 早期アクセスの表記漏れ・誤断定（Issue #26）も high 警告には混ぜず独立した判定項として扱うが、
  * error ではなく warning 止まりにする。一次対策はプロンプト側（早期アクセス配信中である事実を
@@ -57,9 +59,12 @@ export const ARTICLE_CATEGORY_LABELS: Record<ArticleCategory, string> = {
 
 /**
  * キーワード検索自体の失敗回数（Issue #349）。
- * Tavily 検索が失敗すると記事の根拠データがゼロになるため、status を error に昇格させる。
- * validate-article.ts:148 が earlyAccessStatementIssues を error ではなく warning にした理由と同じ
- * （error は Issue 自動起票の条件のため、号ごとに対処不能な原因で起票しない）。
+ * Tavily 検索が失敗すると**その記事は根拠データがゼロのまま生成される**ため、status を error に
+ * 昇格させる（= Issue 自動起票の対象にする）。pageContentFailureCount とは扱いが逆であることに注意。
+ * ⚠️ この判断は「発火したときの影響が大きい」という想定に基づく。実測では 12 号中 0 件で
+ * 一度も発火していないため、実際の頻度と対処可能性は未観測である。Tavily のクォータ切れ等で
+ * 常態的に発火するようになった場合は、pageContentFailures と同じ理由（対処不能な原因で
+ * 号ごとに起票される）で重大度の見直しが必要になる。
  * 旧キャッシュ（webSearchStats 追加前）では 0 として扱う。
  */
 export function searchFailureCount(report: ValidationReport): number {
@@ -80,7 +85,9 @@ export function pageContentFailureCount(report: ValidationReport): number {
 export function webSearchFailureCount(report: ValidationReport): number {
   const s = report.webSearchStats;
   if (!s) return 0;
-  return s.searchFailures + s.pageContentFailures;
+  // 片方のフィールドだけ欠けた旧キャッシュで NaN にならないよう `?? 0` で潰す
+  // （searchFailureCount / pageContentFailureCount と挙動を揃える）。
+  return (s.searchFailures ?? 0) + (s.pageContentFailures ?? 0);
 }
 
 /**
@@ -167,7 +174,7 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 
 /**
  * この号について Issue を自動起票すべきか。
- * 条件: high 警告が1件以上、または Web 検索失敗がある、
+ * 条件: high 警告が1件以上、または**キーワード検索失敗**（searchFailures）がある、
  * または AI成人向けスクリーニング失敗（fail-open）がある、
  * または記事本数が期待を下回ったカテゴリがある（= 総合ステータスが error）。
  */
@@ -347,11 +354,19 @@ export function formatReportMarkdown(report: ValidationReport): string {
   out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high} |`);
   out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium} |`);
   out.push(`| 🟢 LOW | ${report.warningsBySeverity.low} |`);
-  if (webFail > 0) {
-    out.push(`| ⚠️ Web検索失敗（キーワード） | ${report.webSearchStats?.searchFailures ?? 0} |`);
-    out.push(`| ⚠️ Web検索失敗（ページ取得） | ${report.webSearchStats?.pageContentFailures ?? 0} |`);
+  // Issue #349: キーワード検索失敗（error 要因）とページ本文取得失敗（warning 要因）は
+  // 重大度が違うので、0 件のときも行を分けて出す（1 行に潰すと分離が表から読み取れない）。
+  // ただし webSearchStats 自体が無い旧キャッシュは「未計測」であり「計測して 0 件」ではない。
+  // 両者を潰すと #222 code review が adultScreeningFailures で指摘したのと同じ誤りになるため 3 分岐する。
+  if (!report.webSearchStats) {
+    out.push('| ❓ Web検索失敗（キーワード） | 未計測 |');
+    out.push('| ❓ Web検索失敗（ページ取得） | 未計測 |');
+  } else if (webFail > 0) {
+    out.push(`| ⚠️ Web検索失敗（キーワード） | ${report.webSearchStats.searchFailures ?? 0} |`);
+    out.push(`| ⚠️ Web検索失敗（ページ取得） | ${report.webSearchStats.pageContentFailures ?? 0} |`);
   } else {
-    out.push('| ✅ Web検索失敗 | 0 |');
+    out.push('| ✅ Web検索失敗（キーワード） | 0 |');
+    out.push('| ✅ Web検索失敗（ページ取得） | 0 |');
   }
   // adultScreeningFailures は undefined（未計測）と 0（計測して失敗ゼロ）を区別して表示する。
   // adultScreeningFailureCount() は computeReportStatus 用に `?? 0` で潰した値を返すため、
