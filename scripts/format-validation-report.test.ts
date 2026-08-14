@@ -309,10 +309,20 @@ describe('buildRecommendedActions', () => {
     expect(highAction).toContain('修正');
   });
 
-  it('Web 検索失敗があればファクトチェックのアクションを含む', () => {
+  it('キーワード検索失敗と公式ページ本文取得失敗を別のアクションとして出す（Issue #349）', () => {
     const report = makeReport({ webSearchStats: { searchFailures: 1, pageContentFailures: 1 } });
     const actions = buildRecommendedActions(report);
-    expect(actions.some((a) => a.includes('Web 検索失敗 2 件'))).toBe(true);
+    // 合算した「Web 検索失敗 2 件」ではなく、必要な対処が違う 2 件として出る
+    expect(actions.some((a) => a.includes('キーワード検索の失敗 1 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('公式ページ本文の取得失敗 1 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('Web 検索失敗 2 件'))).toBe(false);
+  });
+
+  it('公式ページ本文取得失敗だけの号でも、検索失敗のアクションは出さない（Issue #349）', () => {
+    const report = makeReport({ webSearchStats: { searchFailures: 0, pageContentFailures: 2 } });
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('公式ページ本文の取得失敗 2 件'))).toBe(true);
+    expect(actions.some((a) => a.includes('キーワード検索の失敗'))).toBe(false);
   });
 
   it('AI成人向けスクリーニング失敗があれば手動確認のアクションを含む（Issue #222）', () => {

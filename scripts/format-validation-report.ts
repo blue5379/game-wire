@@ -189,7 +189,8 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const actions: string[] = [];
   const high = report.warningsBySeverity.high;
   const medium = report.warningsBySeverity.medium;
-  const webFail = webSearchFailureCount(report);
+  const searchFail = searchFailureCount(report);
+  const pageContentFail = pageContentFailureCount(report);
   const adultScreeningFail = adultScreeningFailureCount(report);
   const unrecognizedScreeningResponses = report.webSearchStats?.unrecognizedScreeningResponses ?? 0;
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
@@ -213,9 +214,17 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
       `🔴 **HIGH 警告 ${high} 件**: 該当記事の本文を確認し、事実誤り・ハルシネーションを修正してください。`
     );
   }
-  if (webFail > 0) {
+  // Issue #349: 2 種の失敗は必要なアクションが違うので分けて出す。
+  // 合算して「Web 検索失敗」と書くと、status を分離した意味（error / warning）が
+  // 人間向けサマリと自動起票タイトルの表記から失われる。
+  if (searchFail > 0) {
     actions.push(
-      `⚠️ **Web 検索失敗 ${webFail} 件**: 一部の主張が根拠未確認のまま生成されています。手動でファクトチェックしてください。`
+      `🔴 **キーワード検索の失敗 ${searchFail} 件**: 該当記事は根拠データ無しで生成されています。全体を手動でファクトチェックしてください。`
+    );
+  }
+  if (pageContentFail > 0) {
+    actions.push(
+      `⚠️ **公式ページ本文の取得失敗 ${pageContentFail} 件**: 公式サイトの記述と照合できていません（実在するページでも JS 重量サイトでは失敗する）。該当記事の対応機種・発売日を手動で確認してください。`
     );
   }
   if (adultScreeningFail > 0) {
