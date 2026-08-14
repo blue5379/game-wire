@@ -78,29 +78,40 @@ jobs:
       #      Issue番号は常に既存の最大値+1（getNextIssueNumber の仕様、build-issue.ts:85-97）
       #      なので src/content/issues/issue-*.md の最大値から逆引きしてレポートパスを固定する。
       #      号の再利用（削除→再発行）があるため、単純に ls | sort | tail では最新の号ではなく
-      #      番号が一番大きい古い残骸を拾ってしまう（Issue #342 本番実測: Vol.17再利用時に019を読んだ）。
+      #      番号が一番大きい古い残骸を拾ってしまう（2026-08-14 の本番実測 = run 31792016284:
+      #      Vol.17 再利用時に 019 のレポートを読み、error の号を warning と誤判定して起票を飛ばした）。
       - name: Resolve current issue report
         run: |
-          ISSUE_NUM=$(ls src/content/issues/issue-*.md 2>/dev/null \
-            | sed 's/.*issue-//' | sed 's/\.md//' \
+          # ファイル名から取り出す番号は "017" のようにゼロ詰めされている。この文字列を
+          # printf '%03d' に渡してはならない（bash は先頭 0 を8進数と解釈し 017 → 015 になる。
+          # 018 のように8進数として不正な値ではエラーになる）。ゼロ詰め文字列はそのまま
+          # レポートのファイル名に使い、数値が必要な箇所だけ 10# で基数を固定して変換する。
+          ISSUE_NUM_PADDED=$(ls src/content/issues/issue-*.md 2>/dev/null \
+            | sed 's#.*/issue-##' | sed 's#\.md$##' \
             | sort -n | tail -1)
-          if [ -z "$ISSUE_NUM" ]; then
+          if [ -z "$ISSUE_NUM_PADDED" ]; then
             echo "Error: No issue file found in src/content/issues/" >&2
             exit 1
           fi
-          ISSUE_NUM_PADDED=$(printf "%03d" "$ISSUE_NUM")
-          echo "ISSUE_NUM=${ISSUE_NUM}" >> "$GITHUB_ENV"
-          echo "REPORT_JSON=data/validation/validation-report-${ISSUE_NUM_PADDED}.json" >> "$GITHUB_ENV"
-          echo "REPORT_MD=data/validation/validation-report-${ISSUE_NUM_PADDED}.md" >> "$GITHUB_ENV"
+          ISSUE_NUM=$((10#$ISSUE_NUM_PADDED))
+          REPORT_JSON="data/validation/validation-report-${ISSUE_NUM_PADDED}.json"
+          REPORT_MD="data/validation/validation-report-${ISSUE_NUM_PADDED}.md"
 
           # 発行日を frontmatter から取得（auto-filed issue のタイトルに埋め込むため）
-          PUBLISH_DATE=$(grep '^publishDate:' "src/content/issues/issue-${ISSUE_NUM}.md" \
+          PUBLISH_DATE=$(grep '^publishDate:' "src/content/issues/issue-${ISSUE_NUM_PADDED}.md" \
             | sed 's/publishDate: *//' | tr -d '\r')
-          echo "PUBLISH_DATE_RESOLVED=${PUBLISH_DATE}" >> "$GITHUB_ENV"
 
-          echo "✅ Resolved: Issue #${ISSUE_NUM}, publishDate=${PUBLISH_DATE}"
-          echo "   REPORT_JSON=${REPORT_JSON}"
-          echo "   REPORT_MD=${REPORT_MD}"
+          {
+            echo "ISSUE_NUM=${ISSUE_NUM}"
+            echo "REPORT_JSON=${REPORT_JSON}"
+            echo "REPORT_MD=${REPORT_MD}"
+            echo "PUBLISH_DATE_RESOLVED=${PUBLISH_DATE}"
+          } >> "$GITHUB_ENV"
+
+          # GITHUB_ENV は後続ステップにしか効かないので、ログ出力はローカル変数を使う
+          echo "Resolved: issue #${ISSUE_NUM} (file suffix ${ISSUE_NUM_PADDED}), publishDate=${PUBLISH_DATE}"
+          echo "  REPORT_JSON=${REPORT_JSON}"
+          echo "  REPORT_MD=${REPORT_MD}"
 
       # 6.5. バリデーションレポートを Job Summary に出力
       #      整形は scripts/format-validation-report.ts が生成する .md をそのまま利用する
@@ -150,8 +161,9 @@ jobs:
         run: |
           set -e
           # レポートがこの時点で存在しない = ビルド成功と矛盾する（前ステップが嘘をついている）。
-          # 以前は silent exit 0 でスキップしていたが、Issue #342 で「本来 error だった号が
-          # warning として記録され、起票されなかった」本番障害が発生。ここで止めてログを残す。
+          # 以前は silent exit 0 でスキップしていたが、2026-08-14 の本番実測（run 31792016284）で
+          # 「別号のレポートを読み、error の号を warning と判定して起票を飛ばす」事象が起きた。
+          # レポート不在を黙って許すと同種の見落としが再発するので、ここで止めてログを残す。
           if [ ! -f "$REPORT_JSON" ]; then
             echo "Error: REPORT_JSON=$REPORT_JSON does not exist. Pipeline state is inconsistent." >&2
             exit 1
@@ -173,7 +185,8 @@ jobs:
           # 起票された場合、HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる。
           # 新しい要因が 0 のときは従来通りの表記を維持する（重複防止ロジックが旧Issueと
           # 一致し続けるように保つため、条件付きで後ろに足すだけにする）。
-          # （Issue #222 / #311 対応。Issue #342 で Web検索失敗の件も追加）
+          # （Issue #222 / #311 対応。Web検索失敗の件は 2026-08-14 の本番実測で
+          #   pageContentFailures 単独の error が「HIGH: 0件」と表示されることが判明して追加）
           DETAIL="HIGH: ${HIGH}件"
           if [ "$SEARCH_FAIL" != "0" ]; then
             DETAIL="${DETAIL}、Web検索失敗: ${SEARCH_FAIL}件"
