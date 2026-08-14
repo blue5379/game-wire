@@ -1,5 +1,11 @@
 # 記事カテゴリ仕様の抜本見直し — 検討資料と素案
 
+> 🗑️ **2026-08-14: 公開済みの vol.017 / 018 / 019 を削除した**（PR #343。理由は新作紹介の本数不足で、017 = 0 本 / 018 = 1 本（DLC）/ 019 = 0 本。仕様は 2 本）。
+> **本ファイル中の vol.017 / 018 / 019 への言及と、「19 号」を母集団とする実測値は、すべてこの削除より前の状態を指す**（削除時点の実測で本文中 40 箇所。本注意書き自身は含まない）。
+> 区別すること: **記事本文**を根拠にした引用は `git show c5c9d11:src/content/issues/issue-0NN.md` で参照する（`c5c9d11` = 削除直前の main）。
+> **Validation Report（`data/validation/validation-report-017 / 018 / 019`）は削除していない**ので、レポートを根拠にした引用は今も直接検証できる。
+> なお本ファイルの契機である vol.17 の障害（下記「契機」行）は、この削除とは無関係な別事象である（削除理由は本数不足で、Issue #206 の警告内容ではない）。
+
 作成日: 2026-07-26
 作成者: Claude (Opus 5)
 契機: vol.17 で「新作紹介」が 0 件になった障害（Issue #206 と併発）の原因調査。
@@ -1973,7 +1979,7 @@ coming_soon（生 10 件中 2 件。★本節に記載が無かった。ただ�
 
 ⚠️ **「10 件中 2 件」は生レスポンスに対する測定値である。** `coming_soon` は `fetch-steam.ts:314` の `slice(0, 5)` で上位 5 件しか `getAppDetails` に渡らないため、**実際に候補プールへ入っていた `music` は 1 件**（`Pight Soundtrack`、1 位）。当初この節は 2 件が混入していたかのように書いていたが、順位を実測データで確認して訂正した（レビュー指摘）。混入経路が実在することは 1 件でも変わらない。
 
-**混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）。
+**混入が現に起きていたことの確認**: vol.18 の記事 1 本目が appId 4412690 のこの DLC そのものだった（`src/content/issues/issue-018.md:7` で実物確認）（※ vol.017-019 は 2026-08-14 に削除。`git show c5c9d11:src/content/issues/issue-018.md` で参照）。
 
 **判定順序**: 成人向け → name 不一致（`isSameSteamApp`）→ type。当初 type を name 不一致より前に置いていたが、appId 取り違え（Issue #102 型）でその appId の実体がたまたま `dlc` / `music` だった場合に、より診断価値の高い `appId/name mismatch` 警告が出なくなるためレビューで後ろに移した。候補の採否は変わらない（観測性のみ）。
 
@@ -3136,7 +3142,7 @@ Game Wire はバックナンバーが恒久的に残る構成なので、**順�
   - `https://affiliate-program.amazon.com/creatorsapi/docs/en-us/api-reference/**`（27 ページ）— operation 一覧・resource 一覧・`browseNodeInfo.browseNodes.salesRank` / `websiteSalesRank` の定義
   - `https://affiliate.amazon.co.jp/help/operating/paapilicenseagreement` — 日本ロケールのライセンス条項 (g) (i) (n) (o)
 - GitHub Actions 実行ログ: run 30129193266（vol.17, schedule, 2026-07-24T21:52:45Z, conclusion=success）
-- `src/content/issues/issue-001.md` 〜 `issue-017.md`
+- `src/content/issues/issue-001.md` 〜 `issue-017.md`（※ この範囲のうち **`issue-017.md` だけ**が 2026-08-14 に削除された（001〜016 は現存）。`git show c5c9d11:src/content/issues/issue-017.md` で参照）
 - `src/content/history.json`（105 件）
 - `要件.md`
 - `scripts/fetch-igdb.ts`, `scripts/game-filter.ts`, `scripts/fetch-data.ts`, `scripts/bedrock-client.ts`,
