@@ -55,6 +55,24 @@ export type ReportMode = 'production' | 'dev' | 'manual';
  */
 export type ArticleCategory = GeneratedArticle['category'];
 
+/** 早期アクセス表記の問題の種別（Issue #26、§2.9） */
+export type EarlyAccessStatementIssueType =
+  /** 早期アクセスであることに本文・要約のどちらも触れていない */
+  | 'early-access-unstated'
+  /** 正式リリース済みと読める断定がある */
+  | 'early-access-release-claim';
+
+/** 1 記事の早期アクセス表記の問題（Issue #26、§2.9） */
+export interface EarlyAccessStatementIssue {
+  articleTitle: string;
+  category: ArticleCategory;
+  gameTitle: string;
+  type: EarlyAccessStatementIssueType;
+  /** マッチした語（`early-access-unstated` では持たない） */
+  evidence?: string;
+  message: string;
+}
+
 /** 1 カテゴリの記事本数不足（Issue #311） */
 export interface ArticleCountShortfall {
   category: ArticleCategory;
@@ -120,6 +138,17 @@ export interface ValidationReport {
    * adultScreeningFailures と同じ構造）。
    */
   articleCountShortfalls?: ArticleCountShortfall[];
+  /**
+   * 早期アクセス配信中のタイトルの表記漏れ・誤断定（Issue #26、§2.9）。
+   * 問題が無い場合は空配列（`undefined` は「未計測」= 本フィールド追加前の旧レポート）。
+   *
+   * `warnings` から分離して持つ理由は `detectEarlyAccessStatementIssues` の JSDoc を参照。
+   * ステータス判定では `warning` 止まりにする（`error` に昇格させない）。理由:
+   * 一次対策はプロンプト側であり、この判定項は発火頻度が未観測の観測網であるため。
+   * `error` にすると `shouldFileIssue` が真になって号ごとに Issue が自動起票される。
+   * #222 の `unrecognizedScreeningResponses` と同じ判断。
+   */
+  earlyAccessStatementIssues?: EarlyAccessStatementIssue[];
   /** 公式URL未取得の記事一覧。Issue #117 P3 */
   missingOfficialUrls?: Array<{ articleTitle: string; category: string; gameTitle: string }>;
 }
@@ -1142,6 +1171,123 @@ export function detectArticleCountShortfalls(
   return shortfalls;
 }
 
+// 記事本文が早期アクセスに触れていると認める表記（Issue #26、§2.9）
+const EARLY_ACCESS_MENTION_PATTERN = /早期アクセス|アーリーアクセス|early\s*access/i;
+
+// 「正式リリース済みの製品版」と読める語（早期アクセス作品の記事では書かせない、§2.9）
+const FULL_RELEASE_WORD_PATTERN = /正式(?:リリース|版|ローンチ)|フルリリース|完成版/;
+
+// 「もう正式リリースされた」と読める完了表現。
+// 「開発中」「制作中」を拾わないよう、`中` 単体ではなく販売状態を表す語だけを列挙する。
+//
+// ⚠️ この語は **正式リリース語より後ろ**にあるものだけを見る（`FULL_RELEASE_WORD_PATTERN` の
+// マッチ位置以降を切り出して判定する）。文全体を見ると
+// 「早期アクセス配信中で、正式版の開発が続けられている」の `配信中`（早期アクセス側の述語）を
+// `正式版` の完了表現として誤って結び付ける（テストで固定済み）。
+const FULL_RELEASE_COMPLETED_PATTERN = /済み|された|されている|されました|を果た|発売中|配信中|リリース中/;
+
+// 「まだ正式リリースされていない」と読める文脈語。同じ文にあれば正当な記述として除外する。
+// ⚠️ この除外は意図的に広い（`前` `予定` 等の 1 語でも除外する）。バリデータは
+// プロンプト（一次対策）が効かなかったときの観測網であり、偽陽性で「正しい記述を直せ」と
+// 指示すると、かえって正確な文が壊れるため。偽陰性側に倒している。
+const FULL_RELEASE_FUTURE_PATTERN = /前|予定|未定|目指|向け|見込|将来|いずれ|検討|開発中|制作中/;
+
+/**
+ * 早期アクセス配信中のタイトルの記事が、その状態を正しく伝えているかを検証する
+ * （Issue #26、§2.9）。
+ *
+ * ## なぜ high 警告（`warnings`）ではなく独立した判定項なのか
+ *
+ * `warningsBySeverity.high` は ①仕様 §9.1 保留1（high の重大性の再定義）の議論対象
+ * ②`writeAndCheckReport` の fail 閾値 ③`VALIDATION_AUTO_REGENERATE` の再生成判断、
+ * の 3 つに同時に使われている数値である。早期アクセスの表記漏れを混ぜると、これらの
+ * 運用判断がすべて動く。#311 の `articleCountShortfalls` と #222 の
+ * `adultScreeningFailures` と同じ理由で、独立したフィールドに分ける。
+ *
+ * ## 発火条件
+ *
+ * `article.game?.isEarlyAccess === true` のときだけ。`undefined`（Steam ストア外・
+ * appId 未判明で未判定）では 1 件も出さない。判定できていないことを記事の欠陥として
+ * 数えると、Steam に無いタイトルの記事が常に警告を出し続ける。
+ *
+ * ## 2 つの検出型
+ *
+ * | type | 意味 | 実測例 |
+ * |---|---|---|
+ * | `early-access-unstated` | 本文・要約のどちらも早期アクセスに触れていない | vol.008『ARK: Survival Ascended』（「発売中」と書きつつ早期アクセスに一切言及なし） |
+ * | `early-access-release-claim` | 正式リリース済みと読める断定がある | 「正式版が発売中」等 |
+ *
+ * `early-access-unstated` は記事単位で最大 1 件、`early-access-release-claim` は
+ * フィールド（本文・要約）単位で最大 1 件（既存 `validateUpcomingEvaluationClaims` と同じ方針）。
+ *
+ * 参照: `docs/article-category-spec.md` §2.9
+ */
+export function detectEarlyAccessStatementIssues(
+  article: GeneratedArticle
+): EarlyAccessStatementIssue[] {
+  if (article.game?.isEarlyAccess !== true) return [];
+
+  const issues: EarlyAccessStatementIssue[] = [];
+  const base = {
+    articleTitle: article.title,
+    category: article.category,
+    gameTitle: article.game?.title ?? '',
+  };
+
+  const fields: Array<{ name: string; text: string }> = [
+    { name: '本文', text: article.content },
+    { name: '要約', text: article.summary },
+  ];
+
+  // 型1: どのフィールドでも早期アクセスに触れていない
+  const mentionsAnywhere = fields.some((f) => f.text && EARLY_ACCESS_MENTION_PATTERN.test(f.text));
+  if (!mentionsAnywhere) {
+    issues.push({
+      ...base,
+      type: 'early-access-unstated',
+      message:
+        `早期アクセス配信中のタイトルですが、本文・要約のどちらにも早期アクセスである旨の記載がありません。` +
+        `読者は正式リリース済みの完成品として読みます。「📅 発売情報」に早期アクセス配信中であることを明記してください。`,
+    });
+  }
+
+  // 型2: 正式リリース済みと読める断定
+  for (const field of fields) {
+    if (!field.text) continue;
+    for (const sentence of splitIntoSentences(field.text)) {
+      const matched = sentence.match(FULL_RELEASE_WORD_PATTERN);
+      if (matched?.index === undefined) continue;
+      // 完了表現は正式リリース語より後ろだけを見る（前方の別主語の述語を拾わないため）
+      const afterWord = sentence.slice(matched.index + matched[0].length);
+      if (!FULL_RELEASE_COMPLETED_PATTERN.test(afterWord)) continue;
+      // 未来・不確定を示す語は文全体で見る（広く除外して偽陽性を避ける）
+      if (FULL_RELEASE_FUTURE_PATTERN.test(sentence)) continue;
+
+      issues.push({
+        ...base,
+        type: 'early-access-release-claim',
+        evidence: matched[0],
+        message:
+          `早期アクセス配信中のタイトルですが、記事${field.name}に正式リリース済みと読める断定「${matched[0]}」があります。` +
+          `該当箇所: 「${sentence.slice(0, 100)}${sentence.length > 100 ? '...' : ''}」`,
+      });
+      break; // フィールドごとに最大1件
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * 号の全記事から早期アクセス表記の問題を集める（Issue #26、§2.9）。
+ * 問題が無い号でも空配列を返す（`undefined` は「未計測」= 本フィールド追加前の旧レポート）。
+ */
+export function detectEarlyAccessStatementIssuesForIssue(
+  articles: GeneratedArticle[]
+): EarlyAccessStatementIssue[] {
+  return articles.flatMap((a) => detectEarlyAccessStatementIssues(a));
+}
+
 /**
  * 全記事を検証してレポートを生成
  *
@@ -1189,6 +1335,8 @@ export function validateArticles(
     webSearchStats,
     // 不足0件でも空配列を入れる（undefined =「未計測」= 旧レポートと区別するため。Issue #311）
     articleCountShortfalls: detectArticleCountShortfalls(articles, hiddenArticleTitles),
+    // 問題0件でも空配列を入れる（undefined =「未計測」= 旧レポートと区別するため。Issue #26）
+    earlyAccessStatementIssues: detectEarlyAccessStatementIssuesForIssue(articles),
     missingOfficialUrls: missingOfficialUrls.length > 0 ? missingOfficialUrls : undefined,
   };
 }
@@ -1300,6 +1448,21 @@ export function writeAndCheckReport(
     }
   } else {
     console.log(`  Article count shortfalls: 0`);
+  }
+
+  // 早期アクセスの表記（Issue #26）。status=warning に算入されるため、未計測と 0 件を区別して出す。
+  if (report.earlyAccessStatementIssues === undefined) {
+    console.log(`  Early access statement issues: unmeasured (old cache)`);
+  } else if (report.earlyAccessStatementIssues.length > 0) {
+    console.warn('');
+    console.warn('=== ⚠️  Early Access Statement Issues ===');
+    for (const i of report.earlyAccessStatementIssues) {
+      console.warn(
+        `  [${i.type}] (${ARTICLE_CATEGORY_LABELS[i.category]}) ${i.gameTitle}\n    ${i.message}`
+      );
+    }
+  } else {
+    console.log(`  Early access statement issues: 0`);
   }
 
   // 公式URL未取得の記事（記録のみ。fail 判定には算入しない）

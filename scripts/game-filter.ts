@@ -73,3 +73,23 @@ export function isFanGame(g: GameData): boolean {
   if (g.keywords?.some((slug) => FAN_GAME_KEYWORD_SLUGS.has(slug.toLowerCase()))) return true;
   return false;
 }
+
+/** IGDB `game_status` が早期アクセスを示す値（fetch-igdb.ts の同名定数と同値。§2.9） */
+const IGDB_GAME_STATUS_EARLY_ACCESS = 4;
+
+/**
+ * 早期アクセス配信中と判断できるかを判定する（Issue #26、§2.9）。
+ *
+ * **名作枠の除外ゲート専用**（§5.4）。記事本文の早期アクセス表記には使わないこと
+ * （本文は `GameData.isEarlyAccess` = Steam 一次ソースだけを見る。理由は
+ * `types.ts` の `gameStatus` / `isEarlyAccess` の JSDoc）。
+ *
+ * ここでは Steam・IGDB のどちらか一方でも早期アクセスを示していれば true にする
+ * （= 安全側に倒して除外する）。ゲートの偽陽性が招くのは「名作枠の候補が 1 件減る」
+ * だけで、母集団は実測 279 件あるため実害が小さい。一方、偽陰性（早期アクセス作品を
+ * 名作として深掘りする）は §5.1 の読者への約束と正面から矛盾する。
+ * `classicRemakeEligible` が `undefined` を除外側に倒しているのと同じ非対称。
+ */
+export function isEarlyAccessGame(g: GameData): boolean {
+  return g.isEarlyAccess === true || g.igdbGameStatus === IGDB_GAME_STATUS_EARLY_ACCESS;
+}

@@ -404,8 +404,39 @@ interface IGDBRawGame {
   total_rating?: number;
   /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
   total_rating_count?: number;
+  /** 進行状態（4=Early Access）。名作枠の早期アクセス除外ゲートに使う（§2.9/§5.4） */
+  game_status?: number;
   /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
   parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
+}
+
+/**
+ * IGDB `game_status` のうち早期アクセスを示す値（`game_statuses` エンドポイントの実測値。
+ * 0=Released / 2=Alpha / 3=Beta / **4=Early Access** / 5=Offline / 6=Cancelled /
+ * 7=Rumored / 8=Delisted）。名作枠の除外ゲート（§5.4）でのみ使う。
+ */
+export const IGDB_GAME_STATUS_EARLY_ACCESS = 4;
+
+/**
+ * 「早期アクセスではない」を表す IGDB where 句を組み立てる（Issue #26、§5.4）。
+ *
+ * ## 🚨 `game_status != 4` と書いてはいけない
+ *
+ * IGDB の `!=` は**値が null のレコードもマッチしない**。2026-08-14 の実測（`games/count`）:
+ *
+ * | where 句（名作枠の母集団条件に追加） | 件数 |
+ * |---|---|
+ * | 追加なし | 279 |
+ * | `& game_status != 4` | **7** ← null の 271 件が消える |
+ * | `& game_status = null` | 271 |
+ * | `& game_status = 4` | 1（`Path of Exile 2`） |
+ * | `& (game_status = null \| game_status != 4)` | **278** ← 正しい形 |
+ *
+ * 名作級のタイトルは `game_status` が null であるのが普通（Grand Theft Auto V も
+ * The Witcher 3 も null）。素朴に `!=` を書くと母集団が 279 → 7 件に崩壊する。
+ */
+function buildNotEarlyAccessFilter(): string {
+  return `(game_status = null | game_status != ${IGDB_GAME_STATUS_EARLY_ACCESS})`;
 }
 
 // searchGameByName / searchGameBySteamAppId 共通で使う fields 一覧
@@ -418,7 +449,7 @@ const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        game_localizations.name, game_localizations.region,
        websites.url, websites.category, websites.type,
        game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
-       total_rating, total_rating_count,
+       total_rating, total_rating_count, game_status,
        parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count`;
 
 /**
@@ -542,6 +573,7 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     keywords: game.keywords?.map((k) => k.slug),
     totalRating: game.total_rating,
     totalRatingCount: game.total_rating_count,
+    gameStatus: game.game_status,
     classicRemakeEligible: computeClassicRemakeEligible(game.game_type, game.parent_game),
   };
 }
@@ -792,7 +824,7 @@ export const IGDB_POOL_QUERY_FIELDS = `name, slug, summary, genres.name, platfor
              game_localizations.name, game_localizations.region,
              websites.url, websites.category, websites.type,
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
-             total_rating, total_rating_count,
+             total_rating, total_rating_count, game_status,
              parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count,
              release_dates.date, release_dates.date_format`;
 
@@ -827,6 +859,8 @@ interface IGDBPoolRawGame {
   total_rating?: number;
   /** 総合評価の評価母数。名作枠の母集団条件・並び順に使う（§5.4/§5.8） */
   total_rating_count?: number;
+  /** 進行状態（4=Early Access）。名作枠の早期アクセス除外ゲートに使う（§2.9/§5.4） */
+  game_status?: number;
   /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
   parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
   /** 発売日エントリ。§2.4 の「確定日のみ」判定に使う（date_format=0 が確定日） */
@@ -891,6 +925,7 @@ function mapPoolRawGameToIGDBGame(game: IGDBPoolRawGame): IGDBGame {
     keywords: game.keywords?.map((k) => k.slug),
     totalRating: game.total_rating,
     totalRatingCount: game.total_rating_count,
+    gameStatus: game.game_status,
     classicRemakeEligible: computeClassicRemakeEligible(game.game_type, game.parent_game),
   };
 }
@@ -1126,7 +1161,7 @@ async function fetchClassicGames(
       fields ${IGDB_POOL_QUERY_FIELDS};
       where total_rating >= ${totalRatingMin} & total_rating_count >= ${totalRatingCountMin} & ${buildIgdbCommonFilters({
         gameTypes: [IGDB_GAME_TYPE_MAIN, IGDB_GAME_TYPE_REMAKE, IGDB_GAME_TYPE_REMASTER],
-      })};
+      })} & ${buildNotEarlyAccessFilter()};
       sort total_rating_count desc;
       limit 200;
     `;

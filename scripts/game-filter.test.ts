@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isFanGame,
   isQualifiedGame,
+  isEarlyAccessGame,
   QUALITY_IGDB_RC_MIN,
   QUALITY_IGDB_RATING_STRONG,
   QUALITY_IGDB_RC_FLOOR,
@@ -195,5 +196,43 @@ describe('isQualifiedGame — Amazon経路・批評媒体数経路（§2.3 PR-B2
     expect(isQualifiedGame(game)).toBe(true);
     // options を渡さない呼び出しと amazonRanked: false を渡す呼び出しが同じ結果になること
     expect(isQualifiedGame(game, { amazonRanked: false })).toBe(true);
+  });
+});
+
+describe('isEarlyAccessGame（Issue #26。仕様 §2.9 / §5.4）', () => {
+  it('Steam が早期アクセスと示していれば true（一次ソース）', () => {
+    // 実測: appId=2868840 `Slay the Spire 2` の genres に 70:早期アクセス
+    expect(isEarlyAccessGame(makeGame({ isEarlyAccess: true }))).toBe(true);
+  });
+
+  it('IGDB game_status=4 だけでも true（Steam 非配信タイトルを名作枠で拾わないため）', () => {
+    // 実測: `Path of Exile 2` は名作枠の母集団条件を満たしつつ game_status=4
+    expect(isEarlyAccessGame(makeGame({ igdbGameStatus: 4 }))).toBe(true);
+  });
+
+  it('Steam が false でも IGDB が 4 なら true（ゲートは安全側=除外に倒す）', () => {
+    // 実測の偽陽性例: `Realm of Ink` は IGDB game_status=4 だが Steam は早期アクセス表示なし。
+    // 本文表記では採らない値だが、名作枠の除外ゲートでは除外側に倒す
+    expect(isEarlyAccessGame(makeGame({ isEarlyAccess: false, igdbGameStatus: 4 }))).toBe(true);
+  });
+
+  it('IGDB が null でも Steam が true なら true（偽陰性を Steam 側で救う）', () => {
+    // 実測の偽陰性例: `ARK: Survival Ascended` は IGDB game_status=null だが Steam は早期アクセス
+    expect(isEarlyAccessGame(makeGame({ isEarlyAccess: true, igdbGameStatus: undefined }))).toBe(true);
+  });
+
+  it('両方が早期アクセスを示していなければ false', () => {
+    expect(isEarlyAccessGame(makeGame({ isEarlyAccess: false, igdbGameStatus: 0 }))).toBe(false);
+  });
+
+  it('どちらも未判定（undefined）なら false（判定できないものを除外しない）', () => {
+    expect(isEarlyAccessGame(makeGame())).toBe(false);
+  });
+
+  it('game_status が 4 以外の非 0 値（Alpha=2 / Beta=3 / Offline=5 / Delisted=8）では false', () => {
+    // 早期アクセス以外の状態は本 Issue のスコープ外（別状態の扱いは未決）
+    for (const status of [2, 3, 5, 6, 7, 8]) {
+      expect(isEarlyAccessGame(makeGame({ igdbGameStatus: status }))).toBe(false);
+    }
   });
 });

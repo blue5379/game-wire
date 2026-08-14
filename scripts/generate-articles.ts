@@ -177,6 +177,14 @@ export interface GeneratedArticle {
     screenshots?: string[];
     isAiInferred?: boolean;
     aiInferredFields?: string[];
+    /**
+     * 早期アクセス配信中か（Issue #26、§2.9）。`validateEarlyAccessStatements` が
+     * 発火条件に使うため記事に載せる。判定の由来は `GameData.isEarlyAccess` の JSDoc を参照。
+     *
+     * `formatArticleForFrontmatter` には出さない（公開 Markdown には載らない）。
+     * 読者に伝える手段は本文の「📅 発売情報」であって frontmatter ではないため。
+     */
+    isEarlyAccess?: boolean;
   };
 }
 
@@ -213,7 +221,8 @@ async function generateTitle(
   itemCount?: number,
   titleJa?: string,
   releaseDate?: string,
-  publishDate?: Date
+  publishDate?: Date,
+  isEarlyAccess?: boolean
 ): Promise<string> {
   const countNote = itemCount !== undefined ? `\n紹介するゲームの本数: ${itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
 
@@ -224,9 +233,12 @@ async function generateTitle(
 
   const _releaseStatus = releaseDate && publishDate ? getReleaseStatus(releaseDate, publishDate) : null;
   const releaseStatusNote = _releaseStatus ? `\n発売状態: ${_releaseStatus}` : '';
+  // 早期アクセスは発売状態と直交する軸（§2.9）。`true` のときだけ渡し、undefined（未判定）では
+  // 何も渡さない = 見出しで早期アクセスに触れさせない
+  const earlyAccessNote = isEarlyAccess === true ? '\n早期アクセス: 配信中' : '';
 
   const userMessage = `カテゴリ: ${category}
-${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${countNote}
+${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${earlyAccessNote}${countNote}
 
 上記の情報を元に、記事タイトルを1つ生成してください。
 ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。
@@ -428,6 +440,7 @@ async function generateNewReleaseArticle(
       publisher: game.publisher,
       summary: game.summary,
       gameType: game.gameType,
+      isEarlyAccess: game.isEarlyAccess,
     },
     webSearchContext || undefined,
     publishDate,
@@ -451,7 +464,7 @@ async function generateNewReleaseArticle(
   // なるのは正常な動作（新作紹介枠は企業規模を問わない = 論点A / Issue #336）。
   const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
   const newReleaseCategoryLabel = labelCompany ? `${labelCompany}の新作` : '注目新作';
-  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate);
+  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate, game.isEarlyAccess);
   const summary = await generateSummary(content);
 
   return {
@@ -473,6 +486,7 @@ async function generateNewReleaseArticle(
       coverImage: game.coverImage,
       coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
+      isEarlyAccess: game.isEarlyAccess,
     },
   };
 }
@@ -544,6 +558,7 @@ async function generateIndieArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
+      isEarlyAccess: game.isEarlyAccess,
     },
     additionalContext,
     publishDate,
@@ -565,7 +580,8 @@ async function generateIndieArticle(
     undefined,
     game.titleJa,
     game.releaseDate,
-    publishDate
+    publishDate,
+    game.isEarlyAccess
   );
   const summary = await generateSummary(content);
 
@@ -590,6 +606,7 @@ async function generateIndieArticle(
       screenshots: game.screenshots,
       isAiInferred: game.isAiInferred,
       aiInferredFields: game.aiInferredFields,
+      isEarlyAccess: game.isEarlyAccess,
     },
   };
 }
@@ -1138,6 +1155,7 @@ export async function generateFeatureArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
+      isEarlyAccess: game.isEarlyAccess,
       webSearchContext,
     });
   }
@@ -1243,6 +1261,7 @@ async function generateClassicArticle(
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
+      isEarlyAccess: game.isEarlyAccess,
     },
     additionalContext,
     publishDate,
@@ -1257,7 +1276,7 @@ async function generateClassicArticle(
     })
   );
 
-  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate);
+  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate, game.isEarlyAccess);
   const summary = await generateSummary(content);
 
   return {
@@ -1278,6 +1297,7 @@ async function generateClassicArticle(
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
       screenshots: game.screenshots,
+      isEarlyAccess: game.isEarlyAccess,
     },
   };
 }

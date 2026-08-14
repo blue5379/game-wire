@@ -18,6 +18,38 @@ export function parseSteamReleaseDate(raw?: string): string | undefined {
 }
 
 /**
+ * Steam Storefront `genres` のうち早期アクセスを示すジャンル ID（`l=japanese` では
+ * `description` が「早期アクセス」で返る）。実測値であり Steam のドキュメントには無い。
+ *
+ * appdetails のレスポンスでは `genres[].id` が**文字列**で返る（例: `{"id":"70",
+ * "description":"早期アクセス"}`）。数値と混同しないよう文字列で定義する。
+ */
+export const STEAM_GENRE_ID_EARLY_ACCESS = '70';
+
+/**
+ * Steam Storefront appdetails の `genres` から早期アクセス配信中かを判定する（Issue #26、§2.9）。
+ *
+ * ## なぜ Steam のジャンルだけを一次ソースにするのか
+ *
+ * 2026-08-14 の実測で、IGDB の `game_status` は両方向に外れることが確認された:
+ * - `Realm of Ink`: IGDB `game_status=4`（Early Access）だが Steam は早期アクセス表示なし（偽陽性）
+ * - `ARK: Survival Ascended`: IGDB `game_status=null` だが Steam は早期アクセス表示あり（偽陰性）
+ *
+ * 記事本文に「早期アクセス」と書くかどうかの判断で偽陽性を踏むと、正式リリース済みの作品に
+ * 新たな誤情報を足すことになる。Steam のストアページ表示は販売主体が出している一次情報なので、
+ * こちらだけを使う。Steam に無いタイトルは `undefined`（未判定）のままにして何も書かせない。
+ *
+ * @param genres appdetails の `genres` 配列（未取得・欠落時は undefined）
+ * @returns 早期アクセスなら true、genres が取得できていれば false、判定材料が無ければ undefined
+ */
+export function detectEarlyAccessFromSteamGenres(
+  genres?: { id?: unknown; description?: unknown }[]
+): boolean | undefined {
+  if (!Array.isArray(genres)) return undefined;
+  return genres.some((g) => String(g?.id) === STEAM_GENRE_ID_EARLY_ACCESS);
+}
+
+/**
  * 会社名・ゲーム名を比較用に正規化する（記号・空白・大小文字を吸収）。
  * isSameSteamApp（fetch-steam.ts）と validate-article.ts の開発元照合で共用する。
  */

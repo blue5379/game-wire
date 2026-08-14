@@ -26,6 +26,12 @@
  * できないまま fail-open で通過した」という性質が共通するため、Web 検索失敗と同じ扱い
  * （error に昇格）とする。
  *
+ * 早期アクセスの表記漏れ・誤断定（Issue #26）も high 警告には混ぜず独立した判定項として扱うが、
+ * error ではなく warning 止まりにする。一次対策はプロンプト側（早期アクセス配信中である事実を
+ * 提示し、正式リリース済みという断定を禁じる）であり、この判定項はそれが効かなかったときの
+ * 観測網である。発火頻度が未観測の段階で error に昇格させると、号ごとに Issue が自動起票される。
+ * unrecognizedScreeningResponses と同じ判断（まず実態を観測してから昇格の要否を検討する）。
+ *
  * 一方、AI成人向けスクリーニングの応答形式不正（unrecognizedScreeningResponses、YES/NO 以外の
  * 応答を安全側で通過させたケース）は、カウント・表示はするが error には昇格させない。
  * これは例外を投げない fail-open 経路であり、実際の Bedrock 応答形式（切り詰め・句読点付与等の
@@ -75,6 +81,14 @@ export function articleCountShortfallCount(report: ValidationReport): number {
   return report.articleCountShortfalls?.length ?? 0;
 }
 
+/**
+ * 早期アクセス表記の問題の件数（Issue #26）。
+ * 旧レポート（本フィールド追加前）では undefined = 未計測なので 0 として扱う。
+ */
+export function earlyAccessStatementIssueCount(report: ValidationReport): number {
+  return report.earlyAccessStatementIssues?.length ?? 0;
+}
+
 /** LLM judge が矛盾・裏付け不能と判定した claim の総数 */
 function judgeProblemCount(report: ValidationReport): number {
   const j = report.llmJudge;
@@ -98,7 +112,12 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 
   const medium = report.warningsBySeverity.medium;
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
-  if (medium > 0 || missingUrls > 0 || judgeProblemCount(report) > 0) {
+  if (
+    medium > 0 ||
+    missingUrls > 0 ||
+    judgeProblemCount(report) > 0 ||
+    earlyAccessStatementIssueCount(report) > 0
+  ) {
     return 'warning';
   }
 
@@ -136,6 +155,7 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const contradicted = report.llmJudge?.claimsByVerdict.contradicted ?? 0;
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
   const shortfalls = report.articleCountShortfalls ?? [];
+  const earlyAccessIssues = earlyAccessStatementIssueCount(report);
 
   if (shortfalls.length > 0) {
     const detail = shortfalls
@@ -170,6 +190,17 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   if (contradicted > 0) {
     actions.push(
       `❌ **LLM 事実性チェックで矛盾 ${contradicted} 件**: 検索結果と矛盾する記述です。該当箇所を確認・修正してください。`
+    );
+  }
+  if (earlyAccessIssues > 0) {
+    const unstated = (report.earlyAccessStatementIssues ?? []).filter(
+      (i) => i.type === 'early-access-unstated'
+    ).length;
+    const claims = earlyAccessIssues - unstated;
+    actions.push(
+      `🧪 **早期アクセスの表記 ${earlyAccessIssues} 件**（記載漏れ ${unstated} 件 / 正式リリース済みと読める断定 ${claims} 件）: ` +
+        `Steam ストアが早期アクセスと表示しているタイトルです。該当記事の「📅 発売情報」に早期アクセス配信中である旨が` +
+        `書かれているか確認し、正式リリース済みと読める記述があれば修正してください。`
     );
   }
   if (missingUrls > 0) {
@@ -253,6 +284,15 @@ export function formatReportMarkdown(report: ValidationReport): string {
   } else {
     out.push('| ✅ 記事本数の不足 | 0 |');
   }
+  // 早期アクセス表記の問題（Issue #26）。未計測（旧レポート）と 0 件を区別する。
+  const earlyAccessIssues = report.earlyAccessStatementIssues;
+  if (earlyAccessIssues === undefined) {
+    out.push('| ❓ 早期アクセスの表記 | 未計測 |');
+  } else if (earlyAccessIssues.length > 0) {
+    out.push(`| 🧪 早期アクセスの表記 | ${earlyAccessIssues.length} |`);
+  } else {
+    out.push('| ✅ 早期アクセスの表記 | 0 |');
+  }
   out.push(`| 警告合計 | ${report.totalWarnings} |`);
   out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high} |`);
   out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium} |`);
@@ -307,6 +347,25 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(
       '※ 掲載本数は hidden（メタデータ欠落・別ゲーム混入で読者に表示されない記事）を除いた数です。'
     );
+  }
+
+  // 早期アクセスの表記（Issue #26）
+  if (earlyAccessIssues && earlyAccessIssues.length > 0) {
+    out.push('');
+    out.push(`### 🧪 早期アクセスの表記に問題がある記事（${earlyAccessIssues.length}件）`);
+    out.push('');
+    out.push(
+      'Steam ストアが「早期アクセス」と表示しているタイトルの記事です。' +
+        '正式リリース済みの完成品として読まれないよう、発売情報の記述を確認してください。'
+    );
+    for (const i of earlyAccessIssues) {
+      out.push('');
+      out.push('---');
+      out.push(`**${i.type}**  `);
+      out.push(`記事: ${i.articleTitle}  `);
+      out.push(`ゲーム: ${i.gameTitle}（${ARTICLE_CATEGORY_LABELS[i.category]}）  `);
+      out.push(`内容: ${i.message}  `);
+    }
   }
 
   // 公式URL未取得

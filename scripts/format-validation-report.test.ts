@@ -13,6 +13,7 @@ import {
   webSearchFailureCount,
   adultScreeningFailureCount,
   articleCountShortfallCount,
+  earlyAccessStatementIssueCount,
 } from './format-validation-report.js';
 import type { ValidationReport, ValidationWarning } from './validate-article.js';
 
@@ -557,6 +558,83 @@ describe('記事本数の不足（Issue #311。仕様 §6.4 / §6.5）', () => {
       const md = formatReportMarkdown(makeReport());
       expect(md).toContain('| ❓ 記事本数の不足 | 未計測 |');
       expect(md).not.toContain('| ✅ 記事本数の不足 | 0 |');
+    });
+  });
+});
+
+describe('早期アクセスの表記（Issue #26。仕様 §2.9）', () => {
+  const eaIssue = (overrides: Partial<{ type: string; articleTitle: string }> = {}) => ({
+    articleTitle: overrides.articleTitle ?? '『ARK: Survival Ascended』発売中',
+    category: 'indie' as const,
+    gameTitle: 'ARK: Survival Ascended',
+    type: (overrides.type ?? 'early-access-unstated') as
+      | 'early-access-unstated'
+      | 'early-access-release-claim',
+    message: '早期アクセス配信中のタイトルですが、記載がありません。',
+  });
+
+  describe('earlyAccessStatementIssueCount', () => {
+    it('件数を返す', () => {
+      const report = makeReport({
+        earlyAccessStatementIssues: [eaIssue(), eaIssue({ type: 'early-access-release-claim' })],
+      });
+      expect(earlyAccessStatementIssueCount(report)).toBe(2);
+    });
+
+    it('空配列なら 0', () => {
+      expect(earlyAccessStatementIssueCount(makeReport({ earlyAccessStatementIssues: [] }))).toBe(0);
+    });
+
+    it('undefined（本フィールド追加前の旧レポート）は未計測として 0 扱い', () => {
+      expect(earlyAccessStatementIssueCount(makeReport())).toBe(0);
+    });
+  });
+
+  describe('computeReportStatus — warning 止まりで error に昇格させない（重要仕様）', () => {
+    it('早期アクセスの表記問題だけがある場合は warning（Issue 自動起票の条件を満たさない）', () => {
+      const report = makeReport({ earlyAccessStatementIssues: [eaIssue()] });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('0 件なら status を押し上げない（ok のまま）', () => {
+      expect(computeReportStatus(makeReport({ earlyAccessStatementIssues: [] }))).toBe('ok');
+    });
+
+    it('他に error 要因があれば error のまま（判定を弱めない）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 1, medium: 0, low: 0 },
+        earlyAccessStatementIssues: [eaIssue()],
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+  });
+
+  describe('formatReportMarkdown / buildRecommendedActions', () => {
+    it('サマリ表に件数が出て、対応すべきことに内訳（記載漏れ / 断定）が出る', () => {
+      const report = makeReport({
+        earlyAccessStatementIssues: [
+          eaIssue(),
+          eaIssue({ type: 'early-access-release-claim' }),
+          eaIssue({ type: 'early-access-release-claim' }),
+        ],
+      });
+      const md = formatReportMarkdown(report);
+      expect(md).toContain('| 🧪 早期アクセスの表記 | 3 |');
+      expect(md).toContain('記載漏れ 1 件 / 正式リリース済みと読める断定 2 件');
+      expect(md).toContain('### 🧪 早期アクセスの表記に問題がある記事（3件）');
+      expect(md).toContain('ARK: Survival Ascended');
+    });
+
+    it('0 件のときは「✅ 早期アクセスの表記 | 0」を出し、詳細節は出さない', () => {
+      const md = formatReportMarkdown(makeReport({ earlyAccessStatementIssues: [] }));
+      expect(md).toContain('| ✅ 早期アクセスの表記 | 0 |');
+      expect(md).not.toContain('### 🧪 早期アクセスの表記に問題がある記事');
+    });
+
+    it('undefined（旧レポート）のときは「未計測」と表示する（0 件と区別する）', () => {
+      const md = formatReportMarkdown(makeReport());
+      expect(md).toContain('| ❓ 早期アクセスの表記 | 未計測 |');
     });
   });
 });

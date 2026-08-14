@@ -524,6 +524,8 @@ ${QUANTITATIVE_TO_QUALITATIVE_RULE}
 - 「発売状態」が「発売予定」と示されている場合:「発表」「近日発売」等の未発売表現を使ってよい
   - 「発売中」「リリース済み」等の発売済みニュアンスを使わない
 - 「発売状態」が提供されていない場合:発売済み・未発売を断言しない中立的な表現にする
+- 「早期アクセス」が「配信中」と示されている場合:「正式リリース」「正式版」「完成」「ついに完成」等の
+  正式リリース済みと読める表現を使わない（開発中のまま販売されている状態のため）。「早期アクセス」と明記するのは可
 
 ハルシネーション防止のルール（必ず守ること）:
 - 提供されたゲームタイトル（英語/日本語）を勝手に短縮・翻訳・改変・並べ替えしない
@@ -543,6 +545,38 @@ const GAME_TYPE_LABELS: Record<number, string> = {
 };
 
 /**
+ * 早期アクセス配信中のタイトルについて、【ゲーム情報】欄に足す行（Issue #26、§2.9）。
+ *
+ * ## なぜ発売状態（3値）と混ぜないのか
+ *
+ * 早期アクセスは §2.8 の発売状態と**直交する軸**である。早期アクセス配信中の作品は
+ * 「発売済み（購入してプレイできる）」でありながら「正式リリース前」でもあるため、
+ * `ReleaseStatus` に 4 値目として足すと、発売状態を参照している 5 箇所
+ * （本文プロンプト・見出しプロンプト・Web 検索セット・評価断定バリデータ・
+ * 見出しの未発売表現バリデータ）すべての解釈表を書き換える必要が出る。
+ * 別の行として足せば、発売状態の既存の意味は 1 つも変わらない。
+ *
+ * ## 何を禁止し、何を禁止しないのか
+ *
+ * 禁止するのは「正式リリース済み」という断定だけ。「発売中」自体は禁止しない
+ * （Steam ストアでも購入可能な状態として案内されており、事実に反しないため）。
+ * 実測した事故（vol.007 の『サブノーティカ２』、vol.008 の
+ * 『ARK: Survival Ascended』）は、早期アクセスであることに触れずに完成品として
+ * 紹介していた点が問題だった。
+ */
+const EARLY_ACCESS_LINE = '早期アクセス: 配信中（正式リリース前）';
+
+/**
+ * 早期アクセス配信中のタイトルに与える記述ルール（Issue #26、§2.9）。
+ * `buildUserMessage` / `buildFeatureUserMessage` の両方から使う。
+ */
+const EARLY_ACCESS_WRITING_RULE =
+  '※上記で「早期アクセス: 配信中」と示されているタイトルは、開発中のまま販売されている状態です。' +
+  '発売情報では「早期アクセス配信中」であることを必ず明記し、' +
+  '「正式リリース済み」「正式版が発売中」「完成版」のような正式リリース済みと読める断定は絶対に書かないこと。' +
+  '正式リリース日は提供データに無いため、いつ正式版になるかは書かないこと。';
+
+/**
  * ユーザーメッセージを生成
  */
 export function buildUserMessage(
@@ -557,6 +591,12 @@ export function buildUserMessage(
     publisher?: string;
     summary?: string;
     gameType?: number;
+    /**
+     * 早期アクセス配信中か（Issue #26、§2.9）。`true` のときだけ行とルールを出す。
+     * `undefined`（Steam ストア外・appId 未判明で未判定）では何も出さない
+     * ＝ 早期アクセスについて何も書かせない（偽陽性を書かせないため）。
+     */
+    isEarlyAccess?: boolean;
   },
   additionalContext?: string,
   publishDate?: Date,
@@ -596,6 +636,10 @@ export function buildUserMessage(
     lines.push(`種別: ${GAME_TYPE_LABELS[gameInfo.gameType]}`);
   }
 
+  if (gameInfo.isEarlyAccess === true) {
+    lines.push(EARLY_ACCESS_LINE);
+  }
+
   if (gameInfo.developer) {
     lines.push(`開発: ${gameInfo.developer}`);
   }
@@ -606,6 +650,10 @@ export function buildUserMessage(
 
   if (gameInfo.summary) {
     lines.push(`概要: ${gameInfo.summary}`);
+  }
+
+  if (gameInfo.isEarlyAccess === true) {
+    lines.push(EARLY_ACCESS_WRITING_RULE);
   }
 
   if (officialPageContext) {
@@ -644,6 +692,11 @@ export interface FeatureSelectedGame {
   developer?: string;
   publisher?: string;
   summary?: string;
+  /**
+   * 早期アクセス配信中か（Issue #26、§2.9）。`true` のときだけ行を出す。
+   * 判定の由来と `undefined` の意味は buildUserMessage の同名フィールドの JSDoc を参照。
+   */
+  isEarlyAccess?: boolean;
   /** formatSearchResultsForPrompt() が返す Tavily 検索結果（ゲーム単位） */
   webSearchContext?: string;
 }
@@ -698,6 +751,9 @@ export function buildFeatureUserMessage(
     if (game.publisher) {
       lines.push(`発売元: ${game.publisher}`);
     }
+    if (game.isEarlyAccess === true) {
+      lines.push(EARLY_ACCESS_LINE);
+    }
     if (game.summary) {
       lines.push(`概要: ${game.summary}`);
     }
@@ -705,6 +761,13 @@ export function buildFeatureUserMessage(
       lines.push(game.webSearchContext);
     }
   });
+
+  // 早期アクセスのタイトルが1本でも含まれる場合だけ、記述ルールをリストの後にまとめて置く
+  // （ゲームごとに繰り返すとプロンプトが冗長になるため）。
+  if (selectedGames.some((game) => game.isEarlyAccess === true)) {
+    lines.push('');
+    lines.push(EARLY_ACCESS_WRITING_RULE);
+  }
 
   if (fixInstruction) {
     lines.push('');

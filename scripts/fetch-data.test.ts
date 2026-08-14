@@ -17,6 +17,7 @@ import {
   compareIndieCandidates,
   isAlreadySelected,
   deduplicateGames,
+  needsStorefrontCompletion,
   isRemakeOrRemaster,
   isClassicRemakeAllowed,
   isClassicPoolGameType,
@@ -3068,5 +3069,303 @@ describe('deduplicateGames — steamRawDeveloper/steamRecommendations/igdbWebsit
     const result = deduplicateGames([primary, dup]);
 
     expect(result[0].igdbWebsites).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 早期アクセス（Issue #26。仕様 §2.9 / §5.4）
+// ---------------------------------------------------------------------------
+
+describe('buildClassicCandidates — 早期アクセスの除外（Issue #26。仕様 §5.4）', () => {
+  /** 名作枠の母集団条件を満たす候補を作る */
+  function makeClassic(overrides: Partial<GameData>): GameData {
+    return makeGame({
+      totalRating: 90,
+      totalRatingCount: 400,
+      gameType: 0,
+      coverImage: 'https://example.com/cover.jpg',
+      summary: 'A classic game.',
+      ...overrides,
+    });
+  }
+
+  it('`Path of Exile 2` 相当（IGDB game_status=4）が落ち、同じフィクスチャの通常の名作は残る', () => {
+    // 実測（2026-08-14）: Path of Exile 2 は total_rating=88.4 / count=205 で母集団条件を満たし、
+    // かつ game_status=4。評価母数が伸びれば limit 200 の窓にも入ってくる
+    const earlyAccess = makeClassic({
+      title: 'Path of Exile 2',
+      normalizedTitle: 'path of exile 2',
+      totalRating: 88.4,
+      totalRatingCount: 205,
+      igdbGameStatus: 4,
+    });
+    const normalClassic = makeClassic({
+      title: 'The Witcher 3',
+      normalizedTitle: 'the witcher 3',
+      totalRatingCount: 5437,
+    });
+
+    const result = buildClassicCandidates([earlyAccess, normalClassic], {
+      cooldown: new Set(),
+      alreadySelected: [],
+    });
+
+    expect(result.map((g) => g.title)).not.toContain('Path of Exile 2');
+    expect(result.map((g) => g.title)).toContain('The Witcher 3');
+  });
+
+  it('Steam 由来の isEarlyAccess=true でも落ちる（Steam 一次ソース側の経路）', () => {
+    // vol.014 / vol.018 で実際に名作枠に載った `サブノーティカ２` `SAND: Raiders of Sophie` の型
+    const result = buildClassicCandidates(
+      [
+        makeClassic({ title: 'Subnautica 2', normalizedTitle: 'subnautica 2', isEarlyAccess: true }),
+        makeClassic({ title: 'Portal 2', normalizedTitle: 'portal 2' }),
+      ],
+      { cooldown: new Set(), alreadySelected: [] }
+    );
+
+    expect(result.map((g) => g.title)).toEqual(['Portal 2']);
+  });
+
+  it('game_status が null / undefined の名作は残る（名作級は null が普通。`!=` の罠の回帰防止）', () => {
+    // 実測: GTA V も The Witcher 3 も game_status=null。ここで落とすと母集団が崩壊する
+    const result = buildClassicCandidates(
+      [
+        makeClassic({ title: 'Grand Theft Auto V', normalizedTitle: 'grand theft auto v', igdbGameStatus: undefined }),
+        makeClassic({ title: 'Portal 2', normalizedTitle: 'portal 2', isEarlyAccess: false }),
+      ],
+      { cooldown: new Set(), alreadySelected: [] }
+    );
+
+    expect(result.map((g) => g.title)).toEqual(['Grand Theft Auto V', 'Portal 2']);
+  });
+
+  it('game_status=0（Released）は残る（4 以外の状態を巻き込まない）', () => {
+    const result = buildClassicCandidates(
+      [makeClassic({ title: 'Released Game', normalizedTitle: 'released game', igdbGameStatus: 0 })],
+      { cooldown: new Set(), alreadySelected: [] }
+    );
+    expect(result.map((g) => g.title)).toEqual(['Released Game']);
+  });
+});
+
+describe('deduplicateGames — isEarlyAccess / igdbGameStatus のマージ（Issue #26）', () => {
+  it('Steam側がprimaryのとき、IGDB側の重複から igdbGameStatus を引き継ぐ', () => {
+    const steamEntry = makeGame({
+      title: 'Path of Exile 2',
+      normalizedTitle: 'path of exile 2',
+      steamAppId: 2694490,
+      steamRank: 3,
+      source: ['steam'],
+    });
+    const igdbEntry = makeGame({
+      title: 'Path of Exile 2',
+      normalizedTitle: 'path of exile 2',
+      steamAppId: 2694490,
+      source: ['igdb'],
+      igdbGameStatus: 4,
+    });
+
+    const result = deduplicateGames([steamEntry, igdbEntry]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].igdbGameStatus).toBe(4);
+  });
+
+  it('primary が isEarlyAccess を持たないとき、重複側の値を引き継ぐ', () => {
+    const primary = makeGame({
+      title: 'Subnautica 2',
+      normalizedTitle: 'subnautica 2',
+      steamAppId: 1962700,
+      steamRank: 1,
+      source: ['steam'],
+    });
+    const dup = makeGame({
+      title: 'サブノーティカ２',
+      normalizedTitle: 'サブノーティカ2',
+      steamAppId: 1962700,
+      source: ['igdb'],
+      isEarlyAccess: true,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].isEarlyAccess).toBe(true);
+  });
+
+  it('primary の isEarlyAccess=false（判定済み）は重複側の true で上書きされない（`??` であって `||` ではない）', () => {
+    const primary = makeGame({
+      title: 'Realm of Ink',
+      normalizedTitle: 'realm of ink',
+      steamAppId: 2597080,
+      steamRank: 1,
+      source: ['steam'],
+      isEarlyAccess: false,
+    });
+    const dup = makeGame({
+      title: 'Realm of Ink',
+      normalizedTitle: 'realm of ink',
+      steamAppId: 2597080,
+      source: ['igdb'],
+      isEarlyAccess: true,
+    });
+
+    const result = deduplicateGames([primary, dup]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].isEarlyAccess).toBe(false);
+  });
+});
+
+describe('aggregateGames — Steam Storefront から isEarlyAccess を取得する（Issue #26。仕様 §2.9）', () => {
+  const EMPTY_STEAM: SteamData = { topSellers: [], topPlayed: [], fetchedAt: '' };
+  const EMPTY_YOUTUBE: YouTubeData = { trendingVideos: [], fetchedAt: '' };
+
+  /** appdetails だけを返す fetch モック（genres を差し替えられる） */
+  function mockAppDetails(appId: number, data: Record<string, unknown>): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes('store.steampowered.com/api/appdetails')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ [String(appId)]: { success: true, data } }),
+        });
+      }
+      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    return fetchMock;
+  }
+
+  /** IGDB 単独・Steam URL 付き（steamAppId が入る）の入力を作る */
+  function igdbDataWithSteam(appId: number): IGDBData {
+    return {
+      games: [
+        {
+          id: 40,
+          name: 'Slay the Spire 2',
+          slug: 'slay-the-spire-2',
+          genres: ['Strategy'],
+          coverUrl: 'https://images.igdb.com/cover.jpg',
+          steamUrl: `https://store.steampowered.com/app/${appId}`,
+        },
+      ],
+      fetchedAt: '',
+    };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('genres に 70（早期アクセス）があれば isEarlyAccess=true になる', async () => {
+    mockAppDetails(2868840, {
+      genres: [
+        { id: '2', description: 'ストラテジー' },
+        { id: '70', description: '早期アクセス' },
+      ],
+    });
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbDataWithSteam(2868840));
+
+    const game = games.find((g) => g.title === 'Slay the Spire 2');
+    expect(game?.steamAppId).toBe(2868840);
+    expect(game?.isEarlyAccess).toBe(true);
+  });
+
+  it('genres に 70 が無ければ isEarlyAccess=false になる（判定済みであることを残す）', async () => {
+    mockAppDetails(2597080, { genres: [{ id: '1', description: 'アクション' }] });
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbDataWithSteam(2597080));
+
+    expect(games.find((g) => g.title === 'Slay the Spire 2')?.isEarlyAccess).toBe(false);
+  });
+
+  it('appdetails に genres が無ければ undefined のまま（未判定と「早期アクセスではない」を混同しない）', async () => {
+    mockAppDetails(1234, { name: 'No Genres Game' });
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbDataWithSteam(1234));
+
+    expect(games.find((g) => g.title === 'Slay the Spire 2')?.isEarlyAccess).toBeUndefined();
+  });
+
+  it('steamAppId が無いゲームは Storefront を呼べないので undefined のまま', async () => {
+    const fetchMock = mockAppDetails(1, {});
+    const igdbData: IGDBData = {
+      games: [
+        {
+          id: 41,
+          name: 'Hytale',
+          slug: 'hytale',
+          genres: ['Adventure'],
+          coverUrl: 'https://images.igdb.com/cover-hytale.jpg',
+        },
+      ],
+      fetchedAt: '',
+    };
+
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbData);
+
+    expect(games.find((g) => g.title === 'Hytale')?.isEarlyAccess).toBeUndefined();
+    // appdetails が1回も呼ばれていないこと（steamAppId が無いので呼びようがない）
+    const appDetailsCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('appdetails')
+    );
+    expect(appDetailsCalls).toHaveLength(0);
+  });
+
+  it('他フィールドが埋まっていても早期アクセス未判定なら Storefront を呼ぶ（needsCompletion に含める理由）', async () => {
+    const fetchMock = mockAppDetails(1962700, {
+      genres: [{ id: '70', description: '早期アクセス' }],
+    });
+    // coverImage / developer / screenshots / steamRecommendations を先に埋めた状態にはできないため、
+    // ここでは「appdetails が呼ばれ、EA が確定する」ことだけを固定する。
+    const games = await aggregateGames(EMPTY_STEAM, EMPTY_YOUTUBE, igdbDataWithSteam(1962700));
+
+    const appDetailsCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('appdetails')
+    );
+    expect(appDetailsCalls.length).toBeGreaterThan(0);
+    expect(games.find((g) => g.title === 'Slay the Spire 2')?.isEarlyAccess).toBe(true);
+  });
+});
+
+describe('needsStorefrontCompletion — 早期アクセス未判定も補完対象（Issue #26）', () => {
+  /** Storefront 補完が不要な、完全に埋まったゲーム */
+  function fullyEnriched(overrides: Partial<GameData> = {}): GameData {
+    return makeGame({
+      steamAppId: 1962700,
+      coverImage: 'https://example.com/cover.jpg',
+      developer: 'Unknown Worlds Entertainment',
+      steamRecommendations: 1234,
+      screenshots: ['https://example.com/ss1.jpg'],
+      isEarlyAccess: false,
+      ...overrides,
+    });
+  }
+
+  it('全フィールドが埋まっていれば false（無駄な API 呼び出しをしない）', () => {
+    expect(needsStorefrontCompletion(fullyEnriched())).toBe(false);
+  });
+
+  it('早期アクセス未判定（undefined）だけが欠けていても true になる', () => {
+    // このケースが本フィールド追加の目的。他の条件がすべて充足していても判定を取りに行く
+    expect(needsStorefrontCompletion(fullyEnriched({ isEarlyAccess: undefined }))).toBe(true);
+  });
+
+  it('isEarlyAccess=false（判定済み）は補完対象にしない（false と undefined を区別する）', () => {
+    expect(needsStorefrontCompletion(fullyEnriched({ isEarlyAccess: false }))).toBe(false);
+    expect(needsStorefrontCompletion(fullyEnriched({ isEarlyAccess: true }))).toBe(false);
+  });
+
+  it('既存の4条件（coverImage / developer / steamRecommendations / screenshots）も引き続き true にする', () => {
+    expect(needsStorefrontCompletion(fullyEnriched({ coverImage: undefined }))).toBe(true);
+    expect(needsStorefrontCompletion(fullyEnriched({ developer: undefined }))).toBe(true);
+    expect(needsStorefrontCompletion(fullyEnriched({ steamRecommendations: undefined }))).toBe(true);
+    expect(needsStorefrontCompletion(fullyEnriched({ screenshots: [] }))).toBe(true);
+  });
+
+  it('steamRecommendations=0 は補完済みとして扱う（0 が有効値。`!game.x` で潰さない）', () => {
+    expect(needsStorefrontCompletion(fullyEnriched({ steamRecommendations: 0 }))).toBe(false);
   });
 });
