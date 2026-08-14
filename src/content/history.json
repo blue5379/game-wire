@@ -686,6 +686,76 @@
       "category": "feature",
       "issueNumber": 16,
       "publishDate": "2026-07-17"
+    },
+    {
+      "normalizedTitle": "ほの暮しの庭",
+      "title": "ほの暮しの庭",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "rhythm heaven groove",
+      "title": "Rhythm Heaven Groove",
+      "category": "newRelease",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "palworld",
+      "title": "Palworld",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "scrap mechanic",
+      "title": "Scrap Mechanic",
+      "category": "indie",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "grand theft auto v",
+      "title": "Grand Theft Auto V",
+      "category": "classic",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "サイレントヒル2",
+      "title": "サイレントヒル2",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "バイオハザード re 2",
+      "title": "バイオハザード RE:2",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "エイリアン アイソレーション",
+      "title": "エイリアン アイソレーション",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "dead space",
+      "title": "Dead Space",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "フィンチ家の奇妙な屋敷でおきたこと",
+      "title": "フィンチ家の奇妙な屋敷でおきたこと",
+      "category": "feature",
+      "issueNumber": 17,
+      "publishDate": "2026-08-15"
     }
   ],
   "featureEvents": [
