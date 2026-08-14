@@ -1220,7 +1220,7 @@ async function selectGamesForArticles(
     console.log(`  classic cooldown: ${[...classicCooldown].join(', ')}`);
   }
 
-  // 大手企業の新作: 品質ゲート・実存フィルタ適用後に3軸スコア降順で採用+予備差し替え（§2.3、
+  // 新作紹介: 品質ゲート・実存フィルタ適用後に3軸スコア降順で採用+予備差し替え（§2.3、
   // 発売済みの探索窓は60日。付録パラメータ表と揃える）
   const sixtyDaysAgo = new Date();
   sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);

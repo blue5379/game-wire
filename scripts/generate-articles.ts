@@ -373,7 +373,7 @@ async function screenOutAdultGames(games: GameData[], stats?: GenerationStats): 
 }
 
 /**
- * 大手企業新作記事を生成
+ * 新作紹介記事を生成
  */
 async function generateNewReleaseArticle(
   game: GameData,
@@ -442,7 +442,7 @@ async function generateNewReleaseArticle(
     })
   );
 
-  // 「大手企業の新作」枠のラベルは大手側の企業名を使う。受託開発タイトル
+  // 新作紹介枠のラベルは、受託開発タイトルでは発売元（大手）側の企業名を使う。
   // （developer=受託スタジオ、publisher=大手）で developer をそのまま使うと
   // 「Game Studio Inc.の新作」のように枠の趣旨と合わないラベルになる（Issue #180）。
   const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
@@ -1401,7 +1401,7 @@ async function main(): Promise<void> {
     console.warn(`  [ArticleGen] indies has only ${selectedGames.indies.length} game(s) — issue will have fewer indie articles`);
   }
 
-  // 1. 大手企業新作記事（2本）
+  // 1. 新作紹介記事（2本）
   console.log('Generating new release articles...');
   for (const game of selectedGames.newReleases.slice(0, 2)) {
     try {

@@ -223,7 +223,7 @@ export interface SourceUrls {
 
 // 記事生成用のゲーム選定結果
 export interface SelectedGames {
-  newReleases: GameData[]; // 大手企業の新作 2本
+  newReleases: GameData[]; // 新作紹介 2本（企業規模は問わない。論点A / Issue #336）
   newReleasesReserves: GameData[]; // 新作差し替え予備プール（removeZombieGames 後の補充用）
   indies: GameData[]; // インディーゲーム 2本
   indieReserves: GameData[]; // インディー差し替え予備プール（デバッグ/ログ用）
