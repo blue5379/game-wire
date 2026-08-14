@@ -30,6 +30,7 @@ import type { ResolverTrace } from './completeness-gate.js';
 import { normalizeTitle } from './normalize.js';
 import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
 import { meetsClassicPoolThresholds } from './classic-pool.js';
+import { isMainModule } from './entrypoint.js';
 import {
   isInvalidGameTitle,
   extractYearFromDate,
@@ -1532,8 +1533,10 @@ async function main(): Promise<void> {
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
 
-// スクリプト実行
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+// スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない。Issue #330）
+if (isMainModule(import.meta.url)) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}

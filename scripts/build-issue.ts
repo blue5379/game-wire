@@ -19,6 +19,7 @@ import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
+import { isMainModule } from './entrypoint.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -789,8 +790,10 @@ async function main(): Promise<void> {
   console.log(`Finished at: ${new Date().toISOString()}`);
 }
 
-// スクリプト実行
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+// スクリプト実行（直接実行時のみ。他モジュールからの import 時は実行しない。Issue #330）
+if (isMainModule(import.meta.url)) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}

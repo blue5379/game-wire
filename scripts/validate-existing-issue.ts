@@ -13,6 +13,7 @@ import yaml from 'js-yaml';
 import { validateArticles, writeAndCheckReport } from './validate-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import { verifyOfficialUrlContent } from './verify-official-url.js';
+import { isMainModule } from './entrypoint.js';
 
 interface FrontmatterArticle {
   title: string;
@@ -177,4 +178,7 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+// 直接実行時のみ CLI を起動する（Issue #330）
+if (isMainModule(import.meta.url)) {
+  main();
+}
