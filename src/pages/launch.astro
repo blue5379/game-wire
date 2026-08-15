@@ -1,5 +1,7 @@
 ---
 // GameQuestra Launch Landing Page
+const ogUrl = new URL('launch', Astro.site);
+const articlePreviewUrl = new URL('issue/1/article/1/', Astro.site);
 ---
 
 <!DOCTYPE html>
@@ -12,7 +14,7 @@
   <meta property="og:title" content="GAMEQUESTRA 創刊 — AIが編集する週刊ゲーム情報誌" />
   <meta property="og:description" content="複数のデータソースからゲーム情報を収集し、AIが毎週自動で記事を生成。ゲーマーのための、新しい形のゲーム情報誌。" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://gamequestra.com/launch" />
+  <meta property="og:url" content={ogUrl} />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="GAMEQUESTRA 創刊 — AIが編集する週刊ゲーム情報誌" />
   <meta name="twitter:description" content="複数のデータソースからゲーム情報を収集し、AIが毎週自動で記事を生成。ゲーマーのための、新しい形のゲーム情報誌。" />
@@ -1101,7 +1103,7 @@
       </p>
 
       <div class="preview-frame reveal">
-        <a href="https://gamequestra.com/issue/1/article/1/" target="_blank" rel="noopener" class="preview-screenshot-link">
+        <a href={articlePreviewUrl} target="_blank" rel="noopener" class="preview-screenshot-link">
           <img src="/article1-preview.png" alt="GameQuestra 創刊号 記事サンプル — Slay the Spire II" class="preview-screenshot-img" />
           <div class="preview-screenshot-overlay">
             <span class="preview-screenshot-cta">記事を読む →</span>
