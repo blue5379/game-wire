@@ -756,6 +756,62 @@
       "category": "feature",
       "issueNumber": 17,
       "publishDate": "2026-08-15"
+    },
+    {
+      "normalizedTitle": "how to fish",
+      "title": "How to Fish",
+      "category": "newRelease",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "lazy witch's factory レイジーウィッチーズファクトリー",
+      "title": "Lazy Witch's Factory レイジーウィッチーズファクトリー",
+      "category": "newRelease",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "big walk",
+      "title": "Big Walk",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "mistfall hunter",
+      "title": "Mistfall Hunter",
+      "category": "indie",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "the witcher 3 wild hunt",
+      "title": "The Witcher 3: Wild Hunt",
+      "category": "classic",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "ゴースト オブ ツシマ",
+      "title": "ゴースト オブ ツシマ",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "天穂のサクナヒメ",
+      "title": "天穂のサクナヒメ",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "朧村正",
+      "title": "朧村正",
+      "category": "feature",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22"
     }
   ],
   "featureEvents": [
@@ -764,6 +820,12 @@
       "issueNumber": 17,
       "publishDate": "2026-08-08",
       "source": "forward"
+    },
+    {
+      "eventName": "俳句の日",
+      "issueNumber": 18,
+      "publishDate": "2026-08-22",
+      "source": "backward"
     }
   ]
 }

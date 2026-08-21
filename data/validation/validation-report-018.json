@@ -1,97 +1,250 @@
 {
   "issueNumber": 18,
-  "generatedAt": "2026-07-31T22:01:28.990Z",
-  "totalArticles": 5,
-  "totalWarnings": 1,
+  "generatedAt": "2026-08-21T21:21:50.249Z",
+  "totalArticles": 6,
+  "totalWarnings": 9,
   "warningsBySeverity": {
-    "high": 1,
-    "medium": 0,
-    "low": 0
+    "high": 4,
+    "medium": 3,
+    "low": 2
   },
   "warnings": [
     {
-      "articleTitle": "『Street Fighter 6 - Year 4 アルティメットパス』発売中、追加キャラ4体とコスチューム・カラーセットを収録",
-      "category": "newRelease",
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
       "severity": "high",
-      "type": "body-title-mismatch",
-      "message": "記事本文に正式ゲームタイトルが一度も登場しません。AI が本文中でタイトルを短縮・翻訳・改変した可能性があります。提供データ: en=\"Street Fighter 6 - Year 4 アルティメットパス\"",
-      "evidence": "Street Fighter 6 - Year 4 アルティメットパス"
+      "type": "person-title",
+      "message": "本文で人物「Haoliang」が言及されています。提供データに発言ソースがあるか確認してください。",
+      "evidence": "ディレクターのHaoliang",
+      "context": "…張感とPvPvEならではのスリルが融合している ## 🎨 開発ストーリー 本作を手がけるのは、Bellring Gamesという約70名規模の開発チーム。ディレクターのHaoliang \"HAO\" Zhang氏は12年以上のゲーム業界経験を持つベテランだが、本作は同チームにとって初のタイトルとなる。約2年半の開発期間を経て、小規模チームながら…",
+      "sourcedFrom": {
+        "url": "https://bossrush.net/2025/11/pax-west-2025-interview-with-bellring-games-director-hao-about-mistfall-hunter",
+        "title": "Unveiling Mistfall Hunter: A Dark Fantasy Action RPG",
+        "snippet": "BOSS RUSH NETWORK & BOSS RUSH MEDIA\n\n###### SUPPORT BOSS RUSH ON PATREON\n\nLogo of Boss Rush Network featuring circular icons and text.\n\n###### SEARCH BY PLATFORM:\n\n## PAX West 2025: Interview with Bellring Games’ Director Hao About Mistfall Hunter\n\nEd: Hello, everybody! This is Eddie V., and I am with Haoliang “HAO” Zhang, who is the director of Mistfall Hunter by Bellring Games. It is their debut game. Hello, Hao.\n\nHao: Hello!\n\nEd: I have to ask you, how long has the game been in development?\n\nHao: About two and a half years.\n\nEd: How did you actually get into gaming, and when did you get into game development?\n\nHao: I’ve been working in the industry for more than 12 years.\n\nEd: 12 years?!?\n\nHao: Yeah, 12 years. (Laughs)\n\nEd: Were you a gamer in your younger years? [...] Hao: Yeah, we are a new team, and we’re definitely not an AAA team. We’re not a big AAA company. We’re just a small new team and try to make games we love to play. We are around like 70 people. It’s not big and not so small. But yeah, I think we did everything we could.\n\nEd: I know that may seem big, but hopefully you take this as a compliment. There are different indie games that we definitely love at Boss Rush Network. I love this look because I love art. Our founder, Corey, is an artist. When we look at games, we look at the lighting and the detail that’s put on it. When we see that it is a debut game for any developer, we’re mind blown because it’s on a high level of quality. So, I want to just complimen"
+      }
+    },
+    {
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
+      "severity": "high",
+      "type": "numeric-large-count",
+      "message": "本文に具体的な数値「43万人」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "43万人",
+      "context": "ダークファンタジーの世界で繰り広げられる脱出アクション『Mistfall Hunter』が、2026年7月30日に正式リリースを迎えた。オープンβテストには43万人を超えるプレイヤーが参加し、Steam Next Festのデモ部門で世界1位を獲得するなど、発売前から大きな注目を集めていた本作。その魅力はどこにあるのだろう…",
+      "sourcedFrom": {
+        "url": "https://junkenemy.jp/mistfall-hunter-launch",
+        "title": "脱出アクション『Mistfall Hunter』7月30日リリース。日本のレビューも上々。ただしサーバーとカクつきに課題 | ジャンクライフ",
+        "snippet": "|  |  |\n --- |\n| 公式サイト | mistfallhunter.com |\n| Steam | ストアページ |\n| PS5 | 製品ページ |\n| Xbox | ストアページ |\n| 公式X | @MistfallHunter |\n| 公式Discord | discord.gg/mistfallhunter |\n\n## 『Mistfall Hunter』戦闘がとにかく良い\n\n遊んだ人の評価でいちばん目立つのは、戦闘の手応えだ。\n\n魔法と刃を戦闘中にシームレスに切り替えて戦うスタイルで、ソウルライク寄りの読み合いが楽しいという声が多い。日本語のレビューでも「普通におもろい」「かなり面白かった」「技の読み合いがとても楽しい」と好意的なものが並ぶ。\n\nエルデンリングのようなダークな雰囲気と、装備を奪って持ち帰る脱出系の脳汁がうまく噛み合っている、という評価。 [...] 個性的なのが“心音”の仕組みだ。透明化したプレイヤーが近づくと心音が鳴るので、この手のゲームにありがちな「透明化からの一方的な奇襲」が通りにくい。距離によって音の大きさも変わるため、鳴ったら少し動くだけで間合いが読める。\n\n奇襲一辺倒にさせない、よく考えられた設計だと評判がいい。6クラスそれぞれに武器や流派の切り替えとビルドがあって、自分の型を作り込めるのも好かれている。\n\n## 『Mistfall Hunter』プレイヤーの評価と課題\n\n一方で、リリース直後ならではの粗も出ている。多いのが、βから続くカクつき（スタッタリング）だ。特定のPC環境に限らずSteamやRedditでも報告が上がっていて、公式も認知済み。レイトレをオフにする、DLSSをFSRに変える、NVIDIA Smooth Motionをオフにする、画質を下げる、フレームレートを60/120に制限する、といった暫定対処を案内しつつ、修正を進めるとしている。  \n サーバーまわりも課題だ。日本専用サーバーはなく、日本からはマッチング地域が広がると動作が重くなる場面がある。 [...] 開発はBellring Games、販売はSkystone Games。三人称視点のPvPvE脱出アクションRPGで、いわゆる“タルコフライク”だ。\n\n霧に沈んだ危険な地に潜って戦利品を集め、敵や他プレイヤーをかいくぐって脱出できれば持ち帰れる。死ねば全ロスト。ソロでも最大3人でも遊べるという、まさしく『Dark and Darker』の生きて帰れるか！？というゲーム性を感じさせるのだが、ゲーム性は「ソウルライク」でPvPもある。\n\n対応はPC（Steam・Microsoft Store）／PS5／Xboxで、初日からXbox Game Passに対応する\n\n価格は通常版3,150円、デラックス版5,100円で、8月13日2時まで全機種10%オフ。\n\nリリースと同時にシーズン1「ソウルハント」も始まっている。  \n 6月のオープンβには、Steam Next Fest期間中に43万人を超えるプレイヤーが参加し、デモ部門で世界1位に入っていた。\n\nもともと注目度が高かったぶん、正式版もスタートから人が殺到した格好だ。\n\n## まずは手に取って遊んでみてほしい"
+      }
+    },
+    {
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
+      "severity": "medium",
+      "type": "numeric-price",
+      "message": "本文に具体的な数値「3,150円」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "3,150円",
+      "context": "…, PlayStation 5   **開発**: Bellring Games   **発売元**: Skystone Games   **価格**: 通常版3,150円、デラックス版5,100円（期間限定10%オフ実施中） 初日からXbox Game Passにも対応しており、シーズン1「ソウルハント」も同時スタートしている…",
+      "sourcedFrom": {
+        "url": "https://junkenemy.jp/mistfall-hunter-launch",
+        "title": "脱出アクション『Mistfall Hunter』7月30日リリース。日本のレビューも上々。ただしサーバーとカクつきに課題 | ジャンクライフ",
+        "snippet": "|  |  |\n --- |\n| 公式サイト | mistfallhunter.com |\n| Steam | ストアページ |\n| PS5 | 製品ページ |\n| Xbox | ストアページ |\n| 公式X | @MistfallHunter |\n| 公式Discord | discord.gg/mistfallhunter |\n\n## 『Mistfall Hunter』戦闘がとにかく良い\n\n遊んだ人の評価でいちばん目立つのは、戦闘の手応えだ。\n\n魔法と刃を戦闘中にシームレスに切り替えて戦うスタイルで、ソウルライク寄りの読み合いが楽しいという声が多い。日本語のレビューでも「普通におもろい」「かなり面白かった」「技の読み合いがとても楽しい」と好意的なものが並ぶ。\n\nエルデンリングのようなダークな雰囲気と、装備を奪って持ち帰る脱出系の脳汁がうまく噛み合っている、という評価。 [...] 個性的なのが“心音”の仕組みだ。透明化したプレイヤーが近づくと心音が鳴るので、この手のゲームにありがちな「透明化からの一方的な奇襲」が通りにくい。距離によって音の大きさも変わるため、鳴ったら少し動くだけで間合いが読める。\n\n奇襲一辺倒にさせない、よく考えられた設計だと評判がいい。6クラスそれぞれに武器や流派の切り替えとビルドがあって、自分の型を作り込めるのも好かれている。\n\n## 『Mistfall Hunter』プレイヤーの評価と課題\n\n一方で、リリース直後ならではの粗も出ている。多いのが、βから続くカクつき（スタッタリング）だ。特定のPC環境に限らずSteamやRedditでも報告が上がっていて、公式も認知済み。レイトレをオフにする、DLSSをFSRに変える、NVIDIA Smooth Motionをオフにする、画質を下げる、フレームレートを60/120に制限する、といった暫定対処を案内しつつ、修正を進めるとしている。  \n サーバーまわりも課題だ。日本専用サーバーはなく、日本からはマッチング地域が広がると動作が重くなる場面がある。 [...] 開発はBellring Games、販売はSkystone Games。三人称視点のPvPvE脱出アクションRPGで、いわゆる“タルコフライク”だ。\n\n霧に沈んだ危険な地に潜って戦利品を集め、敵や他プレイヤーをかいくぐって脱出できれば持ち帰れる。死ねば全ロスト。ソロでも最大3人でも遊べるという、まさしく『Dark and Darker』の生きて帰れるか！？というゲーム性を感じさせるのだが、ゲーム性は「ソウルライク」でPvPもある。\n\n対応はPC（Steam・Microsoft Store）／PS5／Xboxで、初日からXbox Game Passに対応する\n\n価格は通常版3,150円、デラックス版5,100円で、8月13日2時まで全機種10%オフ。\n\nリリースと同時にシーズン1「ソウルハント」も始まっている。  \n 6月のオープンβには、Steam Next Fest期間中に43万人を超えるプレイヤーが参加し、デモ部門で世界1位に入っていた。\n\nもともと注目度が高かったぶん、正式版もスタートから人が殺到した格好だ。\n\n## まずは手に取って遊んでみてほしい"
+      }
+    },
+    {
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
+      "severity": "medium",
+      "type": "numeric-price",
+      "message": "本文に具体的な数値「5,100円」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "5,100円",
+      "context": "…5   **開発**: Bellring Games   **発売元**: Skystone Games   **価格**: 通常版3,150円、デラックス版5,100円（期間限定10%オフ実施中） 初日からXbox Game Passにも対応しており、シーズン1「ソウルハント」も同時スタートしている。 ## 🎯 Crea…",
+      "sourcedFrom": {
+        "url": "https://junkenemy.jp/mistfall-hunter-launch",
+        "title": "脱出アクション『Mistfall Hunter』7月30日リリース。日本のレビューも上々。ただしサーバーとカクつきに課題 | ジャンクライフ",
+        "snippet": "|  |  |\n --- |\n| 公式サイト | mistfallhunter.com |\n| Steam | ストアページ |\n| PS5 | 製品ページ |\n| Xbox | ストアページ |\n| 公式X | @MistfallHunter |\n| 公式Discord | discord.gg/mistfallhunter |\n\n## 『Mistfall Hunter』戦闘がとにかく良い\n\n遊んだ人の評価でいちばん目立つのは、戦闘の手応えだ。\n\n魔法と刃を戦闘中にシームレスに切り替えて戦うスタイルで、ソウルライク寄りの読み合いが楽しいという声が多い。日本語のレビューでも「普通におもろい」「かなり面白かった」「技の読み合いがとても楽しい」と好意的なものが並ぶ。\n\nエルデンリングのようなダークな雰囲気と、装備を奪って持ち帰る脱出系の脳汁がうまく噛み合っている、という評価。 [...] 個性的なのが“心音”の仕組みだ。透明化したプレイヤーが近づくと心音が鳴るので、この手のゲームにありがちな「透明化からの一方的な奇襲」が通りにくい。距離によって音の大きさも変わるため、鳴ったら少し動くだけで間合いが読める。\n\n奇襲一辺倒にさせない、よく考えられた設計だと評判がいい。6クラスそれぞれに武器や流派の切り替えとビルドがあって、自分の型を作り込めるのも好かれている。\n\n## 『Mistfall Hunter』プレイヤーの評価と課題\n\n一方で、リリース直後ならではの粗も出ている。多いのが、βから続くカクつき（スタッタリング）だ。特定のPC環境に限らずSteamやRedditでも報告が上がっていて、公式も認知済み。レイトレをオフにする、DLSSをFSRに変える、NVIDIA Smooth Motionをオフにする、画質を下げる、フレームレートを60/120に制限する、といった暫定対処を案内しつつ、修正を進めるとしている。  \n サーバーまわりも課題だ。日本専用サーバーはなく、日本からはマッチング地域が広がると動作が重くなる場面がある。 [...] 開発はBellring Games、販売はSkystone Games。三人称視点のPvPvE脱出アクションRPGで、いわゆる“タルコフライク”だ。\n\n霧に沈んだ危険な地に潜って戦利品を集め、敵や他プレイヤーをかいくぐって脱出できれば持ち帰れる。死ねば全ロスト。ソロでも最大3人でも遊べるという、まさしく『Dark and Darker』の生きて帰れるか！？というゲーム性を感じさせるのだが、ゲーム性は「ソウルライク」でPvPもある。\n\n対応はPC（Steam・Microsoft Store）／PS5／Xboxで、初日からXbox Game Passに対応する\n\n価格は通常版3,150円、デラックス版5,100円で、8月13日2時まで全機種10%オフ。\n\nリリースと同時にシーズン1「ソウルハント」も始まっている。  \n 6月のオープンβには、Steam Next Fest期間中に43万人を超えるプレイヤーが参加し、デモ部門で世界1位に入っていた。\n\nもともと注目度が高かったぶん、正式版もスタートから人が殺到した格好だ。\n\n## まずは手に取って遊んでみてほしい"
+      }
+    },
+    {
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
+      "severity": "medium",
+      "type": "numeric-percentage",
+      "message": "本文に具体的な数値「10%」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "10%",
+      "context": "…: Bellring Games   **発売元**: Skystone Games   **価格**: 通常版3,150円、デラックス版5,100円（期間限定10%オフ実施中） 初日からXbox Game Passにも対応しており、シーズン1「ソウルハント」も同時スタートしている。 ## 🎯 Creator's Ey…",
+      "sourcedFrom": {
+        "url": "https://junkenemy.jp/mistfall-hunter-launch",
+        "title": "脱出アクション『Mistfall Hunter』7月30日リリース。日本のレビューも上々。ただしサーバーとカクつきに課題 | ジャンクライフ",
+        "snippet": "|  |  |\n --- |\n| 公式サイト | mistfallhunter.com |\n| Steam | ストアページ |\n| PS5 | 製品ページ |\n| Xbox | ストアページ |\n| 公式X | @MistfallHunter |\n| 公式Discord | discord.gg/mistfallhunter |\n\n## 『Mistfall Hunter』戦闘がとにかく良い\n\n遊んだ人の評価でいちばん目立つのは、戦闘の手応えだ。\n\n魔法と刃を戦闘中にシームレスに切り替えて戦うスタイルで、ソウルライク寄りの読み合いが楽しいという声が多い。日本語のレビューでも「普通におもろい」「かなり面白かった」「技の読み合いがとても楽しい」と好意的なものが並ぶ。\n\nエルデンリングのようなダークな雰囲気と、装備を奪って持ち帰る脱出系の脳汁がうまく噛み合っている、という評価。 [...] 個性的なのが“心音”の仕組みだ。透明化したプレイヤーが近づくと心音が鳴るので、この手のゲームにありがちな「透明化からの一方的な奇襲」が通りにくい。距離によって音の大きさも変わるため、鳴ったら少し動くだけで間合いが読める。\n\n奇襲一辺倒にさせない、よく考えられた設計だと評判がいい。6クラスそれぞれに武器や流派の切り替えとビルドがあって、自分の型を作り込めるのも好かれている。\n\n## 『Mistfall Hunter』プレイヤーの評価と課題\n\n一方で、リリース直後ならではの粗も出ている。多いのが、βから続くカクつき（スタッタリング）だ。特定のPC環境に限らずSteamやRedditでも報告が上がっていて、公式も認知済み。レイトレをオフにする、DLSSをFSRに変える、NVIDIA Smooth Motionをオフにする、画質を下げる、フレームレートを60/120に制限する、といった暫定対処を案内しつつ、修正を進めるとしている。  \n サーバーまわりも課題だ。日本専用サーバーはなく、日本からはマッチング地域が広がると動作が重くなる場面がある。 [...] 開発はBellring Games、販売はSkystone Games。三人称視点のPvPvE脱出アクションRPGで、いわゆる“タルコフライク”だ。\n\n霧に沈んだ危険な地に潜って戦利品を集め、敵や他プレイヤーをかいくぐって脱出できれば持ち帰れる。死ねば全ロスト。ソロでも最大3人でも遊べるという、まさしく『Dark and Darker』の生きて帰れるか！？というゲーム性を感じさせるのだが、ゲーム性は「ソウルライク」でPvPもある。\n\n対応はPC（Steam・Microsoft Store）／PS5／Xboxで、初日からXbox Game Passに対応する\n\n価格は通常版3,150円、デラックス版5,100円で、8月13日2時まで全機種10%オフ。\n\nリリースと同時にシーズン1「ソウルハント」も始まっている。  \n 6月のオープンβには、Steam Next Fest期間中に43万人を超えるプレイヤーが参加し、デモ部門で世界1位に入っていた。\n\nもともと注目度が高かったぶん、正式版もスタートから人が殺到した格好だ。\n\n## まずは手に取って遊んでみてほしい"
+      }
+    },
+    {
+      "articleTitle": "選択が世界を変える──『ウィッチャー3 ワイルドハント』が描くダークファンタジーRPGの到達点",
+      "category": "classic",
+      "severity": "high",
+      "type": "numeric-large-count",
+      "message": "本文に具体的な数値「600万本」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "600万本",
+      "context": "…2015年5月に発売された『ウィッチャー3 ワイルドハント』は、発売から10年が経過した現在でも色褪せない傑作として語り継がれています。発売後わずか6週間で600万本以上を販売し、2019年までにシリーズ全体で4000万本以上の売上を記録。その半数以上を本作が占めるという驚異的な成功を収めました。2022年には次世代機向けア…"
+    },
+    {
+      "articleTitle": "選択が世界を変える──『ウィッチャー3 ワイルドハント』が描くダークファンタジーRPGの到達点",
+      "category": "classic",
+      "severity": "high",
+      "type": "numeric-large-count",
+      "message": "本文に具体的な数値「4000万本」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "4000万本",
+      "context": "…ドハント』は、発売から10年が経過した現在でも色褪せない傑作として語り継がれています。発売後わずか6週間で600万本以上を販売し、2019年までにシリーズ全体で4000万本以上の売上を記録。その半数以上を本作が占めるという驚異的な成功を収めました。2022年には次世代機向けアップデートが実施され、グラフィックの大幅強化やロード時間…"
+    },
+    {
+      "articleTitle": "モンスターと対峙し、プレイヤーと競う──脱出型アクションRPG『Mistfall Hunter』発売中",
+      "category": "indie",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
+    },
+    {
+      "articleTitle": "選択が世界を変える──『ウィッチャー3 ワイルドハント』が描くダークファンタジーRPGの到達点",
+      "category": "classic",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
     }
   ],
   "webSearchStats": {
     "searchFailures": 0,
-    "pageContentFailures": 0
+    "pageContentFailures": 0,
+    "adultScreeningFailures": 0,
+    "unrecognizedScreeningResponses": 0
   },
-  "missingOfficialUrls": [
-    {
-      "articleTitle": "『Street Fighter 6 - Year 4 アルティメットパス』発売中、追加キャラ4体とコスチューム・カラーセットを収録",
-      "category": "newRelease",
-      "gameTitle": "Street Fighter 6 - Year 4 アルティメットパス"
-    },
-    {
-      "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
-      "category": "indie",
-      "gameTitle": "Corsair Cove コルセア・コーヴ"
-    },
-    {
-      "articleTitle": "1910年の架空世界を巨大歩行機で駆ける──『Sand: Raiders Of Sophie』が描く過酷な砂漠サバイバル",
-      "category": "classic",
-      "gameTitle": "Sand: Raiders Of Sophie"
-    }
-  ],
+  "articleCountShortfalls": [],
+  "earlyAccessStatementIssues": [],
   "llmJudge": {
     "claimsByVerdict": {
-      "supported": 38,
-      "contradicted": 1,
-      "unverifiable": 4
+      "supported": 21,
+      "contradicted": 0,
+      "unverifiable": 13
     },
-    "judgedArticles": 5,
+    "judgedArticles": 6,
     "skippedArticles": 0,
     "warnings": [
       {
-        "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
-        "category": "indie",
+        "articleTitle": "飲酒運転で無人島に漂着、釣りで帰宅を目指す物理演算シミュレーター『How to Fish』発売中",
+        "category": "newRelease",
         "severity": "low",
         "type": "llm-judge-unverifiable",
-        "message": "LLM事実性チェック: 主張「Steamでは好評を得ており」は検索結果で裏付けられません（確信度 30%）。検索結果[1]でForbesのレビューが肯定的であることは確認できるが、Steam上での評価状況については検索結果に具体的な記載がない。",
-        "evidence": "Steamでは好評を得ており",
-        "context": "Steamでは好評を得ており"
+        "message": "LLM事実性チェック: 主張「開発元はスウェーデンのインディースタジオDazed Games」は検索結果で裏付けられません（確信度 30%）。検索結果[5][6]にDazed Gamesが開発元であることは確認できるが、スウェーデンという国籍情報は検索結果に含まれていない",
+        "evidence": "開発元はスウェーデンのインディースタジオDazed Games",
+        "context": "スウェーデンのインディースタジオDazed Games"
       },
       {
-        "articleTitle": "海賊の黄金時代を築け！『Corsair Cove コルセア・コーヴ』生産チェーンと荒くれ者の統治が試される海洋経営シム発売中",
-        "category": "indie",
-        "severity": "high",
-        "type": "llm-judge-contradicted",
-        "message": "LLM事実性チェック: 主張「ジャンルはシミュレーション、ストラテジー、ターン制ストラテジー」は検索結果と矛盾します（確信度 70%）。検索結果[3][6]に「ジャンル：ストラテジー / シミュレーション / 都市建設 / 海賊」と記載されており、「ターン制ストラテジー」という記述は見当たらない。検索結果[1]では船の戦闘が「card and dice-roll system」と説明されているが、ゲーム全体がターン制とは記載されていない。",
-        "evidence": "ジャンルはシミュレーション、ストラテジー、ターン制ストラテジー",
-        "context": "ジャンル: シミュレーション、ストラテジー、ターン制ストラテジー"
+        "articleTitle": "飲酒運転で無人島に漂着、釣りで帰宅を目指す物理演算シミュレーター『How to Fish』発売中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「Dazed Gamesは「Out of Hand: Deluxe」という2〜8人で遊べるパーティーゲームも開発している」は検索結果で裏付けられません（確信度 0%）。検索結果には「Out of Hand: Deluxe」というタイトルやDazed Gamesの他の作品に関する情報が含まれていない",
+        "evidence": "Dazed Gamesは「Out of Hand: Deluxe」という2〜8人で遊べるパーティーゲームも開発している",
+        "context": "「Out of Hand: Deluxe」も開発しており"
       },
       {
-        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "articleTitle": "地獄の工場経営ローグライト『レイジーウィッチーズファクトリー』早期アクセス配信中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「30分という制限時間内に借金を返済しなければならない」は検索結果で裏付けられません（確信度 30%）。検索結果[1]に「制限時間内に膨大な借金を返済することは到底できない」という記述はあるが、具体的に「30分」という時間は明記されていない。",
+        "evidence": "30分という制限時間内に借金を返済しなければならない",
+        "context": "30分という制限時間内に膨大な借金を返済しなければならない"
+      },
+      {
+        "articleTitle": "地獄の工場経営ローグライト『レイジーウィッチーズファクトリー』早期アクセス配信中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「発売元はPhoenixx Inc.が担当」は検索結果で裏付けられません（確信度 40%）。検索結果には発売元に関する明確な記述が見当たらない。検索結果[1]はGame Watchの記事だが、発売元の記載は確認できない。",
+        "evidence": "発売元はPhoenixx Inc.が担当",
+        "context": "発売元はPhoenixx Inc.が担当し"
+      },
+      {
+        "articleTitle": "地獄の工場経営ローグライト『レイジーウィッチーズファクトリー』早期アクセス配信中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「日本語を含む6言語に対応している」は検索結果で裏付けられません（確信度 30%）。検索結果には対応言語数に関する具体的な記述が見当たらない。",
+        "evidence": "日本語を含む6言語に対応している",
+        "context": "日本語を含む6言語に対応しています"
+      },
+      {
+        "articleTitle": "地獄の工場経営ローグライト『レイジーウィッチーズファクトリー』早期アクセス配信中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「価格は$15.99」は検索結果で裏付けられません（確信度 30%）。検索結果には具体的な価格に関する記述が見当たらない。",
+        "evidence": "価格は$15.99",
+        "context": "価格は$15.99で"
+      },
+      {
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
         "category": "feature",
         "severity": "low",
         "type": "llm-judge-unverifiable",
-        "message": "LLM事実性チェック: 主張「アブズ（Abzu）のタイトルは古代シュメール語で「知恵の海」を意味する」は検索結果で裏付けられません（確信度 30%）。検索結果にはタイトルの語源や意味に関する記述が見当たらない。[1][2][3]はゲームプレイの感想のみで語源には触れていない",
-        "evidence": "アブズ（Abzu）のタイトルは古代シュメール語で「知恵の海」を意味する",
-        "context": "古代シュメール語で「知恵の海」を意味するタイトル"
+        "message": "LLM事実性チェック: 主張「ゴースト オブ ツシマは鎌倉時代の対馬を舞台にしている」は検索結果で裏付けられません（確信度 90%）。検索結果にはゲームの舞台となる時代に関する具体的な記述が見当たらない。ユーザーレビューや評価に関する言及はあるが、時代設定については触れられていない",
+        "evidence": "ゴースト オブ ツシマは鎌倉時代の対馬を舞台にしている",
+        "context": "鎌倉時代の対馬を舞台に"
       },
       {
-        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
         "category": "feature",
         "severity": "low",
         "type": "llm-judge-unverifiable",
-        "message": "LLM事実性チェック: 主張「Spiritfarerでは猫のダッフォディルと共に冒険を進められる」は検索結果で裏付けられません（確信度 40%）。検索結果に猫のキャラクター「ダッフォディル」に関する具体的な記述が見当たらない。[4][5][6]にはゲームの概要はあるが、この固有名詞は確認できない",
-        "evidence": "Spiritfarerでは猫のダッフォディルと共に冒険を進められる",
-        "context": "猫のダッフォディルと共に冒険を進められます"
+        "message": "LLM事実性チェック: 主張「ゴースト オブ ツシマは蒙古軍に立ち向かう侍の物語を描く」は検索結果で裏付けられません（確信度 90%）。検索結果には敵対勢力や具体的なストーリー内容についての記述が無い。ゲームの評価や感想のみが記載されている",
+        "evidence": "ゴースト オブ ツシマは蒙古軍に立ち向かう侍の物語を描く",
+        "context": "蒙古軍に立ち向かう侍の物語を描く"
       },
       {
-        "articleTitle": "8月1日「水の日」に遊びたい、美しい海や川が舞台の癒やし系アドベンチャー3選",
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
         "category": "feature",
         "severity": "low",
         "type": "llm-judge-unverifiable",
-        "message": "LLM事実性チェック: 主張「Grisは若い女性グリスの悲しみと喪失の旅を描く」は検索結果で裏付けられません（確信度 50%）。検索結果[7][8][9]にはGrisの美術性や雰囲気への言及はあるが、主人公の名前が「グリス」であることや「悲しみと喪失の旅」という具体的なストーリー設定の記述は確認できない",
-        "evidence": "Grisは若い女性グリスの悲しみと喪失の旅を描く",
-        "context": "若い女性グリスの悲しみと喪失の旅を描く"
+        "message": "LLM事実性チェック: 主張「天穂のサクナヒメは豊穣神サクナが追放された危険な島で人間たちとともに生活する」は検索結果で裏付けられません（確信度 80%）。検索結果[4]には島の探索について言及があるが、主人公が追放されたという設定や人間たちとの共同生活については具体的な記述が無い",
+        "evidence": "天穂のサクナヒメは豊穣神サクナが追放された危険な島で人間たちとともに生活する",
+        "context": "豊穣神サクナが、追放された危険な島で人間たちとともに生活する"
+      },
+      {
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「天穂のサクナヒメは四季を通じた米作りのプロセスがサクナの戦闘能力の成長に直結する」は検索結果で裏付けられません（確信度 80%）。検索結果[4]に「structured in terms of days and seasons」とあり季節の概念は確認できるが、稲作と戦闘能力の成長が直結するというシステムについての具体的な記述は無い",
+        "evidence": "天穂のサクナヒメは四季を通じた米作りのプロセスがサクナの戦闘能力の成長に直結する",
+        "context": "四季を通じた米作りのプロセスが、サクナの戦闘能力の成長にも直結する"
+      },
+      {
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「朧村正は徳川綱吉が治める元禄時代を舞台にしている」は検索結果で裏付けられません（確信度 90%）。検索結果[7][8][9]には朧村正のレビューがあるが、時代設定や徳川綱吉についての具体的な記述は見当たらない",
+        "evidence": "朧村正は徳川綱吉が治める元禄時代を舞台にしている",
+        "context": "徳川綱吉が治める元禄時代を舞台にした"
+      },
+      {
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「朧村正は男性忍者または女性くノ一を操作する」は検索結果で裏付けられません（確信度 80%）。検索結果[8]に「character designs」や「bosses」への言及はあるが、プレイアブルキャラクターが忍者やくノ一であるという具体的な記述は無い",
+        "evidence": "朧村正は男性忍者または女性くノ一を操作する",
+        "context": "男性忍者または女性くノ一を操作して"
+      },
+      {
+        "articleTitle": "俳句の日特集：日本の四季と和の美を堪能できるゲーム3選",
+        "category": "feature",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「朧村正は縦方向への移動も含む多彩なステージを攻略する」は検索結果で裏付けられません（確信度 70%）。検索結果[8]に「lack of platforming」という記述があり、プラットフォーム要素の不足が指摘されているが、縦方向の移動についての具体的な言及は無い",
+        "evidence": "朧村正は縦方向への移動も含む多彩なステージを攻略する",
+        "context": "縦方向への移動も含む多彩なステージを攻略します"
       }
     ]
   },
