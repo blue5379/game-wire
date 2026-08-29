@@ -1,54 +1,82 @@
 {
   "issueNumber": 19,
-  "generatedAt": "2026-08-07T21:35:34.634Z",
-  "totalArticles": 4,
-  "totalWarnings": 1,
+  "generatedAt": "2026-08-29T03:03:14.519Z",
+  "totalArticles": 6,
+  "totalWarnings": 4,
   "warningsBySeverity": {
     "high": 0,
     "medium": 1,
-    "low": 0
+    "low": 3
   },
   "warnings": [
     {
-      "articleTitle": "事故物件の真相を暴け──和製ホラー『日本事故物件監視協会3 -Japan Stigmatized Property-』発売中",
-      "category": "indie",
+      "articleTitle": "銃火器と労働力、異色の生物収集サバイバル『パルワールド』発売中",
+      "category": "newRelease",
+      "severity": "low",
+      "type": "numeric-kind-count",
+      "message": "本文に具体的な数値「200種類以上」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "200種類以上",
+      "context": "…異色の組み合わせが話題を呼び、多くのプレイヤーから高い評価を得ている本作の魅力に迫ります。 ## ✨ ゲームの特徴 本作の舞台はパルパゴス諸島。プレイヤーは200種類以上の個性的なパルたちを捕獲し、戦闘パートナーや拠点の労働力として活用できます。パルにはそれぞれ独自の属性やスキルがあり、同じ種類でも個体値によってステータスが異な…"
+    },
+    {
+      "articleTitle": "精鋭部隊を率いて戦う、EA新作ターン制タクティクス『Star Wars Zero Company』発売",
+      "category": "newRelease",
       "severity": "medium",
-      "type": "numeric-price",
-      "message": "本文に具体的な数値「880円」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
-      "evidence": "880円",
-      "context": "…人 ## 📅 発売情報 - **発売日**: 発売中 - **対応機種**: PC - **開発・発売元**: 日本事故物件監視協会 - **価格**: 880円 ## 🎯 Creator's Eye 本作の最大の魅力は「監視」という受動的な行為をゲームプレイの中心に据えた点にあります。プレイヤーは物件内を自由に探…",
-      "sourcedFrom": {
-        "url": "http://news.dengeki.com/article/202608/83879",
-        "title": "【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース - 電撃オンライン",
-        "snippet": "電撃オンライン\n ゲーム\n Steamモバイル・アプリインディーゲーム\n 【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n# 【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n文：電撃オンライン\n\n公開日時：\n\n日本事故物件監視協会は、Steam/iOS/Android用監視カメラ異変探しゲーム『日本事故物件監視協会3 -Japan Stigmatized Property-』を、本日8月7日に配信しました。価格は880円です。\n\n【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\nインディーゲームをAmazonで調べるインディーゲームを楽天で調べる\n\n『日本事故物件監視協会3 -Japan Stigmatized Property-』は、“日本事故物件監視協会”の監視員となり、物件内に設置された監視カメラを操作し、異常がないかを監視するゲームの新作です。\n\n【本日配信】実在する事故物件を朝まで監視するホラー『日本事故物件監視協会3』Steam/スマホでリリース\n\n“日本事故物件監視協会”の監視員となって、午前0時から5時まで事故物件を監視カメラで監視し、異常がないかをチェックしましょう。  \n  \n　物件は実在する日本国内の物件となり、暗視カメラ、通常カメラで様子を確認するとこができます。異常はランダムに発生し、暗視カメラ、通常カメラそれぞれでしか視認できない現象もあるので、切り替えながら監視する必要があります。"
-      }
+      "type": "game-source-uncertain",
+      "message": "記事の game メタ「Star Wars Zero Company」と、Steam(appId=2075800)の実体の同一性を断定できません（title=disagree year=agree company=agree）。破壊的アクション（hidden・号停止）は行わず記録のみとします（fail-open）。",
+      "evidence": "game=[title=\"Star Wars Zero Company\" year=2026 dev=\"Bit Reactor\"] entity=[nameEn=\"\" nameJa=\"STAR WARS ゼロ・カンパニー™\" year=2026 devs=\"Bit Reactor\"] evidence=(title=disagree year=agree company=agree) → uncertain"
+    },
+    {
+      "articleTitle": "戦士の肉体を纏い偽りの神々を討つ──高難度アクションRPG『Mortal Shell II』発売中",
+      "category": "indie",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
+    },
+    {
+      "articleTitle": "GLaDOSとの因縁再び──『ポータル2』が描くパズルと復讐の物語",
+      "category": "classic",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
     }
   ],
   "webSearchStats": {
     "searchFailures": 0,
-    "pageContentFailures": 0
+    "pageContentFailures": 4,
+    "adultScreeningFailures": 0,
+    "unrecognizedScreeningResponses": 0
   },
-  "missingOfficialUrls": [
-    {
-      "articleTitle": "事故物件の真相を暴け──和製ホラー『日本事故物件監視協会3 -Japan Stigmatized Property-』発売中",
-      "category": "indie",
-      "gameTitle": "日本事故物件監視協会3 -Japan Stigmatized Property-"
-    },
-    {
-      "articleTitle": "一人で挑むトレジャーハント、『スプラトゥーン レイダース』発売中──Deep Cutと共に謎の島々を探索",
-      "category": "classic",
-      "gameTitle": "Splatoon Raiders"
-    }
-  ],
+  "articleCountShortfalls": [],
+  "earlyAccessStatementIssues": [],
   "llmJudge": {
     "claimsByVerdict": {
-      "supported": 8,
+      "supported": 9,
       "contradicted": 0,
-      "unverifiable": 0
+      "unverifiable": 2
     },
-    "judgedArticles": 4,
-    "skippedArticles": 0,
-    "warnings": []
+    "judgedArticles": 2,
+    "skippedArticles": 4,
+    "warnings": [
+      {
+        "articleTitle": "銃火器と労働力、異色の生物収集サバイバル『パルワールド』発売中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「プレイヤーは200種類以上の個性的なパルたちを捕獲できる」は検索結果で裏付けられません（確信度 80%）。検索結果にパルの種類数に関する具体的な記述が見当たらない。",
+        "evidence": "プレイヤーは200種類以上の個性的なパルたちを捕獲できる",
+        "context": "200種類以上の個性的なパルたちを捕獲し"
+      },
+      {
+        "articleTitle": "銃火器と労働力、異色の生物収集サバイバル『パルワールド』発売中",
+        "category": "newRelease",
+        "severity": "low",
+        "type": "llm-judge-unverifiable",
+        "message": "LLM事実性チェック: 主張「本作の舞台はパルパゴス諸島である」は検索結果で裏付けられません（確信度 80%）。検索結果に舞台となる地名に関する記述が見当たらない。",
+        "evidence": "本作の舞台はパルパゴス諸島である",
+        "context": "本作の舞台はパルパゴス諸島"
+      }
+    ]
   },
   "mode": "production",
   "status": "warning"

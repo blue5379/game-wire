@@ -812,6 +812,76 @@
       "category": "feature",
       "issueNumber": 18,
       "publishDate": "2026-08-22"
+    },
+    {
+      "normalizedTitle": "star wars zero company",
+      "title": "Star Wars Zero Company",
+      "category": "newRelease",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "palworld",
+      "title": "Palworld",
+      "category": "newRelease",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "how to fish",
+      "title": "How to Fish",
+      "category": "indie",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "mortal shell ii",
+      "title": "Mortal Shell II",
+      "category": "indie",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "portal 2",
+      "title": "Portal 2",
+      "category": "classic",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "don't starve",
+      "title": "Don't Starve",
+      "category": "feature",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "フロストパンク",
+      "title": "フロストパンク",
+      "category": "feature",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "サブノーティカ",
+      "title": "サブノーティカ",
+      "category": "feature",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "project zomboid",
+      "title": "Project Zomboid",
+      "category": "feature",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "the last of us",
+      "title": "The Last of Us",
+      "category": "feature",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29"
     }
   ],
   "featureEvents": [
@@ -826,6 +896,12 @@
       "issueNumber": 18,
       "publishDate": "2026-08-22",
       "source": "backward"
+    },
+    {
+      "eventName": "防災の日",
+      "issueNumber": 19,
+      "publishDate": "2026-08-29",
+      "source": "forward"
     }
   ]
 }
