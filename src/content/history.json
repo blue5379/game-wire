@@ -882,6 +882,48 @@
       "category": "feature",
       "issueNumber": 19,
       "publishDate": "2026-08-29"
+    },
+    {
+      "normalizedTitle": "bombanana!",
+      "title": "BOMBANANA!",
+      "category": "newRelease",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "denshattack!",
+      "title": "Denshattack!",
+      "category": "indie",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "grand theft auto san andreas",
+      "title": "Grand Theft Auto: San Andreas",
+      "category": "classic",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "911 operator",
+      "title": "911 Operator",
+      "category": "feature",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "project hospital",
+      "title": "Project Hospital",
+      "category": "feature",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "ツーポイントホスピタル",
+      "title": "ツーポイントホスピタル",
+      "category": "feature",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05"
     }
   ],
   "featureEvents": [
@@ -901,6 +943,12 @@
       "eventName": "防災の日",
       "issueNumber": 19,
       "publishDate": "2026-08-29",
+      "source": "forward"
+    },
+    {
+      "eventName": "救急の日",
+      "issueNumber": 20,
+      "publishDate": "2026-09-05",
       "source": "forward"
     }
   ]
