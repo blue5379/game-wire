@@ -157,7 +157,11 @@ jobs:
       #        毎回の更新がステージされない）。第20号の調査（Issue #358）で「新作枠の補充が
       #      なぜ 0 件だったのか」を追えなかった直接の原因。validation レポート（Issue #202）と
       #      同じく号別ファイル名でリポジトリに残す。
+      #      観測用のステップなので、失敗しても後段のコミット・デプロイを止めない
+      #      （Bedrock コストを払って生成済みの号が失われる方が被害が大きい。
+      #        「起票ステップの失敗はデプロイをブロックすべきでない」7.5 と同じ方針）
       - name: Persist per-issue diagnostic data
+        continue-on-error: true
         run: |
           set -e
           mkdir -p data/validation
@@ -180,8 +184,11 @@ jobs:
       #      落ちた run は 6.7 に到達しないが、調査が必要なのはむしろそちらなので
       #      if: always() で必ず退避する。commit ステップの git stash より前に置き、
       #      stash pop 失敗でファイルが手元から消えるリスクを避ける。
+      #      アーティファクトサービスの一過性障害でデプロイを止めないよう continue-on-error を付ける
+      #      （if: always() と併用しても、このステップ自身の失敗がジョブを failed にするため）。
       - name: Upload diagnostic data
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: diagnostics-${{ github.run_id }}-${{ github.run_attempt }}

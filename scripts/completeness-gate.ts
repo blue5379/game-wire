@@ -652,6 +652,18 @@ export async function runCompletenessGate(
 
       selectedGames[key] = [...kept, ...fills];
 
+      // 記録・出力はタイトル昇順に並べ替える（§2.3 ライセンス制約 / PR #249 レビュー指摘）。
+      // candidatePool（新作枠は newReleasesReserves = 4軸スコア降順）の順序をそのまま残すと、
+      // 他3軸は aggregated.json から再計算できるため、配列内の位置から domestic 軸
+      // （Amazon 順位）の寄与分だけが残り、順位を絞り込む導出チャネルになる。
+      // このレポートは data/validation/ にコミットされ公開アーティファクトにも載るため、
+      // fetch-data.ts の候補ログと同じ対処（位置がスコアの情報を持たない状態にする）を取る。
+      // 残る信号は「試行上限で打ち切った場合、記録された候補集合が予備プールの上位である」
+      // という集合の上下関係のみで、全順序は復元できない。
+      const candidatesForReport = [...candidateAttempts].sort((a, b) =>
+        a.candidateTitle.localeCompare(b.candidateTitle)
+      );
+
       const summary: ReplacementSlotSummary = {
         slot: key,
         needed,
@@ -660,7 +672,7 @@ export async function runCompletenessGate(
         maxAttempts,
         skippedBeforeVetting,
         stoppedBy,
-        candidates: candidateAttempts,
+        candidates: candidatesForReport,
       };
       report.replacementSummary!.push(summary);
 
@@ -670,7 +682,8 @@ export async function runCompletenessGate(
           `（打ち切り理由=${stoppedBy}, 検証した候補=${attempts}/${maxAttempts}, ` +
           `検証前スキップ=${skippedBeforeVetting}, 候補プール=${candidatePool.length}件。少ない記事数で発行する）`
         );
-        for (const attempt of candidateAttempts.filter((a) => !a.adopted)) {
+        // CI ログも公開・90日保持されるので、こちらもタイトル昇順（上記と同じ理由）
+        for (const attempt of candidatesForReport.filter((a) => !a.adopted)) {
           console.warn(
             `  [CompletenessGate] ${key}: 候補 "${attempt.candidateTitle}" 不採用 — ${attempt.reason ?? 'unknown'}`
           );

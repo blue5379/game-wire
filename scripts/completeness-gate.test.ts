@@ -1357,6 +1357,56 @@ describe('runCompletenessGate: replacementSummary', () => {
     expect(slotGate).toHaveBeenCalledTimes(3);
   });
 
+  // §2.3 ライセンス制約 / PR #249 レビュー指摘。newReleases の候補プールは
+  // 4軸スコア降順（Amazon 順位を含む）なので、記録がその順序を保持すると
+  // コミットされたレポートから順位が逆算できる
+  it('候補の記録は候補プールの順序ではなくタイトル昇順になる（Amazon 順位の漏洩防止）', async () => {
+    mockUrlReachable(true);
+    // スコア降順を模したプール順（Zeta が最上位）。needed=1 → maxAttempts=3 なので3件とも検証される
+    const pool = [healthy('Zeta Reserve'), healthy('Alpha Reserve'), healthy('Mid Reserve')];
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: pool },
+      { newReleases: vi.fn().mockResolvedValue(null) }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases')!;
+    expect(summary.candidates.map((c) => c.candidateTitle)).toEqual([
+      'Alpha Reserve',
+      'Mid Reserve',
+      'Zeta Reserve',
+    ]);
+    // 集合としては3件すべて記録されている（順序だけを潰しており、内容は落としていない）
+    expect(summary.attempts).toBe(3);
+  });
+
+  it('shortfall の warn ログもタイトル昇順で出す（CI ログも公開されるため）', async () => {
+    mockUrlReachable(true);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const pool = [healthy('Zeta Reserve'), healthy('Alpha Reserve')];
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: pool },
+      { newReleases: vi.fn().mockResolvedValue(null) }
+    );
+
+    const candidateLogs = warnSpy.mock.calls
+      .map((c) => String(c[0]))
+      .filter((line) => line.includes('不採用'));
+    expect(candidateLogs).toHaveLength(2);
+    expect(candidateLogs[0]).toContain('Alpha Reserve');
+    expect(candidateLogs[1]).toContain('Zeta Reserve');
+    warnSpy.mockRestore();
+  });
+
   it('既出タイトルは skippedBeforeVetting に数え、試行回数（attempts）には数えない', async () => {
     mockUrlReachable(true);
     // indies 側に残る健全ゲームと同じ normalizedTitle を持つ候補 → 検証前にスキップされる

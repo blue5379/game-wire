@@ -424,11 +424,19 @@ describe('judgeArticles', () => {
     expect(report.warnings[0].severity).toBe('high');
   });
 
-  it('Bedrock 呼び出しが失敗してもビルドを止めず記事はスキップ集計', async () => {
+  it('Bedrock 呼び出しが失敗した記事はビルドを止めずスキップとして記録される', async () => {
     mockInvoke.mockRejectedValue(new Error('bedrock down'));
     const report = await judgeArticles([withSources()]);
-    // 実行自体は試みた（judgedArticles はカウント）が、claims は空
-    expect(report.judgedArticles).toBe(1);
+    // 判定できなかった記事を judgedArticles に数えると「判定した記事 1 / 矛盾 0」となり
+    // 無検証で通ったことがレポートから読み取れない（Issue #363 レビュー指摘）
+    expect(report.judgedArticles).toBe(0);
+    expect(report.skippedArticles).toBe(1);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped![0].articleTitle).toBe(withSources().title);
+    expect(report.skipped![0].reason).toContain('judge invocation failed');
+    expect(report.skipped![0].reason).toContain('bedrock down');
+    // 判定結果が無いので出典も「判定に使った出典」には載せない
+    expect(report.judgedSources).toHaveLength(0);
     expect(report.warnings).toHaveLength(0);
   });
 });

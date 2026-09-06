@@ -312,11 +312,27 @@ export interface LlmJudgeReport {
 }
 
 /**
+ * judgeArticle の結果（Issue #363 レビュー指摘）。
+ *
+ * 「judge が走って claim が 0 件だった」と「judge を走らせられなかった」を呼び出し側で
+ * 区別するため、成功/失敗を型で分ける。両者を空配列に潰すと、Bedrock がスロットリングで
+ * 落ちた号のレポートが「判定した記事 6 / 矛盾 0」となり、本 PR が防ごうとしている
+ * 「判定 0 件を『問題なし』と読み違える」状態が揮発する console.warn 以外に残らない。
+ *
+ * なお応答が JSON として壊れていたケース（parseJudgeResponse が空配列を返す経路）は
+ * 依然として「claim 0 件の成功」と区別できない。judge が正当に `{"claims": []}` を
+ * 返す場合があり、パース失敗と分離するには parseJudgeResponse の戻り値を変える必要がある。
+ */
+export type JudgeArticleOutcome =
+  | { ok: true; claims: JudgeClaim[] }
+  | { ok: false; reason: string };
+
+/**
  * 1記事を judge する。
  *
  * webSearchSources が無い記事は照合元が無く judge 自身がハルシネーションするため、
- * 呼び出し側でスキップ判定する想定（ここでは空 claims を返す）。
- * Bedrock 呼び出しや JSON パースに失敗してもビルドを止めず、空配列で返す。
+ * 呼び出し側でスキップ判定する想定。
+ * Bedrock 呼び出しに失敗してもビルドは止めず、失敗理由を戻り値で返す。
  *
  * @param article - 判定対象の記事
  * @param publishDate - 発行日（未発売記事の判定に使用。未指定なら未発売判定をスキップ）
@@ -324,17 +340,17 @@ export interface LlmJudgeReport {
 export async function judgeArticle(
   article: GeneratedArticle,
   publishDate?: Date
-): Promise<JudgeClaim[]> {
+): Promise<JudgeArticleOutcome> {
   const userMessage = buildJudgeUserMessage(article, publishDate);
   try {
     const raw = await invokeClaudeModel(judgeSystemPrompt, userMessage, {
       maxTokens: 2048,
       temperature: 0, // 再現性を最大化
     });
-    return parseJudgeResponse(raw);
+    return { ok: true, claims: parseJudgeResponse(raw) };
   } catch (error) {
     console.warn(`  LLM judge failed for "${article.title}", skipping:`, error);
-    return [];
+    return { ok: false, reason: `judge invocation failed: ${String(error)}` };
   }
 }
 
@@ -391,6 +407,14 @@ export async function judgeArticles(
     }
 
     console.log(`  LLM judging: ${article.title}`);
+    const outcome = await judgeArticle(article, publishDate);
+    if (!outcome.ok) {
+      // 判定できなかった記事は「判定済み」に数えない（Issue #363 レビュー指摘）
+      report.skippedArticles++;
+      report.skipped!.push({ articleTitle: article.title, reason: outcome.reason });
+      continue;
+    }
+
     // judge に渡した出典を記録する。index は buildJudgeUserMessage の `[n]` と同じ採番
     report.judgedSources!.push({
       articleTitle: article.title,
@@ -400,12 +424,11 @@ export async function judgeArticles(
         url: s.url,
       })),
     });
-    const claims = await judgeArticle(article, publishDate);
     report.judgedArticles++;
-    for (const c of claims) {
+    for (const c of outcome.claims) {
       report.claimsByVerdict[c.verdict]++;
     }
-    report.warnings.push(...mapClaimsToWarnings(article, claims));
+    report.warnings.push(...mapClaimsToWarnings(article, outcome.claims));
   }
 
   return report;

@@ -109,15 +109,23 @@ export async function fetchSteamEntity(
 
   // 片言語のみ失敗した場合も理由を残す。nameEn/nameJa の欠落は title 軸の照合結果を
   // 変えるため、後から「なぜ片方だけ無いのか」を追えるようにしておく。
-  if (!enResult.ok || !jaResult.ok) {
+  // 判定条件は下のキャッシュガード（nameEn/nameJa の undefined 判定）と揃える:
+  // AppDetailsData.name は optional なので success:true + data あり + name なしの応答は
+  // ok:true になり、`!ok` だけを見ると「name が無いのに無言でキャッシュもされない」
+  // ケースが唯一ログから漏れる（Issue #363 レビュー指摘）。
+  const enName = enData?.name;
+  const jaName = jaData?.name;
+  if (enName === undefined || jaName === undefined) {
+    const describe = (result: AppDetailsResult, name: string | undefined): string =>
+      !result.ok ? result.reason : name === undefined ? 'HTTP 200 だが data.name が無い' : 'ok';
     console.warn(
       JSON.stringify({
         scope: 'steam-entity',
         appId,
         step: 'fetch-appdetails',
         reason: 'one-language-failed (残った言語のデータで続行)',
-        english: enResult.ok ? 'ok' : enResult.reason,
-        japanese: jaResult.ok ? 'ok' : jaResult.reason,
+        english: describe(enResult, enName),
+        japanese: describe(jaResult, jaName),
       })
     );
   }

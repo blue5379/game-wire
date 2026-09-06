@@ -240,6 +240,27 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
     expect(logs[0].japanese).toBe('HTTP 500');
   });
 
+  // AppDetailsData.name は optional なので HTTP 200 + success:true でも name が無い応答があり得る。
+  // この場合 nameJa が undefined になりキャッシュもされない（毎回再取得される）のに、
+  // `!ok` だけを見る判定ではログが出なかった（Issue #363 レビュー指摘）
+  it('HTTP 200 でも data.name が無い言語はログに残す（キャッシュされない状態と条件を揃える）', async () => {
+    const mockFetch = makeFetch({
+      'l=english': { '58': { success: true, data: { name: 'Nameless JA', developers: [] } } },
+      // 日本語版は成功しているが name を持たない
+      'l=japanese': { '58': { success: true, data: { developers: [] } } },
+    });
+
+    const entity = await fetchSteamEntity(58, mockFetch as typeof fetch);
+
+    expect(entity?.nameEn).toBe('Nameless JA');
+    expect(entity?.nameJa).toBeUndefined();
+    const logs = warnedLogs('steam-entity');
+    expect(logs).toHaveLength(1);
+    expect(String(logs[0].reason)).toContain('one-language-failed');
+    expect(logs[0].english).toBe('ok');
+    expect(String(logs[0].japanese)).toContain('data.name が無い');
+  });
+
   it('両言語成功時はログを出さない', async () => {
     const mockFetch = makeFetch({
       'l=english': { '55': { success: true, data: { name: 'Fine', developers: [] } } },
