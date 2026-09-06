@@ -2,6 +2,8 @@
  * プラットフォーム別ストアページを Tavily で検索する共通ヘルパー
  */
 
+import { BROWSER_USER_AGENT } from '../url-health.js';
+
 /** ストアページタイトルからサフィックスを除去するパターン */
 const STORE_TITLE_SUFFIX_PATTERNS = [
   // PlayStation Store
@@ -60,7 +62,9 @@ async function fetchHtmlHead(
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; GameWire/1.0)' },
+      // Bot 判定で 403 を返すサイトがあるため、死活確認と同じブラウザ UA を送る。
+      // 実測（Issue #359）: capcom-games.com は 'GameWire/1.0' 系 UA で 403、ブラウザ UA で 200
+      headers: { 'Accept': 'text/html', 'User-Agent': BROWSER_USER_AGENT },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return { ok: false };

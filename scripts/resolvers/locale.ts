@@ -52,7 +52,7 @@ export function isJapaneseUrl(url: string): boolean {
  */
 export function makeHeadVerifier(timeoutMs = 8000): (url: string) => Promise<VerifyOutcome> {
   return async (url: string) => {
-    const alive = await headOk(url, timeoutMs);
+    const alive = await headOk(url, timeoutMs, { quiet: true });
     return alive ? { ok: true, confidence: 'medium' } : { ok: false, reason: 'HEAD check failed' };
   };
 }

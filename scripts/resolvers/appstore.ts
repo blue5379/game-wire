@@ -61,7 +61,7 @@ export async function resolveAppStore(input: AppStoreResolverInput): Promise<App
   const igdbEnUrl = appStoreUrls.find((u) => !isJapaneseUrl(u));
 
   const verifyIgdbUrl = async (url: string): Promise<StoreLink | null> => {
-    const alive = await headOk(url, 8000);
+    const alive = await headOk(url, 8000, { quiet: true });
     if (alive) {
       attempts.push({ method: 'igdb-website', ok: true });
       return { platform: 'appstore', url, resolvedBy: 'igdb-website', confidence: 'medium' };

@@ -1,6 +1,8 @@
 /**
  * URL の死活確認と画像サイズ取得のユーティリティ
- * build-issue.ts の isUrlAlive と同等の HEAD 確認を一元化する
+ *
+ * 死活確認は全経路をここに一元化する。UA・メソッド・リトライの条件が
+ * 呼び出し元ごとにばらつくと、同じ URL が経路によって生死判定が変わる（Issue #359）。
  */
 
 /**
@@ -28,8 +30,8 @@ export const NOT_FOUND_STATUS_CODES = new Set([404, 410]);
  */
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
-/** 死活確認の試行回数（1 回目で HEAD→GET、2 回目以降は GET のみ） */
-const MAX_ATTEMPTS = 2;
+/** GET の試行回数。HEAD を含めた 1 URL あたりの最大リクエスト数は +1 */
+const MAX_GET_ATTEMPTS = 2;
 
 /** リトライ前の待機時間の基準値。実際の待機は base × 試行回数 */
 const RETRY_BASE_DELAY_MS = 500;
@@ -47,6 +49,17 @@ export interface UrlHealthOptions {
   fetchImpl?: typeof fetch;
   /** テストで待機を無効化するためのフック */
   sleepImpl?: (ms: number) => Promise<void>;
+  /**
+   * true にすると失敗時の console.warn を抑止する。
+   * 「候補 URL を順に試して落ちるのが正常」な呼び出し（ストアリンクの候補探索など）で、
+   * 想定内の空振りがログを埋めて本当の障害を隠さないようにするために使う。
+   */
+  quiet?: boolean;
+}
+
+/** 1 回のリクエスト結果。retryable は呼び出し側のリトライ判断に使う内部情報 */
+interface AttemptResult extends UrlHealthResult {
+  retryable: boolean;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -64,7 +77,7 @@ async function requestOnce(
   method: 'HEAD' | 'GET',
   timeoutMs: number,
   fetchImpl: typeof fetch
-): Promise<UrlHealthResult> {
+): Promise<AttemptResult> {
   try {
     const res = await fetchImpl(url, {
       method,
@@ -79,11 +92,18 @@ async function requestOnce(
     if (method === 'GET') {
       await res.body?.cancel().catch(() => {});
     }
-    return res.ok
-      ? { ok: true, status: res.status }
-      : { ok: false, status: res.status, reason: `HTTP ${res.status}` };
+    if (res.ok) return { ok: true, status: res.status, retryable: false };
+    return {
+      ok: false,
+      status: res.status,
+      reason: `HTTP ${res.status}`,
+      retryable: RETRYABLE_STATUS_CODES.has(res.status),
+    };
   } catch (err) {
-    return { ok: false, reason: String(err) };
+    // タイムアウトはリトライしない。応答しないホストは即座に再試行しても返らないことが多く、
+    // 1 URL あたりの最悪実行時間が伸びる（weekly-build は timeout-minutes: 30）。
+    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    return { ok: false, reason: String(err), retryable: !timedOut };
   }
 }
 
@@ -92,10 +112,11 @@ async function requestOnce(
  *
  * 単純な HEAD 一発では以下を誤判定するため、多段で確認する（Issue #359）:
  * - Bot 判定で 403 を返すサイト → ブラウザ UA を送る
- * - HEAD を許可しないサイト → GET でフォールバックする
- * - 一時的な 5xx / タイムアウト → リトライする
+ * - HEAD を許可しない / HEAD にだけ 404 を返すサイト → GET で確認する
+ * - 一時的な 5xx・429・ネットワークエラー → リトライする
  *
- * 404/410 は「URL が存在しない」明確なシグナルなので、フォールバックもリトライもせず即確定する。
+ * HEAD の失敗は単独では信頼せず、必ず GET で確認する。404/410 は GET でも同じなら
+ * 「URL が存在しない」と確定し、リトライしない。
  */
 export async function checkUrlHealth(
   url: string,
@@ -105,35 +126,35 @@ export async function checkUrlHealth(
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleepImpl ?? defaultSleep;
 
-  let last: UrlHealthResult = { ok: false, reason: 'no attempt' };
+  // まず HEAD。成功すれば最も軽く済む
+  let last = await requestOnce(url, 'HEAD', timeoutMs, fetchImpl);
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    // 1 回目のみ HEAD を試す。2 回目以降は HEAD が失敗済みなので GET から始める
-    if (attempt === 1) {
-      last = await requestOnce(url, 'HEAD', timeoutMs, fetchImpl);
-      if (last.ok) return last;
-      if (last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status)) return last;
+  if (!last.ok) {
+    for (let attempt = 1; attempt <= MAX_GET_ATTEMPTS; attempt++) {
+      last = await requestOnce(url, 'GET', timeoutMs, fetchImpl);
+      if (last.ok) break;
+
+      // 404/410 は「存在しない」確定シグナル。リトライしても変わらない
+      const definitive = last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status);
+      if (definitive || !last.retryable || attempt === MAX_GET_ATTEMPTS) break;
+
+      await sleep(RETRY_BASE_DELAY_MS * attempt);
     }
-
-    last = await requestOnce(url, 'GET', timeoutMs, fetchImpl);
-    if (last.ok) return last;
-    if (last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status)) return last;
-
-    const retryable = last.status === undefined || RETRYABLE_STATUS_CODES.has(last.status);
-    if (!retryable || attempt === MAX_ATTEMPTS) break;
-    await sleep(RETRY_BASE_DELAY_MS * attempt);
   }
 
-  console.warn(
-    JSON.stringify({
-      scope: 'url-health',
-      step: 'checkUrlHealth',
-      url,
-      status: last.status,
-      reason: last.reason,
-    })
-  );
-  return last;
+  const result: UrlHealthResult = { ok: last.ok, status: last.status, reason: last.reason };
+  if (!result.ok && !options.quiet) {
+    console.warn(
+      JSON.stringify({
+        scope: 'url-health',
+        step: 'checkUrlHealth',
+        url,
+        status: result.status,
+        reason: result.reason,
+      })
+    );
+  }
+  return result;
 }
 
 /**
@@ -161,7 +182,13 @@ export async function getImageOrientation(
   timeoutMs = 8000
 ): Promise<ImageOrientation | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    // headOk と同じ UA を送る。UA でブロックするホストで headOk は 200（採用）なのに
+    // ここだけ失敗すると、呼び出し側の orientation ?? 'portrait' により横長画像が
+    // portrait と誤ラベルされる（Issue #359）
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'User-Agent': BROWSER_USER_AGENT },
+    });
     if (!res.ok) return null;
 
     const buf = await res.arrayBuffer();

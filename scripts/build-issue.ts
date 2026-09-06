@@ -20,6 +20,7 @@ import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyFor
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 import { isMainModule } from './entrypoint.js';
+import { checkUrlHealth } from './url-health.js';
 
 // 開発モード判定
 const DEV_MODE = process.env.DEV_MODE === 'true';
@@ -30,14 +31,9 @@ const ISSUES_DIR = DEV_MODE
   ? path.join(process.cwd(), 'src', 'content', 'issues-dev')
   : path.join(process.cwd(), 'src', 'content', 'issues');
 
-async function isUrlAlive(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(8000) });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
+// URL の死活確認は url-health.ts の checkUrlHealth に一元化した（Issue #359）。
+// 以前はここに UA 無しの HEAD 一発の isUrlAlive があり、Bot 判定で 403 を返すサイトの
+// 実在する公式ページを「到達不能」として記事から黙って落としていた。
 
 /**
  * 公式URLの多層防御ゲート（信頼済みソース判定 + 到達性確認）を共通化したヘルパー。
@@ -64,9 +60,12 @@ async function resolveGatedOfficialUrl(
     return undefined;
   }
 
-  const alive = await isUrlAlive(url);
-  if (!alive) {
-    console.log(`    [WARN] ${opts.label} URL unreachable, skipping: ${url}`);
+  // quiet: true にして、失敗理由をラベル付きの下の WARN 1 行にまとめる
+  const health = await checkUrlHealth(url, 8000, { quiet: true });
+  if (!health.ok) {
+    console.log(
+      `    [WARN] ${opts.label} URL unreachable (${health.reason ?? 'unknown'}), skipping: ${url}`
+    );
     return undefined;
   }
 

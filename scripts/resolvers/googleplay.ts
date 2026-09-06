@@ -43,7 +43,7 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
   if (input.igdbWebsites?.length) {
     const gpSite = input.igdbWebsites.find((w) => isGooglePlayUrl(w.url));
     if (gpSite) {
-      const alive = await headOk(gpSite.url, 8000);
+      const alive = await headOk(gpSite.url, 8000, { quiet: true });
       if (alive) {
         attempts.push({ method: 'igdb-website', ok: true });
         return {
@@ -68,7 +68,8 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
   const candidates = await searchStorePage(queryTitles, 'site:play.google.com', isGooglePlayUrl);
   if (candidates.length > 0) {
     for (const url of candidates) {
-      const alive = await headOk(url, 8000);
+      // 候補を順に試して落ちるのが正常な経路なので、失敗ログは抑止する
+      const alive = await headOk(url, 8000, { quiet: true });
       if (alive) {
         attempts.push({ method: 'web-search', ok: true });
         return {
