@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GameData } from './types';
 
 vi.mock('./finalize-game-metadata.js', async (importActual) => {
@@ -11,6 +11,7 @@ vi.mock('./finalize-game-metadata.js', async (importActual) => {
 
 import {
   selectNewReleasesWithFallback,
+  vetNewReleaseCandidate,
   hasExistenceEvidence,
 } from './select-newreleases-with-fallback';
 import { finalizeGameMetadata } from './finalize-game-metadata.js';
@@ -276,6 +277,86 @@ describe('selectNewReleasesWithFallback — 例外処理', () => {
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0].title).toBe('Error Game');
     expect(result.rejected[0].reason).toBe('not-adopted');
+  });
+});
+
+// ────────────────────────────────────────────────
+// vetNewReleaseCandidate — 不採用理由の記録（Issue #363）
+//
+// 第20号では新作枠の補充が 0 件だったが、どの候補が何で外れたのかログに残っておらず
+// 特定できなかった。インディー側（large-studio-gate ログ）と粒度を揃える。
+// ────────────────────────────────────────────────
+describe('vetNewReleaseCandidate — 不採用理由の記録', () => {
+  /** console.log に出た JSON ログのうち scope が一致するものを返す */
+  function loggedRejections(): Record<string, unknown>[] {
+    return vi
+      .mocked(console.log)
+      .mock.calls.map(([first]) => {
+        try {
+          return JSON.parse(String(first)) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (log): log is Record<string, unknown> => log?.scope === 'vet-new-release-candidate'
+      );
+  }
+
+  let logSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  // 他の describe に console.log のモックを持ち越さない
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  it('still-missing-required で不採用のとき、候補名と欠落フィールドをログに残す', async () => {
+    const A = makeGame({ title: 'No Cover Game', normalizedTitle: 'no cover game' });
+    // coverImage と sourceUrl が無く developer だけある状態を finalize 結果として返す
+    mockFinalize.mockResolvedValueOnce({
+      ok: false,
+      reason: 'still-missing-required',
+      game: { ...A, developer: 'Some Studio' },
+    });
+
+    await vetNewReleaseCandidate(A);
+
+    const logs = loggedRejections();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].title).toBe('No Cover Game');
+    expect(logs[0].reason).toBe('still-missing-required');
+    expect(logs[0].missingFields).toEqual(['coverImage', 'sourceUrl']);
+  });
+
+  it('date-mismatch で不採用のとき、理由をそのまま残す（欠落フィールドは出さない）', async () => {
+    const A = makeGame({ title: 'Wrong Date Game', normalizedTitle: 'wrong date game' });
+    mockFinalize.mockResolvedValueOnce({ ok: false, reason: 'date-mismatch', game: A });
+
+    await vetNewReleaseCandidate(A);
+
+    const logs = loggedRejections();
+    expect(logs[0].reason).toBe('date-mismatch');
+    expect(logs[0].missingFields).toBeUndefined();
+  });
+
+  it('採用された候補についてはログを出さない', async () => {
+    const A = makeGame({ title: 'Fine Game', normalizedTitle: 'fine game' });
+    mockFinalize.mockResolvedValueOnce({
+      ok: true,
+      game: {
+        ...A,
+        developer: 'Studio',
+        coverImage: 'https://x/a.jpg',
+        sourceUrls: { steam: 'https://s/a' },
+      },
+    });
+
+    expect(await vetNewReleaseCandidate(A)).not.toBeNull();
+    expect(loggedRejections()).toHaveLength(0);
   });
 });
 

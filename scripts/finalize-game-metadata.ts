@@ -285,10 +285,25 @@ export async function finalizeGameMetadata(
 }
 
 export function hasAllRequiredFields(game: GameData, required: RequiredFields): boolean {
-  if (required.cover && !game.coverImage) return false;
-  if (required.developer && !game.developer) return false;
-  if (required.sourceUrl && !hasAnySourceUrl(game)) return false;
-  return true;
+  return listMissingRequiredFields(game, required).length === 0;
+}
+
+/**
+ * 不足している必須フィールド名を返す（Issue #363）。
+ *
+ * 候補が不採用になった理由をログに出せるようにするために切り出す。
+ * `still-missing-required` だけでは「補完に失敗したのが画像なのか開発元なのか」が
+ * 分からず、第20号のように新作枠の補充が 0 件になった原因を事後に追えない。
+ */
+export function listMissingRequiredFields(
+  game: GameData,
+  required: RequiredFields
+): string[] {
+  const missing: string[] = [];
+  if (required.cover && !game.coverImage) missing.push('coverImage');
+  if (required.developer && !game.developer) missing.push('developer');
+  if (required.sourceUrl && !hasAnySourceUrl(game)) missing.push('sourceUrl');
+  return missing;
 }
 
 function hasAnySourceUrl(game: GameData): boolean {

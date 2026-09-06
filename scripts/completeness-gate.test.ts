@@ -2,7 +2,7 @@
  * Completeness Gate 単体テスト
  *
  * 設計書「検証方針」に基づく各ルールの検証。
- * headOk（R3）は vi.mock でモック。
+ * checkUrlHealth（R3）は vi.mock でモック。
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -11,11 +11,11 @@ import type { ResolverTrace } from './completeness-gate.js';
 
 // url-health をモック（R3 の HTTP チェック）
 vi.mock('./url-health.js', () => ({
-  headOk: vi.fn(),
+  checkUrlHealth: vi.fn(),
   getImageOrientation: vi.fn(),
 }));
 
-import { headOk } from './url-health.js';
+import { checkUrlHealth } from './url-health.js';
 
 import {
   checkR0,
@@ -34,7 +34,17 @@ import {
 } from './completeness-gate.js';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
 
-const mockHeadOk = vi.mocked(headOk);
+const mockCheckUrlHealth = vi.mocked(checkUrlHealth);
+
+/**
+ * R3 の到達性チェックの結果を設定する。
+ * 到達不能時は status/reason を持たせ、R3 の detail に理由が載ることも検証できるようにする。
+ */
+function mockUrlReachable(ok: boolean, status = ok ? 200 : 404): void {
+  mockCheckUrlHealth.mockResolvedValue(
+    ok ? { ok: true, status } : { ok: false, status, reason: `HTTP ${status}` }
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // テストヘルパー
@@ -120,7 +130,7 @@ function makeSteamFetch(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockHeadOk.mockResolvedValue(true);
+  mockUrlReachable(true);
   clearSteamEntityCache();
   delete process.env.COMPLETENESS_GATE;
   delete process.env.DEV_MODE;
@@ -247,7 +257,7 @@ describe('R0: プラットフォームデータ欠損チェック', () => {
   });
 
   it('R0 違反は hasMutableViolations に影響しない（warn-only）', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
     const game = makeGame({
       title: 'Platformless Game',
       platforms: [],
@@ -432,13 +442,13 @@ describe('R2b: 他プラットフォーム取りこぼし検知', () => {
 
 describe('R3: 公式 URL 到達性', () => {
   it('official が HTTP 200 → 違反なし', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
     const game = makeGame({ sourceUrls: { official: 'https://example.com' } });
     expect(await checkR3(game)).toBeNull();
   });
 
   it('official が HTTP 404 → R3 違反', async () => {
-    mockHeadOk.mockResolvedValue(false);
+    mockUrlReachable(false, 404);
     const game = makeGame({ sourceUrls: { official: 'https://dead-link.example.com' } });
     const v = await checkR3(game);
     expect(v).not.toBeNull();
@@ -446,10 +456,25 @@ describe('R3: 公式 URL 到達性', () => {
     expect(v?.detail).toContain('dead-link.example.com');
   });
 
+  it('detail に失敗理由（HTTP ステータス）を含める（Issue #363: 事後に誤判定と切り分けるため）', async () => {
+    mockUrlReachable(false, 403);
+    const game = makeGame({ sourceUrls: { official: 'https://bot-blocked.example.com' } });
+    const v = await checkR3(game);
+    // 403（Bot ブロックの疑い）と 404（本当に消滅）をレポートだけで区別できること
+    expect(v?.detail).toContain('403');
+  });
+
+  it('タイムアウトの理由もそのまま detail に載せる', async () => {
+    mockCheckUrlHealth.mockResolvedValue({ ok: false, reason: 'TimeoutError: timed out' });
+    const game = makeGame({ sourceUrls: { official: 'https://slow.example.com' } });
+    const v = await checkR3(game);
+    expect(v?.detail).toContain('TimeoutError');
+  });
+
   it('official が未定義 → チェックなし（違反なし）', async () => {
     const game = makeGame({ sourceUrls: {} });
     expect(await checkR3(game)).toBeNull();
-    expect(mockHeadOk).not.toHaveBeenCalled();
+    expect(mockCheckUrlHealth).not.toHaveBeenCalled();
   });
 });
 
@@ -644,7 +669,7 @@ describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
 
 describe('checkGame: 複数ルールの複合', () => {
   it('R1 + R4 の両方が違反するとき2件の violations を返す', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
     const game = makeGame({
       // R1: stores も official も無し
       sourceUrls: { stores: [] },
@@ -657,7 +682,7 @@ describe('checkGame: 複数ルールの複合', () => {
   });
 
   it('全ルール通過で violations が空', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
     const game = makeGame({
       sourceUrls: {
         official: 'https://example.com',
@@ -676,7 +701,7 @@ describe('checkGame: 複数ルールの複合', () => {
 
 describe('runCompletenessGate: mode=warn', () => {
   it('違反があっても selectedGames を変更しない', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
     const violatingGame = makeGame({
       title: 'Zombie Game',
       normalizedTitle: 'zombie game',
@@ -700,7 +725,7 @@ describe('runCompletenessGate: mode=warn', () => {
 
 describe('runCompletenessGate: mode=replace', () => {
   it('R1 違反の newReleases ゲームが reserves の健全なゲームに差し替えられる', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -724,7 +749,7 @@ describe('runCompletenessGate: mode=replace', () => {
   });
 
   it('補充候補が1件もない場合でも replacedGames は空で警告のみ', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -740,7 +765,7 @@ describe('runCompletenessGate: mode=replace', () => {
   });
 
   it('補充候補も R1 違反なら差し替えに使われない', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -761,7 +786,7 @@ describe('runCompletenessGate: mode=replace', () => {
   });
 
   it('健全なゲームは差し替え対象にならない', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const healthyGame = makeGame({
       title: 'Healthy Game',
@@ -779,7 +804,7 @@ describe('runCompletenessGate: mode=replace', () => {
   });
 
   it('classic の違反は violations に記録されるが差し替えはしない', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingClassic = makeGame({
       title: 'Classic Zombie',
@@ -806,7 +831,7 @@ describe('runCompletenessGate: mode=replace', () => {
 
 describe('runCompletenessGate: 違反ゲームの normalizedTitle が予備候補をブロックしない', () => {
   it('違反した newRelease と同じ normalizedTitle を持つ予備候補が差し替えに使われる', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // 違反ゲーム（R1違反）— normalizedTitle='shared-title'
     const violatingRelease = makeGame({
@@ -839,7 +864,7 @@ describe('runCompletenessGate: 違反ゲームの normalizedTitle が予備候�
 
 describe('runCompletenessGate: mode=fail', () => {
   it('newReleases 違反があると hasMutableViolations=true を返す', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -855,7 +880,7 @@ describe('runCompletenessGate: mode=fail', () => {
   });
 
   it('違反がなければ hasMutableViolations=false を返す', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const healthyGame = makeGame({
       title: 'Healthy Game',
@@ -872,7 +897,7 @@ describe('runCompletenessGate: mode=fail', () => {
   });
 
   it('classic のみに違反があっても hasMutableViolations=false（fail 対象外）', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingClassic = makeGame({
       title: 'Classic Zombie',
@@ -891,7 +916,7 @@ describe('runCompletenessGate: mode=fail', () => {
 
 describe('R2: Resolver trace との結合', () => {
   it('S&box: Steam が解決済みだが stores に乗っていない → R2 違反が検知される', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const sbox = makeGame({
       title: 'S&box',
@@ -947,7 +972,7 @@ describe('RULE_REPLACEABLE: ルール属性', () => {
 
 describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => {
   it('R1 違反（replaceable=true）でも reserves があれば差し替えて unresolved=false', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // Dungeon Blitz R 的なゲーム: IGDB のみでヒットし stores も official も無し
     const igdbOnlyGame = makeGame({
@@ -980,7 +1005,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
   });
 
   it('R1 違反があり reserves も枯渇 → shortfall 記録のみで unresolved=false（少ない記事数で発行）', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -1005,7 +1030,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
   });
 
   it('全滅ガード: shortfall の結果 newReleases と indies が両方空になったら unresolved=true', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // 両スロットとも R1 違反（replaceable）で、reserves も無い → 全除去・補充ゼロ
     const violatingRelease = makeGame({
@@ -1033,7 +1058,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
   });
 
   it('R2 違反（replaceable=false）は mode=fail で差し替えず即 unresolved=true', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const r2Game = makeGame({
       title: 'S&box',
@@ -1070,7 +1095,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
   });
 
   it('同一ゲームに R1（replaceable=true）と R2（replaceable=false）が同居 → 差し替えず unresolved=true', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // stores が空 → R1 違反、かつ Resolver が Steam を解決している → R2 違反も発生
     const mixed = makeGame({
@@ -1104,7 +1129,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
   });
 
   it('違反なしなら unresolved=false（差し替えなし・fail しない）', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const healthy1 = makeGame({
       title: 'Healthy 1',
@@ -1134,7 +1159,7 @@ describe('runCompletenessGate: mode=fail × replaceable（Issue #158）', () => 
 
 describe('runCompletenessGate: slotGates による差し替え候補の検証', () => {
   it('スロットゲート不通過の候補は補充されず shortfall になる（Project Trash 型の大手枠混入防止）', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -1176,7 +1201,7 @@ describe('runCompletenessGate: slotGates による差し替え候補の検証', 
   });
 
   it('スロットゲート通過の候補は vet 済み GameData（canonical developer 等）で補充される', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     const violatingGame = makeGame({
       title: 'Zombie Game',
@@ -1213,12 +1238,182 @@ describe('runCompletenessGate: slotGates による差し替え候補の検証', 
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: replacementSummary（補充の内訳記録、Issue #363）
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: replacementSummary', () => {
+  /** R1 違反（stores 空 = replaceable）を持つゲーム */
+  function violating(title: string): GameData {
+    return makeGame({ title, normalizedTitle: title.toLowerCase().replace(/ /g, '-'), sourceUrls: { stores: [] } });
+  }
+  /** Gate ルール上健全な候補 */
+  function healthy(title: string): GameData {
+    return makeGame({
+      title,
+      normalizedTitle: title.toLowerCase().replace(/ /g, '-'),
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/x.jpg',
+    });
+  }
+
+  it('差し替えを行わない mode=warn では空配列（記録対象なし）', async () => {
+    mockUrlReachable(true);
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(selected, undefined, [healthy('Reserve A')], 'warn');
+
+    expect(report.replacementSummary).toEqual([]);
+  });
+
+  it('補充成功時: stoppedBy=filled と採用候補が記録される', async () => {
+    mockUrlReachable(true);
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [healthy('Reserve A')] }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases');
+    expect(summary).toBeDefined();
+    expect(summary!.needed).toBe(1);
+    expect(summary!.filled).toBe(1);
+    expect(summary!.attempts).toBe(1);
+    expect(summary!.maxAttempts).toBe(3);
+    expect(summary!.stoppedBy).toBe('filled');
+    expect(summary!.candidates).toEqual([{ candidateTitle: 'Reserve A', adopted: true }]);
+  });
+
+  it('slotGate 不通過は reason=slot-gate-rejected として候補ごとに記録される', async () => {
+    mockUrlReachable(true);
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [healthy('Reserve A'), healthy('Reserve B')] },
+      { newReleases: vi.fn().mockResolvedValue(null) }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases')!;
+    expect(summary.filled).toBe(0);
+    expect(summary.candidates).toEqual([
+      { candidateTitle: 'Reserve A', adopted: false, reason: 'slot-gate-rejected' },
+      { candidateTitle: 'Reserve B', adopted: false, reason: 'slot-gate-rejected' },
+    ]);
+    // 候補プールを最後まで見た（試行上限には達していない）
+    expect(summary.stoppedBy).toBe('pool-exhausted');
+    expect(summary.attempts).toBe(2);
+  });
+
+  it('候補自身の Gate 違反は ruleId と detail 込みで記録される（R3 到達不能なら HTTP ステータスまで）', async () => {
+    // 選定中のゲームは R1 違反、予備候補は official URL が 403 で R3 違反
+    mockCheckUrlHealth.mockResolvedValue({ ok: false, status: 403, reason: 'HTTP 403' });
+    const reserve = makeGame({
+      title: 'Reserve A',
+      normalizedTitle: 'reserve-a',
+      sourceUrls: { stores: [makeStoreLink('steam')], official: 'https://example.com/game' },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/x.jpg',
+    });
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [reserve] }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases')!;
+    expect(summary.filled).toBe(0);
+    expect(summary.candidates).toHaveLength(1);
+    expect(summary.candidates[0].adopted).toBe(false);
+    expect(summary.candidates[0].reason).toContain('R3');
+    expect(summary.candidates[0].reason).toContain('403');
+  });
+
+  it('試行上限で打ち切った場合は stoppedBy=attempt-cap になり、上限を超えて候補を検証しない', async () => {
+    mockUrlReachable(true);
+    // needed=1 → maxAttempts=3。候補は 5 件用意するが 3 件しか検証されない
+    const pool = ['R1', 'R2', 'R3', 'R4', 'R5'].map((n) => healthy(`Reserve ${n}`));
+    const slotGate = vi.fn().mockResolvedValue(null);
+    const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: pool },
+      { newReleases: slotGate }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases')!;
+    expect(summary.attempts).toBe(3);
+    expect(summary.maxAttempts).toBe(3);
+    expect(summary.stoppedBy).toBe('attempt-cap');
+    expect(summary.candidates).toHaveLength(3);
+    expect(slotGate).toHaveBeenCalledTimes(3);
+  });
+
+  it('既出タイトルは skippedBeforeVetting に数え、試行回数（attempts）には数えない', async () => {
+    mockUrlReachable(true);
+    // indies 側に残る健全ゲームと同じ normalizedTitle を持つ候補 → 検証前にスキップされる
+    const duplicated = healthy('Healthy Indie');
+    const selected = makeSelectedGames({
+      newReleases: [violating('Zombie Game')],
+      indies: [healthy('Healthy Indie')],
+    });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [duplicated, healthy('Reserve A')] }
+    );
+
+    const summary = report.replacementSummary!.find((s) => s.slot === 'newReleases')!;
+    expect(summary.skippedBeforeVetting).toBe(1);
+    expect(summary.attempts).toBe(1);
+    expect(summary.filled).toBe(1);
+    expect(summary.candidates).toEqual([{ candidateTitle: 'Reserve A', adopted: true }]);
+  });
+
+  it('shortfall 時は打ち切り理由と試行回数を warn ログに出す（第20号の「補充0件」を事後に追えるようにする）', async () => {
+    mockUrlReachable(true);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const selected = makeSelectedGames({ newReleases: [violating('Zombie Game')] });
+      await runCompletenessGate(
+        selected,
+        undefined,
+        [],
+        'fail',
+        { newReleases: [healthy('Reserve A')] },
+        { newReleases: vi.fn().mockResolvedValue(null) }
+      );
+
+      const logs = warnSpy.mock.calls.map((c) => String(c[0]));
+      const shortfallLog = logs.find((l) => l.includes('枠を差し替える必要があったが'));
+      expect(shortfallLog).toBeDefined();
+      expect(shortfallLog).toContain('打ち切り理由=pool-exhausted');
+      expect(shortfallLog).toContain('検証した候補=1/3');
+      // 不採用候補の内訳も個別に出る
+      expect(logs.some((l) => l.includes('"Reserve A"') && l.includes('slot-gate-rejected'))).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // runCompletenessGate: R5（別ゲームのメタ混入）の差し替え統合
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('runCompletenessGate: R5 メタ混入ゲームの差し替え', () => {
   it('R5 different 判定: title不一致+year不一致 → 混入ゲームを差し替え、unresolved=false', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // game メタは Stardew Valley だが steamAppId=413150 は Cyberpunk 2077 の実体（完全な別作品混入）
     // title=disagree, year=disagree → different（判定表 行3）→ R5 violation
@@ -1267,7 +1462,7 @@ describe('runCompletenessGate: R5 メタ混入ゲームの差し替え', () => {
   });
 
   it('R5 uncertain 判定: title一致+year不一致 → 差し替えず uncertainIdentity に記録', async () => {
-    mockHeadOk.mockResolvedValue(true);
+    mockUrlReachable(true);
 
     // 判定表 行2: title=agree, year=disagree → uncertain（fail-open）
     // 同名リマスター/早期アクセス→正式版のような年ズレと同名異作品の区別がつかないため差し替えしない

@@ -10,7 +10,11 @@
  * 5. 予備が尽きたら targetCount 未満でも終了
  */
 
-import { finalizeGameMetadata, hasAllRequiredFields } from './finalize-game-metadata.js';
+import {
+  finalizeGameMetadata,
+  hasAllRequiredFields,
+  listMissingRequiredFields,
+} from './finalize-game-metadata.js';
 import { isLargeStudio } from './indie-classifier.js';
 import type { GameData } from './types.js';
 
@@ -158,6 +162,20 @@ export async function vetIndieCandidate(
     }
   }
 
+  // 通常ルート・話題性ルートのどちらも通らなかった理由を残す（Issue #363）。
+  // large-studio-gate だけがログに出ていて finalize 不通過は無言だったため、
+  // 「候補が何で外れたのか」がケースによって追えたり追えなかったりしていた。
+  console.log(
+    JSON.stringify({
+      scope: 'vet-indie-candidate',
+      title: game.title,
+      step: 'finalize',
+      reason: finalizeResult.reason,
+      ...(finalizeResult.reason === 'still-missing-required'
+        ? { missingFields: listMissingRequiredFields(finalizeResult.game, NORMAL_REQUIRED) }
+        : {}),
+    })
+  );
   return null;
 }
 
