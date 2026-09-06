@@ -20,7 +20,7 @@
  */
 
 import type { StoreLink, StorePlatform } from '../types.js';
-import { headOk } from '../url-health.js';
+import { checkUrlHealth } from '../url-health.js';
 import { searchStorePage, fetchAndExtractTitle, stripStoreSuffix } from './tavily-search.js';
 import { matchesAnyTitle } from '../game-identity.js';
 
@@ -46,14 +46,21 @@ export function isJapaneseUrl(url: string): boolean {
 }
 
 /**
- * IGDB 由来 URL を HEAD のみで死活確認する verifier ファクトリ。
+ * IGDB 由来 URL を死活確認する verifier ファクトリ。
  * 名前確認ができないため confidence は medium 固定。
- * PlayStation / Xbox が共有する（IGDB の website は HEAD でしか検証できない）。
+ * PlayStation / Xbox が共有する（IGDB の website は死活確認でしか検証できない）。
+ *
+ * warn ログは抑止するが、失敗理由（HTTP ステータス等）は reason に載せて
+ * attempts[] に残す。これは単発 URL の生死を見る経路なので、
+ * `store.playstation.com` が Issue #359 と同種の Bot ブロックを始めた場合に
+ * 「ストアリンクが静かに消えた」痕跡がゼロになるのを防ぐ。
  */
 export function makeHeadVerifier(timeoutMs = 8000): (url: string) => Promise<VerifyOutcome> {
   return async (url: string) => {
-    const alive = await headOk(url, timeoutMs, { quiet: true });
-    return alive ? { ok: true, confidence: 'medium' } : { ok: false, reason: 'HEAD check failed' };
+    const health = await checkUrlHealth(url, timeoutMs, { quiet: true });
+    return health.ok
+      ? { ok: true, confidence: 'medium' }
+      : { ok: false, reason: `到達性チェック失敗: ${health.reason ?? 'unknown'}` };
   };
 }
 

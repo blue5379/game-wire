@@ -6,7 +6,7 @@
  */
 
 import type { StoreLink } from '../types.js';
-import { headOk } from '../url-health.js';
+import { checkUrlHealth } from '../url-health.js';
 import { searchStorePage } from './tavily-search.js';
 
 const GOOGLEPLAY_URL_PATTERNS = ['play.google.com'];
@@ -43,8 +43,10 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
   if (input.igdbWebsites?.length) {
     const gpSite = input.igdbWebsites.find((w) => isGooglePlayUrl(w.url));
     if (gpSite) {
-      const alive = await headOk(gpSite.url, 8000, { quiet: true });
-      if (alive) {
+      // 単発 URL の生死を見る経路。warn は抑止するが理由は attempts[] に残す
+      // （Issue #359 と同種の Bot ブロックが起きたとき痕跡が消えないように）
+      const health = await checkUrlHealth(gpSite.url, 8000, { quiet: true });
+      if (health.ok) {
         attempts.push({ method: 'igdb-website', ok: true });
         return {
           link: {
@@ -56,7 +58,11 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
           attempts,
         };
       }
-      attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
+      attempts.push({
+        method: 'igdb-website',
+        ok: false,
+        reason: `到達性チェック失敗: ${health.reason ?? 'unknown'}`,
+      });
     } else {
       attempts.push({ method: 'igdb-website', ok: false, reason: 'no Google Play URL in IGDB websites' });
     }
@@ -67,10 +73,12 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
   // ─── 経路2: Tavily 検索 → HEAD 200 検証 ───────────────────────────────────
   const candidates = await searchStorePage(queryTitles, 'site:play.google.com', isGooglePlayUrl);
   if (candidates.length > 0) {
+    const candidateFailures: string[] = [];
     for (const url of candidates) {
-      // 候補を順に試して落ちるのが正常な経路なので、失敗ログは抑止する
-      const alive = await headOk(url, 8000, { quiet: true });
-      if (alive) {
+      // 候補を順に試して落ちるのが正常な経路なので、失敗ログは抑止する。
+      // ただし全滅した場合の理由は attempts[] に集約して残す
+      const health = await checkUrlHealth(url, 8000, { quiet: true });
+      if (health.ok) {
         attempts.push({ method: 'web-search', ok: true });
         return {
           link: {
@@ -82,8 +90,13 @@ export async function resolveGooglePlay(input: GooglePlayResolverInput): Promise
           attempts,
         };
       }
+      candidateFailures.push(`${url} → ${health.reason ?? 'unknown'}`);
     }
-    attempts.push({ method: 'web-search', ok: false, reason: 'all candidates failed HEAD check' });
+    attempts.push({
+      method: 'web-search',
+      ok: false,
+      reason: `全候補が到達性チェックで失敗: ${candidateFailures.join(', ')}`,
+    });
   } else {
     attempts.push({ method: 'web-search', ok: false, reason: 'no Tavily results for Google Play' });
   }

@@ -102,7 +102,12 @@ async function requestOnce(
   } catch (err) {
     // タイムアウトはリトライしない。応答しないホストは即座に再試行しても返らないことが多く、
     // 1 URL あたりの最悪実行時間が伸びる（weekly-build は timeout-minutes: 30）。
-    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    //
+    // 名前は undici の実装依存。現行（Node 20 / undici 6）は DOMException 'TimeoutError' だが、
+    // 過去には 'AbortError' だった。この関数で中断を起こすのは AbortSignal.timeout だけなので
+    // 両方をタイムアウト扱いにする（実装が戻ってもリトライが黙って復活しないように）。
+    const errName = err instanceof Error ? err.name : '';
+    const timedOut = errName === 'TimeoutError' || errName === 'AbortError';
     return { ok: false, reason: String(err), retryable: !timedOut };
   }
 }

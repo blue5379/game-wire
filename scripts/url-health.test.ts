@@ -33,14 +33,17 @@ function res(status: number): Response {
   return new Response(null, { status });
 }
 
-/** タイムアウトを表す例外（AbortSignal.timeout と同じ name を持たせる） */
-function timeoutError(): Error {
-  const err = new Error('The operation was aborted due to timeout');
-  err.name = 'TimeoutError';
-  return err;
+/**
+ * タイムアウトを表す例外。
+ * 本番で AbortSignal.timeout が投げるのは name='TimeoutError' の DOMException なので、
+ * 素の Error で name を差し替えるのではなく同じ型を使う（型が違うと
+ * `err instanceof Error` の分岐がテストと本番でずれる）。
+ */
+function timeoutError(name = 'TimeoutError'): Error {
+  return new DOMException('The operation was aborted due to timeout', name);
 }
 
-type Step = { status: number } | { error: string } | { timeout: true };
+type Step = { status: number } | { error: string } | { timeout: true } | { abortName: string };
 
 /** 呼び出しごとに指定の応答を順に返す fetch を作る */
 function fetchReturning(...sequence: Step[]) {
@@ -56,6 +59,7 @@ function fetchReturning(...sequence: Step[]) {
       throw new Error('unexpected extra fetch call');
     }
     if ('timeout' in next) throw timeoutError();
+    if ('abortName' in next) throw timeoutError(next.abortName);
     if ('error' in next) throw new Error(next.error);
     return res(next.status);
   });
@@ -201,6 +205,56 @@ describe('checkUrlHealth: タイムアウト', () => {
     expect(result.reason).toContain('TimeoutError');
     expect(calls.map((c) => c.method)).toEqual(['HEAD', 'GET']);
   });
+
+  it('中断例外の name が AbortError でもリトライしない（undici の実装差を吸収する）', async () => {
+    // undici は過去 AbortSignal.timeout の中断を AbortError として投げていた。
+    // この関数で中断を起こすのは AbortSignal.timeout だけなので、name が戻っても
+    // タイムアウト扱いを維持する（リトライが復活すると 1 URL の最悪時間が伸びる）。
+    const { impl, calls } = fetchReturning(
+      { abortName: 'AbortError' },
+      { abortName: 'AbortError' }
+    );
+
+    const result = await checkUrlHealth('https://example.com/slow', 8000, {
+      fetchImpl: impl,
+      sleepImpl: noSleep,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(calls.map((c) => c.method)).toEqual(['HEAD', 'GET']);
+  });
+});
+
+describe('checkUrlHealth: GET の本文破棄', () => {
+  it('GET フォールバックの本文はダウンロードせずに cancel する（カバー画像の全量取得を避ける）', async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls++;
+        controller.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    let call = 0;
+    const impl = vi.fn(async () => {
+      call++;
+      // 1 回目（HEAD）は 405、2 回目（GET）は本文付き 200
+      return call === 1 ? res(405) : new Response(body, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const result = await checkUrlHealth('https://cdn.example.com/cover.jpg', 8000, {
+      fetchImpl: impl,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(cancelled).toBe(true);
+    // pull は最大 1 回（stream の初期充填）で、本文を読み進めていないこと
+    expect(pulls).toBeLessThanOrEqual(1);
+  });
 });
 
 describe('checkUrlHealth: ログ抑止', () => {
@@ -296,7 +350,10 @@ describe('checkUrlHealth: リトライ', () => {
 });
 
 describe('checkUrlHealth: リダイレクト', () => {
-  it('redirect: follow を指定する（301 の公式URLを到達不能と誤判定しないため）', async () => {
+  // follow は fetch のデフォルトなので、これは挙動の変更ではなく
+  // 「将来 manual/error に変えられたら気付く」ための固定（301 の公式 URL を
+  // 到達不能と誤判定しないことがこの関数の前提）
+  it('redirect オプションを follow で明示的に指定している', async () => {
     const init: RequestInit[] = [];
     const impl = vi.fn(async (_url: string | URL | Request, opts?: RequestInit) => {
       init.push(opts ?? {});
