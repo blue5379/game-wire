@@ -433,6 +433,88 @@ describe('judgeArticles', () => {
   });
 });
 
+// judge の判定根拠の記録（Issue #363）
+// 判定件数だけでは contradicted が「記事の誤り」なのか「出典が薄かった」のか切り分けられない
+describe('judgeArticles — 判定根拠の記録', () => {
+  beforeEach(() => {
+    mockInvoke.mockReset();
+    mockIsTavilyAvailable.mockReset();
+    delete process.env.VALIDATION_LLM_JUDGE;
+    mockIsTavilyAvailable.mockReturnValue(true);
+    mockInvoke.mockResolvedValue(JSON.stringify({ claims: [] }));
+  });
+
+  it('judge に渡した出典を記事ごとに記録する（index は本文の [n] と一致）', async () => {
+    const article = makeArticle({
+      title: 'Onimusha の紹介',
+      content: '本文',
+      webSearchSources: [
+        { url: 'https://a.example/1', title: 'Source A', snippet: 'sa' },
+        { url: 'https://b.example/2', title: 'Source B', snippet: 'sb' },
+      ],
+    });
+
+    const report = await judgeArticles([article]);
+
+    expect(report.judgedSources).toEqual([
+      {
+        articleTitle: 'Onimusha の紹介',
+        sources: [
+          { index: 1, title: 'Source A', url: 'https://a.example/1' },
+          { index: 2, title: 'Source B', url: 'https://b.example/2' },
+        ],
+      },
+    ]);
+    // index は judge に渡すプロンプトの採番と一致していること
+    const prompt = String(mockInvoke.mock.calls[0][1]);
+    expect(prompt).toContain('[1] Source A');
+    expect(prompt).toContain('[2] Source B');
+  });
+
+  it('スキップした記事はタイトルと理由を記録する（無検証で通った記事を特定できるように）', async () => {
+    const report = await judgeArticles([
+      makeArticle({ title: '出典なし記事', content: '本文', webSearchSources: [] }),
+      makeArticle({
+        title: '出典あり記事',
+        content: '本文',
+        webSearchSources: [{ url: 'https://e.com', title: 'T', snippet: 's' }],
+      }),
+    ]);
+
+    expect(report.skippedArticles).toBe(1);
+    expect(report.skipped).toEqual([
+      { articleTitle: '出典なし記事', reason: 'no webSearchSources' },
+    ]);
+    expect(report.judgedSources?.map((s) => s.articleTitle)).toEqual(['出典あり記事']);
+  });
+
+  it('VALIDATION_LLM_JUDGE=false のときは全記事をスキップ理由付きで記録する', async () => {
+    process.env.VALIDATION_LLM_JUDGE = 'false';
+
+    const report = await judgeArticles([
+      makeArticle({ title: '記事1', content: '本文' }),
+      makeArticle({ title: '記事2', content: '本文' }),
+    ]);
+
+    // 号全体が無検証だったことがレポートから読み取れること
+    expect(report.skippedArticles).toBe(2);
+    expect(report.skipped).toEqual([
+      { articleTitle: '記事1', reason: 'VALIDATION_LLM_JUDGE=false' },
+      { articleTitle: '記事2', reason: 'VALIDATION_LLM_JUDGE=false' },
+    ]);
+  });
+
+  it('Tavily 未設定のときも全記事をスキップ理由付きで記録する', async () => {
+    mockIsTavilyAvailable.mockReturnValue(false);
+
+    const report = await judgeArticles([makeArticle({ title: '記事1', content: '本文' })]);
+
+    expect(report.skipped).toEqual([
+      { articleTitle: '記事1', reason: 'TAVILY_API_KEY not set' },
+    ]);
+  });
+});
+
 describe('buildJudgeUserMessage with publishDate (§11.3.5)', () => {
   it('発売予定の記事で user メッセージに追記行が含まれる', () => {
     const article = makeArticle({

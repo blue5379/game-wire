@@ -274,6 +274,20 @@ export function isLlmJudgeEnabled(): boolean {
   return process.env.VALIDATION_LLM_JUDGE !== 'false';
 }
 
+/**
+ * judge が1記事の照合根拠として実際に渡した出典（Issue #363）。
+ *
+ * judge の判定は「渡した出典に書いてあるか」だけで決まるので、出典が分からないと
+ * `contradicted` / `unverifiable` が「記事が間違っている」のか「出典が薄かった」のかを
+ * 事後に切り分けられない。第20号の調査（Issue #358）では判定結果の件数しか残っておらず、
+ * 何を根拠にした判定なのかを再検証できなかった。
+ */
+export interface JudgedArticleSources {
+  articleTitle: string;
+  /** index は buildJudgeUserMessage が出典に振る `[n]` と一致する */
+  sources: { index: number; title: string; url: string }[];
+}
+
 /** judgeArticles の集約結果 */
 export interface LlmJudgeReport {
   /** 判定された claim を verdict ごとに集計 */
@@ -282,6 +296,17 @@ export interface LlmJudgeReport {
   judgedArticles: number;
   /** スキップした記事数（webSearchSources 無しなど） */
   skippedArticles: number;
+  /**
+   * judge をスキップした記事のタイトルと理由（Issue #363）。
+   * 件数だけではどの記事が無検証で通ったのか分からない。
+   * 空配列は「スキップなし」、`undefined` は本フィールド追加前の旧レポート。
+   */
+  skipped?: { articleTitle: string; reason: string }[];
+  /**
+   * 記事ごとに judge へ渡した出典（Issue #363）。
+   * 空配列は「judge 実行なし」、`undefined` は本フィールド追加前の旧レポート。
+   */
+  judgedSources?: JudgedArticleSources[];
   /** judge 由来の警告（contradicted / unverifiable） */
   warnings: ValidationWarning[];
 }
@@ -328,31 +353,53 @@ export async function judgeArticles(
   articles: GeneratedArticle[],
   publishDate?: Date
 ): Promise<LlmJudgeReport> {
-  const empty: LlmJudgeReport = {
+  /** judge を1本も走らせずに返す結果（無効化・Tavily 未設定） */
+  const makeEmpty = (skipReason: string): LlmJudgeReport => ({
     claimsByVerdict: { supported: 0, contradicted: 0, unverifiable: 0 },
     judgedArticles: 0,
-    skippedArticles: 0,
+    skippedArticles: articles.length,
+    // 全記事スキップの理由も記録する。号全体が無検証だったことが
+    // レポートから読み取れないと、判定 0 件を「問題なし」と読み違える（Issue #363）
+    skipped: articles.map((a) => ({ articleTitle: a.title, reason: skipReason })),
+    judgedSources: [],
     warnings: [],
-  };
+  });
 
   if (!isLlmJudgeEnabled()) {
     console.log('  LLM judge is disabled (VALIDATION_LLM_JUDGE=false). Skipping.');
-    return empty;
+    return makeEmpty('VALIDATION_LLM_JUDGE=false');
   }
   if (!isTavilyAvailable()) {
     console.log('  LLM judge skipped: TAVILY_API_KEY not set (no grounding source).');
-    return empty;
+    return makeEmpty('TAVILY_API_KEY not set');
   }
 
-  const report: LlmJudgeReport = { ...empty, claimsByVerdict: { ...empty.claimsByVerdict } };
+  const report: LlmJudgeReport = {
+    claimsByVerdict: { supported: 0, contradicted: 0, unverifiable: 0 },
+    judgedArticles: 0,
+    skippedArticles: 0,
+    skipped: [],
+    judgedSources: [],
+    warnings: [],
+  };
 
   for (const article of articles) {
     if (!article.webSearchSources || article.webSearchSources.length === 0) {
       report.skippedArticles++;
+      report.skipped!.push({ articleTitle: article.title, reason: 'no webSearchSources' });
       continue;
     }
 
     console.log(`  LLM judging: ${article.title}`);
+    // judge に渡した出典を記録する。index は buildJudgeUserMessage の `[n]` と同じ採番
+    report.judgedSources!.push({
+      articleTitle: article.title,
+      sources: article.webSearchSources.map((s, i) => ({
+        index: i + 1,
+        title: s.title,
+        url: s.url,
+      })),
+    });
     const claims = await judgeArticle(article, publishDate);
     report.judgedArticles++;
     for (const c of claims) {

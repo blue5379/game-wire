@@ -125,6 +125,13 @@ export interface ValidationReport {
     claimsByVerdict: { supported: number; contradicted: number; unverifiable: number };
     judgedArticles: number;
     skippedArticles: number;
+    /** judge をスキップした記事と理由（Issue #363。旧レポートでは undefined） */
+    skipped?: { articleTitle: string; reason: string }[];
+    /** 記事ごとに judge へ渡した出典（Issue #363。旧レポートでは undefined） */
+    judgedSources?: {
+      articleTitle: string;
+      sources: { index: number; title: string; url: string }[];
+    }[];
     warnings: ValidationWarning[];
   };
   /**
