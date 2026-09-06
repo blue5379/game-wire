@@ -16,6 +16,7 @@
  */
 
 import { invokeClaudeModel } from './bedrock-client.js';
+import { BROWSER_USER_AGENT, NOT_FOUND_STATUS_CODES } from './url-health.js';
 
 /** 内容検証の判定 */
 export type UrlContentVerdict = 'match' | 'mismatch' | 'uncertain';
@@ -116,11 +117,8 @@ export function extractPageStructure(html: string, maxChars = 4000): PageStructu
  */
 export type FetchPageResult = PageStructure | 'not-found' | null;
 
-/**
- * 「URL が明確に存在しない」ことを示す HTTP ステータス。
- * 401/403（認証壁・Bot ブロック）や 429（レート制限）は URL 自体は存在しうるので含めない。
- */
-const NOT_FOUND_STATUS_CODES = new Set([404, 410]);
+// 「URL が明確に存在しない」ことを示す HTTP ステータス（NOT_FOUND_STATUS_CODES）は
+// url-health.ts と共有する。死活確認とページ取得で 404 の扱いを揃えるため。
 
 /**
  * URL のページから構造化情報（タイトル類＋本文）を取得する（Issue #135 P2-3）。
@@ -142,9 +140,8 @@ export async function fetchPageStructure(
       signal: controller.signal,
       redirect: 'follow',
       headers: {
-        // 一部サイトは UA 無しを弾くため、一般的なブラウザ UA を送る
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        // 一部サイトは UA 無しを弾くため、一般的なブラウザ UA を送る（url-health.ts と共有）
+        'User-Agent': BROWSER_USER_AGENT,
         Accept: 'text/html,application/xhtml+xml',
       },
     });

@@ -3,16 +3,150 @@
  * build-issue.ts の isUrlAlive と同等の HEAD 確認を一元化する
  */
 
-export async function headOk(url: string, timeoutMs = 5000): Promise<boolean> {
+/**
+ * ブラウザを装う User-Agent。
+ *
+ * UA 無し（undici デフォルト）のリクエストを Bot と見なして 403 を返すサイトがあり、
+ * 実在する正常なページを「到達不能」と誤判定してしまう。
+ * Issue #359: 第20号で capcom-games.com の鬼武者公式ページが UA 無しだと 403 を返し、
+ * Completeness Gate の R3 が新作記事を1本除去した（同 URL は UA 付きなら 200）。
+ *
+ * verify-official-url.ts の fetchPageStructure も同じ UA を使うため、ここで一元管理する。
+ */
+export const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+/**
+ * 「URL が明確に存在しない」ことを示す HTTP ステータス。
+ * 401/403（認証壁・Bot ブロック）や 429（レート制限）は URL 自体は存在しうるので含めない。
+ */
+export const NOT_FOUND_STATUS_CODES = new Set([404, 410]);
+
+/**
+ * リトライで回復しうる HTTP ステータス（一時的な障害・レート制限）。
+ * 403 のような恒久的な拒否は含めない（待っても変わらないため）。
+ */
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/** 死活確認の試行回数（1 回目で HEAD→GET、2 回目以降は GET のみ） */
+const MAX_ATTEMPTS = 2;
+
+/** リトライ前の待機時間の基準値。実際の待機は base × 試行回数 */
+const RETRY_BASE_DELAY_MS = 500;
+
+export interface UrlHealthResult {
+  ok: boolean;
+  /** 最終試行の HTTP ステータス。タイムアウト・ネットワークエラーでは undefined */
+  status?: number;
+  /** ok=false のときの失敗理由 */
+  reason?: string;
+}
+
+export interface UrlHealthOptions {
+  /** テストで差し替える fetch 実装 */
+  fetchImpl?: typeof fetch;
+  /** テストで待機を無効化するためのフック */
+  sleepImpl?: (ms: number) => Promise<void>;
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * URL に 1 回リクエストして到達可否を返す。
+ *
+ * GET の場合は本文を読まずに破棄する。カバー画像の死活確認にも使われるため、
+ * 画像を全量ダウンロードしないようにするための措置。
+ */
+async function requestOnce(
+  url: string,
+  method: 'HEAD' | 'GET',
+  timeoutMs: number,
+  fetchImpl: typeof fetch
+): Promise<UrlHealthResult> {
   try {
-    const res = await fetch(url, {
-      method: 'HEAD',
+    const res = await fetchImpl(url, {
+      method,
+      redirect: 'follow',
       signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        'User-Agent': BROWSER_USER_AGENT,
+        // 画像・HTML どちらの死活確認にも使うため種別を限定しない
+        Accept: '*/*',
+      },
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (method === 'GET') {
+      await res.body?.cancel().catch(() => {});
+    }
+    return res.ok
+      ? { ok: true, status: res.status }
+      : { ok: false, status: res.status, reason: `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, reason: String(err) };
   }
+}
+
+/**
+ * URL の死活確認を行い、失敗時は HTTP ステータスを含む理由を返す。
+ *
+ * 単純な HEAD 一発では以下を誤判定するため、多段で確認する（Issue #359）:
+ * - Bot 判定で 403 を返すサイト → ブラウザ UA を送る
+ * - HEAD を許可しないサイト → GET でフォールバックする
+ * - 一時的な 5xx / タイムアウト → リトライする
+ *
+ * 404/410 は「URL が存在しない」明確なシグナルなので、フォールバックもリトライもせず即確定する。
+ */
+export async function checkUrlHealth(
+  url: string,
+  timeoutMs = 5000,
+  options: UrlHealthOptions = {}
+): Promise<UrlHealthResult> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep = options.sleepImpl ?? defaultSleep;
+
+  let last: UrlHealthResult = { ok: false, reason: 'no attempt' };
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    // 1 回目のみ HEAD を試す。2 回目以降は HEAD が失敗済みなので GET から始める
+    if (attempt === 1) {
+      last = await requestOnce(url, 'HEAD', timeoutMs, fetchImpl);
+      if (last.ok) return last;
+      if (last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status)) return last;
+    }
+
+    last = await requestOnce(url, 'GET', timeoutMs, fetchImpl);
+    if (last.ok) return last;
+    if (last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status)) return last;
+
+    const retryable = last.status === undefined || RETRYABLE_STATUS_CODES.has(last.status);
+    if (!retryable || attempt === MAX_ATTEMPTS) break;
+    await sleep(RETRY_BASE_DELAY_MS * attempt);
+  }
+
+  console.warn(
+    JSON.stringify({
+      scope: 'url-health',
+      step: 'checkUrlHealth',
+      url,
+      status: last.status,
+      reason: last.reason,
+    })
+  );
+  return last;
+}
+
+/**
+ * URL が到達可能かを boolean で返す（既存呼び出し元向けの薄いラッパ）。
+ * 失敗理由が必要な場合は checkUrlHealth を使う。
+ */
+export async function headOk(
+  url: string,
+  timeoutMs = 5000,
+  options: UrlHealthOptions = {}
+): Promise<boolean> {
+  const result = await checkUrlHealth(url, timeoutMs, options);
+  return result.ok;
 }
 
 export type ImageOrientation = 'portrait' | 'landscape';
