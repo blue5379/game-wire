@@ -33,7 +33,7 @@ import {
   RULE_REPLACEABLE,
 } from './completeness-gate.js';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
-import { resetSteamApiClient } from './steam-api-client.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 
 const mockCheckUrlHealth = vi.mocked(checkUrlHealth);
 
@@ -136,6 +136,10 @@ beforeEach(() => {
   // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
   // このファイル内の多数の「Steam API 失敗」テストが積み重なってサーキットが開くのを防ぐ。
   resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。このファイルは fake timers を
+  // 使っていないため、注入した sleepImpl で実時間の待機を無くす。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
   delete process.env.COMPLETENESS_GATE;
   delete process.env.DEV_MODE;
 });

@@ -4,13 +4,17 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
-import { resetSteamApiClient } from './steam-api-client.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 
 beforeEach(() => {
   clearSteamEntityCache();
   // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
   // このファイル内の多数の「失敗」テストが積み重なってサーキットが開くことを防ぐ。
   resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングの両方で待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。注入した sleepImpl で
+  // 実時間の待機を無くす（fake timers は setTimeout ベースの箇所を後方互換で残す）。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
   // steam-api-client.ts はリトライ間の待機に setTimeout を使う（Issue #360）。
   // 実時間で待たせないため fake timers を使う（各テストで vi.runAllTimersAsync() で進める）。
   vi.useFakeTimers();

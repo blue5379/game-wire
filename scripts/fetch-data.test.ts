@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { resetSteamApiClient } from './steam-api-client.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 import {
   parseSteamReleaseDate,
   isQualifiedCompanyName,
@@ -36,6 +36,9 @@ import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
 // 連続失敗が閾値に達して以降のテストが「サーキットが開いている」ことによる無関係な失敗になる。
 beforeEach(() => {
   resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。注入した sleepImpl で実時間の待機を無くす。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
 });
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）

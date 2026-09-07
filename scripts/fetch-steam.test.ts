@@ -1,5 +1,21 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isSameSteamApp, fetchSteamAppName, fetchSteamData } from './fetch-steam';
+import {
+  resetSteamApiClient,
+  configureSteamApiClient,
+  getSteamApiHealth,
+} from './steam-api-client.js';
+
+// steam-api-client.ts のサーキットブレーカ・統計・ペーシング間隔はプロセス内で共有される。
+// getAppDetails（fetch-steam.ts）が fetchSteamJson 経由になった（Issue #360 実測後対応）ため、
+// このファイルの多数のテストが積み重なって状態を汚染しないようにリセットする。
+beforeEach(() => {
+  resetSteamApiClient();
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
+});
 
 describe('isSameSteamApp - Issue #102 appId 取り違え検出', () => {
   // Vol.12 動作確認で実際に観測された取り違えケース
@@ -662,5 +678,85 @@ describe('fetchSteamData - Steam 経路の DLC 除外（PR-A）', () => {
     // appId と name が同じ一次ソース（Storefront）から来ていること
     expect(adopted!.name).toBe(CYBERPUNK_2077.name);
     expect(adopted!.name).not.toBe(CONTAMINATED_FEATURED_NAME);
+  });
+});
+
+/**
+ * Issue #360 実測後対応（E）: getAppDetails が fetchSteamJson 経由になったことの回帰テスト。
+ *
+ * ライブ実測（2026-09-07）では appdetails がラン中で最多の呼び出し元でありながら、
+ * 素の fetch を使っていたため失敗が getSteamApiHealth() の集計に一切現れなかった。
+ * ここでは appdetails の失敗が (1) 既存の fail-open 挙動（候補から除外）を保ちつつ、
+ * (2) getSteamApiHealth() の集計に載ることの両方を確認する。
+ */
+describe('getAppDetails の fetchSteamJson 統合（Issue #360 実測後対応）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it('appdetails が HTTP 500 で失敗すると fail-open（type 不明として除外）される一方、getSteamApiHealth() の統計に記録される', async () => {
+    const BROKEN_APP_ID = 999001;
+    vi.spyOn(global, 'fetch').mockImplementation((input: any) => {
+      const url = String(input);
+      if (url.includes('featuredcategories')) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              top_sellers: {
+                items: [{ id: BROKEN_APP_ID, name: 'Broken AppDetails Game' }],
+              },
+            }),
+        } as Response);
+      }
+      if (url.includes('GetMostPlayedGames')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ response: { ranks: [] } }),
+        } as Response);
+      }
+      if (url.includes('appdetails')) {
+        // 常に HTTP 500（リトライ対象。STEAM_MAX_ATTEMPTS 回試行してすべて失敗する）
+        return Promise.resolve({ ok: false, status: 500 } as Response);
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response);
+    });
+
+    vi.useFakeTimers();
+    const promise = fetchSteamData();
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    // fail-open: appdetails 失敗時は type が取れず、既存挙動どおり候補から除外される
+    // （getAppDetails の戻り値の意味・呼び出し側の解釈は変えない）
+    expect(result.success).toBe(true);
+    expect(result.data!.topSellers.find((g) => g.appId === BROKEN_APP_ID)).toBeUndefined();
+
+    // 第20号の実測（appdetails 一律失敗）ではこの失敗が一切ヘルス集計に現れなかった。
+    // fetchSteamJson 経由になった今は、失敗が getSteamApiHealth() に記録される。
+    const health = getSteamApiHealth();
+    expect(health.failed).toBeGreaterThanOrEqual(1);
+    expect(health.statusCounts['500']).toBeGreaterThanOrEqual(1);
+  });
+});
+
+/**
+ * Issue #360 実測後対応（F）: リスト系エンドポイント（featuredcategories /
+ * GetMostPlayedGames）が単一 appdetails 用の STEAM_API_TIMEOUT_MS ではなく、
+ * より長い STEAM_LIST_API_TIMEOUT_MS を使っていることをソースの結線で確認する。
+ * （`AbortSignal.timeout` に渡される実際の値を実行時に検証する手段が無いため、
+ * 定数が分離され、fetch-steam.ts が正しい定数を import・使用していることを確認する）
+ */
+describe('fetchWithRetry のタイムアウト定数（F対応）', () => {
+  it('fetch-steam.ts は STEAM_LIST_API_TIMEOUT_MS を import して使用し、単一 appdetails 用の STEAM_API_TIMEOUT_MS には依存しない', () => {
+    const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fetch-steam.ts');
+    const source = fs.readFileSync(filePath, 'utf-8');
+
+    expect(source).toMatch(/import\s*\{[^}]*STEAM_LIST_API_TIMEOUT_MS[^}]*\}\s*from\s*['"]\.\/steam-api-client\.js['"]/);
+    expect(source).toContain('AbortSignal.timeout(STEAM_LIST_API_TIMEOUT_MS)');
+    // fetchWithRetry（リスト系）が単一 appdetails 用の定数を使う行が無いこと
+    // （コメント上の言及は許容し、実際のコード行だけを見る）
+    expect(source).not.toContain('AbortSignal.timeout(STEAM_API_TIMEOUT_MS)');
   });
 });

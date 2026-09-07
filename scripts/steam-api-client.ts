@@ -8,13 +8,37 @@
  *
  * このモジュールは Steam への全 HTTP 呼び出しを一本化し、以下を提供する:
  * - リトライ + 指数バックオフ（Retry-After ヘッダがあれば優先）
- * - ラン単位のサーキットブレーカ（全滅検知。#360 対応方針4）
+ * - ラン単位のサーキットブレーカ（全滅検知。#360 対応方針4）+ クールダウン後の半開プローブ
+ * - 適応型ペーシング（429 を観測すると呼び出し間隔を伸ばす）
  * - 呼び出し結果の集計（getSteamApiHealth）
  *
  * 呼び出し元（steam-entity.ts / resolvers/steam.ts / fetch-data.ts /
- * finalize-game-metadata.ts）の既存の fail-open 挙動・戻り値の意味は変えない。
+ * finalize-game-metadata.ts / fetch-steam.ts）の既存の fail-open 挙動・戻り値の意味は変えない。
  * このモジュールは「HTTP レベルの成否」だけを扱い、レスポンス本文の `success: false` 判定は
  * 呼び出し側の責務のままにする。
+ *
+ * ## PR #367 後の実測で判明した後退（このリビジョンの変更点の背景）
+ *
+ * PR #367（リトライ + サーキットブレーカの新設）後、`DEV_MODE=true npm run fetch-data` を
+ * ライブ実行したところ、以下が実測された（2026-09-07）:
+ * - `data/steam-api-health.json`: `{"total":250,"succeeded":155,"failed":95,
+ *   "consecutiveFailures":5,"circuitOpen":true,"statusCounts":{"429":5,"circuit-open":90}}`。
+ *   最初の155呼び出しは全部成功し、その直後に 429 が5連続で発生してサーキットが開き、
+ *   残り90呼び出しが `attempts=0` で即失敗した。
+ * - Storefront 補完で59件、Completeness Gate の R5（同一性照合）で対象5件中5件
+ *   （appId 620=Portal 2 含む）が `circuit-open` によりスキップされた。Portal 2 の
+ *   appdetails が落ちるわけがなく、これは Steam 障害ではなく自分のサーキットが原因だった。
+ * - 別途 appdetails を実測したところ、ペーシング無し（実効約200ms間隔）で155件成功後に
+ *   429、700ms間隔で200件成功後に429。Steam Storefront appdetails の実効上限は
+ *   おおよそ200リクエスト/5分（約1.5秒間隔）と見積もれる。
+ * - fetch-data の全フェーズ（Storefront補完→候補選定→Reconcile→公式URL取得→Gate）は
+ *   1回のランの中で数分に及ぶ（実測ではラン開始から終了まで約5分）。
+ *
+ * つまり「429（レート制限）」と「本当の全滅（403/5xx/ネットワーク断）」を区別せずに同じ
+ * consecutiveFailures で数えていたため、429 の連続がサーキットを誤って開かせ、
+ * ラン後半の重要なフェーズ（R5 の同一性照合）まで巻き込んでいた。
+ * このリビジョンでは (A) 適応型ペーシングで429の発生自体を減らし、(B) 429をサーキットの
+ * 全滅検知から分離し、(C) クールダウン後に半開プローブで自動回復できるようにする。
  *
  * ## プロセスを跨いだ集計（writeSteamApiHealth / readSteamApiHealth / mergeSteamApiHealth）
  *
@@ -31,8 +55,21 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-/** 1 回の Steam API リクエストのタイムアウト（ミリ秒） */
+/** 1 回の Steam API リクエストのタイムアウト（ミリ秒）。単一 appdetails 用 */
 export const STEAM_API_TIMEOUT_MS = 10000;
+
+/**
+ * リスト系（バルク）エンドポイント用のタイムアウト（ミリ秒）。
+ *
+ * `featuredcategories`（Top Sellers / New Releases / Coming Soon）と
+ * `GetMostPlayedGames`（Top Played）はパイプラインの根データであり、失敗すると
+ * `fetchTopSellers` / `fetchNewReleases` / `fetchTopPlayed` が `[]` を返して
+ * 号の候補プールがゼロになりうる。`AbortSignal.timeout` は `await response.json()` の
+ * 本文読み出しにも効くため、単一 appdetails と同じ STEAM_API_TIMEOUT_MS（10秒）だと
+ * 応答がやや遅いだけで成功していたはずのケースまで 3 試行すべて abort しうる。
+ * 単一 appdetails とバルクのリスト系では必要な時間予算が異なるため、別の定数として分離する。
+ */
+export const STEAM_LIST_API_TIMEOUT_MS = 30000;
 
 /** 最大試行回数（初回 + リトライ） */
 export const STEAM_MAX_ATTEMPTS = 3;
@@ -43,6 +80,25 @@ export const STEAM_RETRY_BASE_DELAY_MS = 1000;
 /** Retry-After ヘッダ（秒数形式）を尊重する際の待機時間の上限（ミリ秒） */
 export const STEAM_RETRY_AFTER_MAX_MS = 30000;
 
+// ─── 適応型ペーシング（実測3・実測4対応） ─────────────────────────────────
+//
+// 実測4: 旧実装のペーシングは `storefrontEnrichedCount % 5 === 0` のときだけ 1000ms
+// 待つもので、しかも成功パスにしか無く失敗した呼び出しは一切ペーシングされなかった。
+// 実効間隔は約200msで、これで155件成功した時点で429が発生した（実測1）。
+// 700ms間隔では200件成功して429が発生した（実測3）。
+// このモジュールは「すべての HTTP 試行の直前」に間隔を空けることで、429 の発生自体を
+// 減らす。429 を観測したら間隔を伸ばし、ラン中は下げない（Steam の窓は分単位のため、
+// 下げるとすぐ叩き潰す）。
+
+/** 通常時の最小リクエスト間隔（ミリ秒） */
+export const STEAM_MIN_REQUEST_INTERVAL_MS = 400;
+
+/** 429 を観測した後に間隔を上げる際の下限（ミリ秒）。実測3の「約1.5秒間隔」に対応 */
+export const STEAM_RATE_LIMITED_INTERVAL_MS = 1500;
+
+/** ペーシング間隔の上限（ミリ秒） */
+export const STEAM_PACING_MAX_INTERVAL_MS = 3000;
+
 /**
  * 連続失敗がこの件数に達したらサーキットを開く（= 全滅検知）。
  *
@@ -52,10 +108,50 @@ export const STEAM_RETRY_AFTER_MAX_MS = 30000;
  * 10分超を無駄に消費し、記事生成・ビルド・デプロイという後続ステップの時間を圧迫する。
  * 連続失敗が閾値に達した時点で「Steam が落ちている」と判断し、以降は即座に失敗を返す。
  *
- * 半開（自動回復）は実装しない: これは週次バッチであり、次回の cron 実行そのものが
- * 実質的な回復チェックになる。同一ラン内で回復を試み続ける必要性が薄い。
+ * この閾値は 429（レート制限）では加算されない。429 は STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD
+ * という別カウンタで扱う（下記参照。理由は当該定数の JSDoc）。
+ *
+ * ### 半開（自動回復）について（このリビジョンで実装。旧 JSDoc の判断を反証）
+ *
+ * 旧リビジョンではここに「半開は実装しない: 週次バッチであり、次回の cron 実行そのものが
+ * 実質的な回復チェックになる」と書いていたが、これは実測で反証された。
+ * fetch-data の1回のランは Storefront 補完 → 候補選定 → Reconcile → 公式日本語URL取得 →
+ * Completeness Gate という複数フェーズを持ち、実測ではラン開始から終了まで約5分かかる
+ * （公式URL取得フェーズが Tavily + Bedrock で数分を要するため）。
+ * 実測1（2026-09-07）では、ラン序盤の Storefront 補完で開いたサーキットが、
+ * 約4分後に走る R5（同一性照合。fetch-data 内で最も重要度が高いフェーズ）を
+ * 対象5件中5件（100%）スキップさせた。つまり「同一ラン内の別フェーズ」が
+ * 実在し、かつ後のフェーズの方が前のフェーズより重要度が高いことがある以上、
+ * 次回の cron 実行を待つのでは遅すぎる。STEAM_CIRCUIT_COOLDOWN_MS 経過後に
+ * 1回だけプローブを通す半開状態を実装する（詳細は STEAM_CIRCUIT_COOLDOWN_MS 参照）。
  */
 export const STEAM_CIRCUIT_FAILURE_THRESHOLD = 5;
+
+/**
+ * 429（レート制限）による論理呼び出しの連続失敗がこの件数に達したらサーキットを開く。
+ *
+ * 429 は STEAM_CIRCUIT_FAILURE_THRESHOLD の consecutiveFailures には加算しない
+ * （リセットもしない）。理由: 429 はサーバが生きていることの証明であり、正しい対処は
+ * 「止める」ではなく「遅くする」こと。サーキットブレーカの目的（このモジュール冒頭の
+ * JSDoc）は全滅検知（403 全滅・5xx・ネットワーク断）であって、レート制限はその対処法が
+ * 全く異なる別種の障害である。
+ * 実測1では 429 が5件連続しただけで全滅検知（consecutiveFailures 由来のサーキット）が
+ * 誤発火し、Portal 2（appId=620）の同一性照合まで落とした。これは Steam 障害ではなく
+ * 自分の呼び出し過多が原因だった（実測3）。
+ *
+ * ただし 429 が無限に続く場合に走り続けないよう、別カウンタで上限を設ける。
+ * このカウンタは成功でリセットする。
+ */
+export const STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD = 10;
+
+/**
+ * サーキットが開いてから、次の1回のプローブ（半開）を許可するまでの待機時間（ミリ秒）。
+ *
+ * 実測2: fetch-data の全フェーズ（Storefront補完→候補選定→Reconcile→公式URL取得→
+ * Completeness Gate）は1回のランで数分に及ぶ。60秒程度のクールダウンであれば、
+ * ラン序盤で開いたサーキットがラン終盤の重要フェーズ（R5）に到達する前に回復を試みられる。
+ */
+export const STEAM_CIRCUIT_COOLDOWN_MS = 60000;
 
 /**
  * リトライ対象の HTTP ステータス。
@@ -85,6 +181,13 @@ export interface SteamApiHealth {
   circuitOpen: boolean;
   /** HTTP ステータス別の失敗件数。ネットワーク例外は 'network' キーに集計 */
   statusCounts: Record<string, number>;
+  /**
+   * 観測した 429 レスポンスの総数（リトライで最終的に成功した分も含む。observability 用）。
+   * optional: このフィールド追加前に書き出された旧スナップショット（readSteamApiHealth 経由）
+   * には存在しないため、mergeSteamApiHealth はこのフィールドが無いスナップショットと
+   * 混在しても壊れないようにする。
+   */
+  rateLimitHits?: number;
 }
 
 // ─── モジュール状態（プロセス内・ラン単位） ─────────────────────────────────
@@ -93,24 +196,126 @@ let succeeded = 0;
 let failed = 0;
 let consecutiveFailures = 0;
 let circuitOpen = false;
+let circuitOpenedAt: number | undefined;
+let probeInFlight = false;
+let rateLimitConsecutiveFailures = 0;
+let rateLimitHits = 0;
 const statusCounts: Record<string, number> = {};
+
+// ─── テスト用に注入可能な依存（本番コードからは configureSteamApiClient を呼ばない） ─────
+let sleepImpl: (ms: number) => Promise<void> = defaultSleep;
+let currentPacingIntervalMs = STEAM_MIN_REQUEST_INTERVAL_MS;
+let lastRequestStartedAt: number | undefined;
+/** 並列呼び出し（fetchSteamEntity の Promise.all 等）でもペーシングを直列化するための鎖 */
+let pacingChain: Promise<void> = Promise.resolve();
 
 function recordFailureStatus(key: string): void {
   statusCounts[key] = (statusCounts[key] ?? 0) + 1;
 }
 
-/** 連続失敗をカウントし、閾値に達していればサーキットを開く */
+/** 429 以外の失敗を連続失敗としてカウントし、閾値に達していればサーキットを開く */
 function recordFailure(statusKey: string): void {
   failed++;
   consecutiveFailures++;
   recordFailureStatus(statusKey);
   if (consecutiveFailures >= STEAM_CIRCUIT_FAILURE_THRESHOLD) {
     circuitOpen = true;
+    circuitOpenedAt = Date.now();
   }
+}
+
+/**
+ * 429 の失敗を専用カウンタでカウントする（B対応）。
+ * consecutiveFailures には触れない（加算もリセットもしない）。
+ */
+function recordRateLimitFailure(): void {
+  failed++;
+  rateLimitConsecutiveFailures++;
+  recordFailureStatus('429');
+  if (rateLimitConsecutiveFailures >= STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD) {
+    circuitOpen = true;
+    circuitOpenedAt = Date.now();
+  }
+}
+
+/** 429 を観測した際にペーシング間隔を伸ばす。ラン中は下げない（A対応） */
+function bumpPacingIntervalForRateLimit(): void {
+  currentPacingIntervalMs = Math.min(
+    Math.max(currentPacingIntervalMs * 2, STEAM_RATE_LIMITED_INTERVAL_MS),
+    STEAM_PACING_MAX_INTERVAL_MS
+  );
 }
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * すべての HTTP 試行の直前で呼ぶ。現在のペーシング間隔（currentPacingIntervalMs）が
+ * 前回のリクエスト開始から経過するまで待つ。
+ *
+ * `fetchSteamEntity` は英語/日本語を Promise.all で同時に投げるため、
+ * 単純に「lastRequestStartedAt を見て待つ」だけでは同時に来た2本が同じ値を見て
+ * 両方すぐ通ってしまう。pacingChain でウェイトの計算・更新自体を直列化することで、
+ * 同時呼び出しでも間隔が空くことを保証する。
+ */
+async function gatePacing(): Promise<void> {
+  const previous = pacingChain;
+  let release: () => void = () => {};
+  const next = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  pacingChain = next;
+  await previous;
+
+  const now = Date.now();
+  const elapsedMs = lastRequestStartedAt === undefined ? Infinity : now - lastRequestStartedAt;
+  const waitMs = Math.max(0, currentPacingIntervalMs - elapsedMs);
+  if (waitMs > 0) {
+    await sleepImpl(waitMs);
+  }
+  lastRequestStartedAt = Date.now();
+  release();
+}
+
+/**
+ * サーキットの状態を評価する。
+ * - 'proceed': サーキットは閉じている。通常どおり呼び出してよい
+ * - 'probe': サーキットは開いているが、クールダウンを経過し、かつ他にプローブ中の
+ *   呼び出しが無い。この呼び出しが半開プローブになる（呼び出し元が probeInFlight を
+ *   立てて実際に fetch する）
+ * - 'skip': サーキットが開いていて、クールダウン未経過またはプローブが既に進行中。
+ *   即座に失敗を返す
+ */
+function evaluateCircuitGate(): 'proceed' | 'probe' | 'skip' {
+  if (!circuitOpen) return 'proceed';
+  if (probeInFlight) return 'skip';
+  const cooldownElapsed =
+    circuitOpenedAt !== undefined && Date.now() - circuitOpenedAt >= STEAM_CIRCUIT_COOLDOWN_MS;
+  if (!cooldownElapsed) return 'skip';
+  probeInFlight = true;
+  return 'probe';
+}
+
+/** 半開プローブが成功した: サーキットを閉じ、両方の連続失敗カウンタをリセットする */
+function closeCircuitAfterProbeSuccess(): void {
+  circuitOpen = false;
+  circuitOpenedAt = undefined;
+  probeInFlight = false;
+  console.warn(
+    JSON.stringify({
+      scope: 'steam-api-client',
+      step: 'circuit-half-open-probe',
+      result: 'recovered',
+      reason: '半開プローブが成功したためサーキットを閉じた',
+    })
+  );
+}
+
+/** 半開プローブが失敗した: サーキットは開いたままで、クールダウンを現在時刻から再開する */
+function reopenCircuitAfterProbeFailure(): void {
+  probeInFlight = false;
+  circuitOpenedAt = Date.now();
 }
 
 /**
@@ -143,7 +348,13 @@ function warnUnlessQuiet(
  * - 404 等の非リトライ対象ステータスは即座に失敗を返す（attempts: 1）。
  * - HTTP 200 でレスポンス本文が `success: false` のケースは判定しない。`{ ok: true, json }`
  *   を返し、判定は呼び出し側の責務とする（このレイヤはあくまで HTTP レベルの成否のみを見る）。
- * - サーキットが開いている間は fetch を呼ばず即座に失敗を返す。
+ * - すべての HTTP 試行の直前でペーシング（gatePacing）を待つ。429 を観測すると以降の
+ *   間隔が伸びる（ラン中は下がらない）。
+ * - 429 はサーキットの consecutiveFailures には加算しない。別カウンタ
+ *   （STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD）で扱う。
+ * - サーキットが開いている間は、クールダウン（STEAM_CIRCUIT_COOLDOWN_MS）未経過なら
+ *   fetch を呼ばず即座に失敗を返す。クールダウン経過後は1回だけ半開プローブとして
+ *   実際に fetch する。
  *
  * @param url リクエスト先 URL
  * @param opts.fetchImpl テストで差し替える fetch 実装
@@ -158,27 +369,22 @@ export async function fetchSteamJson(
 
   total++;
 
-  if (circuitOpen) {
+  const gate = evaluateCircuitGate();
+  if (gate === 'skip') {
     failed++;
     // 既にサーキットが開いている状態を維持するだけなので consecutiveFailures は増やさない。
     // ただし statusCounts には計上する（バグ3対応）: これを忘れると
     // sum(statusCounts) < failed になり、レポートを読む側が内訳を合算しても
     // 失敗総数に一致しない（サーキットで打ち切った分だけ内訳から漏れる）。
     recordFailureStatus('circuit-open');
-    warnUnlessQuiet(quiet, {
-      url,
-      reason: `circuit-open: 連続失敗が${STEAM_CIRCUIT_FAILURE_THRESHOLD}件に達したため呼び出しをスキップ (attempts=0)`,
-      circuitOpen: true,
-    });
-    return {
-      ok: false,
-      reason: `circuit-open: 連続失敗が${STEAM_CIRCUIT_FAILURE_THRESHOLD}件に達したため呼び出しをスキップ (attempts=0)`,
-      attempts: 0,
-      circuitOpen: true,
-    };
+    const reason = 'circuit-open: サーキット開放中のため呼び出しをスキップ (attempts=0)';
+    warnUnlessQuiet(quiet, { url, reason, circuitOpen: true });
+    return { ok: false, reason, attempts: 0, circuitOpen: true };
   }
+  const isProbe = gate === 'probe';
 
   for (let attempt = 1; attempt <= STEAM_MAX_ATTEMPTS; attempt++) {
+    await gatePacing();
     try {
       const res = await fetchImpl(url, { signal: AbortSignal.timeout(STEAM_API_TIMEOUT_MS) });
 
@@ -194,13 +400,25 @@ export async function fetchSteamJson(
         const json = await res.json();
         succeeded++;
         consecutiveFailures = 0;
+        rateLimitConsecutiveFailures = 0;
+        if (isProbe) closeCircuitAfterProbeSuccess();
         return { ok: true, json, attempts: attempt };
+      }
+
+      if (res.status === 429) {
+        rateLimitHits++;
+        bumpPacingIntervalForRateLimit();
       }
 
       const retryable = STEAM_RETRYABLE_STATUS.has(res.status);
       const isLastAttempt = attempt === STEAM_MAX_ATTEMPTS;
       if (!retryable || isLastAttempt) {
-        recordFailure(String(res.status));
+        if (res.status === 429) {
+          recordRateLimitFailure();
+        } else {
+          recordFailure(String(res.status));
+        }
+        if (isProbe) reopenCircuitAfterProbeFailure();
         const reason = `HTTP ${res.status} (attempts=${attempt})`;
         warnUnlessQuiet(quiet, { url, status: res.status, reason, attempts: attempt, circuitOpen });
         return { ok: false, reason, status: res.status, attempts: attempt, circuitOpen };
@@ -208,17 +426,18 @@ export async function fetchSteamJson(
 
       const retryAfterMs = parseRetryAfterMs(res);
       const backoffMs = retryAfterMs ?? STEAM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
-      await defaultSleep(backoffMs);
+      await sleepImpl(backoffMs);
     } catch (err) {
       const isLastAttempt = attempt === STEAM_MAX_ATTEMPTS;
       if (isLastAttempt) {
         recordFailure('network');
+        if (isProbe) reopenCircuitAfterProbeFailure();
         const reason = `${String(err)} (attempts=${attempt})`;
         warnUnlessQuiet(quiet, { url, reason, attempts: attempt, circuitOpen });
         return { ok: false, reason, attempts: attempt, circuitOpen };
       }
       const backoffMs = STEAM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
-      await defaultSleep(backoffMs);
+      await sleepImpl(backoffMs);
     }
   }
 
@@ -235,19 +454,43 @@ export function getSteamApiHealth(): SteamApiHealth {
     consecutiveFailures,
     circuitOpen,
     statusCounts: { ...statusCounts },
+    rateLimitHits,
   };
 }
 
-/** テスト用にモジュール状態を初期化する */
+/**
+ * 依存を注入する（テスト専用）。本番コード（fetchSteamJson の呼び出し元）からは呼ばない。
+ * resetSteamApiClient() で default に戻る。
+ *
+ * - sleepImpl: リトライのバックオフ待機・ペーシング待機の両方で使われる sleep 実装を差し替える
+ * - minRequestIntervalMs: ペーシングの現在間隔（currentPacingIntervalMs）を直接上書きする
+ */
+export function configureSteamApiClient(opts: {
+  sleepImpl?: (ms: number) => Promise<void>;
+  minRequestIntervalMs?: number;
+}): void {
+  if (opts.sleepImpl !== undefined) sleepImpl = opts.sleepImpl;
+  if (opts.minRequestIntervalMs !== undefined) currentPacingIntervalMs = opts.minRequestIntervalMs;
+}
+
+/** テスト用にモジュール状態を初期化する（configureSteamApiClient の設定も default に戻す） */
 export function resetSteamApiClient(): void {
   total = 0;
   succeeded = 0;
   failed = 0;
   consecutiveFailures = 0;
   circuitOpen = false;
+  circuitOpenedAt = undefined;
+  probeInFlight = false;
+  rateLimitConsecutiveFailures = 0;
+  rateLimitHits = 0;
   for (const key of Object.keys(statusCounts)) {
     delete statusCounts[key];
   }
+  sleepImpl = defaultSleep;
+  currentPacingIntervalMs = STEAM_MIN_REQUEST_INTERVAL_MS;
+  lastRequestStartedAt = undefined;
+  pacingChain = Promise.resolve();
 }
 
 /** ステージ名付きのヘルススナップショット（プロセス跨ぎの受け渡し用） */
@@ -269,6 +512,9 @@ export function writeSteamApiHealth(filePath: string, stage: string): void {
 /**
  * スナップショットを読み込む。ファイルが無い・壊れている場合は undefined を返す
  * （DEV 実行や fetch-data を経ない単独実行で build-issue.ts を落とさないため）。
+ *
+ * rateLimitHits は必須フィールド検査に含めない: このフィールド追加前に書き出された
+ * 旧スナップショットにはこのキーが無く、それを読めなくしてはいけない。
  */
 export function readSteamApiHealth(filePath: string): SteamApiHealthSnapshot | undefined {
   try {
@@ -306,6 +552,9 @@ export function readSteamApiHealth(filePath: string): SteamApiHealthSnapshot | u
  *   ステージ B の先頭の失敗が連続している」という意味での連続性は定義できない。
  *   合算（加算）すると実態より深刻に見える誤解を生むため、各ステージ内で観測された
  *   最大の連続失敗数のみを代表値として残す。
+ * - rateLimitHits: 加算。両方 undefined なら undefined のまま（旧スナップショットのみの
+ *   合算では undefined を維持し、「観測していない」と「0件だった」を区別する）。
+ *   片方でも数値を持つステージがあれば、無いステージは 0 として合算する。
  */
 export function mergeSteamApiHealth(parts: SteamApiHealth[]): SteamApiHealth {
   const merged: SteamApiHealth = {
@@ -316,6 +565,7 @@ export function mergeSteamApiHealth(parts: SteamApiHealth[]): SteamApiHealth {
     circuitOpen: false,
     statusCounts: {},
   };
+  let rateLimitHitsSum: number | undefined;
   for (const part of parts) {
     merged.total += part.total;
     merged.succeeded += part.succeeded;
@@ -325,6 +575,12 @@ export function mergeSteamApiHealth(parts: SteamApiHealth[]): SteamApiHealth {
     for (const [key, count] of Object.entries(part.statusCounts)) {
       merged.statusCounts[key] = (merged.statusCounts[key] ?? 0) + count;
     }
+    if (part.rateLimitHits !== undefined) {
+      rateLimitHitsSum = (rateLimitHitsSum ?? 0) + part.rateLimitHits;
+    }
+  }
+  if (rateLimitHitsSum !== undefined) {
+    merged.rateLimitHits = rateLimitHitsSum;
   }
   return merged;
 }
