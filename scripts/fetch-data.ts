@@ -558,13 +558,19 @@ export async function aggregateGames(
       }
 
       storefrontEnrichedCount++;
-      // レート制限対策（既存 IGDB enrich と同等）
-      if (storefrontEnrichedCount % 5 === 0) {
-        await new Promise((r) => setTimeout(r, 1000));
-      }
+      // レート制限対策のペーシングはここには置かない（Issue #360）。
+      // 旧実装は `storefrontEnrichedCount % 5 === 0` のときだけ 1000ms 待つもので、
+      // このループの成功パスにしか無かったため失敗した呼び出しは一切ペーシングされず、
+      // 実効間隔は約200ms だった（ライブ実測で155件成功した時点で 429 が発生した）。
+      // ペーシングは steam-api-client.ts の gatePacing が全 HTTP 試行の直前で行い、
+      // 429 を観測したら間隔を自動で伸ばす。ここに残すと二重に効いて予測できなくなる。
     } catch (error) {
       storefrontFailedCount++;
-      storefrontFailureStatusCounts['network'] = (storefrontFailureStatusCounts['network'] ?? 0) + 1;
+      // fetchSteamJson はネットワーク例外を投げずに結果で返すため、この catch に来るのは
+      // このループ本体のコード欠陥（TypeError 等）が主。Steam 側のネットワーク障害と
+      // 混ぜると、切り分けのために足した statusCounts が逆に誤導するので別キーにする。
+      storefrontFailureStatusCounts['exception'] =
+        (storefrontFailureStatusCounts['exception'] ?? 0) + 1;
       console.warn(
         `  Steam Storefront enrich failed for "${game.title}" (appId=${game.steamAppId}):`,
         error instanceof Error ? error.message : error

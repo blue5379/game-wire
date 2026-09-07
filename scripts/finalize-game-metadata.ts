@@ -189,7 +189,10 @@ export async function finalizeGameMetadata(
     }
   }
 
-  // --- 3. Steam Storefront API 補完（最大 1 回）---
+  // --- 3. Steam Storefront API 補完（論理呼び出し 1 回）---
+  // Issue #360 以降、HTTP レベルでは fetchSteamJson が最大 STEAM_MAX_ATTEMPTS 回まで
+  // リトライし、試行の直前にペーシングも入る。時間予算の見積もりに使う場合は
+  // 「1候補あたり最大3リクエスト + バックオフ + ペーシング」で数えること。
   if (game.steamAppId && needsStorefrontCompletion(game, required)) {
     const appId = game.steamAppId;
     try {
