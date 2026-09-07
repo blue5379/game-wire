@@ -460,6 +460,27 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(`| ❌ 矛盾 | ${j.claimsByVerdict.contradicted} |`);
     out.push(`| ❓ 裏付け不能 | ${j.claimsByVerdict.unverifiable} |`);
 
+    // スキップされた記事は「無検証で通った記事」なので、件数だけでなく
+    // どの記事かを出す（Issue #363）。URL 一覧は JSON 側にあるので md では件数に留める
+    if (j.skipped && j.skipped.length > 0) {
+      out.push('');
+      out.push('#### 事実性チェックをスキップした記事');
+      for (const s of j.skipped) {
+        out.push(`- ${s.articleTitle} — ${s.reason}`);
+      }
+    }
+
+    if (j.judgedSources && j.judgedSources.length > 0) {
+      out.push('');
+      out.push('#### 判定に使った出典の件数');
+      out.push('');
+      out.push('出典の URL 一覧は JSON レポートの `llmJudge.judgedSources` を参照。');
+      out.push('');
+      for (const s of j.judgedSources) {
+        out.push(`- ${s.articleTitle} — ${s.sources.length}件`);
+      }
+    }
+
     if (j.warnings.length > 0) {
       out.push('');
       out.push('#### 事実性チェックの指摘');

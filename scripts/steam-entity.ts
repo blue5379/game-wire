@@ -31,11 +31,22 @@ type AppDetailsData = {
   publishers?: string[];
 };
 
+/**
+ * 1 言語分の appdetails 取得結果。
+ *
+ * 失敗時は理由を返す。「HTTP 403 でブロックされた（一過性・全ゲーム共通の障害）」と
+ * 「success:false（その appId が当該リージョンで非公開）」を事後に区別するため
+ * （Issue #363。第20号では appdetails が 10 回中 10 回失敗したが、切り分けられなかった）。
+ */
+type AppDetailsResult =
+  | { ok: true; data: AppDetailsData }
+  | { ok: false; reason: string };
+
 async function fetchAppDetails(
   appId: number,
   lang: 'english' | 'japanese',
   fetchImpl: typeof fetch
-): Promise<AppDetailsData | undefined> {
+): Promise<AppDetailsResult> {
   try {
     // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
     // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
@@ -43,16 +54,17 @@ async function fetchAppDetails(
     // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
     const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
     const res = await fetchImpl(url, { signal: AbortSignal.timeout(STOREFRONT_TIMEOUT_MS) });
-    if (!res.ok) return undefined;
+    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     const json = (await res.json()) as Record<
       string,
       { success?: boolean; data?: AppDetailsData }
     >;
     const entry = json[String(appId)];
-    if (!entry?.success || !entry.data) return undefined;
-    return entry.data;
-  } catch {
-    return undefined;
+    if (!entry?.success) return { ok: false, reason: 'success:false（cc=jp で非公開の可能性）' };
+    if (!entry.data) return { ok: false, reason: 'success:true だが data が空' };
+    return { ok: true, data: entry.data };
+  } catch (err) {
+    return { ok: false, reason: String(err) };
   }
 }
 
@@ -70,10 +82,12 @@ export async function fetchSteamEntity(
 ): Promise<SteamEntity | undefined> {
   if (cache.has(appId)) return cache.get(appId);
 
-  const [enData, jaData] = await Promise.all([
+  const [enResult, jaResult] = await Promise.all([
     fetchAppDetails(appId, 'english', fetchImpl),
     fetchAppDetails(appId, 'japanese', fetchImpl),
   ]);
+  const enData = enResult.ok ? enResult.data : undefined;
+  const jaData = jaResult.ok ? jaResult.data : undefined;
 
   // 両方失敗 → fail-open。失敗結果はキャッシュしない（次回呼び出しで再試行できる）。
   // ログを残すことで「照合して same だった」と「実体が取れず未照合」を build ログ上で区別できるようにする。
@@ -84,9 +98,36 @@ export async function fetchSteamEntity(
         appId,
         step: 'fetch-appdetails',
         reason: 'both-languages-failed (fail-open: 照合はスキップされる)',
+        // 言語別の失敗理由。全ゲームで同じ HTTP ステータスが並べば API 側の障害、
+        // success:false ならその appId 固有の問題と切り分けられる（Issue #363）
+        english: enResult.ok ? 'ok' : enResult.reason,
+        japanese: jaResult.ok ? 'ok' : jaResult.reason,
       })
     );
     return undefined;
+  }
+
+  // 片言語のみ失敗した場合も理由を残す。nameEn/nameJa の欠落は title 軸の照合結果を
+  // 変えるため、後から「なぜ片方だけ無いのか」を追えるようにしておく。
+  // 判定条件は下のキャッシュガード（nameEn/nameJa の undefined 判定）と揃える:
+  // AppDetailsData.name は optional なので success:true + data あり + name なしの応答は
+  // ok:true になり、`!ok` だけを見ると「name が無いのに無言でキャッシュもされない」
+  // ケースが唯一ログから漏れる（Issue #363 レビュー指摘）。
+  const enName = enData?.name;
+  const jaName = jaData?.name;
+  if (enName === undefined || jaName === undefined) {
+    const describe = (result: AppDetailsResult, name: string | undefined): string =>
+      !result.ok ? result.reason : name === undefined ? 'HTTP 200 だが data.name が無い' : 'ok';
+    console.warn(
+      JSON.stringify({
+        scope: 'steam-entity',
+        appId,
+        step: 'fetch-appdetails',
+        reason: 'one-language-failed (残った言語のデータで続行)',
+        english: describe(enResult, enName),
+        japanese: describe(jaResult, jaName),
+      })
+    );
   }
 
   // developers / publishers は英語版を優先（日本語版は名前が同じ場合が多いが念のため）

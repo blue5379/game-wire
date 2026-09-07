@@ -1,4 +1,4 @@
-import { finalizeGameMetadata } from './finalize-game-metadata.js';
+import { finalizeGameMetadata, listMissingRequiredFields } from './finalize-game-metadata.js';
 import type { GameData } from './types.js';
 
 export interface NewReleasesSelectionResult {
@@ -61,7 +61,25 @@ export async function vetNewReleaseCandidate(game: GameData): Promise<GameData |
     return null;
   }
 
-  if (!finalizeResult.ok) return null;
+  if (!finalizeResult.ok) {
+    // 不適格判定もログに残す（Issue #363）。第20号では新作枠の補充が 0 件だったが、
+    // どの候補が何件試され何で外れたのかログに無く、特定できなかった。
+    // インディー側（vet-indie-candidate の large-studio-gate ログ）と粒度を揃える。
+    const missing =
+      finalizeResult.reason === 'still-missing-required'
+        ? listMissingRequiredFields(finalizeResult.game, NEW_RELEASE_REQUIRED)
+        : [];
+    console.log(
+      JSON.stringify({
+        scope: 'vet-new-release-candidate',
+        title: game.title,
+        step: 'finalize',
+        reason: finalizeResult.reason,
+        ...(missing.length > 0 ? { missingFields: missing } : {}),
+      })
+    );
+    return null;
+  }
 
   // developer の上書きは行わない（Issue #180, #277）。理由:
   // 1. `pickNewReleaseLabelCompany` 関数（indie-classifier.ts）のJSDocに

@@ -2,12 +2,33 @@
  * fetchSteamEntity の単体テスト（Issue #179 PR-1）
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
 
 beforeEach(() => {
   clearSteamEntityCache();
+  // 失敗理由の warn（Issue #363）でテスト出力が埋まらないように抑止する。
+  // 内容を検証するテストは spy 越しに参照する
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** console.warn に出た JSON ログのうち scope が一致するものを返す */
+function warnedLogs(scope: string): Record<string, unknown>[] {
+  return vi
+    .mocked(console.warn)
+    .mock.calls.map(([first]) => {
+      try {
+        return JSON.parse(String(first)) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((log): log is Record<string, unknown> => log?.scope === scope);
+}
 
 function makeFetch(responses: Record<string, object>) {
   return vi.fn((input: RequestInfo | URL) => {
@@ -143,5 +164,111 @@ describe('fetchSteamEntity', () => {
     await fetchSteamEntity(4, mockFetch as typeof fetch);
     // 片言語失敗はキャッシュされないため、2回目も fetch が呼ばれる（合計4回）
     expect(mockFetch).toHaveBeenCalledTimes(4);
+  });
+});
+
+/**
+ * Issue #363: 第20号では appdetails が 10 回中 10 回失敗したが、403 / 429 /
+ * タイムアウト / success:false の切り分けができなかった。
+ * 言語別の失敗理由をログに残すことで、API 側の障害と appId 固有の問題を区別できるようにする。
+ */
+describe('fetchSteamEntity: 失敗理由の記録', () => {
+  it('両言語失敗時に言語別の HTTP ステータスをログに残す', async () => {
+    const mockFetch = vi.fn((input: RequestInfo | URL) => {
+      const status = String(input).includes('l=english') ? 403 : 429;
+      return Promise.resolve({ ok: false, status } as Response);
+    });
+
+    await fetchSteamEntity(51, mockFetch as typeof fetch);
+
+    const logs = warnedLogs('steam-entity');
+    expect(logs).toHaveLength(1);
+    expect(logs[0].appId).toBe(51);
+    expect(logs[0].english).toBe('HTTP 403');
+    expect(logs[0].japanese).toBe('HTTP 429');
+  });
+
+  it('success:false は HTTP エラーと区別してログに残す（appId 固有の問題）', async () => {
+    const mockFetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ '52': { success: false } }),
+      } as Response)
+    );
+
+    await fetchSteamEntity(52, mockFetch as typeof fetch);
+
+    const logs = warnedLogs('steam-entity');
+    expect(logs).toHaveLength(1);
+    expect(String(logs[0].english)).toContain('success:false');
+    expect(String(logs[0].japanese)).toContain('success:false');
+  });
+
+  it('ネットワーク例外の内容をログに残す', async () => {
+    const mockFetch = vi.fn(() => Promise.reject(new Error('ETIMEDOUT')));
+
+    await fetchSteamEntity(53, mockFetch as typeof fetch);
+
+    const logs = warnedLogs('steam-entity');
+    expect(String(logs[0].english)).toContain('ETIMEDOUT');
+  });
+
+  it('片言語だけ失敗した場合も、どちらがなぜ落ちたかをログに残す', async () => {
+    const mockFetch = vi.fn((input: RequestInfo | URL) => {
+      if (String(input).includes('l=english')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              '54': { success: true, data: { name: 'Half Fetched', developers: [] } },
+            }),
+        } as Response);
+      }
+      return Promise.resolve({ ok: false, status: 500 } as Response);
+    });
+
+    const entity = await fetchSteamEntity(54, mockFetch as typeof fetch);
+
+    // fail-open の挙動は変えない（取れた言語で続行する）
+    expect(entity?.nameEn).toBe('Half Fetched');
+    const logs = warnedLogs('steam-entity');
+    expect(logs).toHaveLength(1);
+    expect(String(logs[0].reason)).toContain('one-language-failed');
+    expect(logs[0].english).toBe('ok');
+    expect(logs[0].japanese).toBe('HTTP 500');
+  });
+
+  // AppDetailsData.name は optional なので HTTP 200 + success:true でも name が無い応答があり得る。
+  // この場合 nameJa が undefined になりキャッシュもされない（毎回再取得される）のに、
+  // `!ok` だけを見る判定ではログが出なかった（Issue #363 レビュー指摘）
+  it('HTTP 200 でも data.name が無い言語はログに残す（キャッシュされない状態と条件を揃える）', async () => {
+    const mockFetch = makeFetch({
+      'l=english': { '58': { success: true, data: { name: 'Nameless JA', developers: [] } } },
+      // 日本語版は成功しているが name を持たない
+      'l=japanese': { '58': { success: true, data: { developers: [] } } },
+    });
+
+    const entity = await fetchSteamEntity(58, mockFetch as typeof fetch);
+
+    expect(entity?.nameEn).toBe('Nameless JA');
+    expect(entity?.nameJa).toBeUndefined();
+    const logs = warnedLogs('steam-entity');
+    expect(logs).toHaveLength(1);
+    expect(String(logs[0].reason)).toContain('one-language-failed');
+    expect(logs[0].english).toBe('ok');
+    expect(String(logs[0].japanese)).toContain('data.name が無い');
+  });
+
+  it('両言語成功時はログを出さない', async () => {
+    const mockFetch = makeFetch({
+      'l=english': { '55': { success: true, data: { name: 'Fine', developers: [] } } },
+      'l=japanese': { '55': { success: true, data: { name: '問題なし', developers: [] } } },
+    });
+
+    await fetchSteamEntity(55, mockFetch as typeof fetch);
+
+    expect(warnedLogs('steam-entity')).toHaveLength(0);
   });
 });

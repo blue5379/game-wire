@@ -596,6 +596,67 @@ describe('formatReportMarkdown', () => {
     expect(md).toContain('| ❌ 矛盾 | 1 |');
     expect(md).toContain('| ❓ 裏付け不能 | 2 |');
   });
+
+  it('スキップした記事のタイトルと理由を出す（Issue #363）', () => {
+    const report = makeReport({
+      status: 'warning',
+      llmJudge: {
+        claimsByVerdict: { supported: 0, contradicted: 0, unverifiable: 0 },
+        judgedArticles: 0,
+        skippedArticles: 1,
+        skipped: [{ articleTitle: '出典なし記事', reason: 'no webSearchSources' }],
+        judgedSources: [],
+        warnings: [],
+      },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('事実性チェックをスキップした記事');
+    expect(md).toContain('出典なし記事 — no webSearchSources');
+  });
+
+  it('記事ごとの出典件数を出し、URL 一覧は JSON を見るよう案内する（Issue #363）', () => {
+    const report = makeReport({
+      status: 'warning',
+      llmJudge: {
+        claimsByVerdict: { supported: 3, contradicted: 0, unverifiable: 0 },
+        judgedArticles: 1,
+        skippedArticles: 0,
+        skipped: [],
+        judgedSources: [
+          {
+            articleTitle: 'Onimusha の紹介',
+            sources: [
+              { index: 1, title: 'A', url: 'https://a.example/1' },
+              { index: 2, title: 'B', url: 'https://b.example/2' },
+            ],
+          },
+        ],
+        warnings: [],
+      },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('判定に使った出典の件数');
+    expect(md).toContain('Onimusha の紹介 — 2件');
+    expect(md).toContain('llmJudge.judgedSources');
+    // md は Job Summary と自動起票 Issue に貼られるため URL 一覧までは載せない
+    expect(md).not.toContain('https://a.example/1');
+  });
+
+  it('skipped / judgedSources が undefined の旧レポートでも落ちない', () => {
+    const report = makeReport({
+      status: 'warning',
+      llmJudge: {
+        claimsByVerdict: { supported: 1, contradicted: 0, unverifiable: 0 },
+        judgedArticles: 1,
+        skippedArticles: 0,
+        warnings: [],
+      },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('LLM 事実性チェック');
+    expect(md).not.toContain('判定に使った出典の件数');
+    expect(md).not.toContain('事実性チェックをスキップした記事');
+  });
 });
 
 describe('記事本数の不足（Issue #311。仕様 §6.4 / §6.5）', () => {

@@ -123,6 +123,7 @@ jobs:
 
           {
             echo "ISSUE_NUM=${ISSUE_NUM}"
+            echo "ISSUE_NUM_PADDED=${ISSUE_NUM_PADDED}"
             echo "REPORT_JSON=${REPORT_JSON}"
             echo "REPORT_MD=${REPORT_MD}"
             echo "PUBLISH_DATE_RESOLVED=${PUBLISH_DATE}"
@@ -148,6 +149,56 @@ jobs:
       # 6.6. history.json の JSON 整合性チェック
       - name: Validate history.json
         run: jq empty src/content/history.json
+
+      # 6.7. 号別の診断データを data/validation/ に退避する（Issue #363）
+      #      Gate レポートと Resolver トレースは data/ 直下に書かれるが、後段のコミットステップの
+      #      git add 対象は data/validation/ だけなので、runner の破棄と同時に失われていた
+      #      （completeness-report.json は未追跡、identity-resolver-trace.json は追跡下だが
+      #        毎回の更新がステージされない）。第20号の調査（Issue #358）で「新作枠の補充が
+      #      なぜ 0 件だったのか」を追えなかった直接の原因。validation レポート（Issue #202）と
+      #      同じく号別ファイル名でリポジトリに残す。
+      #      観測用のステップなので、失敗しても後段のコミット・デプロイを止めない
+      #      （Bedrock コストを払って生成済みの号が失われる方が被害が大きい。
+      #        「起票ステップの失敗はデプロイをブロックすべきでない」7.5 と同じ方針）
+      - name: Persist per-issue diagnostic data
+        continue-on-error: true
+        run: |
+          set -e
+          mkdir -p data/validation
+          copy_diagnostic() {
+            if [ -f "$1" ]; then
+              cp "$1" "$2"
+              echo "Saved: $2 ($(wc -c < "$2") bytes)"
+            else
+              # 診断データの欠落そのものが調査対象なので、黙って飛ばさずログに残す
+              echo "Warning: $1 not found; skipping." >&2
+            fi
+          }
+          copy_diagnostic data/completeness-report.json \
+            "data/validation/completeness-report-${ISSUE_NUM_PADDED}.json"
+          copy_diagnostic data/identity-resolver-trace.json \
+            "data/validation/identity-resolver-trace-${ISSUE_NUM_PADDED}.json"
+
+      # 6.8. 診断データをアーティファクトとしても退避する（Issue #363）
+      #      6.7 のコミットは「号が組み上がった run」だけを救う。fetch-data や generate が
+      #      落ちた run は 6.7 に到達しないが、調査が必要なのはむしろそちらなので
+      #      if: always() で必ず退避する。commit ステップの git stash より前に置き、
+      #      stash pop 失敗でファイルが手元から消えるリスクを避ける。
+      #      アーティファクトサービスの一過性障害でデプロイを止めないよう continue-on-error を付ける
+      #      （if: always() と併用しても、このステップ自身の失敗がジョブを failed にするため）。
+      - name: Upload diagnostic data
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            data/completeness-report.json
+            data/identity-resolver-trace.json
+            data/selected-games.json
+            data/validation/
+          if-no-files-found: warn
+          retention-days: 90
 
       # 7. 生成した記事をコミット＆プッシュ
       - name: Commit and push generated content

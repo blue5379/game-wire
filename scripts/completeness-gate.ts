@@ -25,7 +25,7 @@
  */
 
 import type { GameData, SelectedGames, StoreLink } from './types.js';
-import { headOk } from './url-health.js';
+import { checkUrlHealth } from './url-health.js';
 import { matchGameToSteamEntity, extractYearFromDate } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 
@@ -56,6 +56,39 @@ export interface GateViolation {
   ruleId: ViolationId;
   gameTitle: string;
   detail: string;
+}
+
+/** 差し替え候補 1 件の検証結果（Issue #363） */
+export interface ReplacementCandidateAttempt {
+  candidateTitle: string;
+  adopted: boolean;
+  /** 不採用理由（adopted=false のとき）。スロットゲート不通過 / Gate 違反の内訳 */
+  reason?: string;
+}
+
+/**
+ * スロット別の差し替え補充の記録（Issue #363）。
+ *
+ * 第20号では R3 違反で新作記事が 1 本除去されたのに補充が 0 件で、
+ * 「候補が何件試され、どの理由で外れ、試行上限に当たったのか」が事後に追えなかった。
+ * 補充が失敗したときに原因を特定できるだけの情報をレポートに残す。
+ */
+export interface ReplacementSlotSummary {
+  slot: 'newReleases' | 'indies';
+  /** 埋め直しが必要だった枠数 */
+  needed: number;
+  /** 実際に補充できた件数 */
+  filled: number;
+  /** 検証まで進んだ候補数（重複スキップは含まない） */
+  attempts: number;
+  /** 試行上限（needed × 3。クォータ保護） */
+  maxAttempts: number;
+  /** 重複タイトル・違反ゲームとの一致で検証前にスキップした候補数 */
+  skippedBeforeVetting: number;
+  /** 補充を打ち切った理由 */
+  stoppedBy: 'filled' | 'attempt-cap' | 'pool-exhausted';
+  /** 検証した候補ごとの結果 */
+  candidates: ReplacementCandidateAttempt[];
 }
 
 export interface UncertainIdentityEntry {
@@ -94,6 +127,11 @@ export interface GateReport {
    * 破壊的アクションは取らないが、CI サマリ・レポートで evidence を可視化する。
    */
   uncertainIdentity?: UncertainIdentityEntry[];
+  /**
+   * 差し替えを試みたスロットごとの補充記録（Issue #363）。
+   * 差し替えを実行しなかった場合は空配列（`undefined` は本フィールド追加前の旧レポート）。
+   */
+  replacementSummary?: ReplacementSlotSummary[];
 }
 
 /**
@@ -255,16 +293,21 @@ export function checkR2b(game: GameData, trace: ResolverTrace | undefined): Gate
 
 /**
  * R3: 公式 URL 到達性チェック
+ *
+ * detail に失敗理由（HTTP ステータス / タイムアウト / ネットワークエラー）を含める。
+ * R3 は記事を除去しうる破壊的な判定なので、「200 以外だった」だけでは事後に
+ * 誤判定（Bot ブロックの 403 等）と本当の URL 消滅を切り分けられない（Issue #363）。
  */
 export async function checkR3(game: GameData): Promise<GateViolation | null> {
   const official = game.sourceUrls?.official;
   if (!official) return null;
-  const ok = await headOk(official, 8000);
-  if (!ok) {
+  // quiet: true — 違反として detail に理由を載せるため、url-health 側の warn は重複になる
+  const health = await checkUrlHealth(official, 8000, { quiet: true });
+  if (!health.ok) {
     return {
       ruleId: 'R3',
       gameTitle: game.title,
-      detail: `official URL が HTTP 200 以外: ${official}`,
+      detail: `official URL が到達不能（${health.reason ?? 'unknown'}）: ${official}`,
     };
   }
   return null;
@@ -439,6 +482,7 @@ export async function runCompletenessGate(
     unresolvedMutableViolations: false,
     replacementShortfall: [],
     uncertainIdentity: [],
+    replacementSummary: [],
   };
 
   // 対象: newReleases + indies（classic は差し替えが複雑なため warn のみ）
@@ -538,12 +582,30 @@ export async function runCompletenessGate(
       // 試行上限: needed × 3（差し替え補充時の IGDB/Steam Storefront クォータ保護）
       const maxAttempts = needed * 3;
       let attempts = 0;
+      // 補充の内訳を記録する（Issue #363）。補充が失敗したときに
+      // 「候補が尽きたのか」「上限で打ち切ったのか」「何で外れたのか」を事後に切り分けるため
+      const candidateAttempts: ReplacementCandidateAttempt[] = [];
+      let skippedBeforeVetting = 0;
+      let stoppedBy: ReplacementSlotSummary['stoppedBy'] = 'pool-exhausted';
+
       for (const rawCandidate of candidatePool) {
-        if (fills.length >= needed) break;
-        if (attempts >= maxAttempts) break;
-        if (usedTitles.has(rawCandidate.normalizedTitle)) continue;
-        if (replaceableTitles.has(rawCandidate.title)) continue;
-        if (unreplaceableTitles.has(rawCandidate.title)) continue;
+        if (fills.length >= needed) {
+          stoppedBy = 'filled';
+          break;
+        }
+        if (attempts >= maxAttempts) {
+          stoppedBy = 'attempt-cap';
+          break;
+        }
+        if (
+          usedTitles.has(rawCandidate.normalizedTitle) ||
+          replaceableTitles.has(rawCandidate.title) ||
+          unreplaceableTitles.has(rawCandidate.title)
+        ) {
+          // 既出タイトル・違反ゲームそのもの。検証コストを使わないので attempts に数えない
+          skippedBeforeVetting++;
+          continue;
+        }
         attempts++;
 
         // スロットゲート（finalize + 選定品質チェック）を通す。
@@ -552,7 +614,15 @@ export async function runCompletenessGate(
         let candidate = rawCandidate;
         if (slotGate) {
           const vetted = await slotGate(rawCandidate);
-          if (!vetted) continue;
+          if (!vetted) {
+            candidateAttempts.push({
+              candidateTitle: rawCandidate.title,
+              adopted: false,
+              // 個別の不適格理由は slotGate 側（vet-*-candidate）が構造化ログに出す
+              reason: 'slot-gate-rejected',
+            });
+            continue;
+          }
           candidate = vetted;
         }
 
@@ -566,16 +636,58 @@ export async function runCompletenessGate(
           fills.push(candidate);
           usedTitles.add(candidate.normalizedTitle);
           report.replacedGames.push(candidate.title);
+          candidateAttempts.push({ candidateTitle: candidate.title, adopted: true });
+        } else {
+          candidateAttempts.push({
+            candidateTitle: candidate.title,
+            adopted: false,
+            // 候補自身の違反理由。R3 なら到達不能の HTTP ステータスまで含む
+            reason: cvMutable.map((vio) => `${vio.ruleId}: ${vio.detail}`).join(' / '),
+          });
         }
       }
 
+      // ループを抜けた直後の充足も 'filled' として記録する（break を経ずに終わるため）
+      if (fills.length >= needed) stoppedBy = 'filled';
+
       selectedGames[key] = [...kept, ...fills];
+
+      // 記録・出力はタイトル昇順に並べ替える（§2.3 ライセンス制約 / PR #249 レビュー指摘）。
+      // candidatePool（新作枠は newReleasesReserves = 4軸スコア降順）の順序をそのまま残すと、
+      // 他3軸は aggregated.json から再計算できるため、配列内の位置から domestic 軸
+      // （Amazon 順位）の寄与分だけが残り、順位を絞り込む導出チャネルになる。
+      // このレポートは data/validation/ にコミットされ公開アーティファクトにも載るため、
+      // fetch-data.ts の候補ログと同じ対処（位置がスコアの情報を持たない状態にする）を取る。
+      // 残る信号は「試行上限で打ち切った場合、記録された候補集合が予備プールの上位である」
+      // という集合の上下関係のみで、全順序は復元できない。
+      const candidatesForReport = [...candidateAttempts].sort((a, b) =>
+        a.candidateTitle.localeCompare(b.candidateTitle)
+      );
+
+      const summary: ReplacementSlotSummary = {
+        slot: key,
+        needed,
+        filled: fills.length,
+        attempts,
+        maxAttempts,
+        skippedBeforeVetting,
+        stoppedBy,
+        candidates: candidatesForReport,
+      };
+      report.replacementSummary!.push(summary);
 
       if (fills.length < needed) {
         console.warn(
           `  [CompletenessGate] ${key}: ${needed} 枠を差し替える必要があったが ${fills.length} 件しか補充できなかった` +
-          `（適格な候補が枯渇。少ない記事数で発行する）`
+          `（打ち切り理由=${stoppedBy}, 検証した候補=${attempts}/${maxAttempts}, ` +
+          `検証前スキップ=${skippedBeforeVetting}, 候補プール=${candidatePool.length}件。少ない記事数で発行する）`
         );
+        // CI ログも公開・90日保持されるので、こちらもタイトル昇順（上記と同じ理由）
+        for (const attempt of candidatesForReport.filter((a) => !a.adopted)) {
+          console.warn(
+            `  [CompletenessGate] ${key}: 候補 "${attempt.candidateTitle}" 不採用 — ${attempt.reason ?? 'unknown'}`
+          );
+        }
         replacementShortfall.add(key);
       }
     }
