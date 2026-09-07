@@ -17,6 +17,7 @@ import * as path from 'node:path';
 import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
+import type { SteamApiHealth } from './steam-api-client.js';
 import { getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
 import { isMainModule } from './entrypoint.js';
 import {
@@ -158,6 +159,14 @@ export interface ValidationReport {
   earlyAccessStatementIssues?: EarlyAccessStatementIssue[];
   /** 公式URL未取得の記事一覧。Issue #117 P3 */
   missingOfficialUrls?: Array<{ articleTitle: string; category: string; gameTitle: string }>;
+  /**
+   * Steam API 呼び出しのラン全体の健全性（Issue #360 対応方針4）。
+   * build-issue.ts が getSteamApiHealth() から埋め込む。旧レポート（本フィールド追加前）では
+   * undefined =「未計測」。circuitOpen=true（全滅検知でサーキットが開いた）は
+   * computeReportStatus で status=error に昇格させる。号自体は fail させず発行を継続する
+   * （未検証ゲームの除去は Issue #317 の担当でスコープ外）。
+   */
+  steamApiHealth?: SteamApiHealth;
 }
 
 const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
@@ -786,7 +795,24 @@ export async function validateGameSourceConsistency(
 
   // Steam 実体を二言語取得（失敗時は fail-open）
   const entity = await fetchSteamEntity(appId, fetchImpl);
-  if (!entity) return warnings;
+  if (!entity) {
+    // Issue #360: 第20号では appdetails が全滅し、この fail-open 経路が無警告で
+    // 通過したため「同一性照合が一件もスキップされていた」ことがレポート上に一切残らなかった。
+    // severity を low（game-source-unchecked）より重い medium にしている理由:
+    // appId 未取得（game-source-unchecked）は「照合対象が無い」状態だが、こちらは
+    // 「appId を記事に載せておきながら、その appId が正しいことを検証できていない」状態であり、
+    // 読者が実際にクリックするリンクの正しさが未確認のまま公開される。
+    warnings.push({
+      articleTitle: article.title,
+      category: article.category,
+      severity: 'medium',
+      type: 'game-source-check-failed',
+      message:
+        `Steam(appId=${appId})の実体が取得できず、記事の game メタとの同一性照合ができませんでした。` +
+        `fail-open のため号の発行は継続していますが、この appId の正しさは未確認です。`,
+    });
+    return warnings;
+  }
 
   const matchResult = matchGameToSteamEntity(
     {

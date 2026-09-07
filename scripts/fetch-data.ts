@@ -27,6 +27,7 @@ import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
 import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
+import { fetchSteamJson } from './steam-api-client.js';
 import { normalizeTitle } from './normalize.js';
 import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
 import { meetsClassicPoolThresholds } from './classic-pool.js';
@@ -477,6 +478,15 @@ export async function aggregateGames(
   console.log('Enriching games with Steam Storefront API...');
   let storefrontEnrichedCount = 0;
   let storefrontFailedCount = 0;
+  // 失敗の HTTP ステータス別内訳（Issue #360）。第20号では appdetails が全滅したが
+  // 「403 なのか 429 なのかタイムアウトなのか」が一切記録されておらず、事後に切り分けられなかった。
+  // 'circuit-open' は steam-api-client.ts のサーキットブレーカで呼び出し自体をスキップした件数。
+  const storefrontFailureStatusCounts: Record<string, number> = {};
+  const recordStorefrontFailure = (result: { status?: number; attempts: number }): void => {
+    const key =
+      result.attempts === 0 ? 'circuit-open' : result.status !== undefined ? String(result.status) : 'network';
+    storefrontFailureStatusCounts[key] = (storefrontFailureStatusCounts[key] ?? 0) + 1;
+  };
   for (const game of gameMap.values()) {
     // steamAppId がなければ Storefront から取得できないのでスキップ
     // coverImage が埋まっていても developer / steamRecommendations の補完は必要なので続行
@@ -484,18 +494,21 @@ export async function aggregateGames(
     if (!needsStorefrontCompletion(game)) continue;
 
     try {
-      const response = await fetch(
+      // steam-api-client.ts がリトライ・バックオフ・サーキットブレーカを担う（Issue #360）
+      const result = await fetchSteamJson(
         `https://store.steampowered.com/api/appdetails?appids=${game.steamAppId}&cc=jp&l=japanese`,
-        { signal: AbortSignal.timeout(10000) }
+        { quiet: true }
       );
-      if (!response.ok) {
+      if (!result.ok) {
         storefrontFailedCount++;
+        recordStorefrontFailure(result);
         continue;
       }
-      const json = (await response.json()) as Record<string, { success?: boolean; data?: any }>;
+      const json = result.json as Record<string, { success?: boolean; data?: any }>;
       const entry = json[String(game.steamAppId)];
       if (!entry?.success || !entry.data) {
         storefrontFailedCount++;
+        storefrontFailureStatusCounts['success:false'] = (storefrontFailureStatusCounts['success:false'] ?? 0) + 1;
         continue;
       }
       const data = entry.data;
@@ -551,6 +564,7 @@ export async function aggregateGames(
       }
     } catch (error) {
       storefrontFailedCount++;
+      storefrontFailureStatusCounts['network'] = (storefrontFailureStatusCounts['network'] ?? 0) + 1;
       console.warn(
         `  Steam Storefront enrich failed for "${game.title}" (appId=${game.steamAppId}):`,
         error instanceof Error ? error.message : error
@@ -560,6 +574,18 @@ export async function aggregateGames(
   console.log(
     `Enriched ${storefrontEnrichedCount} games with Steam Storefront (${storefrontFailedCount} failed)`
   );
+  if (storefrontFailedCount > 0) {
+    // ステータス別内訳を1行の JSON ログとして残す（Issue #360。第20号の事後調査で
+    // 「全滅した」以上の情報が無かったことの再発防止）
+    console.warn(
+      JSON.stringify({
+        scope: 'storefront-enrich',
+        step: 'aggregateGames',
+        failed: storefrontFailedCount,
+        statusCounts: storefrontFailureStatusCounts,
+      })
+    );
+  }
 
   return deduplicateGames(Array.from(gameMap.values()));
 }
@@ -1518,7 +1544,8 @@ async function main(): Promise<void> {
   console.log(
     `  [CompletenessGate] mode=${gateMode}, violations=${gateReport.violations.length}, ` +
     `replaced=${gateReport.replacedGames.length}, unresolved=${gateReport.unresolvedMutableViolations}, ` +
-    `shortfall=${gateReport.replacementShortfall.length > 0 ? gateReport.replacementShortfall.join('/') : 'none'}`
+    `shortfall=${gateReport.replacementShortfall.length > 0 ? gateReport.replacementShortfall.join('/') : 'none'}, ` +
+    `identityCheckSkipped=${gateReport.identityCheckSkipped?.length ?? 0}`
   );
   if (gateReport.violations.length > 0) {
     for (const v of gateReport.violations) {
@@ -1527,6 +1554,13 @@ async function main(): Promise<void> {
   }
   if (gateReport.replacedGames.length > 0) {
     console.log(`  [CompletenessGate] Replaced games: ${gateReport.replacedGames.join(', ')}`);
+  }
+  if (gateReport.identityCheckSkipped && gateReport.identityCheckSkipped.length > 0) {
+    // R5（識別子整合チェック）が fail-open でスキップされた件数を可視化する（Issue #360）。
+    // Steam API 全滅時にこのチェックがどれだけ機能不全だったかを事後に追えるようにする。
+    for (const s of gateReport.identityCheckSkipped) {
+      console.warn(`  [CompletenessGate] R5 skipped "${s.gameTitle}": ${s.reason}`);
+    }
   }
 
   // Gate レポートを出力

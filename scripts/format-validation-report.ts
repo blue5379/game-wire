@@ -132,6 +132,9 @@ function judgeProblemCount(report: ValidationReport): number {
  *  - キーワード検索失敗（searchFailures > 0）: 根拠データがゼロになる
  *  - AI 成人向けスクリーニング失敗（adultScreeningFailures > 0）: 安全確認が fail-open で通過
  *  - 記事本数の不足（articleCountShortfalls > 0）: カテゴリ構成の欠落
+ *  - Steam API サーキットブレーカが開いた（steamApiHealth.circuitOpen）: 全滅検知（Issue #360）。
+ *    号自体は fail させず発行を継続するが、同一性照合や Storefront 補完が広範囲に
+ *    スキップされている可能性が高く、要対応として扱う。
  *
  * warning 条件（観測のみ・Issue 自動起票しない）:
  *  - medium 警告が 1 件以上
@@ -152,7 +155,8 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
     high > 0 ||
     searchFailureCount(report) > 0 ||
     adultScreeningFailureCount(report) > 0 ||
-    articleCountShortfallCount(report) > 0
+    articleCountShortfallCount(report) > 0 ||
+    report.steamApiHealth?.circuitOpen === true
   ) {
     return 'error';
   }
@@ -205,6 +209,16 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
   const shortfalls = report.articleCountShortfalls ?? [];
   const earlyAccessIssues = earlyAccessStatementIssueCount(report);
+  const steamApiHealth = report.steamApiHealth;
+
+  if (steamApiHealth?.circuitOpen) {
+    actions.push(
+      `🚨 **Steam API 全滅検知（サーキットブレーカ作動）**: 連続失敗が${steamApiHealth.consecutiveFailures}件に達し、` +
+        `以降の Steam 呼び出しをスキップしました（呼び出し合計 ${steamApiHealth.total} 件中失敗 ${steamApiHealth.failed} 件）。` +
+        `同一性照合・Storefront 補完が広範囲にスキップされている可能性があります。` +
+        `号は発行済みですが、data/validation の該当レポート内 steamApiHealth.statusCounts を確認し、Steam 側の障害状況を確認してください。`
+    );
+  }
 
   if (shortfalls.length > 0) {
     const detail = shortfalls
@@ -387,6 +401,17 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(`| ⚠️ AI成人向けスクリーニング応答形式不正 | ${rawUnrecognizedScreeningResponses} |`);
   } else {
     out.push('| ✅ AI成人向けスクリーニング応答形式不正 | 0 |');
+  }
+
+  // Steam API のラン全体の健全性（Issue #360）。未計測（旧レポート）と計測済みを区別する。
+  if (report.steamApiHealth === undefined) {
+    out.push('| ❓ Steam API サーキットブレーカ | 未計測 |');
+  } else if (report.steamApiHealth.circuitOpen) {
+    out.push(
+      `| 🚨 Steam API サーキットブレーカ | 作動（連続失敗 ${report.steamApiHealth.consecutiveFailures} 件） |`
+    );
+  } else {
+    out.push('| ✅ Steam API サーキットブレーカ | 未作動 |');
   }
 
   // 警告詳細

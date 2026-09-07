@@ -1205,7 +1205,10 @@ describe('validateGameSourceConsistency', () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it('API 失敗時は警告を出さない（fail-open）', async () => {
+  it('API 失敗時は号の発行を止めず game-source-check-failed（medium）を1件出す（fail-open。Issue #360）', async () => {
+    // 第20号では appdetails が全滅し、この fail-open 経路が無警告で通過したため
+    // 「同一性照合がスキップされていた」ことがレポート上に一切残らなかった。
+    // fail-open の挙動（号を止めない）自体は変えず、観測できるようにする。
     const article = makeArticle({
       title: '『Baz』',
       category: 'indie',
@@ -1220,7 +1223,10 @@ describe('validateGameSourceConsistency', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
 
     const warnings = await validateGameSourceConsistency(article, fetchImpl);
-    expect(warnings).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].message).toContain('3333333');
   });
 
   it('Steam URL が無い記事は同一性照合の対象外（API は呼ばない、unchecked 警告が出る）', async () => {

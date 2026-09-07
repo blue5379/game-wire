@@ -14,6 +14,7 @@ import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { headOk, getImageOrientation } from './url-health.js';
 import { parseSteamReleaseDate, isQualifiedCompanyName } from './steam-utils.js';
 import { pickDeveloperGameCount } from './indie-classifier.js';
+import { fetchSteamJson } from './steam-api-client.js';
 import type { GameData } from './types.js';
 
 export type FinalizeRejection =
@@ -193,9 +194,12 @@ export async function finalizeGameMetadata(
     const appId = game.steamAppId;
     try {
       const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=japanese`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as Record<string, { success?: boolean; data?: any }>;
+      // steam-api-client.ts がリトライ・バックオフ・サーキットブレーカを担う（Issue #360）。
+      // quiet: true — 失敗は下の catch で scope:'finalize-game-metadata' として記録するため、
+      // steam-api-client 側の warn と重複させない。
+      const result = await fetchSteamJson(url, { quiet: true });
+      if (!result.ok) throw new Error(result.reason);
+      const json = result.json as Record<string, { success?: boolean; data?: any }>;
       const entry = json[String(appId)];
 
       if (entry?.success && entry.data) {

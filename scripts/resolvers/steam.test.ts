@@ -11,6 +11,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resolveSteam } from './steam.js';
+import { resetSteamApiClient } from '../steam-api-client.js';
 
 const originalFetch = global.fetch;
 
@@ -20,6 +21,9 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+  // このファイル内の多数の「API 障害」テストが積み重なってサーキットが開くのを防ぐ。
+  resetSteamApiClient();
 });
 
 /** JSON を返す Response 相当 */

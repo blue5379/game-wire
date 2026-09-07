@@ -17,6 +17,7 @@ import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
 import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
+import { getSteamApiHealth } from './steam-api-client.js';
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 import { isMainModule } from './entrypoint.js';
@@ -586,16 +587,27 @@ async function main(): Promise<void> {
   const sourceUncertainWarnings: import('./validate-article.js').ValidationWarning[] = [];
   // unchecked（appId 未取得で照合スキップ）は hidden にせず、レポートで観測するのみ（#296）
   const sourceUncheckedWarnings: import('./validate-article.js').ValidationWarning[] = [];
+  // check-failed（appId はあるが Steam 実体が取れず照合できなかった）も hidden にせず記録のみ（Issue #360）
+  const sourceCheckFailedWarnings: import('./validate-article.js').ValidationWarning[] = [];
   try {
     const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
     const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
     const uncertainWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-uncertain');
     const uncheckedWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-unchecked');
+    const checkFailedWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-check-failed');
     if (uncheckedWarnings.length > 0) {
       sourceUncheckedWarnings.push(...uncheckedWarnings);
       console.warn('');
       console.warn('⚠️  game-source-unchecked (appId 未取得のため照合スキップ):');
       for (const w of uncheckedWarnings) {
+        console.warn(`  - "${w.articleTitle}"`);
+      }
+    }
+    if (checkFailedWarnings.length > 0) {
+      sourceCheckFailedWarnings.push(...checkFailedWarnings);
+      console.warn('');
+      console.warn('⚠️  game-source-check-failed (Steam 実体が取得できず照合不能。hidden にはしない):');
+      for (const w of checkFailedWarnings) {
         console.warn(`  - "${w.articleTitle}"`);
       }
     }
@@ -767,6 +779,19 @@ async function main(): Promise<void> {
     report.totalWarnings = report.warnings.length;
     report.warningsBySeverity.low += sourceUncheckedWarnings.length;
   }
+
+  // game-source-check-failed もレポートに記録する（medium。hidden・fail 閾値には影響しない。Issue #360）
+  if (sourceCheckFailedWarnings.length > 0) {
+    report.warnings.push(...sourceCheckFailedWarnings);
+    report.totalWarnings = report.warnings.length;
+    report.warningsBySeverity.medium += sourceCheckFailedWarnings.length;
+  }
+
+  // Steam API のラン全体の健全性をレポートに記録する（Issue #360 対応方針4）。
+  // サーキットが開いていた場合（= 全滅検知）は status を error に昇格させる
+  // （合流先は computeReportStatus。この号自体は fail させず発行を継続する — 未検証ゲームの
+  // 除去は Issue #317 の担当でこの PR のスコープ外）。
+  report.steamApiHealth = getSteamApiHealth();
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。

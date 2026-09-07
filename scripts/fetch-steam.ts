@@ -5,11 +5,17 @@
 
 import type { SteamGame, SteamData, FetchResult } from './types.js';
 import { normalizeCompanyName } from './steam-utils.js';
+import { STEAM_API_TIMEOUT_MS } from './steam-api-client.js';
 
 const STEAM_STORE_API = 'https://store.steampowered.com/api';
 const STEAM_CHARTS_API = 'https://api.steampowered.com/ISteamChartsService/GetMostPlayedGames/v1';
 
 // リトライ付きfetch
+//
+// Issue #360: このロジック自体は steam-api-client.ts に統合しない（Top Sellers/Top Played の
+// 取得は別系統でスコープ外）。ただし、タイムアウトが一切無いのは Steam 障害中に
+// weekly-build.yml の timeout-minutes: 30 を丸ごと食う危険があるため、
+// steam-api-client.ts と同じタイムアウト値を使って AbortSignal.timeout を追加する。
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
@@ -20,6 +26,7 @@ async function fetchWithRetry(
     try {
       const response = await fetch(url, {
         ...options,
+        signal: options.signal ?? AbortSignal.timeout(STEAM_API_TIMEOUT_MS),
         headers: {
           'User-Agent': 'GameWire/1.0',
           'Accept': 'application/json',

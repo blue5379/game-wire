@@ -33,6 +33,7 @@ import {
   RULE_REPLACEABLE,
 } from './completeness-gate.js';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
+import { resetSteamApiClient } from './steam-api-client.js';
 
 const mockCheckUrlHealth = vi.mocked(checkUrlHealth);
 
@@ -132,6 +133,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUrlReachable(true);
   clearSteamEntityCache();
+  // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+  // このファイル内の多数の「Steam API 失敗」テストが積み重なってサーキットが開くのを防ぐ。
+  resetSteamApiClient();
   delete process.env.COMPLETENESS_GATE;
   delete process.env.DEV_MODE;
 });
@@ -572,29 +576,37 @@ describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
     expect(result.uncertain).toBeNull();
   });
 
-  it('steamAppId が無い → チェックせず違反なし（fail-open）', async () => {
+  it('steamAppId が無い → チェックせず違反なし（fail-open）。skipped も null（対象外と区別する）', async () => {
     const game = makeGame({ title: 'No Steam Game', steamAppId: undefined });
     // fetch は呼ばれないはず。呼ばれたら network down で例外になる構成
     const fetchImpl = makeSteamFetch({}, { failNetwork: true });
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    // steamAppId が無いのは「照合対象が無い」であり、Issue #360 の fail-open スキップとは別。
+    // 誤って identityCheckSkipped に混入しないことを保証する。
+    expect(result.skipped).toBeNull();
   });
 
-  it('Storefront API が実体を返せない（appId 無効）→ fail-open で違反なし', async () => {
+  it('Storefront API が実体を返せない（appId 無効）→ fail-open で違反なし。skipped に記録される（Issue #360）', async () => {
     const game = makeGame({ title: 'Some Game', steamAppId: 999999, releaseDate: '2020-01-01' });
     const fetchImpl = makeSteamFetch({}); // 999999 はマップに無い → success:false
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    expect(result.skipped).not.toBeNull();
+    expect(result.skipped?.gameTitle).toBe('Some Game');
+    expect(result.skipped?.reason).toContain('999999');
   });
 
-  it('Storefront API がネットワークエラー → fail-open で違反なし', async () => {
+  it('Storefront API がネットワークエラー → fail-open で違反なし。skipped に記録される（Issue #360）', async () => {
     const game = makeGame({ title: 'Some Game', steamAppId: 12345, releaseDate: '2020-01-01' });
     const fetchImpl = makeSteamFetch({}, { failNetwork: true });
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    expect(result.skipped).not.toBeNull();
+    expect(result.skipped?.gameTitle).toBe('Some Game');
   });
 
   it('Steam 実体が coming_soon（未発売）→ 発売年は照合せずタイトル一致で通す', async () => {
@@ -1545,5 +1557,40 @@ describe('runCompletenessGate: R5 メタ混入ゲームの差し替え', () => {
     expect(report.unresolvedMutableViolations).toBe(false);
     // ゲームは差し替えられない（fail-open）
     expect(selected.newReleases.some((g) => g.title === 'Doom')).toBe(true);
+  });
+
+  it('R5 が Steam 実体を取得できず fail-open した場合、GateReport.identityCheckSkipped に記録される（Issue #360）', async () => {
+    mockUrlReachable(true);
+
+    // Storefront が success:false しか返さない → fetchSteamEntity は undefined → R5 は fail-open
+    const game = makeGame({
+      title: 'Unverifiable Game',
+      normalizedTitle: 'unverifiable-game',
+      steamAppId: 777777,
+      releaseDate: '2024-01-01',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const fetchImpl = makeSteamFetch({}); // マップに無い → success:false
+
+    const selected = makeSelectedGames({ newReleases: [game] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      undefined,
+      undefined,
+      fetchImpl
+    );
+
+    // R5 は violation も uncertain も出さない（fail-open のまま）が、スキップした事実は記録される
+    expect(report.violations.some((v) => v.ruleId === 'R5')).toBe(false);
+    expect(report.uncertainIdentity).toHaveLength(0);
+    expect(report.identityCheckSkipped).toHaveLength(1);
+    expect(report.identityCheckSkipped![0].gameTitle).toBe('Unverifiable Game');
+    expect(report.identityCheckSkipped![0].reason).toContain('777777');
+    // fail-open なのでゲームは除去・差し替えされない
+    expect(selected.newReleases.some((g) => g.title === 'Unverifiable Game')).toBe(true);
   });
 });

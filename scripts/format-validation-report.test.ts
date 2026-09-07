@@ -113,6 +113,41 @@ describe('computeReportStatus', () => {
     const report = makeReport({ warningsBySeverity: { high: 2, medium: 3, low: 1 } });
     expect(computeReportStatus(report)).toBe('error');
   });
+
+  it('Steam API サーキットブレーカが開いていれば（high 0 でも）error（Issue #360: 全滅検知）', () => {
+    const report = makeReport({
+      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      steamApiHealth: {
+        total: 20,
+        succeeded: 0,
+        failed: 20,
+        consecutiveFailures: 5,
+        circuitOpen: true,
+        statusCounts: { '403': 5, '429': 15 },
+      },
+    });
+    expect(computeReportStatus(report)).toBe('error');
+  });
+
+  it('steamApiHealth が計測されているが circuitOpen=false なら error に昇格しない', () => {
+    const report = makeReport({
+      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      steamApiHealth: {
+        total: 10,
+        succeeded: 10,
+        failed: 0,
+        consecutiveFailures: 0,
+        circuitOpen: false,
+        statusCounts: {},
+      },
+    });
+    expect(computeReportStatus(report)).toBe('ok');
+  });
+
+  it('steamApiHealth が未計測（旧レポート）なら未計測として ok 側の判定に影響しない', () => {
+    const report = makeReport({ warningsBySeverity: { high: 0, medium: 0, low: 0 } });
+    expect(computeReportStatus(report)).toBe('ok');
+  });
 });
 
 describe('shouldFileIssue', () => {
@@ -307,6 +342,38 @@ describe('buildRecommendedActions', () => {
     const highAction = actions.find((a) => a.includes('HIGH 警告 2 件'));
     expect(highAction).toBeDefined();
     expect(highAction).toContain('修正');
+  });
+
+  it('Steam API サーキットブレーカが開いていれば全滅検知のアクションを含む（Issue #360）', () => {
+    const report = makeReport({
+      steamApiHealth: {
+        total: 20,
+        succeeded: 0,
+        failed: 20,
+        consecutiveFailures: 5,
+        circuitOpen: true,
+        statusCounts: { '403': 20 },
+      },
+    });
+    const actions = buildRecommendedActions(report);
+    const action = actions.find((a) => a.includes('Steam API 全滅検知'));
+    expect(action).toBeDefined();
+    expect(action).toContain('5');
+  });
+
+  it('Steam API サーキットブレーカが未作動なら全滅検知のアクションは出さない', () => {
+    const report = makeReport({
+      steamApiHealth: {
+        total: 20,
+        succeeded: 20,
+        failed: 0,
+        consecutiveFailures: 0,
+        circuitOpen: false,
+        statusCounts: {},
+      },
+    });
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('Steam API 全滅検知'))).toBe(false);
   });
 
   it('キーワード検索失敗と公式ページ本文取得失敗を別のアクションとして出す（Issue #349）', () => {

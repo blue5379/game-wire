@@ -97,6 +97,20 @@ export interface UncertainIdentityEntry {
   detail: string;
 }
 
+/**
+ * R5 の識別子整合チェックが fail-open でスキップされたことの記録（Issue #360）。
+ *
+ * checkR5 は steamAppId が指す Steam 実体を取得できない場合 fail-open で
+ * violation/uncertain のどちらも出さずに通過する。これ自体は正しい挙動（誤って号を
+ * 止めない）だが、第20号では Steam API が全滅してこの経路が無警告で多発し、
+ * 「R5 チェックがほとんど機能していなかった」ことが事後にレポート上から追えなかった。
+ */
+export interface IdentityCheckSkipped {
+  gameTitle: string;
+  /** fail-open に倒れた理由（Steam 実体を取得できなかった、等） */
+  reason: string;
+}
+
 export interface GateReport {
   mode: GateMode;
   violations: GateViolation[];
@@ -132,6 +146,11 @@ export interface GateReport {
    * 差し替えを実行しなかった場合は空配列（`undefined` は本フィールド追加前の旧レポート）。
    */
   replacementSummary?: ReplacementSlotSummary[];
+  /**
+   * R5（識別子整合チェック）が fail-open でスキップされたゲームの記録（Issue #360）。
+   * `undefined` は本フィールド追加前の旧レポート。スキップが無ければ空配列。
+   */
+  identityCheckSkipped?: IdentityCheckSkipped[];
 }
 
 /**
@@ -354,11 +373,27 @@ export function checkR4(game: GameData): GateViolation | null {
 export async function checkR5(
   game: GameData,
   fetchImpl: typeof fetch = fetch
-): Promise<{ violation: GateViolation | null; uncertain: UncertainIdentityEntry | null }> {
-  if (game.steamAppId === undefined) return { violation: null, uncertain: null };
+): Promise<{
+  violation: GateViolation | null;
+  uncertain: UncertainIdentityEntry | null;
+  /** fail-open でスキップした記録（Issue #360）。steamAppId が無く「対象外」の場合は null */
+  skipped: IdentityCheckSkipped | null;
+}> {
+  if (game.steamAppId === undefined) return { violation: null, uncertain: null, skipped: null };
 
   const entity = await fetchSteamEntity(game.steamAppId, fetchImpl);
-  if (!entity) return { violation: null, uncertain: null }; // fail-open
+  if (!entity) {
+    // fail-open: Steam 実体が取得できず識別子整合チェックを実行できなかった。
+    // 第20号では Steam API 全滅でこの経路が多発したが、記録が残らず事後に追えなかった（Issue #360）。
+    return {
+      violation: null,
+      uncertain: null,
+      skipped: {
+        gameTitle: game.title,
+        reason: `steamAppId=${game.steamAppId} の Steam 実体を取得できず R5 の識別子整合チェックをスキップしました（fail-open）`,
+      },
+    };
+  }
 
   const matchResult = matchGameToSteamEntity(
     {
@@ -385,6 +420,7 @@ export async function checkR5(
           ` game=${game.releaseDate ?? '年不明'}(${gameYear ?? '?'}) / steam=${entity.releaseDate ?? '年不明'}(${entityYear ?? '?'})`,
       },
       uncertain: null,
+      skipped: null,
     };
   }
 
@@ -401,6 +437,7 @@ export async function checkR5(
     );
     return {
       violation: null,
+      skipped: null,
       uncertain: {
         gameTitle: game.title,
         evidence: matchResult.evidence,
@@ -409,22 +446,27 @@ export async function checkR5(
     };
   }
 
-  return { violation: null, uncertain: null };
+  return { violation: null, uncertain: null, skipped: null };
 }
 
 /**
  * 1ゲームに対してすべてのルールを検証する（R3 / R5 は非同期・ネットワークあり）
  *
  * @param fetchImpl R5 の Steam Storefront 呼び出しに使う fetch。テストで差し替える。
- * @returns violations と、R5 で uncertain だったエントリ
+ * @returns violations と、R5 で uncertain/skipped だったエントリ
  */
 export async function checkGame(
   game: GameData,
   trace: ResolverTrace | undefined,
   fetchImpl: typeof fetch = fetch
-): Promise<{ violations: GateViolation[]; uncertainIdentity: UncertainIdentityEntry[] }> {
+): Promise<{
+  violations: GateViolation[];
+  uncertainIdentity: UncertainIdentityEntry[];
+  identityCheckSkipped: IdentityCheckSkipped[];
+}> {
   const violations: GateViolation[] = [];
   const uncertainIdentity: UncertainIdentityEntry[] = [];
+  const identityCheckSkipped: IdentityCheckSkipped[] = [];
 
   // R0 は warn-only — mode=fail でも exit 判定には使わない（hasMutableViolations に含まれない）
   const r0 = checkR0(game);
@@ -447,8 +489,9 @@ export async function checkGame(
   const r5 = await checkR5(game, fetchImpl);
   if (r5.violation) violations.push(r5.violation);
   if (r5.uncertain) uncertainIdentity.push(r5.uncertain);
+  if (r5.skipped) identityCheckSkipped.push(r5.skipped);
 
-  return { violations, uncertainIdentity };
+  return { violations, uncertainIdentity, identityCheckSkipped };
 }
 
 /**
@@ -483,6 +526,7 @@ export async function runCompletenessGate(
     replacementShortfall: [],
     uncertainIdentity: [],
     replacementSummary: [],
+    identityCheckSkipped: [],
   };
 
   // 対象: newReleases + indies（classic は差し替えが複雑なため warn のみ）
@@ -514,6 +558,9 @@ export async function runCompletenessGate(
       if (result.uncertainIdentity.length > 0) {
         report.uncertainIdentity!.push(...result.uncertainIdentity);
       }
+      if (result.identityCheckSkipped.length > 0) {
+        report.identityCheckSkipped!.push(...result.identityCheckSkipped);
+      }
     }
   }
 
@@ -524,6 +571,9 @@ export async function runCompletenessGate(
     report.violations.push(...result.violations);
     if (result.uncertainIdentity.length > 0) {
       report.uncertainIdentity!.push(...result.uncertainIdentity);
+    }
+    if (result.identityCheckSkipped.length > 0) {
+      report.identityCheckSkipped!.push(...result.identityCheckSkipped);
     }
   }
 
@@ -631,6 +681,9 @@ export async function runCompletenessGate(
         const cvMutable = cv.violations.filter((vio) => vio.ruleId !== 'R0');
         if (cv.uncertainIdentity.length > 0) {
           report.uncertainIdentity!.push(...cv.uncertainIdentity);
+        }
+        if (cv.identityCheckSkipped.length > 0) {
+          report.identityCheckSkipped!.push(...cv.identityCheckSkipped);
         }
         if (cvMutable.length === 0) {
           fills.push(candidate);

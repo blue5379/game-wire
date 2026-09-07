@@ -5,7 +5,13 @@
  * validate-article.ts の独自 fetch（日本語のみ）を一本化する。
  * 両方の言語を取得することで、game.title が日本語ローカライズ名の場合にも
  * title 軸で一致判定できる。
+ *
+ * HTTP 呼び出しは steam-api-client.ts の fetchSteamJson に統一する（Issue #360）。
+ * リトライ・バックオフ・サーキットブレーカはそちらの責務であり、このモジュールは
+ * 「取れた結果をどう解釈するか（success:false との切り分け等）」に責務を絞る。
  */
+
+import { fetchSteamJson } from './steam-api-client.js';
 
 export interface SteamEntity {
   appId: number;
@@ -18,8 +24,6 @@ export interface SteamEntity {
   developers: string[];
   publishers: string[];
 }
-
-const STOREFRONT_TIMEOUT_MS = 10000;
 
 /** プロセス内キャッシュ（同一 appId の重複 fetch を防ぐ） */
 const cache = new Map<number, SteamEntity | undefined>();
@@ -47,25 +51,34 @@ async function fetchAppDetails(
   lang: 'english' | 'japanese',
   fetchImpl: typeof fetch
 ): Promise<AppDetailsResult> {
-  try {
-    // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
-    // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
-    // 日本域限定タイトルで success:false → fail-open で照合が黙ってスキップされ得る
-    // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(STOREFRONT_TIMEOUT_MS) });
-    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
-    const json = (await res.json()) as Record<
-      string,
-      { success?: boolean; data?: AppDetailsData }
-    >;
-    const entry = json[String(appId)];
-    if (!entry?.success) return { ok: false, reason: 'success:false（cc=jp で非公開の可能性）' };
-    if (!entry.data) return { ok: false, reason: 'success:true だが data が空' };
-    return { ok: true, data: entry.data };
-  } catch (err) {
-    return { ok: false, reason: String(err) };
+  // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
+  // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
+  // 日本域限定タイトルで success:false → fail-open で照合が黙ってスキップされ得る
+  // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
+  const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
+
+  // HTTP レベルのリトライ・バックオフ・サーキットブレーカは steam-api-client.ts に委ねる。
+  // quiet: true — 失敗時の warn は呼び出し元（下の fetchSteamEntity）が
+  // scope:'steam-entity' として言語別にまとめて出すため、ここで重複させない。
+  const result = await fetchSteamJson(url, { fetchImpl, quiet: true });
+  if (!result.ok) {
+    // result.reason には既に "(attempts=N)" が含まれる（fetchSteamJson が付与）。
+    // サーキットが開いていた場合は reason に 'circuit-open' が含まれ、そのまま伝播する。
+    return { ok: false, reason: result.reason };
   }
+
+  const json = result.json as Record<string, { success?: boolean; data?: AppDetailsData }>;
+  const entry = json[String(appId)];
+  if (!entry?.success) {
+    return {
+      ok: false,
+      reason: `success:false（cc=jp で非公開の可能性）(attempts=${result.attempts})`,
+    };
+  }
+  if (!entry.data) {
+    return { ok: false, reason: `success:true だが data が空 (attempts=${result.attempts})` };
+  }
+  return { ok: true, data: entry.data };
 }
 
 /**
