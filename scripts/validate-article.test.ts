@@ -1237,6 +1237,54 @@ describe('validateGameSourceConsistency', () => {
     expect(warnings[0].message).toContain('3333333');
   });
 
+  // 修正⑦（Issue #360 code-review 指摘）: game-source-check-failed の message に
+  // fetchSteamEntity の失敗理由を含める。一時障害（HTTP 403 全滅）と恒久障害
+  // （success:false = その appId が cc=jp で非公開）を事後にレポートから切り分けられることの回帰テスト。
+  it('Steam appdetails が HTTP 403 を返す場合、message に 403 を含める（一時障害の切り分け）', async () => {
+    const article = makeArticle({
+      title: '『Forbidden』',
+      category: 'indie',
+      game: {
+        title: 'Forbidden',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-01-01',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/5555555' },
+    });
+    const fetchImpl = vi.fn(
+      async () => ({ ok: false, status: 403 }) as unknown as Response
+    ) as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].message).toContain('403');
+  });
+
+  it('Steam appdetails が success:false を返す場合、message に success:false を含める（恒久障害の切り分け）', async () => {
+    const article = makeArticle({
+      title: '『Delisted』',
+      category: 'indie',
+      game: {
+        title: 'Delisted',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-01-01',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/6666666' },
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ '6666666': { success: false } }),
+    }) as unknown as Response) as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].message).toContain('success:false');
+  });
+
   it('Steam URL が無い記事は同一性照合の対象外（API は呼ばない、unchecked 警告が出る）', async () => {
     const article = makeArticle({
       title: '『Qux』',

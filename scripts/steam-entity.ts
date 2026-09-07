@@ -25,8 +25,20 @@ export interface SteamEntity {
   publishers: string[];
 }
 
-/** プロセス内キャッシュ（同一 appId の重複 fetch を防ぐ） */
-const cache = new Map<number, SteamEntity | undefined>();
+/**
+ * fetchSteamEntity の戻り値（判別可能ユニオン）。
+ * 失敗理由（HTTP ステータス・success:false 等）を呼び出し元（レポート）まで伝えるため、
+ * `SteamEntity | undefined` ではなく ok/reason を持つ形にする（Issue #360 修正⑦）。
+ */
+export type SteamEntityResult =
+  | { ok: true; entity: SteamEntity }
+  | { ok: false; reason: string };
+
+/**
+ * プロセス内キャッシュ（同一 appId の重複 fetch を防ぐ）。
+ * 失敗結果は下記のとおりキャッシュしないため、値は常に成功時の SteamEntity のみ。
+ */
+const cache = new Map<number, SteamEntity>();
 
 type AppDetailsData = {
   name?: string;
@@ -83,7 +95,9 @@ async function fetchAppDetails(
 
 /**
  * Steam appdetails を l=english / l=japanese の2回呼んで SteamEntity を返す。
- * 片方失敗はそのフィールドのみ undefined（fail-open）。両方失敗で undefined。
+ * 片方失敗はそのフィールドのみ undefined（fail-open）。両方失敗時は
+ * `{ ok: false, reason }` を返し、失敗理由（HTTP ステータス・success:false 等）を
+ * 呼び出し元（レポート）まで伝える（Issue #360 修正⑦）。
  * プロセス内 Map でキャッシュする（同一 appId の再呼び出しは即返し）。
  *
  * @param appId   Steam アプリ ID
@@ -92,8 +106,9 @@ async function fetchAppDetails(
 export async function fetchSteamEntity(
   appId: number,
   fetchImpl: typeof fetch = fetch
-): Promise<SteamEntity | undefined> {
-  if (cache.has(appId)) return cache.get(appId);
+): Promise<SteamEntityResult> {
+  const cached = cache.get(appId);
+  if (cached !== undefined) return { ok: true, entity: cached };
 
   // 修正C（/code-review 指摘）: 以前は Promise.all で英語/日本語を同時に投げていたが、
   // fetchSteamJson はサーキットゲート評価（evaluateCircuitGate()）をペーシング
@@ -130,7 +145,12 @@ export async function fetchSteamEntity(
         japanese: jaResult.ok ? 'ok' : jaResult.reason,
       })
     );
-    return undefined;
+    // 失敗理由を呼び出し元（レポート）まで伝える（Issue #360 修正⑦）。
+    // 材料は上の console.warn と同じ（english/japanese の reason）。
+    return {
+      ok: false,
+      reason: `both-languages-failed（english=${enResult.ok ? 'ok' : enResult.reason} / japanese=${jaResult.ok ? 'ok' : jaResult.reason}）`,
+    };
   }
 
   // 片言語のみ失敗した場合も理由を残す。nameEn/nameJa の欠落は title 軸の照合結果を
@@ -180,7 +200,7 @@ export async function fetchSteamEntity(
   if (entity.nameEn !== undefined && entity.nameJa !== undefined) {
     cache.set(appId, entity);
   }
-  return entity;
+  return { ok: true, entity };
 }
 
 /** テスト用: キャッシュをクリアする */

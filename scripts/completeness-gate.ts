@@ -381,19 +381,22 @@ export async function checkR5(
 }> {
   if (game.steamAppId === undefined) return { violation: null, uncertain: null, skipped: null };
 
-  const entity = await fetchSteamEntity(game.steamAppId, fetchImpl);
-  if (!entity) {
+  const result = await fetchSteamEntity(game.steamAppId, fetchImpl);
+  if (!result.ok) {
     // fail-open: Steam 実体が取得できず識別子整合チェックを実行できなかった。
     // 第20号では Steam API 全滅でこの経路が多発したが、記録が残らず事後に追えなかった（Issue #360）。
+    // 失敗理由（一時障害の HTTP ステータス / 恒久障害の success:false 等）をレポートまで
+    // 伝えることで、事後に一時障害と恒久障害を切り分けられるようにする（Issue #360 修正⑦）。
     return {
       violation: null,
       uncertain: null,
       skipped: {
         gameTitle: game.title,
-        reason: `steamAppId=${game.steamAppId} の Steam 実体を取得できず R5 の識別子整合チェックをスキップしました（fail-open）`,
+        reason: `steamAppId=${game.steamAppId} の Steam 実体を取得できず R5 の識別子整合チェックをスキップしました（fail-open。理由: ${result.reason}）`,
       },
     };
   }
+  const entity = result.entity;
 
   const matchResult = matchGameToSteamEntity(
     {
@@ -679,13 +682,20 @@ export async function runCompletenessGate(
         // 候補も Gate で検証。R0 は warn-only なので採用判定から除外する（初回スキャンと同じ方針）。
         const cv = await checkGame(candidate, trace, fetchImpl);
         const cvMutable = cv.violations.filter((vio) => vio.ruleId !== 'R0');
-        if (cv.uncertainIdentity.length > 0) {
-          report.uncertainIdentity!.push(...cv.uncertainIdentity);
-        }
-        if (cv.identityCheckSkipped.length > 0) {
-          report.identityCheckSkipped!.push(...cv.identityCheckSkipped);
-        }
         if (cvMutable.length === 0) {
+          // 採用が確定した候補だけ uncertainIdentity / identityCheckSkipped を report に積む
+          // （修正⑧・Issue #360 code-review 指摘）。不採用（else 側）の候補の分をここで push すると、
+          // 「未照合のまま発行されたゲーム」と「評価して落とした候補」が identityCheckSkipped で
+          // 混ざり、fetch-data.ts のログ件数や format-validation-report.ts の「該当号の記事の
+          // Steam リンクを確認してください」という案内が、発行されていないゲームまで含めて
+          // 実態より多く見えてしまう。不採用候補の情報は candidateAttempts（reason に違反理由）と
+          // steamApiHealth に残るため、ここで捨てても完全に失われるわけではない。
+          if (cv.uncertainIdentity.length > 0) {
+            report.uncertainIdentity!.push(...cv.uncertainIdentity);
+          }
+          if (cv.identityCheckSkipped.length > 0) {
+            report.identityCheckSkipped!.push(...cv.identityCheckSkipped);
+          }
           fills.push(candidate);
           usedTitles.add(candidate.normalizedTitle);
           report.replacedGames.push(candidate.title);

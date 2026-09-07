@@ -96,13 +96,14 @@ describe('fetchSteamEntity', () => {
       },
     });
 
-    const entity = await fetchSteamEntity(12345, mockFetch as typeof fetch);
-    expect(entity).toBeDefined();
-    expect(entity?.nameEn).toBe('Test Game EN');
-    expect(entity?.nameJa).toBe('テストゲーム');
-    expect(entity?.developers).toEqual(['Dev Studio']);
-    expect(entity?.publishers).toEqual(['Pub Corp']);
-    expect(entity?.releaseDate).toBe('Jan 1, 2024');
+    const result = await fetchSteamEntity(12345, mockFetch as typeof fetch);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Test Game EN');
+    expect(result.entity.nameJa).toBe('テストゲーム');
+    expect(result.entity.developers).toEqual(['Dev Studio']);
+    expect(result.entity.publishers).toEqual(['Pub Corp']);
+    expect(result.entity.releaseDate).toBe('Jan 1, 2024');
   });
 
   it('coming_soon=true のとき releaseDate を undefined にする', async () => {
@@ -126,8 +127,10 @@ describe('fetchSteamEntity', () => {
       },
     });
 
-    const entity = await fetchSteamEntity(99, mockFetch as typeof fetch);
-    expect(entity?.releaseDate).toBeUndefined();
+    const result = await fetchSteamEntity(99, mockFetch as typeof fetch);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.releaseDate).toBeUndefined();
   });
 
   it('日本語取得失敗 → nameJa=undefined, それ以外は返す（fail-open）', async () => {
@@ -145,16 +148,20 @@ describe('fetchSteamEntity', () => {
       return Promise.resolve({ ok: false, status: 503 } as Response);
     });
 
-    const entity = await resolveWithTimers(fetchSteamEntity(1, mockFetch as typeof fetch));
-    expect(entity).toBeDefined();
-    expect(entity?.nameEn).toBe('Game EN');
-    expect(entity?.nameJa).toBeUndefined();
+    const result = await resolveWithTimers(fetchSteamEntity(1, mockFetch as typeof fetch));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Game EN');
+    expect(result.entity.nameJa).toBeUndefined();
   });
 
-  it('両方失敗 → undefined（fail-open）', async () => {
+  it('両方失敗 → ok:false（fail-open）で失敗理由を返す', async () => {
     const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 503 } as Response));
-    const entity = await resolveWithTimers(fetchSteamEntity(2, mockFetch as typeof fetch));
-    expect(entity).toBeUndefined();
+    const result = await resolveWithTimers(fetchSteamEntity(2, mockFetch as typeof fetch));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('unreachable');
+    expect(result.reason).toContain('both-languages-failed');
+    expect(result.reason).toContain('HTTP 503');
   });
 
   it('同一 appId の2回目は fetch を呼ばない（両言語成功時のキャッシュ）', async () => {
@@ -270,10 +277,12 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       return Promise.resolve({ ok: false, status: 500 } as Response);
     });
 
-    const entity = await resolveWithTimers(fetchSteamEntity(54, mockFetch as typeof fetch));
+    const result = await resolveWithTimers(fetchSteamEntity(54, mockFetch as typeof fetch));
 
     // fail-open の挙動は変えない（取れた言語で続行する）
-    expect(entity?.nameEn).toBe('Half Fetched');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Half Fetched');
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(String(logs[0].reason)).toContain('one-language-failed');
@@ -292,10 +301,12 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       'l=japanese': { '58': { success: true, data: { developers: [] } } },
     });
 
-    const entity = await fetchSteamEntity(58, mockFetch as typeof fetch);
+    const result = await fetchSteamEntity(58, mockFetch as typeof fetch);
 
-    expect(entity?.nameEn).toBe('Nameless JA');
-    expect(entity?.nameJa).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Nameless JA');
+    expect(result.entity.nameJa).toBeUndefined();
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(String(logs[0].reason)).toContain('one-language-failed');
@@ -354,22 +365,23 @@ describe('fetchSteamEntity: サーキット半開時は逐次実行になる（�
       },
     });
 
-    const entity = await resolveWithTimers(fetchSteamEntity(777, mockFetch as typeof fetch));
-    expect(entity).toBeDefined();
-    expect(entity?.nameEn).toBe('Probe EN');
-    expect(entity?.nameJa).toBe('プローブ日本語');
+    const result = await resolveWithTimers(fetchSteamEntity(777, mockFetch as typeof fetch));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Probe EN');
+    expect(result.entity.nameJa).toBe('プローブ日本語');
     expect(getSteamApiHealth().circuitOpen).toBe(false);
   });
 
-  it('プローブ（英語）が失敗したら日本語もskipされ、両方失敗としてundefinedを返す（fail-open。片言語だけのエンティティにならない）', async () => {
+  it('プローブ（英語）が失敗したら日本語もskipされ、両方失敗としてok:falseを返す（fail-open。片言語だけのエンティティにならない）', async () => {
     await openCircuitVia403();
     await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
 
     // プローブ（英語）が403で失敗する
     const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 403 } as Response));
 
-    const entity = await resolveWithTimers(fetchSteamEntity(778, mockFetch as typeof fetch));
-    expect(entity).toBeUndefined();
+    const result = await resolveWithTimers(fetchSteamEntity(778, mockFetch as typeof fetch));
+    expect(result.ok).toBe(false);
     // 英語のプローブが失敗したのでサーキットは開いたままで、日本語は skip される
     expect(getSteamApiHealth().circuitOpen).toBe(true);
     // 英語側は403でSTEAM_MAX_ATTEMPTS回リトライして呼ばれるが、日本語側は

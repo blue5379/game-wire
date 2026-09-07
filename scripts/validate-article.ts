@@ -805,14 +805,16 @@ export async function validateGameSourceConsistency(
   }
 
   // Steam 実体を二言語取得（失敗時は fail-open）
-  const entity = await fetchSteamEntity(appId, fetchImpl);
-  if (!entity) {
+  const result = await fetchSteamEntity(appId, fetchImpl);
+  if (!result.ok) {
     // Issue #360: 第20号では appdetails が全滅し、この fail-open 経路が無警告で
     // 通過したため「同一性照合が一件もスキップされていた」ことがレポート上に一切残らなかった。
     // severity を low（game-source-unchecked）より重い medium にしている理由:
     // appId 未取得（game-source-unchecked）は「照合対象が無い」状態だが、こちらは
     // 「appId を記事に載せておきながら、その appId が正しいことを検証できていない」状態であり、
     // 読者が実際にクリックするリンクの正しさが未確認のまま公開される。
+    // 失敗理由（一時障害の HTTP ステータス / 恒久障害の success:false 等）を message に含め、
+    // 事後に一時障害と恒久障害を切り分けられるようにする（Issue #360 修正⑦）。
     warnings.push({
       articleTitle: article.title,
       category: article.category,
@@ -820,10 +822,12 @@ export async function validateGameSourceConsistency(
       type: 'game-source-check-failed',
       message:
         `Steam(appId=${appId})の実体が取得できず、記事の game メタとの同一性照合ができませんでした。` +
-        `fail-open のため号の発行は継続していますが、この appId の正しさは未確認です。`,
+        `fail-open のため号の発行は継続していますが、この appId の正しさは未確認です。` +
+        `（理由: ${result.reason}）`,
     });
     return warnings;
   }
+  const entity = result.entity;
 
   const matchResult = matchGameToSteamEntity(
     {
