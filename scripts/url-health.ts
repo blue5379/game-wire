@@ -1,18 +1,178 @@
 /**
  * URL の死活確認と画像サイズ取得のユーティリティ
- * build-issue.ts の isUrlAlive と同等の HEAD 確認を一元化する
+ *
+ * 死活確認は全経路をここに一元化する。UA・メソッド・リトライの条件が
+ * 呼び出し元ごとにばらつくと、同じ URL が経路によって生死判定が変わる（Issue #359）。
  */
 
-export async function headOk(url: string, timeoutMs = 5000): Promise<boolean> {
+/**
+ * ブラウザを装う User-Agent。
+ *
+ * UA 無し（undici デフォルト）のリクエストを Bot と見なして 403 を返すサイトがあり、
+ * 実在する正常なページを「到達不能」と誤判定してしまう。
+ * Issue #359: 第20号で capcom-games.com の鬼武者公式ページが UA 無しだと 403 を返し、
+ * Completeness Gate の R3 が新作記事を1本除去した（同 URL は UA 付きなら 200）。
+ *
+ * verify-official-url.ts の fetchPageStructure も同じ UA を使うため、ここで一元管理する。
+ */
+export const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+/**
+ * 「URL が明確に存在しない」ことを示す HTTP ステータス。
+ * 401/403（認証壁・Bot ブロック）や 429（レート制限）は URL 自体は存在しうるので含めない。
+ */
+export const NOT_FOUND_STATUS_CODES = new Set([404, 410]);
+
+/**
+ * リトライで回復しうる HTTP ステータス（一時的な障害・レート制限）。
+ * 403 のような恒久的な拒否は含めない（待っても変わらないため）。
+ */
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/** GET の試行回数。HEAD を含めた 1 URL あたりの最大リクエスト数は +1 */
+const MAX_GET_ATTEMPTS = 2;
+
+/** リトライ前の待機時間の基準値。実際の待機は base × 試行回数 */
+const RETRY_BASE_DELAY_MS = 500;
+
+export interface UrlHealthResult {
+  ok: boolean;
+  /** 最終試行の HTTP ステータス。タイムアウト・ネットワークエラーでは undefined */
+  status?: number;
+  /** ok=false のときの失敗理由 */
+  reason?: string;
+}
+
+export interface UrlHealthOptions {
+  /** テストで差し替える fetch 実装 */
+  fetchImpl?: typeof fetch;
+  /** テストで待機を無効化するためのフック */
+  sleepImpl?: (ms: number) => Promise<void>;
+  /**
+   * true にすると失敗時の console.warn を抑止する。
+   * 「候補 URL を順に試して落ちるのが正常」な呼び出し（ストアリンクの候補探索など）で、
+   * 想定内の空振りがログを埋めて本当の障害を隠さないようにするために使う。
+   */
+  quiet?: boolean;
+}
+
+/** 1 回のリクエスト結果。retryable は呼び出し側のリトライ判断に使う内部情報 */
+interface AttemptResult extends UrlHealthResult {
+  retryable: boolean;
+}
+
+function defaultSleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * URL に 1 回リクエストして到達可否を返す。
+ *
+ * GET の場合は本文を読まずに破棄する。カバー画像の死活確認にも使われるため、
+ * 画像を全量ダウンロードしないようにするための措置。
+ */
+async function requestOnce(
+  url: string,
+  method: 'HEAD' | 'GET',
+  timeoutMs: number,
+  fetchImpl: typeof fetch
+): Promise<AttemptResult> {
   try {
-    const res = await fetch(url, {
-      method: 'HEAD',
+    const res = await fetchImpl(url, {
+      method,
+      redirect: 'follow',
       signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        'User-Agent': BROWSER_USER_AGENT,
+        // 画像・HTML どちらの死活確認にも使うため種別を限定しない
+        Accept: '*/*',
+      },
     });
-    return res.ok;
-  } catch {
-    return false;
+    if (method === 'GET') {
+      await res.body?.cancel().catch(() => {});
+    }
+    if (res.ok) return { ok: true, status: res.status, retryable: false };
+    return {
+      ok: false,
+      status: res.status,
+      reason: `HTTP ${res.status}`,
+      retryable: RETRYABLE_STATUS_CODES.has(res.status),
+    };
+  } catch (err) {
+    // タイムアウトはリトライしない。応答しないホストは即座に再試行しても返らないことが多く、
+    // 1 URL あたりの最悪実行時間が伸びる（weekly-build は timeout-minutes: 30）。
+    //
+    // 名前は undici の実装依存。現行（Node 20 / undici 6）は DOMException 'TimeoutError' だが、
+    // 過去には 'AbortError' だった。この関数で中断を起こすのは AbortSignal.timeout だけなので
+    // 両方をタイムアウト扱いにする（実装が戻ってもリトライが黙って復活しないように）。
+    const errName = err instanceof Error ? err.name : '';
+    const timedOut = errName === 'TimeoutError' || errName === 'AbortError';
+    return { ok: false, reason: String(err), retryable: !timedOut };
   }
+}
+
+/**
+ * URL の死活確認を行い、失敗時は HTTP ステータスを含む理由を返す。
+ *
+ * 単純な HEAD 一発では以下を誤判定するため、多段で確認する（Issue #359）:
+ * - Bot 判定で 403 を返すサイト → ブラウザ UA を送る
+ * - HEAD を許可しない / HEAD にだけ 404 を返すサイト → GET で確認する
+ * - 一時的な 5xx・429・ネットワークエラー → リトライする
+ *
+ * HEAD の失敗は単独では信頼せず、必ず GET で確認する。404/410 は GET でも同じなら
+ * 「URL が存在しない」と確定し、リトライしない。
+ */
+export async function checkUrlHealth(
+  url: string,
+  timeoutMs = 5000,
+  options: UrlHealthOptions = {}
+): Promise<UrlHealthResult> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const sleep = options.sleepImpl ?? defaultSleep;
+
+  // まず HEAD。成功すれば最も軽く済む
+  let last = await requestOnce(url, 'HEAD', timeoutMs, fetchImpl);
+
+  if (!last.ok) {
+    for (let attempt = 1; attempt <= MAX_GET_ATTEMPTS; attempt++) {
+      last = await requestOnce(url, 'GET', timeoutMs, fetchImpl);
+      if (last.ok) break;
+
+      // 404/410 は「存在しない」確定シグナル。リトライしても変わらない
+      const definitive = last.status !== undefined && NOT_FOUND_STATUS_CODES.has(last.status);
+      if (definitive || !last.retryable || attempt === MAX_GET_ATTEMPTS) break;
+
+      await sleep(RETRY_BASE_DELAY_MS * attempt);
+    }
+  }
+
+  const result: UrlHealthResult = { ok: last.ok, status: last.status, reason: last.reason };
+  if (!result.ok && !options.quiet) {
+    console.warn(
+      JSON.stringify({
+        scope: 'url-health',
+        step: 'checkUrlHealth',
+        url,
+        status: result.status,
+        reason: result.reason,
+      })
+    );
+  }
+  return result;
+}
+
+/**
+ * URL が到達可能かを boolean で返す（既存呼び出し元向けの薄いラッパ）。
+ * 失敗理由が必要な場合は checkUrlHealth を使う。
+ */
+export async function headOk(
+  url: string,
+  timeoutMs = 5000,
+  options: UrlHealthOptions = {}
+): Promise<boolean> {
+  const result = await checkUrlHealth(url, timeoutMs, options);
+  return result.ok;
 }
 
 export type ImageOrientation = 'portrait' | 'landscape';
@@ -27,7 +187,13 @@ export async function getImageOrientation(
   timeoutMs = 8000
 ): Promise<ImageOrientation | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    // headOk と同じ UA を送る。UA でブロックするホストで headOk は 200（採用）なのに
+    // ここだけ失敗すると、呼び出し側の orientation ?? 'portrait' により横長画像が
+    // portrait と誤ラベルされる（Issue #359）
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'User-Agent': BROWSER_USER_AGENT },
+    });
     if (!res.ok) return null;
 
     const buf = await res.arrayBuffer();

@@ -128,7 +128,7 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
   }
 
   it('officialUrlSource が由来不明（tavily でも igdb-official でもない）の場合、officialUrl を出力しない', async () => {
-    // isUrlAlive が呼ばれても常に生存扱いになるようにしておき、
+    // checkUrlHealth が呼ばれても常に生存扱いになるようにしておき、
     // ソース判定そのものでスキップされていることを検証する（キャッシュ互換で残る旧値 'igdb-fallback' を想定）
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
@@ -143,7 +143,7 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
     expect(result).not.toContain('officialUrl: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が tavily でも、isUrlAlive が false を返す場合は officialUrl を出力しない', async () => {
+  it('officialUrlSource が tavily でも、到達性チェックが失敗する場合は officialUrl を出力しない', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false });
 
     const article = makeArticle({
@@ -155,7 +155,7 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
     expect(result).not.toContain('officialUrl: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が tavily かつ isUrlAlive が true の場合、officialUrl を出力する（ポジティブコントロール）', async () => {
+  it('officialUrlSource が tavily かつ 到達性チェックが成功する場合、officialUrl を出力する（ポジティブコントロール）', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     const article = makeArticle({
@@ -167,7 +167,7 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
     expect(result).toContain('officialUrl: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が igdb-official かつ isUrlAlive が true の場合、officialUrl を出力する', async () => {
+  it('officialUrlSource が igdb-official かつ 到達性チェックが成功する場合、officialUrl を出力する', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     const article = makeArticle({
@@ -179,7 +179,7 @@ describe('formatArticleForFrontmatter: recommendedGames の officialUrl ゲー�
     expect(result).toContain('officialUrl: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が undefined の場合、isUrlAlive が true でも officialUrl を出力しない（source未定義も信頼できない扱いに厳格化。#247 code review 指摘#1対応）', async () => {
+  it('officialUrlSource が undefined の場合、到達性チェックが成功しても officialUrl を出力しない（source未定義も信頼できない扱いに厳格化。#247 code review 指摘#1対応）', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     const article = makeArticle({
@@ -204,7 +204,7 @@ describe('formatArticleForFrontmatter: sourceUrls.official の後方互換ゲー
     global.fetch = originalFetch;
   });
 
-  it('officialUrlSource が undefined でも isUrlAlive が true なら official を出力する（キャッシュ互換）', async () => {
+  it('officialUrlSource が undefined でも 到達性チェックが成功するなら official を出力する（キャッシュ互換）', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     const article = makeArticle({
@@ -218,7 +218,7 @@ describe('formatArticleForFrontmatter: sourceUrls.official の後方互換ゲー
     expect(result).toContain('official: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が undefined でも isUrlAlive が false なら official を出力しない', async () => {
+  it('officialUrlSource が undefined でも 到達性チェックが失敗するなら official を出力しない', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false });
 
     const article = makeArticle({
@@ -232,7 +232,7 @@ describe('formatArticleForFrontmatter: sourceUrls.official の後方互換ゲー
     expect(result).not.toContain('official: "https://www.megacrit.com/games/"');
   });
 
-  it('officialUrlSource が信頼できないソース（igdb-fallback）の場合、isUrlAlive が true でも official を出力しない', async () => {
+  it('officialUrlSource が信頼できないソース（igdb-fallback）の場合、到達性チェックが成功しても official を出力しない', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: true });
 
     const article = makeArticle({

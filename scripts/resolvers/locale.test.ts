@@ -14,11 +14,24 @@ vi.mock('./tavily-search.js', async (importOriginal) => {
   return { ...actual, searchStorePage: (qt: string[], scope: string, filter: (u: string) => boolean) => mockSearch(qt, scope, filter) };
 });
 
-import { resolveByLocale } from './locale.js';
+// checkUrlHealth をモックして makeHeadVerifier の失敗理由の伝播を検証する。
+// 他の export（BROWSER_USER_AGENT 等）は tavily-search が使うため実物を残す。
+const mockCheckUrlHealth = vi.fn<(url: string, timeoutMs?: number, options?: unknown) => Promise<{ ok: boolean; status?: number; reason?: string }>>();
+vi.mock('../url-health.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../url-health.js')>();
+  return {
+    ...actual,
+    checkUrlHealth: (url: string, timeoutMs?: number, options?: unknown) =>
+      mockCheckUrlHealth(url, timeoutMs, options),
+  };
+});
+
+import { resolveByLocale, makeHeadVerifier } from './locale.js';
 import type { LocaleResolverConfig, VerifyOutcome } from './locale.js';
 
 beforeEach(() => {
   mockSearch.mockReset();
+  mockCheckUrlHealth.mockReset();
 });
 
 // テスト用 Nintendo 風 config（nintendo.com / nintendo.co.jp 両対応）
@@ -143,7 +156,7 @@ describe('resolveByLocale — IGDBロケール優先順位', () => {
     mockSearch.mockResolvedValue([]); // 検索は全て空
     const config = makeConfig({
       // IGDB検証は失敗させる
-      verifyIgdb: async () => ({ ok: false, reason: 'HEAD check failed' }),
+      verifyIgdb: async () => ({ ok: false, reason: '到達性チェック失敗: HTTP 404' }),
     });
 
     const result = await resolveByLocale(
@@ -159,5 +172,38 @@ describe('resolveByLocale — IGDBロケール優先順位', () => {
     const scopes = mockSearch.mock.calls.map((c) => c[1]);
     expect(scopes).toContain('site:nintendo.co.jp');
     expect(scopes).toContain('site:nintendo.com'); // 日本語候補0件なので英語検索が走る
+  });
+});
+
+describe('makeHeadVerifier — 失敗理由の伝播（Issue #359 レビュー指摘）', () => {
+  it('到達不能なら HTTP ステータスを含む理由を返す（warn 抑止でも痕跡を残す）', async () => {
+    mockCheckUrlHealth.mockResolvedValue({ ok: false, status: 403, reason: 'HTTP 403' });
+
+    const outcome = await makeHeadVerifier()('https://store.playstation.com/ja-jp/product/X');
+
+    expect(outcome.ok).toBe(false);
+    // reason は resolveByLocale が attempts[].reason に載せる。
+    // ここが固定文字列だと、Bot ブロックでストアリンクが消えても痕跡が残らない
+    expect((outcome as { reason: string }).reason).toContain('403');
+  });
+
+  it('到達可能なら confidence=medium で通す（名前照合ができないため）', async () => {
+    mockCheckUrlHealth.mockResolvedValue({ ok: true, status: 200 });
+
+    const outcome = await makeHeadVerifier()('https://store.playstation.com/ja-jp/product/X');
+
+    expect(outcome).toEqual({ ok: true, confidence: 'medium' });
+  });
+
+  it('失敗ログは抑止する（quiet: true を渡す）', async () => {
+    mockCheckUrlHealth.mockResolvedValue({ ok: false, status: 404, reason: 'HTTP 404' });
+
+    await makeHeadVerifier(1234)('https://store.playstation.com/ja-jp/product/X');
+
+    expect(mockCheckUrlHealth).toHaveBeenCalledWith(
+      'https://store.playstation.com/ja-jp/product/X',
+      1234,
+      { quiet: true }
+    );
   });
 });

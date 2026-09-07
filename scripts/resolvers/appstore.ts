@@ -11,7 +11,7 @@
  */
 
 import type { StoreLink } from '../types.js';
-import { headOk } from '../url-health.js';
+import { checkUrlHealth } from '../url-health.js';
 import { matchesAnyTitle } from '../game-identity.js';
 import { isJapaneseUrl } from './locale.js';
 
@@ -61,12 +61,18 @@ export async function resolveAppStore(input: AppStoreResolverInput): Promise<App
   const igdbEnUrl = appStoreUrls.find((u) => !isJapaneseUrl(u));
 
   const verifyIgdbUrl = async (url: string): Promise<StoreLink | null> => {
-    const alive = await headOk(url, 8000);
-    if (alive) {
+    // 単発 URL の生死を見る経路。warn は抑止するが理由は attempts[] に残す
+    // （Issue #359 と同種の Bot ブロックが起きたとき痕跡が消えないように）
+    const health = await checkUrlHealth(url, 8000, { quiet: true });
+    if (health.ok) {
       attempts.push({ method: 'igdb-website', ok: true });
       return { platform: 'appstore', url, resolvedBy: 'igdb-website', confidence: 'medium' };
     }
-    attempts.push({ method: 'igdb-website', ok: false, reason: 'HEAD check failed' });
+    attempts.push({
+      method: 'igdb-website',
+      ok: false,
+      reason: `到達性チェック失敗: ${health.reason ?? 'unknown'}`,
+    });
     return null;
   };
 
