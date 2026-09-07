@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveGameIdentity } from './identity-resolver.js';
+import { configureSteamApiClient, resetSteamApiClient } from './steam-api-client.js';
 
 // fetch をグローバルモック
 const mockFetch = vi.fn();
@@ -17,6 +18,15 @@ vi.stubEnv('TAVILY_API_KEY', '');
 
 beforeEach(() => {
   mockFetch.mockReset();
+  // Steam 呼び出しは resolvers/steam.ts 経由で steam-api-client.ts の
+  // モジュール状態（サーキット・ペーシング間隔・集計カウンタ）を共有する。
+  // リセットしないとテスト間で状態が漏れ、先行テストの連続失敗でサーキットが
+  // 開いたまま後続テストが circuit-open でスキップされる。
+  resetSteamApiClient();
+  // ペーシングとバックオフを実時間で待たない。既定の
+  // STEAM_MIN_REQUEST_INTERVAL_MS(1500ms) のままだと、モックした fetch 1回ごとに
+  // 1.5 秒の実待機が入り、このファイルだけで 45 秒以上かかる。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

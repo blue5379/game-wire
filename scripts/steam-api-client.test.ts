@@ -17,7 +17,6 @@ import {
   STEAM_MAX_ATTEMPTS,
   STEAM_RETRY_AFTER_MAX_MS,
   STEAM_CIRCUIT_FAILURE_THRESHOLD,
-  STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD,
   STEAM_MIN_REQUEST_INTERVAL_MS,
   STEAM_RATE_LIMITED_INTERVAL_MS,
   STEAM_PACING_MAX_INTERVAL_MS,
@@ -58,16 +57,6 @@ function makeBrokenJsonResponse(): Response {
 /** 常に HTTP 200 で成功する fetchImpl */
 function makeOk(): typeof fetch {
   return vi.fn(async () => makeResponse({ ok: true, json: { success: true } })) as unknown as typeof fetch;
-}
-
-/** 1回目は指定ステータスで失敗し、2回目以降は成功する fetchImpl（リトライで最終的に成功するケース用） */
-function makeFailThenOk(status: number): typeof fetch {
-  let calls = 0;
-  return vi.fn(async () => {
-    calls++;
-    if (calls === 1) return makeResponse({ ok: false, status });
-    return makeResponse({ ok: true, json: { success: true } });
-  }) as unknown as typeof fetch;
 }
 
 /** 常に指定ステータスで失敗する fetchImpl */
@@ -144,12 +133,15 @@ describe('fetchSteamJson', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
-  it('Retry-After: 2 を尊重して2000ms待ってからリトライする', async () => {
+  // 429 は B対応でリトライしなくなったため、Retry-After によるリトライ待機の検証には
+  // 429 以外の retryable ステータス（503）を使う。429 の Retry-After はリトライ待機では
+  // なくペーシング間隔に使われる（C対応。「適応型ペーシング」describe 内のテスト参照）。
+  it('503 で Retry-After: 2 を尊重して2000ms待ってからリトライする', async () => {
     let calls = 0;
     const fetchImpl = vi.fn(async () => {
       calls++;
       if (calls === 1) {
-        return makeResponse({ ok: false, status: 429, headers: { 'Retry-After': '2' } });
+        return makeResponse({ ok: false, status: 503, headers: { 'Retry-After': '2' } });
       }
       return makeResponse({ ok: true, json: {} });
     });
@@ -170,12 +162,12 @@ describe('fetchSteamJson', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('Retry-After が極端に大きい場合 STEAM_RETRY_AFTER_MAX_MS にクランプされる', async () => {
+  it('503 で Retry-After が極端に大きい場合 STEAM_RETRY_AFTER_MAX_MS にクランプされる', async () => {
     let calls = 0;
     const fetchImpl = vi.fn(async () => {
       calls++;
       if (calls === 1) {
-        return makeResponse({ ok: false, status: 429, headers: { 'Retry-After': '999999' } });
+        return makeResponse({ ok: false, status: 503, headers: { 'Retry-After': '999999' } });
       }
       return makeResponse({ ok: true, json: {} });
     });
@@ -593,36 +585,150 @@ describe('適応型ペーシング（A対応。実測3・実測4の再発防止�
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it('429 を観測すると以降の間隔が STEAM_RATE_LIMITED_INTERVAL_MS 以上に上がり、STEAM_PACING_MAX_INTERVAL_MS でクランプされ、成功しても下がらない', async () => {
+  it('429 を観測すると次の呼び出し以降の間隔が STEAM_RATE_LIMITED_INTERVAL_MS 以上に上がり、STEAM_PACING_MAX_INTERVAL_MS でクランプされ、成功しても下がらない', async () => {
+    // B対応で429はリトライしなくなったため、「1回の呼び出し内でリトライ→成功する間に
+    // 間隔が上がる」ことは検証できない。代わりに「429で即失敗した論理呼び出しの後、
+    // 次の論理呼び出しの gatePacing 待機に上がった間隔が使われる」ことを検証する。
     const sleepSpy = vi.fn(async (_ms: number) => {});
     configureSteamApiClient({ sleepImpl: sleepSpy, minRequestIntervalMs: 0 });
 
-    // 1本目: 429 → リトライで成功。この呼び出し内の2回目の試行のペーシング待機に
-    // 「上がった後」の間隔（STEAM_RATE_LIMITED_INTERVAL_MS）が使われる。
+    // 1本目: 429 → 即失敗（リトライしない）。ペーシング間隔が
+    // max(0*2, STEAM_RATE_LIMITED_INTERVAL_MS) = STEAM_RATE_LIMITED_INTERVAL_MS に上がる。
     await fetchSteamJson('https://example.test/bump-1', {
-      fetchImpl: makeFailThenOk(429),
+      fetchImpl: makeAlwaysFail(429),
       quiet: true,
     });
+
+    // 2本目: 通常成功。gatePacing の待機に「上がった後」の間隔が使われる。
+    await fetchSteamJson('https://example.test/bump-2-ok', { fetchImpl: makeOk(), quiet: true });
     expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(STEAM_RATE_LIMITED_INTERVAL_MS);
 
-    // 2本目: 429 → リトライで成功。1500 * 2 = 3000 = STEAM_PACING_MAX_INTERVAL_MS（ちょうど上限）
-    await fetchSteamJson('https://example.test/bump-2', {
-      fetchImpl: makeFailThenOk(429),
-      quiet: true,
-    });
-    expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(STEAM_PACING_MAX_INTERVAL_MS);
-
-    // 3本目: 429 → リトライで成功。3000 * 2 = 6000 のはずだが上限 3000 でクランプされたままのはず
+    // 3本目: 429 → 即失敗。1500 * 2 = 3000 = STEAM_PACING_MAX_INTERVAL_MS（ちょうど上限）
     await fetchSteamJson('https://example.test/bump-3', {
-      fetchImpl: makeFailThenOk(429),
+      fetchImpl: makeAlwaysFail(429),
+      quiet: true,
+    });
+    await fetchSteamJson('https://example.test/bump-4-ok', { fetchImpl: makeOk(), quiet: true });
+    expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(STEAM_PACING_MAX_INTERVAL_MS);
+
+    // 5本目: 429 → 即失敗。3000 * 2 = 6000 のはずだが上限 3000 でクランプされたままのはず
+    await fetchSteamJson('https://example.test/bump-5', {
+      fetchImpl: makeAlwaysFail(429),
+      quiet: true,
+    });
+
+    // 6本目: 429 無しの通常成功のみ。間隔は下がらず 3000 のまま使われる
+    sleepSpy.mockClear();
+    await fetchSteamJson('https://example.test/bump-6-ok', { fetchImpl: makeOk(), quiet: true });
+    expect(sleepSpy).toHaveBeenCalledWith(STEAM_PACING_MAX_INTERVAL_MS);
+  });
+
+  it('429 の Retry-After（秒数）が次の呼び出しのペーシング間隔に反映される（C対応。上限未満の値はそのまま採用される）', async () => {
+    const sleepSpy = vi.fn(async (_ms: number) => {});
+    configureSteamApiClient({ sleepImpl: sleepSpy, minRequestIntervalMs: 0 });
+
+    // Retry-After: 2 → 2000ms。currentPacingIntervalMs*2 (0) や
+    // STEAM_RATE_LIMITED_INTERVAL_MS (1500) より大きく、STEAM_PACING_MAX_INTERVAL_MS
+    // (3000) 未満なので、そのまま 2000ms が採用される。
+    const fetchImpl429 = vi.fn(async () =>
+      makeResponse({ ok: false, status: 429, headers: { 'Retry-After': '2' } })
+    );
+    const result = await fetchSteamJson('https://example.test/retry-after-pacing', {
+      fetchImpl: fetchImpl429 as unknown as typeof fetch,
+      quiet: true,
+    });
+    // Retry-After があってもリトライはしない
+    expect(fetchImpl429).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+
+    await fetchSteamJson('https://example.test/retry-after-pacing-next', {
+      fetchImpl: makeOk(),
+      quiet: true,
+    });
+    expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(2000);
+  });
+
+  it('429 の Retry-After が STEAM_PACING_MAX_INTERVAL_MS を超える場合、ペーシング間隔はそこでクランプされる（C対応。例: Retry-After:5 → 5000msだが3000msにクランプ）', async () => {
+    const sleepSpy = vi.fn(async (_ms: number) => {});
+    configureSteamApiClient({ sleepImpl: sleepSpy, minRequestIntervalMs: 0 });
+
+    // Retry-After: 5 → 5000ms だが、STEAM_PACING_MAX_INTERVAL_MS (3000) を超えるため
+    // クランプされて 3000ms になる。
+    const fetchImpl429 = vi.fn(async () =>
+      makeResponse({ ok: false, status: 429, headers: { 'Retry-After': '5' } })
+    );
+    await fetchSteamJson('https://example.test/retry-after-pacing-clamp', {
+      fetchImpl: fetchImpl429 as unknown as typeof fetch,
+      quiet: true,
+    });
+    expect(fetchImpl429).toHaveBeenCalledTimes(1);
+
+    await fetchSteamJson('https://example.test/retry-after-pacing-clamp-next', {
+      fetchImpl: makeOk(),
       quiet: true,
     });
     expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(STEAM_PACING_MAX_INTERVAL_MS);
+  });
 
-    // 4本目: 429 無しの通常成功のみ。間隔は下がらず 3000 のまま使われる
-    sleepSpy.mockClear();
-    await fetchSteamJson('https://example.test/bump-4-ok', { fetchImpl: makeOk(), quiet: true });
-    expect(sleepSpy).toHaveBeenCalledWith(STEAM_PACING_MAX_INTERVAL_MS);
+  it('429 の Retry-After が極端に大きい場合（parseRetryAfterMs 側で STEAM_RETRY_AFTER_MAX_MS にクランプ後）でも、ペーシング間隔は STEAM_PACING_MAX_INTERVAL_MS でクランプされる（C対応）', async () => {
+    const sleepSpy = vi.fn(async (_ms: number) => {});
+    configureSteamApiClient({ sleepImpl: sleepSpy, minRequestIntervalMs: 0 });
+
+    const fetchImpl429 = vi.fn(async () =>
+      makeResponse({ ok: false, status: 429, headers: { 'Retry-After': '999999' } })
+    );
+    await fetchSteamJson('https://example.test/retry-after-pacing-extreme-clamp', {
+      fetchImpl: fetchImpl429 as unknown as typeof fetch,
+      quiet: true,
+    });
+    expect(fetchImpl429).toHaveBeenCalledTimes(1);
+
+    await fetchSteamJson('https://example.test/retry-after-pacing-extreme-clamp-next', {
+      fetchImpl: makeOk(),
+      quiet: true,
+    });
+    expect(sleepSpy.mock.calls.at(-1)?.[0]).toBe(STEAM_PACING_MAX_INTERVAL_MS);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E. gatePacing の try/finally（sleepImpl が例外を投げてもデッドロックしない）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('gatePacing: sleepImpl が例外を投げても pacingChain が解放される（E対応）', () => {
+  it('2本目の gatePacing で sleepImpl が reject しても、その呼び出しは失敗として伝播し、3本目はハングせず完了する', async () => {
+    let callCount = 0;
+    const flakySleep = vi.fn(async (_ms: number) => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('sleep failed');
+      }
+    });
+    configureSteamApiClient({ sleepImpl: flakySleep, minRequestIntervalMs: 1000 });
+
+    // 1本目: 直前の呼び出しが無いので gatePacing は待機せず、sleepImpl は呼ばれない。
+    const first = await fetchSteamJson('https://example.test/gate-pacing-1', {
+      fetchImpl: makeOk(),
+      quiet: true,
+    });
+    expect(first.ok).toBe(true);
+    expect(flakySleep).not.toHaveBeenCalled();
+
+    // 2本目: gatePacing が sleepImpl(1000) を呼び、reject する。release() が
+    // try/finally で必ず呼ばれなければ、pacingChain が解放されず3本目が
+    // `await previous` で永久に止まる（デッドロック）。
+    await expect(
+      fetchSteamJson('https://example.test/gate-pacing-2', { fetchImpl: makeOk(), quiet: true })
+    ).rejects.toThrow('sleep failed');
+    expect(flakySleep).toHaveBeenCalledTimes(1);
+
+    // 3本目: pacingChain が正しく解放されていればハングせず完了する。
+    // （このテストのタイムアウト内に resolve すること自体が「ハングしていない」証明になる）
+    const third = await fetchSteamJson('https://example.test/gate-pacing-3', {
+      fetchImpl: makeOk(),
+      quiet: true,
+    });
+    expect(third.ok).toBe(true);
+    expect(flakySleep).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -650,74 +756,67 @@ describe('429 をサーキットの全滅検知から分離する（B対応。�
     }
   });
 
-  it('429 が5連続でもサーキットは開かない（実測1の再発防止。中核の回帰テスト）', async () => {
+  it('429 が20連続でもサーキットは開かず、consecutiveFailures も 0 のまま（429専用しきい値の撤廃。中核の回帰テスト）', async () => {
+    // 429 専用の閾値（旧 STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD=10）は撤廃済み。
+    // 429 は何回続いてもサーキットを開いてはならないことを、旧しきい値を大きく超える
+    // 20連続で検証する。
     const fetchImpl = makeAlwaysFail(429);
-    for (let i = 0; i < 5; i++) {
-      const result = await fetchSteamJson(`https://example.test/429-five-${i}`, {
+    for (let i = 0; i < 20; i++) {
+      const result = await fetchSteamJson(`https://example.test/429-twenty-${i}`, {
         fetchImpl,
         quiet: true,
       });
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.status).toBe(429);
+      // 429 は都度即座に失敗するので fetchImpl はこの論理呼び出しにつき1回しか呼ばれない
+      expect(fetchImpl).toHaveBeenCalledTimes(i + 1);
+      expect(getSteamApiHealth().circuitOpen).toBe(false);
+      expect(getSteamApiHealth().consecutiveFailures).toBe(0);
     }
     const health = getSteamApiHealth();
     expect(health.circuitOpen).toBe(false);
-    // 429 は consecutiveFailures に一切加算されない
     expect(health.consecutiveFailures).toBe(0);
+    expect(health.failed).toBe(20);
+    expect(health.statusCounts['429']).toBe(20);
   });
 
-  it('429 が STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD 連続でサーキットが開く', async () => {
+  it('429 を1回受けたら attempts:1 で即座に失敗し、fetchImpl は1回しか呼ばれない（リトライしない。B対応）', async () => {
     const fetchImpl = makeAlwaysFail(429);
-    for (let i = 0; i < STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD; i++) {
-      await fetchSteamJson(`https://example.test/429-threshold-${i}`, {
-        fetchImpl,
-        quiet: true,
-      });
+    const result = await fetchSteamJson('https://example.test/429-no-retry', {
+      fetchImpl,
+      quiet: true,
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(429);
+      expect(result.attempts).toBe(1);
     }
-    expect(getSteamApiHealth().circuitOpen).toBe(true);
-    // サーキットが開いた後の consecutiveFailures（全滅検知用カウンタ）はゼロのまま
-    // （429 由来で開いたことが分かる）
-    expect(getSteamApiHealth().consecutiveFailures).toBe(0);
   });
 
-  it('429 の間に成功が挟まると 429 の連続カウンタがリセットされる', async () => {
-    const failImpl = makeAlwaysFail(429);
-    // STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD - 1 回 429 を続ける（閾値未満で止める）
-    for (let i = 0; i < STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD - 1; i++) {
-      await fetchSteamJson(`https://example.test/429-reset-a-${i}`, {
-        fetchImpl: failImpl,
-        quiet: true,
-      });
-    }
-    expect(getSteamApiHealth().circuitOpen).toBe(false);
+  it('403 でリトライ中の2回目の試行で429を受けた場合、attempts は実際の試行回数（2）を返す', async () => {
+    // 1回目: 403（リトライ対象） → 2回目: 429（リトライしない） という混在ケース。
+    // 429 に到達するまでに1回別の理由でリトライしているので、attempts は 2 になるべき。
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls++;
+      if (calls === 1) return makeResponse({ ok: false, status: 403 });
+      return makeResponse({ ok: false, status: 429 });
+    });
 
-    // 1回成功させてリセットする
-    await fetchSteamJson('https://example.test/429-reset-success', {
-      fetchImpl: makeOk(),
+    const promise = fetchSteamJson('https://example.test/429-after-403-retry', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
       quiet: true,
     });
-    expect(getSteamApiHealth().circuitOpen).toBe(false);
+    await vi.runAllTimersAsync();
+    const result = await promise;
 
-    // リセットされていなければ、この時点で cumulative カウントは
-    // (THRESHOLD - 1) 件のまま残っているはずなので、次の1回で閾値に達してしまう。
-    // リセットされていれば THRESHOLD - 1 回目まではまだ開かない。
-    for (let i = 0; i < STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD - 1; i++) {
-      await fetchSteamJson(`https://example.test/429-reset-b-${i}`, {
-        fetchImpl: failImpl,
-        quiet: true,
-      });
-      if (i < STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD - 2) {
-        expect(getSteamApiHealth().circuitOpen).toBe(false);
-      }
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(429);
+      expect(result.attempts).toBe(2);
     }
-    expect(getSteamApiHealth().circuitOpen).toBe(false);
-
-    // ここでリセット後 THRESHOLD 回目に到達し、サーキットが開く
-    await fetchSteamJson('https://example.test/429-reset-final', {
-      fetchImpl: failImpl,
-      quiet: true,
-    });
-    expect(getSteamApiHealth().circuitOpen).toBe(true);
   });
 });
 
@@ -822,20 +921,19 @@ describe('rateLimitHits（429 の観測総数。observability 用）', () => {
     configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
   });
 
-  it('リトライで最終的に成功した429も rateLimitHits に数える', async () => {
+  it('429 を観測した論理呼び出しごとに1件ずつ rateLimitHits に数える（B対応でリトライしなくなったため1呼び出し=1件になる）', async () => {
     await fetchSteamJson('https://example.test/rate-limit-hits-1', {
-      fetchImpl: makeFailThenOk(429),
+      fetchImpl: makeAlwaysFail(429),
       quiet: true,
     });
+    // 429 はリトライしないので、この論理呼び出しでの観測は1回だけ
     expect(getSteamApiHealth().rateLimitHits).toBe(1);
 
-    // 最終的に失敗したケースも数える
     await fetchSteamJson('https://example.test/rate-limit-hits-2', {
       fetchImpl: makeAlwaysFail(429),
       quiet: true,
     });
-    // makeAlwaysFail は STEAM_MAX_ATTEMPTS 回とも429を返すので +3
-    expect(getSteamApiHealth().rateLimitHits).toBe(1 + STEAM_MAX_ATTEMPTS);
+    expect(getSteamApiHealth().rateLimitHits).toBe(2);
   });
 });
 

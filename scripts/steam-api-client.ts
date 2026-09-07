@@ -40,6 +40,31 @@
  * このリビジョンでは (A) 適応型ペーシングで429の発生自体を減らし、(B) 429をサーキットの
  * 全滅検知から分離し、(C) クールダウン後に半開プローブで自動回復できるようにする。
  *
+ * ## PR #367 (429分離版) 後の実測で判明した残存害（このリビジョンの変更点の背景・2回目）
+ *
+ * 上記の修正を投入した版を `DEV_MODE=true npm run fetch-data` でライブ実行したところ、
+ * `statusCounts` が `{"429":10,"circuit-open":28}` となり、専用しきい値
+ * `STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD=10` に達してサーキットが開き、その直後に走る
+ * Reconcile フェーズ（Identity Resolver、選定済み5件）が 60 秒クールダウン中で
+ * 5/5 全滅した（`circuit-open: サーキット開放中のため呼び出しをスキップ (attempts=0)`）。
+ * つまり閾値を 5→10 に緩めただけで、同種の優先度逆転（ベストエフォートの一括処理が
+ * 正しさに関わる後続フェーズを飢餓させる）が規模を縮小して再発した。
+ * さらに `rateLimitHits=30` に対し 429 の論理失敗は 10 件で、1論理呼び出しあたり
+ * 3/3 試行すべてが 429 だった。つまり同一レート制限ウィンドウ内でのリトライは
+ * 一度も成功しておらず、時間予算を約3倍に膨らませただけだった。
+ * また初期ペーシング 400ms は、実測した Steam の持続可能レート（appdetails, cc=jp で
+ * 約200リクエスト/5分 ≒ 1.5秒間隔）を大きく下回り、毎回必ずレート制限に到達していた。
+ *
+ * このリビジョンでは方針を以下に更新する（現在の方針）:
+ * - **サーキットブレーカは全滅検知専用**。429 専用の閾値・カウンタは撤廃し、429 は
+ *   consecutiveFailures にも一切加算しない。403 全滅・5xx連発・ネットワーク断のような
+ *   「待っても回復しない事象」のみがサーキットを開く。
+ * - **429 はリトライしない**。同一レート制限ウィンドウ内でのリトライは成功しないことが
+ *   実測で分かっているため、429 を受けた論理呼び出しは即座に失敗として返し、
+ *   ペーシング間隔を伸ばすだけにする（次の呼び出し以降で緩和を図る）。
+ * - **初期ペーシングは実測の持続可能レートに合わせた 1500ms**。ペーシングは429を
+ *   観測すると伸び、ラン中は下がらない（下げるとすぐ再び叩き潰す）。
+ *
  * ## プロセスを跨いだ集計（writeSteamApiHealth / readSteamApiHealth / mergeSteamApiHealth）
  *
  * このモジュールの集計状態（getSteamApiHealth）はプロセス内変数であり、プロセスを跨がない。
@@ -90,13 +115,27 @@ export const STEAM_RETRY_AFTER_MAX_MS = 30000;
 // 減らす。429 を観測したら間隔を伸ばし、ラン中は下げない（Steam の窓は分単位のため、
 // 下げるとすぐ叩き潰す）。
 
-/** 通常時の最小リクエスト間隔（ミリ秒） */
-export const STEAM_MIN_REQUEST_INTERVAL_MS = 400;
+/**
+ * 通常時の最小リクエスト間隔（ミリ秒）。
+ *
+ * 実測根拠（2026-09-07）: Steam Storefront appdetails（cc=jp）の持続可能レートは
+ * おおよそ200リクエスト/5分 ≒ 1.5秒間隔と見積もれる。無ペーシング（実効約200ms間隔）
+ * では155件成功した時点で429が発生し、700ms間隔でも200件成功後に429が発生した。
+ * 旧値の400msはこの持続可能レートを大きく下回り、毎回必ずレート制限に到達していた
+ * ため、実測値に合わせて1500msに変更する。
+ */
+export const STEAM_MIN_REQUEST_INTERVAL_MS = 1500;
 
 /** 429 を観測した後に間隔を上げる際の下限（ミリ秒）。実測3の「約1.5秒間隔」に対応 */
 export const STEAM_RATE_LIMITED_INTERVAL_MS = 1500;
 
-/** ペーシング間隔の上限（ミリ秒） */
+/**
+ * ペーシング間隔の上限（ミリ秒）。
+ *
+ * ペーシング間隔は成功が続いても下げない（単調増加のみ）。Steam のレート制限窓は
+ * 分単位であり、間隔を下げるとすぐに再びレート制限を誘発することが実測で分かって
+ * いるため、ラン中は一度伸びた間隔を維持する。
+ */
 export const STEAM_PACING_MAX_INTERVAL_MS = 3000;
 
 /**
@@ -108,8 +147,18 @@ export const STEAM_PACING_MAX_INTERVAL_MS = 3000;
  * 10分超を無駄に消費し、記事生成・ビルド・デプロイという後続ステップの時間を圧迫する。
  * 連続失敗が閾値に達した時点で「Steam が落ちている」と判断し、以降は即座に失敗を返す。
  *
- * この閾値は 429（レート制限）では加算されない。429 は STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD
- * という別カウンタで扱う（下記参照。理由は当該定数の JSDoc）。
+ * この閾値は 429（レート制限）では一切加算されない。429 はこのモジュールでは
+ * サーキットを開く要因から完全に除外している（このモジュール冒頭の JSDoc「## PR #367
+ * (429分離版) 後の実測で判明した残存害」参照）。
+ *
+ * 429 に専用の閾値カウンタ（STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD、旧リビジョンで導入）を
+ * 設けて「429 だけは緩い閾値でサーキットを開く」という中間案を一度実装したが、実測で
+ * 429 が10件連続しただけでサーキットが開き、直後に走る Reconcile フェーズ（Identity
+ * Resolver、対象5件）がクールダウン中で 5/5 全滅した。429 はサーバが生きていることの
+ * 証明であり、正しい対処は「止める」ではなく「遅くする」（適応型ペーシング。上記
+ * STEAM_MIN_REQUEST_INTERVAL_MS 等）ことである。429 でリトライを打ち切ってもサーキット
+ * を開かなければ、後続フェーズが429によって不必要に飢餓することはない。そのため
+ * 429 専用の閾値カウンタは撤廃した。
  *
  * ### 半開（自動回復）について（このリビジョンで実装。旧 JSDoc の判断を反証）
  *
@@ -126,23 +175,6 @@ export const STEAM_PACING_MAX_INTERVAL_MS = 3000;
  * 1回だけプローブを通す半開状態を実装する（詳細は STEAM_CIRCUIT_COOLDOWN_MS 参照）。
  */
 export const STEAM_CIRCUIT_FAILURE_THRESHOLD = 5;
-
-/**
- * 429（レート制限）による論理呼び出しの連続失敗がこの件数に達したらサーキットを開く。
- *
- * 429 は STEAM_CIRCUIT_FAILURE_THRESHOLD の consecutiveFailures には加算しない
- * （リセットもしない）。理由: 429 はサーバが生きていることの証明であり、正しい対処は
- * 「止める」ではなく「遅くする」こと。サーキットブレーカの目的（このモジュール冒頭の
- * JSDoc）は全滅検知（403 全滅・5xx・ネットワーク断）であって、レート制限はその対処法が
- * 全く異なる別種の障害である。
- * 実測1では 429 が5件連続しただけで全滅検知（consecutiveFailures 由来のサーキット）が
- * 誤発火し、Portal 2（appId=620）の同一性照合まで落とした。これは Steam 障害ではなく
- * 自分の呼び出し過多が原因だった（実測3）。
- *
- * ただし 429 が無限に続く場合に走り続けないよう、別カウンタで上限を設ける。
- * このカウンタは成功でリセットする。
- */
-export const STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD = 10;
 
 /**
  * サーキットが開いてから、次の1回のプローブ（半開）を許可するまでの待機時間（ミリ秒）。
@@ -163,9 +195,14 @@ export const STEAM_CIRCUIT_COOLDOWN_MS = 60000;
  * （全ゲームで一律に失敗しており、個別ゲームが Bot 判定されたとは考えにくい）。
  * つまり同じステータスコードでも対象（汎用サイト vs Steam API）によって性質が違うため、
  * ここでは url-health とは逆の判断をしている。
+ *
+ * ⚠️ 429 はこの集合に含めていない（意図的）。429 はこのモジュールではリトライ対象外で、
+ * `fetchSteamJson` 内で他のステータスより先に特別扱いし、即座に失敗として返す
+ * （このモジュール冒頭の JSDoc「## PR #367 (429分離版) 後の実測で判明した残存害」参照。
+ * 実測で同一レート制限ウィンドウ内のリトライは一度も成功していない）。
  */
 export const STEAM_RETRYABLE_STATUS: ReadonlySet<number> = new Set([
-  403, 408, 425, 429, 500, 502, 503, 504,
+  403, 408, 425, 500, 502, 503, 504,
 ]);
 
 export type SteamFetchResult =
@@ -198,7 +235,6 @@ let consecutiveFailures = 0;
 let circuitOpen = false;
 let circuitOpenedAt: number | undefined;
 let probeInFlight = false;
-let rateLimitConsecutiveFailures = 0;
 let rateLimitHits = 0;
 const statusCounts: Record<string, number> = {};
 
@@ -225,23 +261,28 @@ function recordFailure(statusKey: string): void {
 }
 
 /**
- * 429 の失敗を専用カウンタでカウントする（B対応）。
- * consecutiveFailures には触れない（加算もリセットもしない）。
+ * 429 の失敗を計上する（B対応）。failed / statusCounts には計上するが、
+ * consecutiveFailures には一切触れない（加算もリセットもしない）。429 専用の
+ * サーキット閾値は撤廃済み（このモジュール冒頭の JSDoc「## PR #367 (429分離版) 後の
+ * 実測で判明した残存害」参照）: 429 は絶対にサーキットを開かない。
  */
 function recordRateLimitFailure(): void {
   failed++;
-  rateLimitConsecutiveFailures++;
   recordFailureStatus('429');
-  if (rateLimitConsecutiveFailures >= STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD) {
-    circuitOpen = true;
-    circuitOpenedAt = Date.now();
-  }
 }
 
-/** 429 を観測した際にペーシング間隔を伸ばす。ラン中は下げない（A対応） */
-function bumpPacingIntervalForRateLimit(): void {
+/**
+ * 429 を観測した際にペーシング間隔を伸ばす。ラン中は下げない（A対応）。
+ *
+ * C対応: Retry-After ヘッダ（秒数形式。retryAfterMs、無ければ undefined）が
+ * あれば新しい間隔の下限に加える。Steam が「Nミリ秒待て」と明示している場合、
+ * それより短い間隔で叩き続けるのは指示への違反になるため。
+ * retryAfterMs が無い/非数値なら従来の倍化ロジック（currentPacingIntervalMs * 2 と
+ * STEAM_RATE_LIMITED_INTERVAL_MS の大きい方）と同じ結果になる。
+ */
+function bumpPacingIntervalForRateLimit(retryAfterMs: number | undefined): void {
   currentPacingIntervalMs = Math.min(
-    Math.max(currentPacingIntervalMs * 2, STEAM_RATE_LIMITED_INTERVAL_MS),
+    Math.max(currentPacingIntervalMs * 2, STEAM_RATE_LIMITED_INTERVAL_MS, retryAfterMs ?? 0),
     STEAM_PACING_MAX_INTERVAL_MS
   );
 }
@@ -258,6 +299,13 @@ function defaultSleep(ms: number): Promise<void> {
  * 単純に「lastRequestStartedAt を見て待つ」だけでは同時に来た2本が同じ値を見て
  * 両方すぐ通ってしまう。pacingChain でウェイトの計算・更新自体を直列化することで、
  * 同時呼び出しでも間隔が空くことを保証する。
+ *
+ * E対応: `sleepImpl`（テストで注入可能）が例外を投げる／reject する場合でも、
+ * `release()` を必ず呼んで `pacingChain` を解放する（try/finally）。これを忘れると、
+ * 1回でも例外が起きた時点で以降のすべての `gatePacing()` 呼び出しが
+ * `await previous` で永久に止まる（デッドロック）。`lastRequestStartedAt` の更新は
+ * 待機が実際に完了した場合のみ行うため try ブロック内に置く（待機が失敗したのに
+ * 「リクエストを開始した」と記録してしまうと、次回のペーシング計算が不正確になる）。
  */
 async function gatePacing(): Promise<void> {
   const previous = pacingChain;
@@ -268,14 +316,17 @@ async function gatePacing(): Promise<void> {
   pacingChain = next;
   await previous;
 
-  const now = Date.now();
-  const elapsedMs = lastRequestStartedAt === undefined ? Infinity : now - lastRequestStartedAt;
-  const waitMs = Math.max(0, currentPacingIntervalMs - elapsedMs);
-  if (waitMs > 0) {
-    await sleepImpl(waitMs);
+  try {
+    const now = Date.now();
+    const elapsedMs = lastRequestStartedAt === undefined ? Infinity : now - lastRequestStartedAt;
+    const waitMs = Math.max(0, currentPacingIntervalMs - elapsedMs);
+    if (waitMs > 0) {
+      await sleepImpl(waitMs);
+    }
+    lastRequestStartedAt = Date.now();
+  } finally {
+    release();
   }
-  lastRequestStartedAt = Date.now();
-  release();
 }
 
 /**
@@ -297,7 +348,7 @@ function evaluateCircuitGate(): 'proceed' | 'probe' | 'skip' {
   return 'probe';
 }
 
-/** 半開プローブが成功した: サーキットを閉じ、両方の連続失敗カウンタをリセットする */
+/** 半開プローブが成功した: サーキットを閉じる（consecutiveFailures は成功パスで既に0になっている） */
 function closeCircuitAfterProbeSuccess(): void {
   circuitOpen = false;
   circuitOpenedAt = undefined;
@@ -342,16 +393,22 @@ function warnUnlessQuiet(
 /**
  * Steam Storefront/API に GET リクエストを送り、JSON を返す。
  *
- * - リトライ対象ステータス（STEAM_RETRYABLE_STATUS）は指数バックオフで最大 STEAM_MAX_ATTEMPTS
- *   回まで再試行する。Retry-After ヘッダがあればそれを優先する。
+ * - リトライ対象ステータス（STEAM_RETRYABLE_STATUS。403/408/425/5xx）は指数バックオフで
+ *   最大 STEAM_MAX_ATTEMPTS 回まで再試行する。Retry-After ヘッダがあればそれを優先する。
  * - タイムアウト・ネットワーク例外もリトライ対象。
  * - 404 等の非リトライ対象ステータスは即座に失敗を返す（attempts: 1）。
+ * - **429 はリトライしない**（STEAM_RETRYABLE_STATUS に含めていない）。実測で同一レート
+ *   制限ウィンドウ内のリトライが一度も成功していないため、429 を受けた時点でその論理
+ *   呼び出しを即座に失敗として返す。Retry-After があればペーシング間隔の下限として使う
+ *   （リトライ待機には使わない）。
  * - HTTP 200 でレスポンス本文が `success: false` のケースは判定しない。`{ ok: true, json }`
  *   を返し、判定は呼び出し側の責務とする（このレイヤはあくまで HTTP レベルの成否のみを見る）。
  * - すべての HTTP 試行の直前でペーシング（gatePacing）を待つ。429 を観測すると以降の
  *   間隔が伸びる（ラン中は下がらない）。
- * - 429 はサーキットの consecutiveFailures には加算しない。別カウンタ
- *   （STEAM_RATE_LIMIT_CIRCUIT_THRESHOLD）で扱う。
+ * - **429 は一切サーキットを開かない**。consecutiveFailures にも加算しない。サーキット
+ *   ブレーカは403全滅・5xx連発・ネットワーク断のような「待っても回復しない全滅」専用の
+ *   機構であり、429（明示的なバックプレッシャ）に対する正しい応答はペーシングを伸ばす
+ *   ことであって、呼び出しを止めることではない。
  * - サーキットが開いている間は、クールダウン（STEAM_CIRCUIT_COOLDOWN_MS）未経過なら
  *   fetch を呼ばず即座に失敗を返す。クールダウン経過後は1回だけ半開プローブとして
  *   実際に fetch する。
@@ -400,30 +457,44 @@ export async function fetchSteamJson(
         const json = await res.json();
         succeeded++;
         consecutiveFailures = 0;
-        rateLimitConsecutiveFailures = 0;
         if (isProbe) closeCircuitAfterProbeSuccess();
         return { ok: true, json, attempts: attempt };
       }
 
+      // B対応: 429 はリトライしない。実測で「10論理呼び出し × 3試行 = 30回すべてが429」
+      // だったことが分かっている（同一レート制限ウィンドウ内でのリトライは一度も成功
+      // していない）。リトライを続けると1呼び出しあたり最悪
+      // (ペーシング上限3000ms × 3 + バックオフ) まで時間予算を消費し、weekly-build.yml の
+      // 30分予算を超えうる。リトライしなければ最悪でも約3秒×呼び出し数に収まる。
+      // 他のステータス（403/5xx等）と分岐を分けているのは、STEAM_RETRYABLE_STATUS から
+      // 429 を除外しているだけでは「なぜ429だけ特別か」が読み手に伝わりにくいため。
       if (res.status === 429) {
         rateLimitHits++;
-        bumpPacingIntervalForRateLimit();
+        // C対応: Retry-After（秒数形式）はリトライ待機には使わず（429はリトライしない）、
+        // 次回以降のペーシング間隔の下限として使う。
+        const retryAfterMs = parseRetryAfterMs(res);
+        bumpPacingIntervalForRateLimit(retryAfterMs);
+        recordRateLimitFailure();
+        if (isProbe) reopenCircuitAfterProbeFailure();
+        const reason = `HTTP 429 (attempts=${attempt}, リトライせずペーシング間隔を${currentPacingIntervalMs}msに伸ばした)`;
+        warnUnlessQuiet(quiet, { url, status: 429, reason, attempts: attempt, circuitOpen });
+        return { ok: false, reason, status: 429, attempts: attempt, circuitOpen };
       }
 
+      // 429 は上の分岐で必ず return しているため、ここに到達するのは 429 以外のステータス。
+      // STEAM_RETRYABLE_STATUS には 429 を含めていないので retryable も常に整合する。
       const retryable = STEAM_RETRYABLE_STATUS.has(res.status);
       const isLastAttempt = attempt === STEAM_MAX_ATTEMPTS;
       if (!retryable || isLastAttempt) {
-        if (res.status === 429) {
-          recordRateLimitFailure();
-        } else {
-          recordFailure(String(res.status));
-        }
+        recordFailure(String(res.status));
         if (isProbe) reopenCircuitAfterProbeFailure();
         const reason = `HTTP ${res.status} (attempts=${attempt})`;
         warnUnlessQuiet(quiet, { url, status: res.status, reason, attempts: attempt, circuitOpen });
         return { ok: false, reason, status: res.status, attempts: attempt, circuitOpen };
       }
 
+      // 429 以外の retryable ステータス（503等）向けの Retry-After 利用。429 はここに
+      // 到達しない（上で即 return している）ため、Retry-After はリトライ待機にしか使わない。
       const retryAfterMs = parseRetryAfterMs(res);
       const backoffMs = retryAfterMs ?? STEAM_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
       await sleepImpl(backoffMs);
@@ -482,7 +553,6 @@ export function resetSteamApiClient(): void {
   circuitOpen = false;
   circuitOpenedAt = undefined;
   probeInFlight = false;
-  rateLimitConsecutiveFailures = 0;
   rateLimitHits = 0;
   for (const key of Object.keys(statusCounts)) {
     delete statusCounts[key];

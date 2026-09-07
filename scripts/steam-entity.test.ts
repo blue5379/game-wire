@@ -207,10 +207,13 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(logs[0].appId).toBe(51);
-    // 403/429 は steam-api-client.ts のリトライ対象。STEAM_MAX_ATTEMPTS 回試行して
-    // 失敗するため、reason には attempts が付与される（Issue #360）
+    // 403 は steam-api-client.ts のリトライ対象。STEAM_MAX_ATTEMPTS 回試行して
+    // 失敗するため、reason には attempts が付与される（Issue #360）。
+    // 429 はリトライしない（Issue #360 の後続対応）ため attempts=1 で即座に失敗する。
     expect(logs[0].english).toBe('HTTP 403 (attempts=3)');
-    expect(logs[0].japanese).toBe('HTTP 429 (attempts=3)');
+    expect(logs[0].japanese).toBe(
+      'HTTP 429 (attempts=1, リトライせずペーシング間隔を1500msに伸ばした)'
+    );
   });
 
   it('success:false は HTTP エラーと区別してログに残す（appId 固有の問題）', async () => {
