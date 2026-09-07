@@ -345,6 +345,67 @@ describe('fetchSteamJson', () => {
     });
   });
 
+  // 修正A（/code-review 指摘）: 全呼び出し元が result.json を json[String(appId)] のように
+  // 無防備に添字アクセスしているため、json がオブジェクトでない場合に TypeError が
+  // 伝播する。撤去された防御（オブジェクト形状ガード）を復元する。
+  describe('想定外のJSON形状ガード（修正A。撤去された防御の復元）', () => {
+    it('HTTP 200 で本文が null の場合、ok:false・reasonに「想定外のJSON形状」を含み、fetchImplは1回しか呼ばれない（リトライしない）', async () => {
+      const fetchImpl = vi.fn(async () => makeResponse({ ok: true, status: 200, json: null }));
+
+      const result = await fetchSteamJson('https://example.test/shape-null', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain('想定外のJSON形状');
+        expect(result.attempts).toBe(1);
+        expect(result.status).toBe(200);
+      }
+    });
+
+    it('同ケースで getSteamApiHealth() の succeeded/failed/statusCounts/consecutiveFailures が正しく更新される', async () => {
+      const fetchImpl = vi.fn(async () => makeResponse({ ok: true, status: 200, json: null }));
+      await fetchSteamJson('https://example.test/shape-null-health', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+
+      const health = getSteamApiHealth();
+      expect(health.succeeded).toBe(0);
+      expect(health.failed).toBe(1);
+      expect(health.statusCounts['invalid-json-shape']).toBe(1);
+      expect(health.consecutiveFailures).toBe(1);
+    });
+
+    it('HTTP 200 で本文が配列の場合も同様に失敗する', async () => {
+      const fetchImpl = vi.fn(async () => makeResponse({ ok: true, status: 200, json: [] }));
+      const result = await fetchSteamJson('https://example.test/shape-array', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain('想定外のJSON形状');
+      }
+    });
+
+    it('HTTP 200 で本文が正常なオブジェクトの場合は成功する（回帰確認）', async () => {
+      const fetchImpl = vi.fn(async () =>
+        makeResponse({ ok: true, status: 200, json: { '1': { success: true } } })
+      );
+      const result = await fetchSteamJson('https://example.test/shape-object-ok', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+      expect(result.ok).toBe(true);
+      expect(getSteamApiHealth().succeeded).toBe(1);
+    });
+  });
+
   // バグ3: サーキットで打ち切った呼び出しが statusCounts に載らない
   it('サーキット開放時にスキップされた呼び出しは statusCounts["circuit-open"] に計上される', async () => {
     const fetchImpl = vi.fn(async () => makeResponse({ ok: false, status: 404 }));
@@ -910,6 +971,63 @@ describe('半開（クールダウン後の1回プローブ）（C対応）', ()
     expect(secondProbeSpy).toHaveBeenCalledTimes(1);
     expect(secondProbeResult.ok).toBe(true);
     expect(getSteamApiHealth().circuitOpen).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 修正B: 半開プローブ中の429でクールダウンを延長しない（サーキットを閉じる）
+// ─────────────────────────────────────────────────────────────────────────────
+describe('半開プローブ中の429はサーキットを閉じる（修正B。429=到達可能の証拠として扱う）', () => {
+  beforeEach(() => {
+    configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
+  });
+
+  async function openCircuitVia403(): Promise<void> {
+    const fetchImpl = makeAlwaysFail(403);
+    for (let i = 0; i < STEAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      await fetchSteamJson(`https://example.test/b-open-403-${i}`, { fetchImpl, quiet: true });
+    }
+    expect(getSteamApiHealth().circuitOpen).toBe(true);
+  }
+
+  it('403で開いたサーキットのプローブが429を受けると circuitOpen が false になり、直後の呼び出しが circuit-open でスキップされず実際に fetchImpl を呼ぶ', async () => {
+    await openCircuitVia403();
+
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    const probeSpy = makeAlwaysFail(429);
+    const probeResult = await fetchSteamJson('https://example.test/b-probe-429', {
+      fetchImpl: probeSpy,
+      quiet: true,
+    });
+    expect(probeSpy).toHaveBeenCalledTimes(1);
+    expect(probeResult.ok).toBe(false);
+    if (!probeResult.ok) expect(probeResult.status).toBe(429);
+    expect(getSteamApiHealth().circuitOpen).toBe(false);
+
+    // circuit-open でスキップされていれば fetchImpl は呼ばれない。実際に呼ばれることを確認する。
+    const nextSpy = makeOk();
+    const nextResult = await fetchSteamJson('https://example.test/b-after-429-probe', {
+      fetchImpl: nextSpy,
+      quiet: true,
+    });
+    expect(nextSpy).toHaveBeenCalledTimes(1);
+    expect(nextResult.ok).toBe(true);
+  });
+
+  it('403で溜まった consecutiveFailures は429プローブでリセットされず維持される（429は consecutiveFailures に一切触れない設計）', async () => {
+    await openCircuitVia403();
+    expect(getSteamApiHealth().consecutiveFailures).toBe(STEAM_CIRCUIT_FAILURE_THRESHOLD);
+
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    await fetchSteamJson('https://example.test/b-consecutive-check', {
+      fetchImpl: makeAlwaysFail(429),
+      quiet: true,
+    });
+
+    // 403 で溜まった値（閾値と同じ件数）がそのまま残る
+    expect(getSteamApiHealth().consecutiveFailures).toBe(STEAM_CIRCUIT_FAILURE_THRESHOLD);
   });
 });
 

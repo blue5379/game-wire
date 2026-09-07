@@ -242,7 +242,14 @@ const statusCounts: Record<string, number> = {};
 let sleepImpl: (ms: number) => Promise<void> = defaultSleep;
 let currentPacingIntervalMs = STEAM_MIN_REQUEST_INTERVAL_MS;
 let lastRequestStartedAt: number | undefined;
-/** 並列呼び出し（fetchSteamEntity の Promise.all 等）でもペーシングを直列化するための鎖 */
+/**
+ * 並列呼び出しでもペーシングを直列化するための鎖。
+ *
+ * 修正C（/code-review 指摘）で fetchSteamEntity は英語/日本語の Promise.all を
+ * 廃止し逐次 await に変更したため、現時点でこのモジュールを並列に叩く既知の呼び出し元は
+ * 無い。ただし将来別の呼び出し元が並列に fetchSteamJson を叩いても間隔が正しく
+ * 空くことを保証する防御的な仕組みとして維持する。
+ */
 let pacingChain: Promise<void> = Promise.resolve();
 
 function recordFailureStatus(key: string): void {
@@ -295,10 +302,10 @@ function defaultSleep(ms: number): Promise<void> {
  * すべての HTTP 試行の直前で呼ぶ。現在のペーシング間隔（currentPacingIntervalMs）が
  * 前回のリクエスト開始から経過するまで待つ。
  *
- * `fetchSteamEntity` は英語/日本語を Promise.all で同時に投げるため、
- * 単純に「lastRequestStartedAt を見て待つ」だけでは同時に来た2本が同じ値を見て
- * 両方すぐ通ってしまう。pacingChain でウェイトの計算・更新自体を直列化することで、
- * 同時呼び出しでも間隔が空くことを保証する。
+ * 呼び出し元が並列に fetchSteamJson を叩く場合（修正C以前の fetchSteamEntity の
+ * 英語/日本語 Promise.all 等）、単純に「lastRequestStartedAt を見て待つ」だけでは
+ * 同時に来た複数本が同じ値を見て両方すぐ通ってしまう。pacingChain でウェイトの
+ * 計算・更新自体を直列化することで、同時呼び出しでも間隔が空くことを保証する。
  *
  * E対応: `sleepImpl`（テストで注入可能）が例外を投げる／reject する場合でも、
  * `release()` を必ず呼んで `pacingChain` を解放する（try/finally）。これを忘れると、
@@ -367,6 +374,32 @@ function closeCircuitAfterProbeSuccess(): void {
 function reopenCircuitAfterProbeFailure(): void {
   probeInFlight = false;
   circuitOpenedAt = Date.now();
+}
+
+/**
+ * 半開プローブが429（レート制限）を受けた: サーキットを閉じる（修正B）。
+ *
+ * 429 は「レスポンスが返ってきた」＝エンドポイントに到達できている証拠であり、
+ * サーキットが検知しようとしている「全滅（到達不能）」という仮説を反証する。
+ * そのため reopenCircuitAfterProbeFailure() でクールダウンを延長するのではなく、
+ * closeCircuitAfterProbeSuccess() と同じ状態遷移でサーキットを閉じる。
+ * ただし「プローブが成功した」わけではない（実際には429で失敗している）ため、
+ * ログの result/reason は専用の文言にして実態と食い違わないようにする。
+ * consecutiveFailures には触れない（429 は recordRateLimitFailure() 経由で
+ * consecutiveFailures を一切変更しない設計を維持する）。
+ */
+function closeCircuitAfterRateLimitedProbe(): void {
+  circuitOpen = false;
+  circuitOpenedAt = undefined;
+  probeInFlight = false;
+  console.warn(
+    JSON.stringify({
+      scope: 'steam-api-client',
+      step: 'circuit-half-open-probe',
+      result: 'recovered-rate-limited',
+      reason: '半開プローブが429を受けた（到達可能なのでサーキットを閉じる。ペーシングで対処する）',
+    })
+  );
 }
 
 /**
@@ -455,6 +488,29 @@ export async function fetchSteamJson(
         // consecutiveFailures が誤ってリセットされたりする。
         // そのため res.json() の成功を確認した後にカウンタを更新する。
         const json = await res.json();
+
+        // 修正A（/code-review 指摘）: fetchSteamJson の全呼び出し元6箇所
+        // （fetch-steam.ts の getAppDetails、steam-entity.ts の fetchAppDetails、
+        // finalize-game-metadata.ts、fetch-data.ts、resolvers/steam.ts の2箇所）は、
+        // result.json を json[String(appId)] のようにオブジェクトとして無防備に
+        // 添字アクセスしている。json が null 等であれば TypeError が呼び出し元に
+        // 伝播する。steam-entity.ts / fetch-steam.ts は本 PR で従来の try/catch を
+        // 撤去済みのため、この TypeError は素通しで fetch-data.ts の
+        // runCompletenessGate 呼び出し（try/catch 無し）まで伝播し、ラン全体が
+        // 失敗しうる（writeSteamApiHealth も実行されない）。
+        // 注記: 実測（appids=0 / abc / 空）では appdetails は不正な appid に対し
+        // 常に HTTP 400 + 本文 null を返し、fetchSteamJson は非 ok として既に弾いている。
+        // つまり「HTTP 200 + 本文 null」は実測で確認された不具合ではなく、この
+        // ガードは撤去された防御の復元という位置づけ。形状異常はリトライしても
+        // 直らないため、リトライはしない。
+        if (typeof json !== 'object' || json === null || Array.isArray(json)) {
+          recordFailure('invalid-json-shape');
+          if (isProbe) reopenCircuitAfterProbeFailure();
+          const reason = `想定外のJSON形状（オブジェクトではない） (attempts=${attempt})`;
+          warnUnlessQuiet(quiet, { url, status: res.status, reason, attempts: attempt, circuitOpen });
+          return { ok: false, reason, status: res.status, attempts: attempt, circuitOpen };
+        }
+
         succeeded++;
         consecutiveFailures = 0;
         if (isProbe) closeCircuitAfterProbeSuccess();
@@ -475,7 +531,14 @@ export async function fetchSteamJson(
         const retryAfterMs = parseRetryAfterMs(res);
         bumpPacingIntervalForRateLimit(retryAfterMs);
         recordRateLimitFailure();
-        if (isProbe) reopenCircuitAfterProbeFailure();
+        // 修正B（/code-review 指摘）: 429 はサーキットが検知しようとしている「全滅
+        // （到達不能）」という仮説を反証する（レスポンスが返っている＝到達できている）。
+        // 半開プローブ中に429を受けた場合、reopenCircuitAfterProbeFailure() で
+        // クールダウンを延長すると、本 PR の中核方針（429は絶対にサーキットを
+        // 開かない/延長しない。止めるのではなく遅くする）に反し、Steam が生きている
+        // にもかかわらず後続フェーズ（R5等）を circuit-open で飢餓させてしまう。
+        // そのためプローブ中の429はサーキットを閉じる。
+        if (isProbe) closeCircuitAfterRateLimitedProbe();
         const reason = `HTTP 429 (attempts=${attempt}, リトライせずペーシング間隔を${currentPacingIntervalMs}msに伸ばした)`;
         warnUnlessQuiet(quiet, { url, status: 429, reason, attempts: attempt, circuitOpen });
         return { ok: false, reason, status: 429, attempts: attempt, circuitOpen };

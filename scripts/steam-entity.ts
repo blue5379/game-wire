@@ -95,10 +95,23 @@ export async function fetchSteamEntity(
 ): Promise<SteamEntity | undefined> {
   if (cache.has(appId)) return cache.get(appId);
 
-  const [enResult, jaResult] = await Promise.all([
-    fetchAppDetails(appId, 'english', fetchImpl),
-    fetchAppDetails(appId, 'japanese', fetchImpl),
-  ]);
+  // 修正C（/code-review 指摘）: 以前は Promise.all で英語/日本語を同時に投げていたが、
+  // fetchSteamJson はサーキットゲート評価（evaluateCircuitGate()）をペーシング
+  // （gatePacing()）より前に同期的に行う。そのため、サーキットが開いてクールダウン
+  // 経過済みの状態では「先に評価された英語が probe、日本語が必ず skip」に固定され、
+  // プローブ（英語）が成功してサーキットが閉じた後も日本語側は既に skip 済みで
+  // 失敗が確定してしまう。結果、両方失敗による fail-open ではなく「英語だけの
+  // エンティティ」で照合が走り、game.title が日本語ローカライズ名のケースで
+  // 誤って titleAxis='disagree' になりうる（scripts/game-identity.ts の
+  // entityTitles = [nameEn, nameJa].filter(Boolean) 参照）。
+  // 逐次（英語 → 日本語）にすれば、プローブ（英語）が成功した時点でサーキットが
+  // 閉じるため、日本語は正常に proceed できる。英語が失敗すればサーキットは開いた
+  // ままで日本語も skip → 両方失敗 → 既存の fail-open 経路に正しく落ちる。
+  // 時間コストは増えない: gatePacing() が既に全 HTTP 試行を直列化しているため、
+  // Promise.all で同時に投げても実際には1.5秒ずつ間隔が空いて実行されており、
+  // 逐次化しても実時間は変わらない（並列化の利点はそもそも無かった）。
+  const enResult = await fetchAppDetails(appId, 'english', fetchImpl);
+  const jaResult = await fetchAppDetails(appId, 'japanese', fetchImpl);
   const enData = enResult.ok ? enResult.data : undefined;
   const jaData = jaResult.ok ? jaResult.data : undefined;
 

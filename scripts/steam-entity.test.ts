@@ -4,7 +4,14 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
-import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
+import {
+  resetSteamApiClient,
+  configureSteamApiClient,
+  fetchSteamJson,
+  getSteamApiHealth,
+  STEAM_CIRCUIT_FAILURE_THRESHOLD,
+  STEAM_CIRCUIT_COOLDOWN_MS,
+} from './steam-api-client.js';
 
 beforeEach(() => {
   clearSteamEntityCache();
@@ -305,5 +312,68 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
     await fetchSteamEntity(55, mockFetch as typeof fetch);
 
     expect(warnedLogs('steam-entity')).toHaveLength(0);
+  });
+});
+
+/**
+ * 修正C: fetchSteamEntity の逐次実行（英語 → 日本語）の検証。
+ *
+ * fetchSteamJson はサーキットゲート評価を gatePacing() より前に同期的に行うため、
+ * サーキットが開いてクールダウン経過済みの状態で Promise.all を使うと「先に評価された
+ * 英語が probe、日本語が必ず skip」に固定され、プローブが成功してサーキットが閉じた
+ * 後も日本語側は既に skip 済みで失敗が確定する（片言語だけのエンティティで照合が走る）。
+ * 逐次化すれば、プローブ（英語）が成功すればサーキットが閉じて日本語も正常に取得でき、
+ * 英語が失敗すればサーキットは開いたままで日本語も skip → 両方失敗 → fail-open に落ちる。
+ */
+describe('fetchSteamEntity: サーキット半開時は逐次実行になる（修正C）', () => {
+  async function openCircuitVia403(): Promise<void> {
+    const failingFetch = vi.fn(
+      () => Promise.resolve({ ok: false, status: 403 } as Response)
+    );
+    for (let i = 0; i < STEAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      await resolveWithTimers(
+        fetchSteamJson(`https://example.test/entity-c-open-${i}`, {
+          fetchImpl: failingFetch,
+          quiet: true,
+        })
+      );
+    }
+    expect(getSteamApiHealth().circuitOpen).toBe(true);
+  }
+
+  it('プローブ（英語）が成功したら両言語とも取得できる（片言語だけのエンティティにならない）', async () => {
+    await openCircuitVia403();
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    const mockFetch = makeFetch({
+      'l=english': {
+        '777': { success: true, data: { name: 'Probe EN', developers: [], publishers: [] } },
+      },
+      'l=japanese': {
+        '777': { success: true, data: { name: 'プローブ日本語', developers: [] } },
+      },
+    });
+
+    const entity = await resolveWithTimers(fetchSteamEntity(777, mockFetch as typeof fetch));
+    expect(entity).toBeDefined();
+    expect(entity?.nameEn).toBe('Probe EN');
+    expect(entity?.nameJa).toBe('プローブ日本語');
+    expect(getSteamApiHealth().circuitOpen).toBe(false);
+  });
+
+  it('プローブ（英語）が失敗したら日本語もskipされ、両方失敗としてundefinedを返す（fail-open。片言語だけのエンティティにならない）', async () => {
+    await openCircuitVia403();
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    // プローブ（英語）が403で失敗する
+    const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 403 } as Response));
+
+    const entity = await resolveWithTimers(fetchSteamEntity(778, mockFetch as typeof fetch));
+    expect(entity).toBeUndefined();
+    // 英語のプローブが失敗したのでサーキットは開いたままで、日本語は skip される
+    expect(getSteamApiHealth().circuitOpen).toBe(true);
+    // 英語側は403でSTEAM_MAX_ATTEMPTS回リトライして呼ばれるが、日本語側は
+    // circuit-open で skip されるため fetch は一度も呼ばれない（逐次実行の証明）
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });
