@@ -178,6 +178,11 @@ jobs:
             "data/validation/completeness-report-${ISSUE_NUM_PADDED}.json"
           copy_diagnostic data/identity-resolver-trace.json \
             "data/validation/identity-resolver-trace-${ISSUE_NUM_PADDED}.json"
+          # fetch-data プロセスの Steam API ヘルススナップショット（Issue #360）。
+          # build-issue.ts が同じ号のレポートに合算済みだが、fetch-data 単独の生データも
+          # 他の診断データと同じ理由（runner 破棄前に data/validation/ へ退避）で残す。
+          copy_diagnostic data/steam-api-health.json \
+            "data/validation/steam-api-health-${ISSUE_NUM_PADDED}.json"
 
       # 6.8. 診断データをアーティファクトとしても退避する（Issue #363）
       #      6.7 のコミットは「号が組み上がった run」だけを救う。fetch-data や generate が
@@ -196,6 +201,7 @@ jobs:
             data/completeness-report.json
             data/identity-resolver-trace.json
             data/selected-games.json
+            data/steam-api-health.json
             data/validation/
           if-no-files-found: warn
           retention-days: 90

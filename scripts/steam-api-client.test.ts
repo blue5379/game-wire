@@ -3,13 +3,20 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   fetchSteamJson,
   getSteamApiHealth,
   resetSteamApiClient,
+  writeSteamApiHealth,
+  readSteamApiHealth,
+  mergeSteamApiHealth,
   STEAM_MAX_ATTEMPTS,
   STEAM_RETRY_AFTER_MAX_MS,
   STEAM_CIRCUIT_FAILURE_THRESHOLD,
+  type SteamApiHealth,
 } from './steam-api-client.js';
 
 function makeResponse(opts: {
@@ -25,6 +32,18 @@ function makeResponse(opts: {
     headers: {
       get: (name: string) => opts.headers?.[name] ?? null,
     },
+  } as unknown as Response;
+}
+
+/** HTTP 200 だが本文が JSON でないため res.json() が reject するレスポンス（バグ2用） */
+function makeBrokenJsonResponse(): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => {
+      throw new SyntaxError('Unexpected token < in JSON at position 0');
+    },
+    headers: { get: () => null },
   } as unknown as Response;
 }
 
@@ -240,5 +259,211 @@ describe('fetchSteamJson', () => {
     }
     expect(fetchImpl).toHaveBeenCalledTimes(STEAM_MAX_ATTEMPTS);
     expect(getSteamApiHealth().statusCounts['network']).toBe(1);
+  });
+
+  // バグ2: res.json() が reject する 200 応答でカウンタが二重計上されないこと
+  describe('res.json() が失敗する 200 応答（バグ2）', () => {
+    it('(a) リトライされる', async () => {
+      const fetchImpl = vi.fn(async () => makeBrokenJsonResponse());
+
+      const promise = fetchSteamJson('https://example.test/broken-json', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(fetchImpl).toHaveBeenCalledTimes(STEAM_MAX_ATTEMPTS);
+    });
+
+    it('(b) 最終的に失敗したとき succeeded が加算されていない', async () => {
+      const fetchImpl = vi.fn(async () => makeBrokenJsonResponse());
+
+      const promise = fetchSteamJson('https://example.test/broken-json-2', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result.ok).toBe(false);
+      const health = getSteamApiHealth();
+      // res.ok=true の応答を3回受けたが、すべて json() で失敗している。
+      // succeeded は 1 度も加算されてはならない（succeeded + failed <= total を保つ）。
+      expect(health.succeeded).toBe(0);
+      expect(health.failed).toBe(1);
+      expect(health.total).toBe(1);
+    });
+
+    it('(c) 直前に成功していない状態から始めても、consecutiveFailures が途中で誤ってリセットされず最終的に加算される', async () => {
+      // 事前に1回失敗させて consecutiveFailures=1 の状態を作る
+      const priorFail = vi.fn(async () => makeResponse({ ok: false, status: 404 }));
+      await fetchSteamJson('https://example.test/prior-fail', {
+        fetchImpl: priorFail as unknown as typeof fetch,
+        quiet: true,
+      });
+      expect(getSteamApiHealth().consecutiveFailures).toBe(1);
+
+      // json() が壊れている 200 応答（バグがあると succeeded++ / consecutiveFailures=0 が
+      // 実行されてしまうが、最終的にはこの呼び出しも失敗する）
+      const fetchImpl = vi.fn(async () => makeBrokenJsonResponse());
+      const promise = fetchSteamJson('https://example.test/broken-json-3', {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+      await vi.runAllTimersAsync();
+      await promise;
+
+      // 修正後は succeeded が一度も加算されないので、この呼び出しの失敗で
+      // consecutiveFailures は 1 → 2 になる（誤ってリセットされていれば 1 のままになる）
+      expect(getSteamApiHealth().consecutiveFailures).toBe(2);
+    });
+  });
+
+  // バグ3: サーキットで打ち切った呼び出しが statusCounts に載らない
+  it('サーキット開放時にスキップされた呼び出しは statusCounts["circuit-open"] に計上される', async () => {
+    const fetchImpl = vi.fn(async () => makeResponse({ ok: false, status: 404 }));
+    for (let i = 0; i < STEAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      await fetchSteamJson(`https://example.test/circuit-${i}`, {
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+        quiet: true,
+      });
+    }
+    // ここでサーキットは開いている。以降の呼び出しは fetchImpl を呼ばずに即失敗する
+    await fetchSteamJson('https://example.test/circuit-skip-1', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      quiet: true,
+    });
+    await fetchSteamJson('https://example.test/circuit-skip-2', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      quiet: true,
+    });
+
+    const health = getSteamApiHealth();
+    expect(health.statusCounts['circuit-open']).toBe(2);
+    // sum(statusCounts) が failed と一致する（内訳の欠落が無い）ことを確認
+    const sumStatusCounts = Object.values(health.statusCounts).reduce((a, b) => a + b, 0);
+    expect(sumStatusCounts).toBe(health.failed);
+  });
+});
+
+describe('writeSteamApiHealth / readSteamApiHealth / mergeSteamApiHealth（Issue #360 プロセス跨ぎ集計）', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'steam-api-health-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('write したスナップショットを read で読み戻せる（stage 付き）', async () => {
+    const filePath = path.join(tmpDir, 'steam-api-health.json');
+    const fetchImpl = vi.fn(async () => makeResponse({ ok: false, status: 404 }));
+    await fetchSteamJson('https://example.test/write-read', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      quiet: true,
+    });
+
+    writeSteamApiHealth(filePath, 'fetch-data');
+    const snapshot = readSteamApiHealth(filePath);
+
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.stage).toBe('fetch-data');
+    expect(snapshot?.total).toBe(1);
+    expect(snapshot?.failed).toBe(1);
+    expect(snapshot?.statusCounts['404']).toBe(1);
+  });
+
+  it('ファイルが存在しない場合は undefined を返す（fetch-data を経ない単独実行を壊さない）', () => {
+    const filePath = path.join(tmpDir, 'does-not-exist.json');
+    expect(readSteamApiHealth(filePath)).toBeUndefined();
+  });
+
+  it('壊れた JSON の場合は undefined を返す（例外を投げない）', () => {
+    const filePath = path.join(tmpDir, 'broken.json');
+    fs.writeFileSync(filePath, '{ not valid json');
+    expect(readSteamApiHealth(filePath)).toBeUndefined();
+  });
+
+  it('形が不正な JSON（必須フィールド欠落）の場合は undefined を返す', () => {
+    const filePath = path.join(tmpDir, 'wrong-shape.json');
+    fs.writeFileSync(filePath, JSON.stringify({ stage: 'fetch-data', total: 1 }));
+    expect(readSteamApiHealth(filePath)).toBeUndefined();
+  });
+
+  it('write は親ディレクトリが無くても作成する', () => {
+    const filePath = path.join(tmpDir, 'nested', 'dir', 'steam-api-health.json');
+    writeSteamApiHealth(filePath, 'fetch-data');
+    expect(fs.existsSync(filePath)).toBe(true);
+  });
+
+  describe('mergeSteamApiHealth', () => {
+    function makeHealth(overrides: Partial<SteamApiHealth> = {}): SteamApiHealth {
+      return {
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        consecutiveFailures: 0,
+        circuitOpen: false,
+        statusCounts: {},
+        ...overrides,
+      };
+    }
+
+    it('total / succeeded / failed を加算する', () => {
+      const merged = mergeSteamApiHealth([
+        makeHealth({ total: 10, succeeded: 7, failed: 3 }),
+        makeHealth({ total: 5, succeeded: 5, failed: 0 }),
+      ]);
+      expect(merged.total).toBe(15);
+      expect(merged.succeeded).toBe(12);
+      expect(merged.failed).toBe(3);
+    });
+
+    it('statusCounts をキーごとに加算する', () => {
+      const merged = mergeSteamApiHealth([
+        makeHealth({ statusCounts: { '403': 2, '500': 1 } }),
+        makeHealth({ statusCounts: { '403': 3, network: 1 } }),
+      ]);
+      expect(merged.statusCounts).toEqual({ '403': 5, '500': 1, network: 1 });
+    });
+
+    it('circuitOpen はいずれかが true なら true（OR）', () => {
+      const merged = mergeSteamApiHealth([
+        makeHealth({ circuitOpen: false }),
+        makeHealth({ circuitOpen: true }),
+      ]);
+      expect(merged.circuitOpen).toBe(true);
+    });
+
+    it('circuitOpen は全て false なら false', () => {
+      const merged = mergeSteamApiHealth([
+        makeHealth({ circuitOpen: false }),
+        makeHealth({ circuitOpen: false }),
+      ]);
+      expect(merged.circuitOpen).toBe(false);
+    });
+
+    it('consecutiveFailures は最大値（加算しない）', () => {
+      const merged = mergeSteamApiHealth([
+        makeHealth({ consecutiveFailures: 5 }),
+        makeHealth({ consecutiveFailures: 3 }),
+      ]);
+      expect(merged.consecutiveFailures).toBe(5);
+    });
+
+    it('空配列を渡すとゼロ値を返す', () => {
+      const merged = mergeSteamApiHealth([]);
+      expect(merged).toEqual({
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        consecutiveFailures: 0,
+        circuitOpen: false,
+        statusCounts: {},
+      });
+    });
   });
 });

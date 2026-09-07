@@ -161,12 +161,23 @@ export interface ValidationReport {
   missingOfficialUrls?: Array<{ articleTitle: string; category: string; gameTitle: string }>;
   /**
    * Steam API 呼び出しのラン全体の健全性（Issue #360 対応方針4）。
-   * build-issue.ts が getSteamApiHealth() から埋め込む。旧レポート（本フィールド追加前）では
-   * undefined =「未計測」。circuitOpen=true（全滅検知でサーキットが開いた）は
+   *
+   * 実際のパイプラインは fetch-data → generate → build-issue の3プロセス構成で、
+   * Steam を叩くのは fetch-data と build-issue の2プロセス（別プロセス = 別メモリ空間）。
+   * このフィールドは両プロセスの getSteamApiHealth() を mergeSteamApiHealth で合算した値。
+   * build-issue.ts が埋め込む。旧レポート（本フィールド追加前）では undefined =「未計測」。
+   * circuitOpen=true（いずれかのプロセスで全滅検知でサーキットが開いた）は
    * computeReportStatus で status=error に昇格させる。号自体は fail させず発行を継続する
    * （未検証ゲームの除去は Issue #317 の担当でスコープ外）。
    */
   steamApiHealth?: SteamApiHealth;
+  /**
+   * ステージ（プロセス）別の Steam API ヘルス内訳（Issue #360）。
+   * `steamApiHealth`（合算値）とは別に、診断用にどのプロセスで何件失敗したかを残す。
+   * fetch-data のスナップショットが読めなかった場合はそのステージのキーが欠ける
+   * （= 未計測。号を落とす理由にはしない）。
+   */
+  steamApiHealthByStage?: Record<string, SteamApiHealth>;
 }
 
 const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [

@@ -15,7 +15,21 @@
  * finalize-game-metadata.ts）の既存の fail-open 挙動・戻り値の意味は変えない。
  * このモジュールは「HTTP レベルの成否」だけを扱い、レスポンス本文の `success: false` 判定は
  * 呼び出し側の責務のままにする。
+ *
+ * ## プロセスを跨いだ集計（writeSteamApiHealth / readSteamApiHealth / mergeSteamApiHealth）
+ *
+ * このモジュールの集計状態（getSteamApiHealth）はプロセス内変数であり、プロセスを跨がない。
+ * ところが実際のパイプラインは `npm run fetch-data` → `npm run generate` → `build-issue.ts`
+ * の**3つの別プロセス**で構成され（package.json / weekly-build.yml）、Steam を叩くのは
+ * fetch-data（Storefront 補完・Resolver・Completeness Gate の R5）と build-issue
+ * （事後の同一性照合）だけである。build-issue.ts が自プロセスの getSteamApiHealth() だけを
+ * レポートに載せると、fetch-data プロセスで発生した大半の失敗（第20号の実測はほぼ全てここ）が
+ * レポートから漏れる。そのため fetch-data プロセスの終了時にヘルス状態をファイルに書き出し、
+ * build-issue プロセスがそれを読んで自プロセスの集計と合算する。
  */
+
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 /** 1 回の Steam API リクエストのタイムアウト（ミリ秒） */
 export const STEAM_API_TIMEOUT_MS = 10000;
@@ -146,7 +160,11 @@ export async function fetchSteamJson(
 
   if (circuitOpen) {
     failed++;
-    // 既にサーキットが開いている状態を維持するだけなので consecutiveFailures は増やさない
+    // 既にサーキットが開いている状態を維持するだけなので consecutiveFailures は増やさない。
+    // ただし statusCounts には計上する（バグ3対応）: これを忘れると
+    // sum(statusCounts) < failed になり、レポートを読む側が内訳を合算しても
+    // 失敗総数に一致しない（サーキットで打ち切った分だけ内訳から漏れる）。
+    recordFailureStatus('circuit-open');
     warnUnlessQuiet(quiet, {
       url,
       reason: `circuit-open: 連続失敗が${STEAM_CIRCUIT_FAILURE_THRESHOLD}件に達したため呼び出しをスキップ (attempts=0)`,
@@ -165,9 +183,17 @@ export async function fetchSteamJson(
       const res = await fetchImpl(url, { signal: AbortSignal.timeout(STEAM_API_TIMEOUT_MS) });
 
       if (res.ok) {
+        // バグ2対応: res.json() は本文が JSON でない場合（Steam が HTTP 200 で
+        // HTML エラーページ等を返すケース）に throw しうる。カウンタ更新を
+        // res.json() の成功より前に行うと、throw して catch に落ちた（= このループが
+        // 継続 or 最終的に失敗する）場合でも succeeded++ / consecutiveFailures=0 が
+        // 既に実行済みになってしまい、succeeded と failed の両方が加算されて
+        // succeeded + failed > total になったり、サーキットが開くべき状況で
+        // consecutiveFailures が誤ってリセットされたりする。
+        // そのため res.json() の成功を確認した後にカウンタを更新する。
+        const json = await res.json();
         succeeded++;
         consecutiveFailures = 0;
-        const json = await res.json();
         return { ok: true, json, attempts: attempt };
       }
 
@@ -222,4 +248,83 @@ export function resetSteamApiClient(): void {
   for (const key of Object.keys(statusCounts)) {
     delete statusCounts[key];
   }
+}
+
+/** ステージ名付きのヘルススナップショット（プロセス跨ぎの受け渡し用） */
+export interface SteamApiHealthSnapshot extends SteamApiHealth {
+  /** このスナップショットを書き出したプロセス・ステージ名（例: 'fetch-data'） */
+  stage: string;
+}
+
+/**
+ * 現在の集計をファイルに書き出す（プロセス跨ぎの受け渡し用）。
+ * 呼び出し元（fetch-data.ts）のプロセス終了前に呼ぶことを想定する。
+ */
+export function writeSteamApiHealth(filePath: string, stage: string): void {
+  const snapshot: SteamApiHealthSnapshot = { ...getSteamApiHealth(), stage };
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2));
+}
+
+/**
+ * スナップショットを読み込む。ファイルが無い・壊れている場合は undefined を返す
+ * （DEV 実行や fetch-data を経ない単独実行で build-issue.ts を落とさないため）。
+ */
+export function readSteamApiHealth(filePath: string): SteamApiHealthSnapshot | undefined {
+  try {
+    if (!fs.existsSync(filePath)) return undefined;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const parsed = JSON.parse(raw) as Partial<SteamApiHealthSnapshot> | null;
+    if (
+      !parsed ||
+      typeof parsed.stage !== 'string' ||
+      typeof parsed.total !== 'number' ||
+      typeof parsed.succeeded !== 'number' ||
+      typeof parsed.failed !== 'number' ||
+      typeof parsed.consecutiveFailures !== 'number' ||
+      typeof parsed.circuitOpen !== 'boolean' ||
+      typeof parsed.statusCounts !== 'object' ||
+      parsed.statusCounts === null
+    ) {
+      return undefined;
+    }
+    return parsed as SteamApiHealthSnapshot;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 複数ステージの集計を合算する（レポート表示専用。判定ロジックの合流には使わない）。
+ *
+ * - total / succeeded / failed: 加算
+ * - statusCounts: キーごとに加算
+ * - circuitOpen: いずれかが true なら true（OR）。どのステージでも全滅検知が
+ *   起きていた事実をレポート上で見失わないようにする。
+ * - consecutiveFailures: 最大値。ステージは別プロセス・別時間帯（fetch-data → generate →
+ *   build-issue の間に記事生成の実処理を挟む）で実行されるため、「ステージ A の末尾の失敗と
+ *   ステージ B の先頭の失敗が連続している」という意味での連続性は定義できない。
+ *   合算（加算）すると実態より深刻に見える誤解を生むため、各ステージ内で観測された
+ *   最大の連続失敗数のみを代表値として残す。
+ */
+export function mergeSteamApiHealth(parts: SteamApiHealth[]): SteamApiHealth {
+  const merged: SteamApiHealth = {
+    total: 0,
+    succeeded: 0,
+    failed: 0,
+    consecutiveFailures: 0,
+    circuitOpen: false,
+    statusCounts: {},
+  };
+  for (const part of parts) {
+    merged.total += part.total;
+    merged.succeeded += part.succeeded;
+    merged.failed += part.failed;
+    merged.circuitOpen = merged.circuitOpen || part.circuitOpen;
+    merged.consecutiveFailures = Math.max(merged.consecutiveFailures, part.consecutiveFailures);
+    for (const [key, count] of Object.entries(part.statusCounts)) {
+      merged.statusCounts[key] = (merged.statusCounts[key] ?? 0) + count;
+    }
+  }
+  return merged;
 }

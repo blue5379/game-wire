@@ -17,7 +17,7 @@ import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
 import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
-import { getSteamApiHealth } from './steam-api-client.js';
+import { getSteamApiHealth, readSteamApiHealth, mergeSteamApiHealth } from './steam-api-client.js';
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 import { isMainModule } from './entrypoint.js';
@@ -788,10 +788,45 @@ async function main(): Promise<void> {
   }
 
   // Steam API のラン全体の健全性をレポートに記録する（Issue #360 対応方針4）。
-  // サーキットが開いていた場合（= 全滅検知）は status を error に昇格させる
-  // （合流先は computeReportStatus。この号自体は fail させず発行を継続する — 未検証ゲームの
-  // 除去は Issue #317 の担当でこの PR のスコープ外）。
-  report.steamApiHealth = getSteamApiHealth();
+  //
+  // 実際のパイプラインは fetch-data → generate → build-issue の3プロセスで、Steam を叩くのは
+  // fetch-data（Storefront補完・Resolver・Completeness Gate R5）と build-issue（事後の同一性照合）
+  // の2プロセス。getSteamApiHealth() は自プロセス（build-issue）内変数しか見えないため、
+  // fetch-data が書き出したスナップショットを読んで合算する。
+  //
+  // fetch-data のスナップショットが無い（DEV 実行を fetch-data を経ずに単独実行した等）場合は
+  // 落とさず、自プロセスの集計のみを使う（fail-open。号の発行を止める理由にはしない）。
+  //
+  // ⚠️ 合算はレポート表示専用。「fetch-data のサーキットが開いていたら build-issue 側のサーキットも
+  // 最初から開けておく」ことは意図的にしない: fetch-data と build-issue の間には
+  // npm run generate（Bedrock の記事生成）が挟まり実時間で長く空くため、その間に Steam 側の
+  // 障害が回復している可能性が十分にある。build-issue 側のリトライ判断は自プロセスの実測のみで
+  // 行う（steam-api-client.ts のサーキット状態そのものは合算しない）。
+  const steamHealthSnapshotPath = path.join(
+    DATA_DIR,
+    DEV_MODE ? 'validation-dev' : '',
+    'steam-api-health.json'
+  );
+  const fetchDataSteamHealth = readSteamApiHealth(steamHealthSnapshotPath);
+  const buildIssueSteamHealth = getSteamApiHealth();
+
+  const steamApiHealthByStage: Record<string, import('./steam-api-client.js').SteamApiHealth> = {
+    'build-issue': buildIssueSteamHealth,
+  };
+  if (fetchDataSteamHealth) {
+    steamApiHealthByStage['fetch-data'] = fetchDataSteamHealth;
+  } else {
+    console.warn(
+      JSON.stringify({
+        scope: 'build-issue',
+        step: 'steam-api-health',
+        reason: `スナップショットが見つからないため fetch-data ステージの Steam API ヘルスは未計測: ${steamHealthSnapshotPath}`,
+      })
+    );
+  }
+
+  report.steamApiHealthByStage = steamApiHealthByStage;
+  report.steamApiHealth = mergeSteamApiHealth(Object.values(steamApiHealthByStage));
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。

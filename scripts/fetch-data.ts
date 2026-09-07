@@ -27,7 +27,7 @@ import { hasAllRequiredFields } from './finalize-game-metadata.js';
 import { resolveGameIdentity } from './identity-resolver.js';
 import { runCompletenessGate, getGateMode } from './completeness-gate.js';
 import type { ResolverTrace } from './completeness-gate.js';
-import { fetchSteamJson } from './steam-api-client.js';
+import { fetchSteamJson, writeSteamApiHealth } from './steam-api-client.js';
 import { normalizeTitle } from './normalize.js';
 import { sortByNewReleaseScore, computeNewReleaseScore } from './newrelease-score.js';
 import { meetsClassicPoolThresholds } from './classic-pool.js';
@@ -1572,6 +1572,16 @@ async function main(): Promise<void> {
   const reportPath = path.join(reportDir, 'completeness-report.json');
   fs.writeFileSync(reportPath, JSON.stringify(gateReport, null, 2));
   console.log(`  Completeness report saved to: ${reportPath}`);
+
+  // Steam API のヘルス集計をファイルに退避する（Issue #360）。
+  // build-issue.ts は別プロセスなのでプロセス内変数の getSteamApiHealth() を直接読めない。
+  // このプロセスで発生した Storefront 補完・Resolver・Completeness Gate(R5) の呼び出し結果を
+  // build-issue.ts プロセスが合算できるようにする。gateMode=fail で下の exit(1) に落ちる場合も
+  // 診断データを残す必要があるため、exit(1) チェックより前に書き出す。
+  // reportDir は completeness-report.json と同じ（DEV_MODE の既存規約に揃える）。
+  const steamHealthPath = path.join(reportDir, 'steam-api-health.json');
+  writeSteamApiHealth(steamHealthPath, 'fetch-data');
+  console.log(`  Steam API health snapshot saved to: ${steamHealthPath}`);
 
   // 統合データの構築
   const aggregatedData: AggregatedData = {
