@@ -114,22 +114,23 @@ describe('computeReportStatus', () => {
     expect(computeReportStatus(report)).toBe('error');
   });
 
-  it('Steam API サーキットブレーカが開いていれば（high 0 でも）error（Issue #360: 全滅検知）', () => {
+  it('Steam API サーキットブレーカが開いていれば（high 0 でも）error（Issue #360: 全滅検知）。非429失敗率が低くても circuitOpen 単独で error になることも検証する', () => {
     const report = makeReport({
       warningsBySeverity: { high: 0, medium: 0, low: 0 },
       steamApiHealth: {
         total: 20,
-        succeeded: 0,
-        failed: 20,
+        succeeded: 19,
+        failed: 1,
         consecutiveFailures: 5,
         circuitOpen: true,
-        statusCounts: { '403': 5, '429': 15 },
+        statusCounts: { '403': 1 },
       },
     });
+    // 非429失敗率は 1/20 = 5%（10%未満）だが、circuitOpen=true 単独で error になる
     expect(computeReportStatus(report)).toBe('error');
   });
 
-  it('steamApiHealth が計測されているが circuitOpen=false なら error に昇格しない', () => {
+  it('steamApiHealth が計測されていて失敗0件・circuitOpen=false なら error にも warning にも昇格しない（ok）', () => {
     const report = makeReport({
       warningsBySeverity: { high: 0, medium: 0, low: 0 },
       steamApiHealth: {
@@ -147,6 +148,135 @@ describe('computeReportStatus', () => {
   it('steamApiHealth が未計測（旧レポート）なら未計測として ok 側の判定に影響しない', () => {
     const report = makeReport({ warningsBySeverity: { high: 0, medium: 0, low: 0 } });
     expect(computeReportStatus(report)).toBe('ok');
+  });
+
+  describe('Steam API 非429失敗率・circuit-open スキップによる error/warning 昇格（Issue #360 フォローアップ）', () => {
+    it('ライブ実測3回目相当（total 280 / failed 0 / statusCounts {} / rateLimitHits 0）は Steam 由来で error にも warning にも昇格しない', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 280,
+          succeeded: 280,
+          failed: 0,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: {},
+          rateLimitHits: 0,
+        },
+      });
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('ライブ実測2回目相当（total 295 / failed 38 / statusCounts {429:10, circuit-open:28} / rateLimitHits 30, circuitOpen false）は circuit-open スキップが1件以上あるため error（非429失敗率 28/295=9.5% は10%未満だが、circuit-open スキップの独立条件で error になる）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 295,
+          succeeded: 257,
+          failed: 38,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '429': 10, 'circuit-open': 28 },
+          rateLimitHits: 30,
+        },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+      expect(shouldFileIssue(report)).toBe(true);
+    });
+
+    it('境界値: 非429失敗率がちょうど10.0%（total 100 / 非429失敗 10、circuit-open なし）なら error', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 100,
+          succeeded: 90,
+          failed: 10,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '403': 10 },
+        },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('境界値: 非429失敗率が9.9%（total 1000 / 非429失敗 99、circuit-open なし）なら warning（10%未満なので error にならない）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 1000,
+          succeeded: 901,
+          failed: 99,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '500': 99 },
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('429 のみで失敗している場合（total 100 / failed 20 / statusCounts {429:20}）は失敗率20%でも warning（429 と非429の区別が効いていることのポジティブコントロール）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 100,
+          succeeded: 80,
+          failed: 20,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '429': 20 },
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('total < 10 で非429失敗率が高い場合（total 5 / 非429失敗 3 = 60%）は error にならず warning（呼び出し数が少なすぎる誤検知を避ける下限）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 5,
+          succeeded: 2,
+          failed: 3,
+          consecutiveFailures: 3,
+          circuitOpen: false,
+          statusCounts: { '403': 3 },
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('circuit-open スキップが1件だけでも error（statusCounts.circuit-open の件数閾値は無い）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 280,
+          succeeded: 279,
+          failed: 1,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { 'circuit-open': 1 },
+        },
+      });
+      // 非429失敗率は 1/280 ≈ 0.36%（10%未満）だが、circuit-open スキップの独立条件で error になる
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('非429失敗率が10%未満かつ circuit-open が0件なら warning に留まる（2つのルールが独立に効いていることの確認）', () => {
+      const report = makeReport({
+        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        steamApiHealth: {
+          total: 1000,
+          succeeded: 901,
+          failed: 99,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '500': 99 },
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+    });
   });
 });
 
@@ -374,6 +504,85 @@ describe('buildRecommendedActions', () => {
     });
     const actions = buildRecommendedActions(report);
     expect(actions.some((a) => a.includes('Steam API 全滅検知'))).toBe(false);
+  });
+
+  describe('Steam API 非429失敗率・circuit-open スキップ・429 発生時のアクション（Issue #360 フォローアップ）', () => {
+    it('circuitOpen=false かつ非429失敗率が10%以上ならアクションを出す（統計内訳の確認を促す内容を含む）', () => {
+      const report = makeReport({
+        steamApiHealth: {
+          total: 100,
+          succeeded: 90,
+          failed: 10,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '403': 10 },
+        },
+      });
+      const actions = buildRecommendedActions(report);
+      const action = actions.find((a) => a.includes('失敗率が高い'));
+      expect(action).toBeDefined();
+      expect(action).toContain('10 件 / 100 件');
+      expect(action).toContain('statusCounts');
+    });
+
+    it('失敗0件なら Steam API 関連のアクションは何も出さない', () => {
+      const report = makeReport({
+        steamApiHealth: {
+          total: 100,
+          succeeded: 100,
+          failed: 0,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: {},
+          rateLimitHits: 0,
+        },
+      });
+      const actions = buildRecommendedActions(report);
+      expect(actions).toEqual(['✅ 対応は不要です。']);
+    });
+
+    it('429 由来の失敗（statusCounts.429 > 0）があればレート制限のアクションを出す（error にはしない情報提供）', () => {
+      const report = makeReport({
+        steamApiHealth: {
+          total: 100,
+          succeeded: 80,
+          failed: 20,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '429': 20 },
+          rateLimitHits: 25,
+        },
+      });
+      const actions = buildRecommendedActions(report);
+      const action = actions.find((a) => a.includes('レート制限'));
+      expect(action).toBeDefined();
+      expect(action).toContain('STEAM_MIN_REQUEST_INTERVAL_MS');
+      // 429 のみの失敗は error 要因ではないので「全滅検知」「失敗率が高い」アクションは出ない
+      expect(actions.some((a) => a.includes('全滅検知'))).toBe(false);
+      expect(actions.some((a) => a.includes('失敗率が高い'))).toBe(false);
+    });
+
+    it('circuitOpen=false かつ statusCounts.circuit-open > 0 なら「作動→回復」アクションを出し、全滅検知アクションとは重複させない', () => {
+      const report = makeReport({
+        steamApiHealth: {
+          total: 295,
+          succeeded: 257,
+          failed: 38,
+          consecutiveFailures: 0,
+          circuitOpen: false,
+          statusCounts: { '429': 10, 'circuit-open': 28 },
+          rateLimitHits: 30,
+        },
+      });
+      const actions = buildRecommendedActions(report);
+      const recoveryAction = actions.find((a) => a.includes('作動→回復'));
+      expect(recoveryAction).toBeDefined();
+      expect(recoveryAction).toContain('28');
+      expect(recoveryAction).toContain('identityCheckSkipped');
+      expect(actions.some((a) => a.includes('Steam API 全滅検知（サーキットブレーカ作動）'))).toBe(false);
+      // 429 発生のアクションは独立して出る
+      expect(actions.some((a) => a.includes('レート制限'))).toBe(true);
+    });
   });
 
   it('キーワード検索失敗と公式ページ本文取得失敗を別のアクションとして出す（Issue #349）', () => {
@@ -723,6 +932,95 @@ describe('formatReportMarkdown', () => {
     expect(md).toContain('LLM 事実性チェック');
     expect(md).not.toContain('判定に使った出典の件数');
     expect(md).not.toContain('事実性チェックをスキップした記事');
+  });
+
+  describe('Steam API 呼び出しの健全性（Issue #360 フォローアップ: circuitOpen だけでは失敗件数が読めない回帰の修正）', () => {
+    it('steamApiHealth が未計測（旧レポート）なら「未計測」と表示する', () => {
+      const md = formatReportMarkdown(makeReport());
+      expect(md).toContain('| ❓ Steam API 呼び出し | 未計測 |');
+    });
+
+    it('失敗0件のときは ✅ で正常表示し、失敗件数の行に「0」が含まれる', () => {
+      const md = formatReportMarkdown(
+        makeReport({
+          steamApiHealth: {
+            total: 280,
+            succeeded: 280,
+            failed: 0,
+            consecutiveFailures: 0,
+            circuitOpen: false,
+            statusCounts: {},
+            rateLimitHits: 0,
+          },
+        })
+      );
+      expect(md).toContain('| ✅ Steam API 呼び出し | 失敗 0/280 件（0.0%） |');
+      // statusCounts が空オブジェクトのときは内訳行を出さない
+      expect(md).not.toContain('ステータス別内訳');
+      // rateLimitHits は 0（計測済み）なので表示する
+      expect(md).toContain('| ・Steam API レート制限（429）ヒット数 | 0 |');
+    });
+
+    it('失敗ありのときは件数・失敗率・statusCounts の内訳が出力に含まれる（ライブ実測2回目相当）', () => {
+      const md = formatReportMarkdown(
+        makeReport({
+          status: 'error',
+          steamApiHealth: {
+            total: 295,
+            succeeded: 257,
+            failed: 38,
+            consecutiveFailures: 0,
+            circuitOpen: false,
+            statusCounts: { '429': 10, 'circuit-open': 28 },
+            rateLimitHits: 30,
+          },
+        })
+      );
+      expect(md).toContain('38/295');
+      expect(md).toContain('circuit-open: 28');
+      expect(md).toContain('429: 10');
+      expect(md).toContain('| ・Steam API レート制限（429）ヒット数 | 30 |');
+      // ラン中作動→終了時回復のケースなので 🚨 表示になる
+      expect(md).toContain('🚨 Steam API 呼び出し');
+      expect(md).toContain('作動→終了時は回復');
+    });
+
+    it('circuitOpen=true なら 🚨 で明示し、連続失敗件数を含む', () => {
+      const md = formatReportMarkdown(
+        makeReport({
+          status: 'error',
+          steamApiHealth: {
+            total: 20,
+            succeeded: 0,
+            failed: 20,
+            consecutiveFailures: 5,
+            circuitOpen: true,
+            statusCounts: { '403': 20 },
+          },
+        })
+      );
+      expect(md).toContain('🚨 Steam API 呼び出し');
+      expect(md).toContain('サーキット作動中');
+      expect(md).toContain('連続失敗 5 件');
+      expect(md).toContain('20/20');
+    });
+
+    it('rateLimitHits が undefined（旧スナップショット）のときはレート制限ヒット数の行を出さない', () => {
+      const md = formatReportMarkdown(
+        makeReport({
+          steamApiHealth: {
+            total: 100,
+            succeeded: 90,
+            failed: 10,
+            consecutiveFailures: 0,
+            circuitOpen: false,
+            statusCounts: { '403': 10 },
+            // rateLimitHits は意図的に省略（旧スナップショットの再現）
+          },
+        })
+      );
+      expect(md).not.toContain('レート制限（429）ヒット数');
+    });
   });
 });
 
