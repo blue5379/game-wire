@@ -124,6 +124,70 @@ function judgeProblemCount(report: ValidationReport): number {
   return j.claimsByVerdict.contradicted + j.claimsByVerdict.unverifiable;
 }
 
+/** steamApiHealth が定義されている場合の型（optional を剥いだもの） */
+type SteamApiHealthValue = NonNullable<ValidationReport['steamApiHealth']>;
+
+/**
+ * Steam API 呼び出しのうち 429（レート制限）**以外**の失敗数（Issue #360 フォローアップ）。
+ *
+ * 429 と非429を区別する理由:
+ *  - 429 は Steam 側からの明示的なバックプレッシャであり、適応型ペーシング
+ *    （429 観測時に `STEAM_MIN_REQUEST_INTERVAL_MS` から `STEAM_PACING_MAX_INTERVAL_MS` まで
+ *    ペーシング間隔を伸ばす。`steam-api-client.ts`）が自動的に緩和する自己修復型の
+ *    失敗。実害も「そのゲームの Storefront 補完が1件失われる」だけ（fail-open）で、
+ *    後続フェーズを飢餓させない。毎週 Issue を自動起票する水準の異常ではないため warning 止まりにする。
+ *  - 403 全滅 / 5xx / ネットワーク断 / `circuit-open`（サーキット作動中のスキップ）は
+ *    「待っても回復しない」または「後続フェーズ（同一性照合・Storefront 補完）が広範囲に
+ *    飢餓している」ことを意味するため error（Issue 自動起票）にする。
+ *  - 429 はサーキットを一切開かない方針（直前のコミット）に変更されたため、
+ *    「サーキットは開いていないが呼び出しが大量に失敗している」状態が正規の状態になった。
+ *    circuitOpen だけを見るとこの状態を「✅ 未作動」と誤表示してしまう（本 Issue の回帰）。
+ */
+function steamApiNonRateLimitFailureCount(health: SteamApiHealthValue): number {
+  const rateLimitFailures = health.statusCounts['429'] ?? 0;
+  return health.failed - rateLimitFailures;
+}
+
+/**
+ * 非429失敗率が error 昇格の閾値（10%）以上かどうか。
+ *
+ * 閾値 10% の根拠: ライブ実測で「失敗0件」が達成可能であることを確認済み（実測3回目:
+ * total 280 / failed 0）。一方、実測2回目（total 295 / 非429失敗 28 件 = 9.5%）では
+ * 選定済み5ゲームの Identity Resolver が 5/5 全滅していた。つまり非429失敗率が1割前後に
+ * 達する状態はすでに実害が出ている水準であり、1割を超えるのは異常と判断する。
+ *
+ * `total < 10` の下限を置く理由: 呼び出し数が極端に少ないラン（例: 1〜2件の失敗）では、
+ * 少数の失敗が見た目上高い失敗率として誤検知されてしまうのを避けるため。
+ */
+function steamApiHasHighNonRateLimitFailureRate(health: SteamApiHealthValue): boolean {
+  if (health.total < 10) return false;
+  const nonRateLimitFailures = steamApiNonRateLimitFailureCount(health);
+  return nonRateLimitFailures / health.total >= 0.1;
+}
+
+/**
+ * ラン中に一度でも `circuit-open`（サーキット作動中のスキップ）が発生したかどうか
+ * （`statusCounts['circuit-open'] > 0`）。
+ *
+ * `circuitOpen`（終了時点のフラグ）だけでは検知できない盲点がある:
+ *  - `circuitOpen` はラン**終了時点のスナップショット**に過ぎない。半開プローブによる
+ *    自動回復（`probeInFlight` によるハーフオープン確認）が効くと、「ラン中にサーキットが
+ *    開いて呼び出しをスキップしたが、終了時には回復して閉じている」状態が起こりうる。
+ *    この場合 `circuitOpen === false` になるため、終了時フラグだけを見ると
+ *    スキップされた呼び出しが完全に不可視になる。
+ *  - ライブ実測2回目がまさにこれだった: `circuitOpen: false` だが
+ *    `statusCounts['circuit-open'] = 28`。この28件のスキップに、選定済み5ゲームの
+ *    Identity Resolver の全 attempt が含まれており、5/5 全滅していた。これを見落とすと
+ *    Issue #358（第20号の検証レポートが「問題なし」に見えていた盲点）の再発になる。
+ *  - `circuit-open` は「クライアントが意図的に呼び出しを拒否した」ことを意味し、
+ *    サーバが実際に応答した結果の 4xx/5xx とは質的に異なる（後続フェーズが広範囲に
+ *    飢餓している可能性が高い）ため、非429失敗率の10%閾値とは無関係に、
+ *    1件でも観測されたら error とする。
+ */
+function steamApiHasCircuitOpenSkips(health: SteamApiHealthValue): boolean {
+  return (health.statusCounts['circuit-open'] ?? 0) > 0;
+}
+
 /**
  * レポートから総合ステータスを算出する（Issue #349 で searchFailures と pageContentFailures を分離）。
  *
@@ -132,6 +196,15 @@ function judgeProblemCount(report: ValidationReport): number {
  *  - キーワード検索失敗（searchFailures > 0）: 根拠データがゼロになる
  *  - AI 成人向けスクリーニング失敗（adultScreeningFailures > 0）: 安全確認が fail-open で通過
  *  - 記事本数の不足（articleCountShortfalls > 0）: カテゴリ構成の欠落
+ *  - Steam API サーキットブレーカが開いた（steamApiHealth.circuitOpen）: 全滅検知（Issue #360）。
+ *    号自体は fail させず発行を継続するが、同一性照合や Storefront 補完が広範囲に
+ *    スキップされている可能性が高く、要対応として扱う。
+ *  - Steam API の非429失敗率が10%以上（steamApiHasHighNonRateLimitFailureRate）: サーキットは
+ *    開いていないが、403全滅/5xx/ネットワーク断等の「待っても回復しない」失敗が1割以上発生している
+ *    状態（Issue #360 フォローアップ。429 を一切サーキットに含めない方針変更後の正規状態）。
+ *  - Steam API のランのどこかで `circuit-open` スキップが発生した
+ *    （steamApiHasCircuitOpenSkips）: `circuitOpen` の終了時スナップショットだけでは
+ *    半開プローブによる自動回復後の状態を検知できないため、独立した条件として持つ。
  *
  * warning 条件（観測のみ・Issue 自動起票しない）:
  *  - medium 警告が 1 件以上
@@ -139,6 +212,11 @@ function judgeProblemCount(report: ValidationReport): number {
  *  - 公式 URL 未取得（missingOfficialUrls > 0）
  *  - LLM judge の矛盾・裏付け不能（judgeProblemCount > 0）
  *  - 早期アクセスの表記問題（earlyAccessStatementIssues > 0）
+ *  - Steam API の呼び出しに1件以上の失敗があるが、上記 error 条件（非429失敗率10%以上・
+ *    circuit-open スキップ）には達していない: 429 のバックプレッシャのみ、または
+ *    非429失敗が少数（10%未満）のケース。429 は自己修復型の失敗であり実害が
+ *    「その号のその1ゲームの Storefront 補完欠落」に留まるため、毎週 Issue を自動起票する
+ *    水準ではない。
  *
  * pageContentFailures を error ではなく warning にする理由（Issue #349）:
  *  - 補助ソースの欠落であり「記事が作られない」「読者に見える誤り」の水準ではない
@@ -148,21 +226,34 @@ function judgeProblemCount(report: ValidationReport): number {
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
   const high = report.warningsBySeverity.high;
+  const steamApiHealth = report.steamApiHealth;
+  const steamApiCircuitOpen = steamApiHealth?.circuitOpen === true;
+  const steamApiHighFailureRate = steamApiHealth
+    ? steamApiHasHighNonRateLimitFailureRate(steamApiHealth)
+    : false;
+  const steamApiCircuitOpenSkips = steamApiHealth
+    ? steamApiHasCircuitOpenSkips(steamApiHealth)
+    : false;
   if (
     high > 0 ||
     searchFailureCount(report) > 0 ||
     adultScreeningFailureCount(report) > 0 ||
-    articleCountShortfallCount(report) > 0
+    articleCountShortfallCount(report) > 0 ||
+    steamApiCircuitOpen ||
+    steamApiHighFailureRate ||
+    steamApiCircuitOpenSkips
   ) {
     return 'error';
   }
 
   const medium = report.warningsBySeverity.medium;
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
+  const steamApiHasAnyFailure = (steamApiHealth?.failed ?? 0) > 0;
   if (
     medium > 0 ||
     pageContentFailureCount(report) > 0 ||
     missingUrls > 0 ||
+    steamApiHasAnyFailure ||
     judgeProblemCount(report) > 0 ||
     earlyAccessStatementIssueCount(report) > 0
   ) {
@@ -205,6 +296,47 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   const unverifiable = report.llmJudge?.claimsByVerdict.unverifiable ?? 0;
   const shortfalls = report.articleCountShortfalls ?? [];
   const earlyAccessIssues = earlyAccessStatementIssueCount(report);
+  const steamApiHealth = report.steamApiHealth;
+  const steamApiCircuitOpenSkips = steamApiHealth?.statusCounts['circuit-open'] ?? 0;
+  const steamApiRateLimitFailures = steamApiHealth?.statusCounts['429'] ?? 0;
+  const steamApiRateLimitHits = steamApiHealth?.rateLimitHits ?? 0;
+
+  // circuitOpen（終了時作動） > circuit-open スキップ（終了時は回復済み） > 非429失敗率が高い、
+  // の優先順で1つだけ出す（同じ根本原因について複数のアクションが重複表示されるのを避ける）。
+  if (steamApiHealth?.circuitOpen) {
+    actions.push(
+      `🚨 **Steam API 全滅検知（サーキットブレーカ作動）**: 連続失敗が${steamApiHealth.consecutiveFailures}件に達し、` +
+        `以降の Steam 呼び出しをスキップしました（呼び出し合計 ${steamApiHealth.total} 件中失敗 ${steamApiHealth.failed} 件）。` +
+        `同一性照合・Storefront 補完が広範囲にスキップされている可能性があります。` +
+        `号は発行済みですが、data/validation の該当レポート内 steamApiHealth.statusCounts を確認し、Steam 側の障害状況を確認してください。`
+    );
+  } else if (steamApiHealth && steamApiCircuitOpenSkips > 0) {
+    actions.push(
+      `🚨 **Steam API サーキットがラン中に作動→回復（終了時は未作動）**: ラン中に一時的にサーキットが開き、` +
+        `${steamApiCircuitOpenSkips} 件の Steam 呼び出しがスキップされましたが、終了時には回復していたため ` +
+        `circuitOpen フラグは false です（呼び出し合計 ${steamApiHealth.total} 件中失敗 ${steamApiHealth.failed} 件）。` +
+        `このスキップに同一性照合や Identity Resolver の attempt が含まれていた可能性があります。` +
+        `data/validation の該当レポートの identityCheckSkipped と、該当号の記事の Steam リンクを確認してください。`
+    );
+  } else if (steamApiHealth && steamApiHasHighNonRateLimitFailureRate(steamApiHealth)) {
+    const nonRateLimitFailures = steamApiNonRateLimitFailureCount(steamApiHealth);
+    const failureRatePercent = ((nonRateLimitFailures / steamApiHealth.total) * 100).toFixed(1);
+    actions.push(
+      `⚠️ **Steam API 呼び出しの失敗率が高い（サーキットは未作動）**: 429 以外の失敗が` +
+        ` ${nonRateLimitFailures} 件 / ${steamApiHealth.total} 件（${failureRatePercent}%）発生しています。` +
+        `data/validation の該当レポート内 steamApiHealth.statusCounts の内訳を確認し、` +
+        `同一性照合や Storefront 補完が部分的にスキップされていないか確認してください。`
+    );
+  }
+
+  if (steamApiRateLimitFailures > 0 || steamApiRateLimitHits > 0) {
+    actions.push(
+      `ℹ️ **Steam API レート制限（429）発生**: レート制限により該当ゲームの Storefront 補完が` +
+        `一部失われています（429 失敗 ${steamApiRateLimitFailures} 件 / rateLimitHits ${steamApiRateLimitHits} 件）。` +
+        `適応型ペーシングで自動的に緩和されるため号の発行には影響しませんが、頻発する場合は ` +
+        `STEAM_MIN_REQUEST_INTERVAL_MS の見直しが必要かもしれません。`
+    );
+  }
 
   if (shortfalls.length > 0) {
     const detail = shortfalls
@@ -387,6 +519,40 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(`| ⚠️ AI成人向けスクリーニング応答形式不正 | ${rawUnrecognizedScreeningResponses} |`);
   } else {
     out.push('| ✅ AI成人向けスクリーニング応答形式不正 | 0 |');
+  }
+
+  // Steam API 呼び出し全体の健全性（Issue #360）。未計測（旧レポート）と計測済みを区別する。
+  // circuitOpen（終了時フラグ）だけでは「サーキットが未作動＝呼び出しは正常」と誤読される
+  // ため、total / failed / 失敗率と statusCounts の内訳まで出す（本 Issue の回帰対応）。
+  if (report.steamApiHealth === undefined) {
+    out.push('| ❓ Steam API 呼び出し | 未計測 |');
+  } else {
+    const h = report.steamApiHealth;
+    const circuitOpenSkips = h.statusCounts['circuit-open'] ?? 0;
+    const failureRatePercent = h.total > 0 ? ((h.failed / h.total) * 100).toFixed(1) : '0.0';
+    if (h.circuitOpen) {
+      out.push(
+        `| 🚨 Steam API 呼び出し | サーキット作動中（連続失敗 ${h.consecutiveFailures} 件、` +
+          `失敗 ${h.failed}/${h.total} 件・${failureRatePercent}%） |`
+      );
+    } else if (circuitOpenSkips > 0) {
+      out.push(
+        `| 🚨 Steam API 呼び出し | ラン中にサーキット作動→終了時は回復` +
+          `（circuit-open スキップ ${circuitOpenSkips} 件、失敗 ${h.failed}/${h.total} 件・${failureRatePercent}%） |`
+      );
+    } else if (h.failed > 0) {
+      out.push(`| ⚠️ Steam API 呼び出し | 失敗 ${h.failed}/${h.total} 件（${failureRatePercent}%） |`);
+    } else {
+      out.push(`| ✅ Steam API 呼び出し | 失敗 0/${h.total} 件（0.0%） |`);
+    }
+    const statusCountsEntries = Object.entries(h.statusCounts);
+    if (statusCountsEntries.length > 0) {
+      const detail = statusCountsEntries.map(([status, count]) => `${status}: ${count}`).join('、');
+      out.push(`| ・Steam API ステータス別内訳 | ${detail} |`);
+    }
+    if (h.rateLimitHits !== undefined) {
+      out.push(`| ・Steam API レート制限（429）ヒット数 | ${h.rateLimitHits} |`);
+    }
   }
 
   // 警告詳細

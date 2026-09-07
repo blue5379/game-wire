@@ -114,8 +114,10 @@ export async function selectNewReleasesWithFallback(
   // targetCount 件採用するか候補が尽きるまで評価する。
   // 以前は maxAttempts = targetCount × 3 で試行を打ち切っていたが、上位に finalize 失敗
   // 候補が数件並ぶだけで採用可能な候補（後方）に到達できず、枠が埋まらない問題があった（Issue #189）。
-  // finalizeGameMetadata 内の API 呼び出しは各候補で IGDB 最大1回＋Storefront 最大1回に
+  // finalizeGameMetadata 内の API 呼び出しは各候補で IGDB 最大1回＋Storefront 論理1回に
   // 制限済みのため、全候補を評価してもクォータ影響は候補数に比例するだけで限定的。
+  // なお Storefront は Issue #360 以降 HTTP レベルで最大 STEAM_MAX_ATTEMPTS 回まで
+  // リトライし、試行の直前にペーシングも入る（時間は候補数に比例して伸びる）。
   // indie 側（select-indie-with-fallback.ts）と同じく候補が尽きるまで評価する挙動に揃える。
   while (adopted.length < targetCount && queue.length > 0) {
     const candidate = queue.shift()!;

@@ -4,7 +4,8 @@
  * Issue #94: Steam Storefront 補完で導入した正規化・品質ガード関数。
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 import {
   parseSteamReleaseDate,
   isQualifiedCompanyName,
@@ -29,6 +30,16 @@ import { isFanGame } from './game-filter.js';
 import { isIndieGame } from './indie-classifier.js';
 import type { SelectedGames, GameData, IGDBGame, SteamData, YouTubeData, IGDBData } from './types.js';
 import type { AmazonRankIndex } from './fetch-amazon-ranking.js';
+
+// steam-api-client.ts のサーキットブレーカ状態はプロセス内で共有される。
+// このファイルには Storefront 呼び出し失敗を模した多数のテストがあり、リセットしないと
+// 連続失敗が閾値に達して以降のテストが「サーキットが開いている」ことによる無関係な失敗になる。
+beforeEach(() => {
+  resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。注入した sleepImpl で実時間の待機を無くす。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
+});
 
 // テスト用 IGDBGame ファクトリ（必須フィールドのみ設定）
 function makeIgdbGame(overrides: Partial<IGDBGame> = {}): IGDBGame {

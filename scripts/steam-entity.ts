@@ -5,7 +5,13 @@
  * validate-article.ts の独自 fetch（日本語のみ）を一本化する。
  * 両方の言語を取得することで、game.title が日本語ローカライズ名の場合にも
  * title 軸で一致判定できる。
+ *
+ * HTTP 呼び出しは steam-api-client.ts の fetchSteamJson に統一する（Issue #360）。
+ * リトライ・バックオフ・サーキットブレーカはそちらの責務であり、このモジュールは
+ * 「取れた結果をどう解釈するか（success:false との切り分け等）」に責務を絞る。
  */
+
+import { fetchSteamJson } from './steam-api-client.js';
 
 export interface SteamEntity {
   appId: number;
@@ -19,10 +25,20 @@ export interface SteamEntity {
   publishers: string[];
 }
 
-const STOREFRONT_TIMEOUT_MS = 10000;
+/**
+ * fetchSteamEntity の戻り値（判別可能ユニオン）。
+ * 失敗理由（HTTP ステータス・success:false 等）を呼び出し元（レポート）まで伝えるため、
+ * `SteamEntity | undefined` ではなく ok/reason を持つ形にする（Issue #360 修正⑦）。
+ */
+export type SteamEntityResult =
+  | { ok: true; entity: SteamEntity }
+  | { ok: false; reason: string };
 
-/** プロセス内キャッシュ（同一 appId の重複 fetch を防ぐ） */
-const cache = new Map<number, SteamEntity | undefined>();
+/**
+ * プロセス内キャッシュ（同一 appId の重複 fetch を防ぐ）。
+ * 失敗結果は下記のとおりキャッシュしないため、値は常に成功時の SteamEntity のみ。
+ */
+const cache = new Map<number, SteamEntity>();
 
 type AppDetailsData = {
   name?: string;
@@ -47,30 +63,41 @@ async function fetchAppDetails(
   lang: 'english' | 'japanese',
   fetchImpl: typeof fetch
 ): Promise<AppDetailsResult> {
-  try {
-    // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
-    // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
-    // 日本域限定タイトルで success:false → fail-open で照合が黙ってスキップされ得る
-    // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
-    const res = await fetchImpl(url, { signal: AbortSignal.timeout(STOREFRONT_TIMEOUT_MS) });
-    if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
-    const json = (await res.json()) as Record<
-      string,
-      { success?: boolean; data?: AppDetailsData }
-    >;
-    const entry = json[String(appId)];
-    if (!entry?.success) return { ok: false, reason: 'success:false（cc=jp で非公開の可能性）' };
-    if (!entry.data) return { ok: false, reason: 'success:true だが data が空' };
-    return { ok: true, data: entry.data };
-  } catch (err) {
-    return { ok: false, reason: String(err) };
+  // cc=jp: 日本向けマガジンのため日本リージョンで取得する。
+  // cc を省略するとランナーの IP リージョン（GitHub Actions は US）になり、
+  // 日本域限定タイトルで success:false → fail-open で照合が黙ってスキップされ得る
+  // （旧 validate-article 実装は cc=jp 付きだった。パリティ維持）。
+  const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=jp&l=${lang}`;
+
+  // HTTP レベルのリトライ・バックオフ・サーキットブレーカは steam-api-client.ts に委ねる。
+  // quiet: true — 失敗時の warn は呼び出し元（下の fetchSteamEntity）が
+  // scope:'steam-entity' として言語別にまとめて出すため、ここで重複させない。
+  const result = await fetchSteamJson(url, { fetchImpl, quiet: true });
+  if (!result.ok) {
+    // result.reason には既に "(attempts=N)" が含まれる（fetchSteamJson が付与）。
+    // サーキットが開いていた場合は reason に 'circuit-open' が含まれ、そのまま伝播する。
+    return { ok: false, reason: result.reason };
   }
+
+  const json = result.json as Record<string, { success?: boolean; data?: AppDetailsData }>;
+  const entry = json[String(appId)];
+  if (!entry?.success) {
+    return {
+      ok: false,
+      reason: `success:false（cc=jp で非公開の可能性）(attempts=${result.attempts})`,
+    };
+  }
+  if (!entry.data) {
+    return { ok: false, reason: `success:true だが data が空 (attempts=${result.attempts})` };
+  }
+  return { ok: true, data: entry.data };
 }
 
 /**
  * Steam appdetails を l=english / l=japanese の2回呼んで SteamEntity を返す。
- * 片方失敗はそのフィールドのみ undefined（fail-open）。両方失敗で undefined。
+ * 片方失敗はそのフィールドのみ undefined（fail-open）。両方失敗時は
+ * `{ ok: false, reason }` を返し、失敗理由（HTTP ステータス・success:false 等）を
+ * 呼び出し元（レポート）まで伝える（Issue #360 修正⑦）。
  * プロセス内 Map でキャッシュする（同一 appId の再呼び出しは即返し）。
  *
  * @param appId   Steam アプリ ID
@@ -79,13 +106,27 @@ async function fetchAppDetails(
 export async function fetchSteamEntity(
   appId: number,
   fetchImpl: typeof fetch = fetch
-): Promise<SteamEntity | undefined> {
-  if (cache.has(appId)) return cache.get(appId);
+): Promise<SteamEntityResult> {
+  const cached = cache.get(appId);
+  if (cached !== undefined) return { ok: true, entity: cached };
 
-  const [enResult, jaResult] = await Promise.all([
-    fetchAppDetails(appId, 'english', fetchImpl),
-    fetchAppDetails(appId, 'japanese', fetchImpl),
-  ]);
+  // 修正C（/code-review 指摘）: 以前は Promise.all で英語/日本語を同時に投げていたが、
+  // fetchSteamJson はサーキットゲート評価（evaluateCircuitGate()）をペーシング
+  // （gatePacing()）より前に同期的に行う。そのため、サーキットが開いてクールダウン
+  // 経過済みの状態では「先に評価された英語が probe、日本語が必ず skip」に固定され、
+  // プローブ（英語）が成功してサーキットが閉じた後も日本語側は既に skip 済みで
+  // 失敗が確定してしまう。結果、両方失敗による fail-open ではなく「英語だけの
+  // エンティティ」で照合が走り、game.title が日本語ローカライズ名のケースで
+  // 誤って titleAxis='disagree' になりうる（scripts/game-identity.ts の
+  // entityTitles = [nameEn, nameJa].filter(Boolean) 参照）。
+  // 逐次（英語 → 日本語）にすれば、プローブ（英語）が成功した時点でサーキットが
+  // 閉じるため、日本語は正常に proceed できる。英語が失敗すればサーキットは開いた
+  // ままで日本語も skip → 両方失敗 → 既存の fail-open 経路に正しく落ちる。
+  // 時間コストは増えない: gatePacing() が既に全 HTTP 試行を直列化しているため、
+  // Promise.all で同時に投げても実際には1.5秒ずつ間隔が空いて実行されており、
+  // 逐次化しても実時間は変わらない（並列化の利点はそもそも無かった）。
+  const enResult = await fetchAppDetails(appId, 'english', fetchImpl);
+  const jaResult = await fetchAppDetails(appId, 'japanese', fetchImpl);
   const enData = enResult.ok ? enResult.data : undefined;
   const jaData = jaResult.ok ? jaResult.data : undefined;
 
@@ -104,7 +145,12 @@ export async function fetchSteamEntity(
         japanese: jaResult.ok ? 'ok' : jaResult.reason,
       })
     );
-    return undefined;
+    // 失敗理由を呼び出し元（レポート）まで伝える（Issue #360 修正⑦）。
+    // 材料は上の console.warn と同じ（english/japanese の reason）。
+    return {
+      ok: false,
+      reason: `both-languages-failed（english=${enResult.ok ? 'ok' : enResult.reason} / japanese=${jaResult.ok ? 'ok' : jaResult.reason}）`,
+    };
   }
 
   // 片言語のみ失敗した場合も理由を残す。nameEn/nameJa の欠落は title 軸の照合結果を
@@ -154,7 +200,7 @@ export async function fetchSteamEntity(
   if (entity.nameEn !== undefined && entity.nameJa !== undefined) {
     cache.set(appId, entity);
   }
-  return entity;
+  return { ok: true, entity };
 }
 
 /** テスト用: キャッシュをクリアする */

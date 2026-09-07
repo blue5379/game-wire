@@ -14,6 +14,7 @@ import { finalizeGameMetadata } from './finalize-game-metadata';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { headOk, getImageOrientation } from './url-health.js';
 import { isIndieGame } from './indie-classifier.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 
 const mockEnrich = vi.mocked(enrichGameWithIGDB);
 const mockHeadOk = vi.mocked(headOk);
@@ -38,6 +39,12 @@ beforeEach(() => {
   mockHeadOk.mockResolvedValue(true);
   mockGetOrientation.mockResolvedValue('portrait');
   mockEnrich.mockResolvedValue(null);
+  // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+  // このファイル内の複数の Storefront 失敗テストが積み重なってサーキットが開くのを防ぐ。
+  resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。注入した sleepImpl で実時間の待機を無くす。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
 });
 
 describe('finalizeGameMetadata - date mismatch', () => {

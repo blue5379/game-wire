@@ -33,6 +33,7 @@ import {
   RULE_REPLACEABLE,
 } from './completeness-gate.js';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 
 const mockCheckUrlHealth = vi.mocked(checkUrlHealth);
 
@@ -132,6 +133,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockUrlReachable(true);
   clearSteamEntityCache();
+  // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+  // このファイル内の多数の「Steam API 失敗」テストが積み重なってサーキットが開くのを防ぐ。
+  resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。このファイルは fake timers を
+  // 使っていないため、注入した sleepImpl で実時間の待機を無くす。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
   delete process.env.COMPLETENESS_GATE;
   delete process.env.DEV_MODE;
 });
@@ -572,29 +580,37 @@ describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
     expect(result.uncertain).toBeNull();
   });
 
-  it('steamAppId が無い → チェックせず違反なし（fail-open）', async () => {
+  it('steamAppId が無い → チェックせず違反なし（fail-open）。skipped も null（対象外と区別する）', async () => {
     const game = makeGame({ title: 'No Steam Game', steamAppId: undefined });
     // fetch は呼ばれないはず。呼ばれたら network down で例外になる構成
     const fetchImpl = makeSteamFetch({}, { failNetwork: true });
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    // steamAppId が無いのは「照合対象が無い」であり、Issue #360 の fail-open スキップとは別。
+    // 誤って identityCheckSkipped に混入しないことを保証する。
+    expect(result.skipped).toBeNull();
   });
 
-  it('Storefront API が実体を返せない（appId 無効）→ fail-open で違反なし', async () => {
+  it('Storefront API が実体を返せない（appId 無効）→ fail-open で違反なし。skipped に記録される（Issue #360）', async () => {
     const game = makeGame({ title: 'Some Game', steamAppId: 999999, releaseDate: '2020-01-01' });
     const fetchImpl = makeSteamFetch({}); // 999999 はマップに無い → success:false
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    expect(result.skipped).not.toBeNull();
+    expect(result.skipped?.gameTitle).toBe('Some Game');
+    expect(result.skipped?.reason).toContain('999999');
   });
 
-  it('Storefront API がネットワークエラー → fail-open で違反なし', async () => {
+  it('Storefront API がネットワークエラー → fail-open で違反なし。skipped に記録される（Issue #360）', async () => {
     const game = makeGame({ title: 'Some Game', steamAppId: 12345, releaseDate: '2020-01-01' });
     const fetchImpl = makeSteamFetch({}, { failNetwork: true });
     const result = await checkR5(game, fetchImpl);
     expect(result.violation).toBeNull();
     expect(result.uncertain).toBeNull();
+    expect(result.skipped).not.toBeNull();
+    expect(result.skipped?.gameTitle).toBe('Some Game');
   });
 
   it('Steam 実体が coming_soon（未発売）→ 発売年は照合せずタイトル一致で通す', async () => {
@@ -631,10 +647,12 @@ describe('R5: 識別子整合（別ゲームのメタ混入検出）', () => {
       } as Response;
     }) as typeof fetch;
 
-    const entity = await fetchSteamEntity(1091500, fetchImpl);
+    const result = await fetchSteamEntity(1091500, fetchImpl);
     expect(capturedUrls.some((u) => u.includes('l=english'))).toBe(true);
     expect(capturedUrls.some((u) => u.includes('l=japanese'))).toBe(true);
-    expect(entity?.nameEn).toBe('Cyberpunk 2077');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Cyberpunk 2077');
   });
 
   it('store プロファイル: game.title が Steam 正式名のプレフィックスなら誤検知しない', async () => {
@@ -1545,5 +1563,199 @@ describe('runCompletenessGate: R5 メタ混入ゲームの差し替え', () => {
     expect(report.unresolvedMutableViolations).toBe(false);
     // ゲームは差し替えられない（fail-open）
     expect(selected.newReleases.some((g) => g.title === 'Doom')).toBe(true);
+  });
+
+  it('R5 が Steam 実体を取得できず fail-open した場合、GateReport.identityCheckSkipped に記録される（Issue #360）', async () => {
+    mockUrlReachable(true);
+
+    // Storefront が success:false しか返さない → fetchSteamEntity は ok:false → R5 は fail-open
+    const game = makeGame({
+      title: 'Unverifiable Game',
+      normalizedTitle: 'unverifiable-game',
+      steamAppId: 777777,
+      releaseDate: '2024-01-01',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const fetchImpl = makeSteamFetch({}); // マップに無い → success:false
+
+    const selected = makeSelectedGames({ newReleases: [game] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      undefined,
+      undefined,
+      fetchImpl
+    );
+
+    // R5 は violation も uncertain も出さない（fail-open のまま）が、スキップした事実は記録される
+    expect(report.violations.some((v) => v.ruleId === 'R5')).toBe(false);
+    expect(report.uncertainIdentity).toHaveLength(0);
+    expect(report.identityCheckSkipped).toHaveLength(1);
+    expect(report.identityCheckSkipped![0].gameTitle).toBe('Unverifiable Game');
+    expect(report.identityCheckSkipped![0].reason).toContain('777777');
+    // 修正⑦（Issue #360 code-review 指摘）: fetchSteamEntity の失敗理由（success:false =
+    // その appId が cc=jp で非公開の可能性）も reason に含まれ、一時障害と恒久障害を
+    // 事後に切り分けられる。
+    expect(report.identityCheckSkipped![0].reason).toContain('success:false');
+    // fail-open なのでゲームは除去・差し替えされない
+    expect(selected.newReleases.some((g) => g.title === 'Unverifiable Game')).toBe(true);
+  });
+
+  it('R5 が Steam 実体を取得できず fail-open した場合、identityCheckSkipped.reason に HTTP ステータスが含まれる（Issue #360 修正⑦）', async () => {
+    mockUrlReachable(true);
+
+    // Storefront が HTTP 500（notOk）を返す → 一時障害（success:false とは別の理由）
+    const game = makeGame({
+      title: 'Server Error Game',
+      normalizedTitle: 'server-error-game',
+      steamAppId: 888888,
+      releaseDate: '2024-01-01',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+    const fetchImpl = makeSteamFetch({}, { notOk: true });
+
+    const selected = makeSelectedGames({ newReleases: [game] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      undefined,
+      undefined,
+      fetchImpl
+    );
+
+    expect(report.identityCheckSkipped).toHaveLength(1);
+    expect(report.identityCheckSkipped![0].reason).toContain('HTTP 500');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// runCompletenessGate: 差し替え候補ループの identityCheckSkipped/uncertainIdentity
+// 混入防止（Issue #360 code-review 指摘・修正⑧）
+//
+// 修正前は差し替え候補ループ（checkGame の直後）で cv.uncertainIdentity /
+// cv.identityCheckSkipped を採用判定（cvMutable.length === 0）より前に無条件で
+// report へ push していた。そのため不採用（else 側）になった候補の分まで
+// report.identityCheckSkipped / report.uncertainIdentity に混入し、
+// 「未照合のまま発行されたゲーム」と「評価して落とした候補」が区別できず、
+// fetch-data.ts のログ件数や format-validation-report.ts の案内文が実態より
+// 多い件数を指してしまっていた。
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('runCompletenessGate: 差し替え候補ループの identityCheckSkipped/uncertainIdentity 混入防止（修正⑧）', () => {
+  it('採用された候補の identityCheckSkipped は report に残り、不採用になった候補の分は残らない', async () => {
+    mockUrlReachable(true);
+
+    // 差し替え対象（R1 違反・replaceable）
+    const violatingGame = makeGame({
+      title: 'Zombie Game',
+      normalizedTitle: 'zombie-game',
+      sourceUrls: { stores: [] },
+    });
+
+    // 不採用になる候補: R4（カバー画像ホスト不正）で落ちるが、R5 は Steam 実体取得失敗で
+    // fail-open スキップされる。修正前はこの skip も report.identityCheckSkipped に混入した。
+    const rejectedCandidate = makeGame({
+      title: 'Rejected Candidate',
+      normalizedTitle: 'rejected-candidate',
+      steamAppId: 111111,
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://bad-host.example.com/img.jpg',
+    });
+
+    // 採用される候補: Gate 上健全（R5 は Steam 実体取得失敗で skip されるが他に違反なし）
+    const adoptedCandidate = makeGame({
+      title: 'Adopted Candidate',
+      normalizedTitle: 'adopted-candidate',
+      steamAppId: 222222,
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+
+    // どちらの appId もマップに無いため success:false → fetchSteamEntity は fail-open で skip
+    const fetchImpl = makeSteamFetch({});
+
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [rejectedCandidate, adoptedCandidate] },
+      undefined,
+      fetchImpl
+    );
+
+    expect(report.replacedGames).toContain('Adopted Candidate');
+    expect(report.replacedGames).not.toContain('Rejected Candidate');
+
+    // 修正⑧の本質: 採用された候補（Adopted Candidate）の分だけが report に残り、
+    // 不採用になった候補（Rejected Candidate）の分は混ざらない
+    expect(report.identityCheckSkipped).toHaveLength(1);
+    expect(report.identityCheckSkipped![0].gameTitle).toBe('Adopted Candidate');
+    expect(
+      report.identityCheckSkipped!.some((s) => s.gameTitle === 'Rejected Candidate')
+    ).toBe(false);
+  });
+
+  it('採用された候補の uncertainIdentity は report に残り、不採用になった候補の分は残らない', async () => {
+    mockUrlReachable(true);
+
+    const violatingGame = makeGame({
+      title: 'Zombie Game 2',
+      normalizedTitle: 'zombie-game-2',
+      sourceUrls: { stores: [] },
+    });
+
+    // 不採用になる候補: title 一致・year 不一致で R5 uncertain 判定になるが、
+    // R4（カバー画像ホスト不正）でも落ちる。修正前はこの uncertain も混入した。
+    const rejectedCandidate = makeGame({
+      title: 'Doom',
+      normalizedTitle: 'doom-rejected',
+      steamAppId: 2280,
+      releaseDate: '1993-12-10',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://bad-host.example.com/img.jpg',
+    });
+
+    // 採用される候補: 同じく title 一致・year 不一致で uncertain だが、他に違反なし
+    const adoptedCandidate = makeGame({
+      title: 'Doom',
+      normalizedTitle: 'doom-adopted',
+      steamAppId: 2281,
+      releaseDate: '1993-12-10',
+      sourceUrls: { stores: [makeStoreLink('steam')] },
+      coverImage: 'https://images.igdb.com/igdb/image/upload/t_cover_big/a.jpg',
+    });
+
+    const fetchImpl = makeSteamFetch({
+      2280: { name: 'DOOM', date: '13 May, 2016' },
+      2281: { name: 'DOOM', date: '13 May, 2016' },
+    });
+
+    const selected = makeSelectedGames({ newReleases: [violatingGame] });
+    const report = await runCompletenessGate(
+      selected,
+      undefined,
+      [],
+      'fail',
+      { newReleases: [rejectedCandidate, adoptedCandidate] },
+      undefined,
+      fetchImpl
+    );
+
+    expect(report.replacedGames).toContain('Doom');
+    // 不採用候補も採用候補も同じ title 'Doom' を持つため replacedGames のタイトルだけでは
+    // 区別できない。normalizedTitle で採用されたのがどちらかを確認する。
+    expect(selected.newReleases.some((g) => g.normalizedTitle === 'doom-adopted')).toBe(true);
+    expect(selected.newReleases.some((g) => g.normalizedTitle === 'doom-rejected')).toBe(false);
+
+    // 修正⑧の本質: 採用された候補（doom-adopted）の uncertain だけが report に残る
+    expect(report.uncertainIdentity).toHaveLength(1);
   });
 });

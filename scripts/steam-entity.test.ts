@@ -4,17 +4,45 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fetchSteamEntity, clearSteamEntityCache } from './steam-entity.js';
+import {
+  resetSteamApiClient,
+  configureSteamApiClient,
+  fetchSteamJson,
+  getSteamApiHealth,
+  STEAM_CIRCUIT_FAILURE_THRESHOLD,
+  STEAM_CIRCUIT_COOLDOWN_MS,
+} from './steam-api-client.js';
 
 beforeEach(() => {
   clearSteamEntityCache();
+  // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+  // このファイル内の多数の「失敗」テストが積み重なってサーキットが開くことを防ぐ。
+  resetSteamApiClient();
+  // steam-api-client.ts はリトライのバックオフとペーシングの両方で待機が発生する
+  // （Issue #360 / PR #367 後の code-review 指摘）。注入した sleepImpl で
+  // 実時間の待機を無くす（fake timers は setTimeout ベースの箇所を後方互換で残す）。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
+  // steam-api-client.ts はリトライ間の待機に setTimeout を使う（Issue #360）。
+  // 実時間で待たせないため fake timers を使う（各テストで vi.runAllTimersAsync() で進める）。
+  vi.useFakeTimers();
   // 失敗理由の warn（Issue #363）でテスト出力が埋まらないように抑止する。
   // 内容を検証するテストは spy 越しに参照する
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
+
+/**
+ * fetchSteamEntity は内部でリトライ（steam-api-client.ts）を行うため、fake timers 環境下では
+ * 呼び出し後に保留中のタイマーを進めてから結果を待つ必要がある。
+ */
+async function resolveWithTimers<T>(promise: Promise<T>): Promise<T> {
+  await vi.runAllTimersAsync();
+  return promise;
+}
 
 /** console.warn に出た JSON ログのうち scope が一致するものを返す */
 function warnedLogs(scope: string): Record<string, unknown>[] {
@@ -68,13 +96,14 @@ describe('fetchSteamEntity', () => {
       },
     });
 
-    const entity = await fetchSteamEntity(12345, mockFetch as typeof fetch);
-    expect(entity).toBeDefined();
-    expect(entity?.nameEn).toBe('Test Game EN');
-    expect(entity?.nameJa).toBe('テストゲーム');
-    expect(entity?.developers).toEqual(['Dev Studio']);
-    expect(entity?.publishers).toEqual(['Pub Corp']);
-    expect(entity?.releaseDate).toBe('Jan 1, 2024');
+    const result = await fetchSteamEntity(12345, mockFetch as typeof fetch);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Test Game EN');
+    expect(result.entity.nameJa).toBe('テストゲーム');
+    expect(result.entity.developers).toEqual(['Dev Studio']);
+    expect(result.entity.publishers).toEqual(['Pub Corp']);
+    expect(result.entity.releaseDate).toBe('Jan 1, 2024');
   });
 
   it('coming_soon=true のとき releaseDate を undefined にする', async () => {
@@ -98,8 +127,10 @@ describe('fetchSteamEntity', () => {
       },
     });
 
-    const entity = await fetchSteamEntity(99, mockFetch as typeof fetch);
-    expect(entity?.releaseDate).toBeUndefined();
+    const result = await fetchSteamEntity(99, mockFetch as typeof fetch);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.releaseDate).toBeUndefined();
   });
 
   it('日本語取得失敗 → nameJa=undefined, それ以外は返す（fail-open）', async () => {
@@ -117,16 +148,20 @@ describe('fetchSteamEntity', () => {
       return Promise.resolve({ ok: false, status: 503 } as Response);
     });
 
-    const entity = await fetchSteamEntity(1, mockFetch as typeof fetch);
-    expect(entity).toBeDefined();
-    expect(entity?.nameEn).toBe('Game EN');
-    expect(entity?.nameJa).toBeUndefined();
+    const result = await resolveWithTimers(fetchSteamEntity(1, mockFetch as typeof fetch));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Game EN');
+    expect(result.entity.nameJa).toBeUndefined();
   });
 
-  it('両方失敗 → undefined（fail-open）', async () => {
+  it('両方失敗 → ok:false（fail-open）で失敗理由を返す', async () => {
     const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 503 } as Response));
-    const entity = await fetchSteamEntity(2, mockFetch as typeof fetch);
-    expect(entity).toBeUndefined();
+    const result = await resolveWithTimers(fetchSteamEntity(2, mockFetch as typeof fetch));
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('unreachable');
+    expect(result.reason).toContain('both-languages-failed');
+    expect(result.reason).toContain('HTTP 503');
   });
 
   it('同一 appId の2回目は fetch を呼ばない（両言語成功時のキャッシュ）', async () => {
@@ -160,10 +195,12 @@ describe('fetchSteamEntity', () => {
       return Promise.resolve({ ok: false, status: 503 } as Response);
     });
 
-    await fetchSteamEntity(4, mockFetch as typeof fetch);
-    await fetchSteamEntity(4, mockFetch as typeof fetch);
-    // 片言語失敗はキャッシュされないため、2回目も fetch が呼ばれる（合計4回）
-    expect(mockFetch).toHaveBeenCalledTimes(4);
+    await resolveWithTimers(fetchSteamEntity(4, mockFetch as typeof fetch));
+    await resolveWithTimers(fetchSteamEntity(4, mockFetch as typeof fetch));
+    // 片言語失敗はキャッシュされないため、2回目も fetch が呼ばれる。
+    // 日本語は 503（リトライ対象）で STEAM_MAX_ATTEMPTS 回まで再試行するため、
+    // 英語 1 回 + 日本語 3 回 = 4 回（1 回目） × 2 回分 = 8 回
+    expect(mockFetch).toHaveBeenCalledTimes(8);
   });
 });
 
@@ -179,13 +216,18 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       return Promise.resolve({ ok: false, status } as Response);
     });
 
-    await fetchSteamEntity(51, mockFetch as typeof fetch);
+    await resolveWithTimers(fetchSteamEntity(51, mockFetch as typeof fetch));
 
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(logs[0].appId).toBe(51);
-    expect(logs[0].english).toBe('HTTP 403');
-    expect(logs[0].japanese).toBe('HTTP 429');
+    // 403 は steam-api-client.ts のリトライ対象。STEAM_MAX_ATTEMPTS 回試行して
+    // 失敗するため、reason には attempts が付与される（Issue #360）。
+    // 429 はリトライしない（Issue #360 の後続対応）ため attempts=1 で即座に失敗する。
+    expect(logs[0].english).toBe('HTTP 403 (attempts=3)');
+    expect(logs[0].japanese).toBe(
+      'HTTP 429 (attempts=1, リトライせずペーシング間隔を1500msに伸ばした)'
+    );
   });
 
   it('success:false は HTTP エラーと区別してログに残す（appId 固有の問題）', async () => {
@@ -197,21 +239,27 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       } as Response)
     );
 
-    await fetchSteamEntity(52, mockFetch as typeof fetch);
+    await resolveWithTimers(fetchSteamEntity(52, mockFetch as typeof fetch));
 
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(String(logs[0].english)).toContain('success:false');
     expect(String(logs[0].japanese)).toContain('success:false');
+    // success:false は HTTP レベルでは 1 回で完了する（200 応答なのでリトライ対象外）が、
+    // 呼び出し回数を事後に追えるよう attempts も残す（Issue #360）
+    expect(String(logs[0].english)).toContain('attempts=1');
+    expect(String(logs[0].japanese)).toContain('attempts=1');
   });
 
   it('ネットワーク例外の内容をログに残す', async () => {
     const mockFetch = vi.fn(() => Promise.reject(new Error('ETIMEDOUT')));
 
-    await fetchSteamEntity(53, mockFetch as typeof fetch);
+    await resolveWithTimers(fetchSteamEntity(53, mockFetch as typeof fetch));
 
     const logs = warnedLogs('steam-entity');
     expect(String(logs[0].english)).toContain('ETIMEDOUT');
+    // ネットワーク例外もリトライ対象。STEAM_MAX_ATTEMPTS 回試行した上での失敗であることを残す
+    expect(String(logs[0].english)).toContain('attempts=3');
   });
 
   it('片言語だけ失敗した場合も、どちらがなぜ落ちたかをログに残す', async () => {
@@ -229,15 +277,18 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       return Promise.resolve({ ok: false, status: 500 } as Response);
     });
 
-    const entity = await fetchSteamEntity(54, mockFetch as typeof fetch);
+    const result = await resolveWithTimers(fetchSteamEntity(54, mockFetch as typeof fetch));
 
     // fail-open の挙動は変えない（取れた言語で続行する）
-    expect(entity?.nameEn).toBe('Half Fetched');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Half Fetched');
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(String(logs[0].reason)).toContain('one-language-failed');
     expect(logs[0].english).toBe('ok');
-    expect(logs[0].japanese).toBe('HTTP 500');
+    // 500 はリトライ対象なので attempts が付与される（Issue #360）
+    expect(logs[0].japanese).toBe('HTTP 500 (attempts=3)');
   });
 
   // AppDetailsData.name は optional なので HTTP 200 + success:true でも name が無い応答があり得る。
@@ -250,10 +301,12 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
       'l=japanese': { '58': { success: true, data: { developers: [] } } },
     });
 
-    const entity = await fetchSteamEntity(58, mockFetch as typeof fetch);
+    const result = await fetchSteamEntity(58, mockFetch as typeof fetch);
 
-    expect(entity?.nameEn).toBe('Nameless JA');
-    expect(entity?.nameJa).toBeUndefined();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Nameless JA');
+    expect(result.entity.nameJa).toBeUndefined();
     const logs = warnedLogs('steam-entity');
     expect(logs).toHaveLength(1);
     expect(String(logs[0].reason)).toContain('one-language-failed');
@@ -270,5 +323,69 @@ describe('fetchSteamEntity: 失敗理由の記録', () => {
     await fetchSteamEntity(55, mockFetch as typeof fetch);
 
     expect(warnedLogs('steam-entity')).toHaveLength(0);
+  });
+});
+
+/**
+ * 修正C: fetchSteamEntity の逐次実行（英語 → 日本語）の検証。
+ *
+ * fetchSteamJson はサーキットゲート評価を gatePacing() より前に同期的に行うため、
+ * サーキットが開いてクールダウン経過済みの状態で Promise.all を使うと「先に評価された
+ * 英語が probe、日本語が必ず skip」に固定され、プローブが成功してサーキットが閉じた
+ * 後も日本語側は既に skip 済みで失敗が確定する（片言語だけのエンティティで照合が走る）。
+ * 逐次化すれば、プローブ（英語）が成功すればサーキットが閉じて日本語も正常に取得でき、
+ * 英語が失敗すればサーキットは開いたままで日本語も skip → 両方失敗 → fail-open に落ちる。
+ */
+describe('fetchSteamEntity: サーキット半開時は逐次実行になる（修正C）', () => {
+  async function openCircuitVia403(): Promise<void> {
+    const failingFetch = vi.fn(
+      () => Promise.resolve({ ok: false, status: 403 } as Response)
+    );
+    for (let i = 0; i < STEAM_CIRCUIT_FAILURE_THRESHOLD; i++) {
+      await resolveWithTimers(
+        fetchSteamJson(`https://example.test/entity-c-open-${i}`, {
+          fetchImpl: failingFetch,
+          quiet: true,
+        })
+      );
+    }
+    expect(getSteamApiHealth().circuitOpen).toBe(true);
+  }
+
+  it('プローブ（英語）が成功したら両言語とも取得できる（片言語だけのエンティティにならない）', async () => {
+    await openCircuitVia403();
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    const mockFetch = makeFetch({
+      'l=english': {
+        '777': { success: true, data: { name: 'Probe EN', developers: [], publishers: [] } },
+      },
+      'l=japanese': {
+        '777': { success: true, data: { name: 'プローブ日本語', developers: [] } },
+      },
+    });
+
+    const result = await resolveWithTimers(fetchSteamEntity(777, mockFetch as typeof fetch));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(result.entity.nameEn).toBe('Probe EN');
+    expect(result.entity.nameJa).toBe('プローブ日本語');
+    expect(getSteamApiHealth().circuitOpen).toBe(false);
+  });
+
+  it('プローブ（英語）が失敗したら日本語もskipされ、両方失敗としてok:falseを返す（fail-open。片言語だけのエンティティにならない）', async () => {
+    await openCircuitVia403();
+    await vi.advanceTimersByTimeAsync(STEAM_CIRCUIT_COOLDOWN_MS);
+
+    // プローブ（英語）が403で失敗する
+    const mockFetch = vi.fn(() => Promise.resolve({ ok: false, status: 403 } as Response));
+
+    const result = await resolveWithTimers(fetchSteamEntity(778, mockFetch as typeof fetch));
+    expect(result.ok).toBe(false);
+    // 英語のプローブが失敗したのでサーキットは開いたままで、日本語は skip される
+    expect(getSteamApiHealth().circuitOpen).toBe(true);
+    // 英語側は403でSTEAM_MAX_ATTEMPTS回リトライして呼ばれるが、日本語側は
+    // circuit-open で skip されるため fetch は一度も呼ばれない（逐次実行の証明）
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });

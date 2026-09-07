@@ -5,11 +5,20 @@
 
 import type { SteamGame, SteamData, FetchResult } from './types.js';
 import { normalizeCompanyName } from './steam-utils.js';
+import { STEAM_LIST_API_TIMEOUT_MS, fetchSteamJson } from './steam-api-client.js';
 
 const STEAM_STORE_API = 'https://store.steampowered.com/api';
 const STEAM_CHARTS_API = 'https://api.steampowered.com/ISteamChartsService/GetMostPlayedGames/v1';
 
 // リトライ付きfetch
+//
+// Issue #360: このロジック自体は steam-api-client.ts の fetchSteamJson に統合しない
+// （`featuredcategories` / `GetMostPlayedGames` はバルクのリスト系エンドポイントで、
+// 単一 appdetails 用のリトライ・サーキットブレーカ・ペーシングとは予算やリトライ方針が
+// 異なるため、意図的に別実装を保つ）。ただしタイムアウトが一切無いのは Steam 障害中に
+// weekly-build.yml の timeout-minutes: 30 を丸ごと食う危険があるため、
+// steam-api-client.ts の STEAM_LIST_API_TIMEOUT_MS（リスト系用。単一 appdetails の
+// STEAM_API_TIMEOUT_MS より長い）を使って AbortSignal.timeout を追加する。
 async function fetchWithRetry(
   url: string,
   options: RequestInit = {},
@@ -20,6 +29,7 @@ async function fetchWithRetry(
     try {
       const response = await fetch(url, {
         ...options,
+        signal: options.signal ?? AbortSignal.timeout(STEAM_LIST_API_TIMEOUT_MS),
         headers: {
           'User-Agent': 'GameWire/1.0',
           'Accept': 'application/json',
@@ -195,27 +205,36 @@ export async function fetchSteamAppName(
  * PR-A: Steam 経路（Top Sellers / Top Played / New Releases / Coming Soon）に DLC や
  * サウンドトラックが候補として混入するのを防ぐため、呼び出し側で `type !== STEAM_APP_TYPE_GAME`
  * を除外条件として利用する。`fullgame`（親ゲーム情報）は読み替えを行わないため参照しない。
+ *
+ * Issue #360 実測後対応: Top Sellers 20 + Top Played 20 + New Releases 10 の
+ * appdetails 呼び出しはラン中で最多の呼び出し元だが、素の fetch を使っていたため
+ * タイムアウト・リトライが無く、失敗が getSteamApiHealth() の集計にも一切現れなかった
+ * （第20号の appdetails 一律失敗はここで全件 `{name:null}` を返して候補プールごと消えたが、
+ * その事実がヘルスレポートに残らない）。fetchSteamJson 経由にすることでリトライ・
+ * ペーシング・ヘルス集計が効くようにする。既存の fail-open 戻り値・呼び出し側の意味は変えない。
  */
 async function getAppDetails(
   appId: number
 ): Promise<{ name: string | null; isAdultContent: boolean; type: string | null }> {
-  try {
-    const response = await fetch(
-      `${STEAM_STORE_API}/appdetails?appids=${appId}&cc=jp&l=japanese`
-    );
-    const data = await response.json();
-    const appData = data[appId]?.data;
-    if (!appData) return { name: null, isAdultContent: false, type: null };
+  const result = await fetchSteamJson(
+    `${STEAM_STORE_API}/appdetails?appids=${appId}&cc=jp&l=japanese`,
+    { quiet: true }
+  );
+  if (!result.ok) return { name: null, isAdultContent: false, type: null };
 
-    const descriptorIds: number[] = appData.content_descriptors?.ids ?? [];
-    const isAdultContent = descriptorIds.some((id) =>
-      ADULT_CONTENT_DESCRIPTOR_IDS.includes(id)
-    );
+  const data = result.json as Record<
+    string,
+    { data?: { name?: string; type?: string; content_descriptors?: { ids?: number[] } } }
+  >;
+  const appData = data[String(appId)]?.data;
+  if (!appData) return { name: null, isAdultContent: false, type: null };
 
-    return { name: appData.name || null, isAdultContent, type: appData.type ?? null };
-  } catch {
-    return { name: null, isAdultContent: false, type: null };
-  }
+  const descriptorIds: number[] = appData.content_descriptors?.ids ?? [];
+  const isAdultContent = descriptorIds.some((id) =>
+    ADULT_CONTENT_DESCRIPTOR_IDS.includes(id)
+  );
+
+  return { name: appData.name || null, isAdultContent, type: appData.type ?? null };
 }
 
 /**

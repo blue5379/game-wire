@@ -29,6 +29,7 @@ import type { ValidationWarning, ValidationReport } from './validate-article.js'
 import { computeReportStatus, shouldFileIssue } from './format-validation-report.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import { clearSteamEntityCache } from './steam-entity.js';
+import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -960,6 +961,13 @@ describe('validateGameSourceConsistency', () => {
   beforeEach(() => {
     // fetchSteamEntity はモジュール内キャッシュを持つため、テスト間で必ずクリアする
     clearSteamEntityCache();
+    // steam-api-client.ts のサーキットブレーカ・統計はプロセス内で共有されるため、
+    // このブロック内の多数の「API 障害」テストが積み重なってサーキットが開くのを防ぐ。
+    resetSteamApiClient();
+    // steam-api-client.ts はリトライのバックオフとペーシングで実時間の待機が発生する
+    // （Issue #360 / PR #367 後の code-review 指摘）。このファイルは fake timers を
+    // 使っていないため、注入した sleepImpl で実時間の待機を無くす。
+    configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
   });
 
   afterEach(() => {
@@ -1205,7 +1213,10 @@ describe('validateGameSourceConsistency', () => {
     expect(warnings).toHaveLength(0);
   });
 
-  it('API 失敗時は警告を出さない（fail-open）', async () => {
+  it('API 失敗時は号の発行を止めず game-source-check-failed（medium）を1件出す（fail-open。Issue #360）', async () => {
+    // 第20号では appdetails が全滅し、この fail-open 経路が無警告で通過したため
+    // 「同一性照合がスキップされていた」ことがレポート上に一切残らなかった。
+    // fail-open の挙動（号を止めない）自体は変えず、観測できるようにする。
     const article = makeArticle({
       title: '『Baz』',
       category: 'indie',
@@ -1220,7 +1231,58 @@ describe('validateGameSourceConsistency', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
 
     const warnings = await validateGameSourceConsistency(article, fetchImpl);
-    expect(warnings).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].message).toContain('3333333');
+  });
+
+  // 修正⑦（Issue #360 code-review 指摘）: game-source-check-failed の message に
+  // fetchSteamEntity の失敗理由を含める。一時障害（HTTP 403 全滅）と恒久障害
+  // （success:false = その appId が cc=jp で非公開）を事後にレポートから切り分けられることの回帰テスト。
+  it('Steam appdetails が HTTP 403 を返す場合、message に 403 を含める（一時障害の切り分け）', async () => {
+    const article = makeArticle({
+      title: '『Forbidden』',
+      category: 'indie',
+      game: {
+        title: 'Forbidden',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-01-01',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/5555555' },
+    });
+    const fetchImpl = vi.fn(
+      async () => ({ ok: false, status: 403 }) as unknown as Response
+    ) as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].message).toContain('403');
+  });
+
+  it('Steam appdetails が success:false を返す場合、message に success:false を含める（恒久障害の切り分け）', async () => {
+    const article = makeArticle({
+      title: '『Delisted』',
+      category: 'indie',
+      game: {
+        title: 'Delisted',
+        genre: [],
+        platforms: [],
+        releaseDate: '1989-01-01',
+      },
+      sourceUrls: { steam: 'https://store.steampowered.com/app/6666666' },
+    });
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ '6666666': { success: false } }),
+    }) as unknown as Response) as unknown as typeof fetch;
+
+    const warnings = await validateGameSourceConsistency(article, fetchImpl);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-source-check-failed');
+    expect(warnings[0].message).toContain('success:false');
   });
 
   it('Steam URL が無い記事は同一性照合の対象外（API は呼ばない、unchecked 警告が出る）', async () => {

@@ -178,6 +178,11 @@ jobs:
             "data/validation/completeness-report-${ISSUE_NUM_PADDED}.json"
           copy_diagnostic data/identity-resolver-trace.json \
             "data/validation/identity-resolver-trace-${ISSUE_NUM_PADDED}.json"
+          # fetch-data プロセスの Steam API ヘルススナップショット（Issue #360）。
+          # build-issue.ts が同じ号のレポートに合算済みだが、fetch-data 単独の生データも
+          # 他の診断データと同じ理由（runner 破棄前に data/validation/ へ退避）で残す。
+          copy_diagnostic data/steam-api-health.json \
+            "data/validation/steam-api-health-${ISSUE_NUM_PADDED}.json"
 
       # 6.8. 診断データをアーティファクトとしても退避する（Issue #363）
       #      6.7 のコミットは「号が組み上がった run」だけを救う。fetch-data や generate が
@@ -196,6 +201,7 @@ jobs:
             data/completeness-report.json
             data/identity-resolver-trace.json
             data/selected-games.json
+            data/steam-api-health.json
             data/validation/
           if-no-files-found: warn
           retention-days: 90
@@ -257,6 +263,8 @@ jobs:
           PAGE_CONTENT_FAIL=$(jq -r '.webSearchStats.pageContentFailures // 0' "$REPORT_JSON")
           ADULT=$(jq -r '.webSearchStats.adultScreeningFailures // 0' "$REPORT_JSON")
           SHORTFALL=$(jq -r '.articleCountShortfalls // [] | length' "$REPORT_JSON")
+          STEAM_FAIL=$(jq -r '.steamApiHealth.failed // 0' "$REPORT_JSON")
+          STEAM_TOTAL=$(jq -r '.steamApiHealth.total // 0' "$REPORT_JSON")
           # HIGH 以外の要因（検索失敗 / 公式ページ本文取得失敗 / AI成人向けスクリーニング失敗 / 記事本数の不足）だけで
           # 起票された場合、HIGH件数だけのタイトルだと「HIGH: 0件」という矛盾した表記になる。
           # 新しい要因が 0 のときは従来通りの表記を維持する（重複防止ロジックが旧Issueと
@@ -276,6 +284,19 @@ jobs:
           fi
           if [ "$SHORTFALL" != "0" ]; then
             DETAIL="${DETAIL}、記事本数の不足: ${SHORTFALL}カテゴリ"
+          fi
+          # Steam API 起因（Issue #360 computeReportStatus の error 昇格条件3つ:
+          # circuitOpen / statusCounts['circuit-open'] > 0 / 非429失敗率10%以上）だけで
+          # error になった号は、上記の HIGH・検索失敗等がすべて0のまま起票され、
+          # 「HIGH: 0件」という矛盾したタイトルになる（#222 / #311 / #349 と同種の問題）。
+          # statusCounts の合計 = failed という不変条件があるため、circuit-open による
+          # スキップも非429失敗もすべて failed に含まれる。よって failed > 0 の1条件で
+          # Steam 起因の error 3種すべてを覆える（個別の条件を jq で再現する必要はない）。
+          # この suffix だけでは起票されないケースもあるが、error の号に併発していたときに
+          # 原因の一部としてタイトルに見えるようにするため付ける。0 のときは従来どおりの
+          # 表記を維持するので、旧 Issue との重複判定（タイトル完全一致）は壊れない。
+          if [ "$STEAM_FAIL" != "0" ]; then
+            DETAIL="${DETAIL}、Steam API 失敗: ${STEAM_FAIL}/${STEAM_TOTAL}件"
           fi
           # 号の再利用（削除→再発行）があるため、タイトルに発行日を埋め込んで一意にする。
           # 例: #206（Vol.17 最初の生成、2026-07-24発行）がクローズ済みでも、

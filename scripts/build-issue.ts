@@ -17,6 +17,7 @@ import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
 import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
+import { getSteamApiHealth, readSteamApiHealth, mergeSteamApiHealth } from './steam-api-client.js';
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 import { isMainModule } from './entrypoint.js';
@@ -586,16 +587,27 @@ async function main(): Promise<void> {
   const sourceUncertainWarnings: import('./validate-article.js').ValidationWarning[] = [];
   // unchecked（appId 未取得で照合スキップ）は hidden にせず、レポートで観測するのみ（#296）
   const sourceUncheckedWarnings: import('./validate-article.js').ValidationWarning[] = [];
+  // check-failed（appId はあるが Steam 実体が取れず照合できなかった）も hidden にせず記録のみ（Issue #360）
+  const sourceCheckFailedWarnings: import('./validate-article.js').ValidationWarning[] = [];
   try {
     const sourceCheckWarnings = await validateGameSourceConsistencyForArticles(generatedIssue.articles);
     const mismatchWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-mismatch');
     const uncertainWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-uncertain');
     const uncheckedWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-unchecked');
+    const checkFailedWarnings = sourceCheckWarnings.filter((w) => w.type === 'game-source-check-failed');
     if (uncheckedWarnings.length > 0) {
       sourceUncheckedWarnings.push(...uncheckedWarnings);
       console.warn('');
       console.warn('⚠️  game-source-unchecked (appId 未取得のため照合スキップ):');
       for (const w of uncheckedWarnings) {
+        console.warn(`  - "${w.articleTitle}"`);
+      }
+    }
+    if (checkFailedWarnings.length > 0) {
+      sourceCheckFailedWarnings.push(...checkFailedWarnings);
+      console.warn('');
+      console.warn('⚠️  game-source-check-failed (Steam 実体が取得できず照合不能。hidden にはしない):');
+      for (const w of checkFailedWarnings) {
         console.warn(`  - "${w.articleTitle}"`);
       }
     }
@@ -767,6 +779,54 @@ async function main(): Promise<void> {
     report.totalWarnings = report.warnings.length;
     report.warningsBySeverity.low += sourceUncheckedWarnings.length;
   }
+
+  // game-source-check-failed もレポートに記録する（medium。hidden・fail 閾値には影響しない。Issue #360）
+  if (sourceCheckFailedWarnings.length > 0) {
+    report.warnings.push(...sourceCheckFailedWarnings);
+    report.totalWarnings = report.warnings.length;
+    report.warningsBySeverity.medium += sourceCheckFailedWarnings.length;
+  }
+
+  // Steam API のラン全体の健全性をレポートに記録する（Issue #360 対応方針4）。
+  //
+  // 実際のパイプラインは fetch-data → generate → build-issue の3プロセスで、Steam を叩くのは
+  // fetch-data（Storefront補完・Resolver・Completeness Gate R5）と build-issue（事後の同一性照合）
+  // の2プロセス。getSteamApiHealth() は自プロセス（build-issue）内変数しか見えないため、
+  // fetch-data が書き出したスナップショットを読んで合算する。
+  //
+  // fetch-data のスナップショットが無い（DEV 実行を fetch-data を経ずに単独実行した等）場合は
+  // 落とさず、自プロセスの集計のみを使う（fail-open。号の発行を止める理由にはしない）。
+  //
+  // ⚠️ 合算はレポート表示専用。「fetch-data のサーキットが開いていたら build-issue 側のサーキットも
+  // 最初から開けておく」ことは意図的にしない: fetch-data と build-issue の間には
+  // npm run generate（Bedrock の記事生成）が挟まり実時間で長く空くため、その間に Steam 側の
+  // 障害が回復している可能性が十分にある。build-issue 側のリトライ判断は自プロセスの実測のみで
+  // 行う（steam-api-client.ts のサーキット状態そのものは合算しない）。
+  const steamHealthSnapshotPath = path.join(
+    DATA_DIR,
+    DEV_MODE ? 'validation-dev' : '',
+    'steam-api-health.json'
+  );
+  const fetchDataSteamHealth = readSteamApiHealth(steamHealthSnapshotPath);
+  const buildIssueSteamHealth = getSteamApiHealth();
+
+  const steamApiHealthByStage: Record<string, import('./steam-api-client.js').SteamApiHealth> = {
+    'build-issue': buildIssueSteamHealth,
+  };
+  if (fetchDataSteamHealth) {
+    steamApiHealthByStage['fetch-data'] = fetchDataSteamHealth;
+  } else {
+    console.warn(
+      JSON.stringify({
+        scope: 'build-issue',
+        step: 'steam-api-health',
+        reason: `スナップショットが見つからないため fetch-data ステージの Steam API ヘルスは未計測: ${steamHealthSnapshotPath}`,
+      })
+    );
+  }
+
+  report.steamApiHealthByStage = steamApiHealthByStage;
+  report.steamApiHealth = mergeSteamApiHealth(Object.values(steamApiHealthByStage));
 
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。

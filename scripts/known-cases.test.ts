@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveGameIdentity } from './identity-resolver.js';
+import { configureSteamApiClient, resetSteamApiClient } from './steam-api-client.js';
 import knownCases from './__fixtures__/known-cases.json';
 
 // fetch をグローバルモック
@@ -20,6 +21,11 @@ vi.stubEnv('TAVILY_API_KEY', '');
 
 beforeEach(() => {
   mockFetch.mockReset();
+  // steam-api-client.ts のモジュール状態をケース間で持ち越さない
+  // （持ち越すと先行ケースの失敗で開いたサーキットが後続ケースを circuit-open にする）。
+  resetSteamApiClient();
+  // 既定のペーシング(1500ms)をそのまま使うとフィクスチャ件数 × 1.5 秒の実待機になる。
+  configureSteamApiClient({ sleepImpl: async () => {}, minRequestIntervalMs: 0 });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

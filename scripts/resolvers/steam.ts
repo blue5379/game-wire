@@ -9,6 +9,7 @@
 
 import type { StoreLink } from '../types.js';
 import { matchesAnyTitle } from '../game-identity.js';
+import { fetchSteamJson } from '../steam-api-client.js';
 
 /** Steam Store Search の単一アイテム */
 interface SteamSearchItem {
@@ -53,21 +54,18 @@ async function searchByTitle(
 
   // 最初に英語タイトルで検索し、なければ日本語タイトルでリトライ
   for (const queryTitle of queryTitles) {
-    let json: SteamSearchResponse;
-    try {
-      const url = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(queryTitle)}&l=english&cc=US`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (!res.ok) {
-        failures.push(`"${queryTitle}": HTTP ${res.status}`);
-        apiFailures++;
-        continue;
-      }
-      json = (await res.json()) as SteamSearchResponse;
-    } catch (err) {
-      failures.push(`"${queryTitle}": ${String(err)}`);
+    const url = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(queryTitle)}&l=english&cc=US`;
+    // HTTP レベルのリトライ・バックオフ・サーキットブレーカは steam-api-client.ts に委ねる。
+    // quiet: true — 失敗は failures[] に集約して呼び出し側（resolveSteam）のログに反映されるため、
+    // ここで重複した warn は出さない。
+    const result = await fetchSteamJson(url, { quiet: true });
+    if (!result.ok) {
+      // result.reason には attempts が既に含まれる（fetchSteamJson が付与）
+      failures.push(`"${queryTitle}": ${result.reason}`);
       apiFailures++;
       continue;
     }
+    const json = result.json as SteamSearchResponse;
 
     if (!json?.items?.length) {
       failures.push(`"${queryTitle}": 検索結果 0 件`);
@@ -110,18 +108,15 @@ async function verifyAppIdByName(
   queryTitles: string[],
   releaseDate?: string
 ): Promise<SteamApiOutcome<{ name: string; date?: string }>> {
-  let entry: { success?: boolean; data?: SteamAppDetailsData } | undefined;
-  try {
-    const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=us&l=english`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-    if (!res.ok) {
-      return { ok: false, reason: `appdetails HTTP ${res.status}`, apiFailure: true };
-    }
-    const json = (await res.json()) as Record<string, { success?: boolean; data?: SteamAppDetailsData }>;
-    entry = json[String(appId)];
-  } catch (err) {
-    return { ok: false, reason: `appdetails ${String(err)}`, apiFailure: true };
+  const url = `https://store.steampowered.com/api/appdetails?appids=${appId}&cc=us&l=english`;
+  // HTTP レベルのリトライ・バックオフ・サーキットブレーカは steam-api-client.ts に委ねる。
+  const result = await fetchSteamJson(url, { quiet: true });
+  if (!result.ok) {
+    // result.reason には attempts が既に含まれる（fetchSteamJson が付与）
+    return { ok: false, reason: `appdetails ${result.reason}`, apiFailure: true };
   }
+  const json = result.json as Record<string, { success?: boolean; data?: SteamAppDetailsData }>;
+  const entry = json[String(appId)];
 
   if (!entry?.success) {
     return { ok: false, reason: 'appdetails success:false（appId 非公開か存在しない）', apiFailure: false };
