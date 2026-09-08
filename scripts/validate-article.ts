@@ -1118,7 +1118,20 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
       instructions.add(
         `「${ev}」は提供データの対応機種に含まれていません。本文から対応機種としての言及を削除してください。`
       );
-    } else if (w.type === 'title-mismatch' || w.type === 'body-title-mismatch') {
+    } else if (w.type === 'body-title-mismatch') {
+      // title-mismatch（別名に改変された）と body-title-mismatch（一度も登場しない）は
+      // 失敗の形が違う。後者に「正確に使用してください」と言っても「書け」という要求が
+      // 伝わらないため、専用の指示にする（Issue #362）
+      // evidence は英語正式名（game.title）固定なので、日本語タイトルは
+      // 【ゲーム情報】欄のフィールド名で参照させる（プロンプト側と同じ「タイトル（日本語）」表記）。
+      // これを省くと「日本語でよい」と言いながらどの文字列を書けばよいか指示内で完結しない
+      instructions.add(
+        `記事本文に正式ゲームタイトルが一度も登場しませんでした。本文（特に導入部）に「${ev}」を、` +
+          `短縮・翻訳・略称・シリーズ名で代替せず最低1回そのまま記載してください` +
+          `（【ゲーム情報】に「タイトル（日本語）」がある場合は、その日本語タイトルの表記で記載してもよい。` +
+          `「本作」「このゲーム」等の代名詞だけで済ませない）。`
+      );
+    } else if (w.type === 'title-mismatch') {
       instructions.add(
         `ゲームタイトルは提供データのものを正確に使用してください（短縮・翻訳・改変は禁止）。`
       );

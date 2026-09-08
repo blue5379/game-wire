@@ -68,7 +68,8 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 | チェック種別 | 内容 | 重大度 |
 |-------------|------|--------|
-| `title-mismatch` | 記事タイトルにゲームの正式タイトル（en/ja）が含まれているか | high |
+| `title-mismatch` | 記事タイトル（見出し）にゲームの正式タイトル（en/ja）が含まれているか | high |
+| `body-title-mismatch` | **記事本文**にゲームの正式タイトル（en/ja のいずれか）が最低1回登場するか。特集は対象外。仕様: [article-category-spec.md §6.6](article-category-spec.md) | high |
 | `title-vs-igdb-slug` | `game.title` が IGDB slug と大幅に乖離していないか（word overlap < 60%） | high |
 | `platform-mismatch` | 本文中のプラットフォーム言及が提供データと矛盾しないか | high |
 | `person-quote` / `person-title` / `person-mention` | 「〜氏によると」「ディレクター〜」等の人物発言・肩書きパターン | high / medium |

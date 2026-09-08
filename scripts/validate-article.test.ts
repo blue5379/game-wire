@@ -927,9 +927,34 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('人物');
   });
 
-  it('title 系はタイトル正確使用の指示を出す', () => {
+  it('title-mismatch はタイトル正確使用の指示を出し、body-title-mismatch 用の文言は含まない', () => {
     const out = buildFixInstruction([w('title-mismatch', '')]);
     expect(out).toContain('タイトル');
+    expect(out).toContain('短縮・翻訳・改変は禁止');
+    expect(out).not.toContain('一度も登場しませんでした');
+  });
+
+  it('body-title-mismatch は本文への正式タイトル記載を求める専用の指示を出す（Issue #362）', () => {
+    const out = buildFixInstruction([w('body-title-mismatch', 'Grand Theft Auto: San Andreas')]);
+    expect(out).toContain('Grand Theft Auto: San Andreas');
+    expect(out).toContain('本文（特に導入部）に');
+    expect(out).toContain('一度も登場しませんでした');
+    expect(out).toContain('最低1回そのまま記載してください');
+    // evidence は英語正式名固定なので、日本語タイトルは【ゲーム情報】欄のフィールド名で
+    // 参照させる。これが無いと「日本語でよい」と言いながら書くべき文字列が指示内で
+    // 特定できない（PR #370 の /code-review 指摘）
+    expect(out).toContain('【ゲーム情報】に「タイトル（日本語）」がある場合');
+  });
+
+  it('title-mismatch と body-title-mismatch を同時に渡すと2件の別々の指示が出る（Issue #362。以前は1件に統合されていた）', () => {
+    const out = buildFixInstruction([
+      w('title-mismatch', ''),
+      w('body-title-mismatch', 'Grand Theft Auto: San Andreas'),
+    ]);
+    const instructionLines = out.split('\n').filter((l) => l.startsWith('- '));
+    expect(instructionLines.length).toBe(2);
+    expect(out).toContain('短縮・翻訳・改変は禁止');
+    expect(out).toContain('一度も登場しませんでした');
   });
 
   it('同一内容の指示は重複排除される', () => {
