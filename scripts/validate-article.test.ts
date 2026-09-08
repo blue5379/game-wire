@@ -940,6 +940,10 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('本文（特に導入部）に');
     expect(out).toContain('一度も登場しませんでした');
     expect(out).toContain('最低1回そのまま記載してください');
+    // evidence は英語正式名固定なので、日本語タイトルは【ゲーム情報】欄のフィールド名で
+    // 参照させる。これが無いと「日本語でよい」と言いながら書くべき文字列が指示内で
+    // 特定できない（PR #370 の /code-review 指摘）
+    expect(out).toContain('【ゲーム情報】に「タイトル（日本語）」がある場合');
   });
 
   it('title-mismatch と body-title-mismatch を同時に渡すと2件の別々の指示が出る（Issue #362。以前は1件に統合されていた）', () => {
