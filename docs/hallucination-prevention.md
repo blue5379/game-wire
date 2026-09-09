@@ -232,7 +232,9 @@ npm run validate-issue src/content/issues/issue-XXX.md
 
 > ⚠️ **この章の仕様は Issue #361 で再設計が決定している（2026-09-09 ユーザー承認済み）。実装に着手する前に必ず [llm-judge-redesign.md](llm-judge-redesign.md) を読むこと。**
 >
-> 決定内容の要点: judge は「**ハルシネーション検出器**」＝執筆AIが渡された入力を超えて創作したかを検出する装置と定義し、事実の正確性の担保は行わない。照合先は「世界の事実」ではなく「執筆AIに渡した入力」。これに伴い、判定対象から構造化メタデータ（対応機種・発売日・ジャンル・種別・開発元・発売元）を外し、grounding を執筆AIの入力と対称化する（発行日・`summary`・`genres`・`platforms`・`gameType`・公式サイト/Steam本文を judge にも渡す）。
+> 決定内容の要点: judge は「**ハルシネーション検出器**」＝執筆AIが渡された入力を超えて創作したかを検出する装置と定義し、事実の正確性の担保は行わない。照合先は「世界の事実」ではなく「執筆AIに渡した入力」。これに伴い、判定対象から構造化メタデータ（対応機種・発売日・ジャンル・種別・開発元・発売元）を外し、grounding を執筆AIの入力と対称化する（発行日・IGDB `summary`・`genres`・`platforms`・公式サイト/Steam本文を judge 専用フィールド `judgeGrounding` 経由で渡す）。
+>
+> **特集記事（feature）は現状 `article.game` を持たないため、`buildGameMetadataSection` が空文字を返しメタデータが1文字も judge に渡っていない**（第20号の誤判定2件の原因）。詳細は redesign doc §1.3。
 >
 > **以下の 3-1〜3-4 は再設計前の記述であり、実装が追いつくまでの間は現行コードの説明として読むこと。**
 
