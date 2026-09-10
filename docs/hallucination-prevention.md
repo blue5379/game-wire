@@ -230,6 +230,14 @@ npm run validate-issue src/content/issues/issue-XXX.md
 
 ## 3. LLM-as-a-judge による事実性チェック
 
+> ⚠️ **この章の仕様は Issue #361 で再設計が決定している（2026-09-09 ユーザー承認済み）。実装に着手する前に必ず [llm-judge-redesign.md](llm-judge-redesign.md) を読むこと。**
+>
+> 決定内容の要点: judge は「**ハルシネーション検出器**」＝執筆AIが渡された入力を超えて創作したかを検出する装置と定義し、事実の正確性の担保は行わない。照合先は「世界の事実」ではなく「執筆AIに渡した入力」。これに伴い、判定対象から構造化メタデータ（対応機種・発売日・ジャンル・種別・開発元・発売元）を外し、grounding を執筆AIの入力と対称化する（IGDB `summary`・`genres`・`platforms`・公式サイト/Steam本文を judge 専用フィールド `judgeGrounding` 経由で渡す。発行日は既存の `publishDate` 引数から導出し `judgeGrounding` には持たせない）。
+>
+> **特集記事（feature）は現状 `article.game` を持たないため、`buildGameMetadataSection` が空文字を返しメタデータが1文字も judge に渡っていない。** これが第20号の誤判定⑤（Two Point Hospital）の原因。**同じ第20号の911 Operator の指摘は誤判定ではなく、定義A では「正しい検出」**（執筆AIの入力に根拠が無かった。原因は公式/Steam本文の未取得）。詳細は redesign doc §1.2〜§1.4。
+>
+> **以下の 3-1〜3-4 は再設計前の記述であり、実装が追いつくまでの間は現行コードの説明として読むこと。**
+
 正規表現バリデータ（2章）は「定型的な数値・人名の捏造」しか検出できない。これを補完するため、生成記事の本文と Tavily 検索結果（`webSearchSources`）を別の Claude 呼び出しで照合し、散文レベルの事実性を採点する（`scripts/judge-article.ts`）。
 
 ### 3-1. 検出対象
