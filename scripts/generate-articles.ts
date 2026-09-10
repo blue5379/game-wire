@@ -460,7 +460,10 @@ export function buildJudgeGroundingGame(
  * `src/content/` と `data/validation/` 等しか git add せず、`Upload diagnostic data`
  * ステップの artifact 対象にも入っていない（どちらも `weekly-build.yml`）。
  * リポジトリにあるのは 2026-05-16 生成の古いスナップショット（33KB、judgeGrounding を
- * 含まない旧フォーマット）なので、**本番実行時の実サイズは CI ログに出す以外に観測手段が無い**。
+ * 含まない旧フォーマット）。artifact に追加すれば実ファイルごと取得できるが、
+ * judgeGrounding.primarySources に第三者ページ本文（1URLあたり最大3000字）が
+ * 含まれるため、公開リポジトリの artifact に載せるのは避けたい。
+ * **本番実行時の実サイズは CI ログに出して観測する**。
  * 記事数と judgeGrounding のゲーム本数を併記して、サイズの内訳（特集のゲーム本数が
  * 効いているか = Issue #379）が読めるようにする。
  */
