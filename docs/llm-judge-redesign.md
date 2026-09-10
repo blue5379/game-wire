@@ -162,7 +162,7 @@ Issue #361 が挙げていない欠落を検証で発見した。**これが範�
 **この空白は本Issueでは埋めない**（決定的バリデータの新設はスコープ外）。判断の根拠:
 
 - judge にこれらを判定させても第20号の実績は「対応機種2件が両方とも誤判定」であり、**現状の judge はこの領域で検出力よりノイズを出している**
-- 転記の崩れは決定的に検証できる性質のものなので、必要になったら `validate-article.ts` 側に `metadata-transcription-mismatch` を新設するのが正しい形。**別Issueとして起票すべき残作業**として §9 に記録する
+- 転記の崩れは決定的に検証できる性質のものなので、必要になったら `validate-article.ts` 側に `metadata-transcription-mismatch` を新設するのが正しい形。**#376 として起票済み**（§9）
 
 ### 3.3 実装方針（2段構え）
 
@@ -324,7 +324,7 @@ judgeGrounding?: {
 - 911 Operator の `sourceUrls.official` は IGDB 公式タグ由来（`http://www.jutsugames.com/911`）で `officialUrlSource='igdb-official'` が付くため、`fetchOfficialPageContents` の信頼済みソース判定を通る。**Tavily 探索が失敗しても extract 対象になる**（第20号では Tavily が jutsugames.com トップページを「複数タイトル並列掲載」として正しく棄却し、IGDB 由来の値が残った）
 - レイテンシ実測: extract は 1URL 約3秒（+ delay 300ms）＝約3.3秒。feature は 3〜5本 ×2URL＝6〜10本文で **+20〜35秒**
 
-⚠️ **「最大5本」はプロンプト上の期待値で、コードで強制されていない。** `selectFeatureGames` は `selectedTitles` を slice せずに返し（`bedrock-client.ts:1272-1277` → `generate-articles.ts:944-964`）、コード側の定数は `FEATURE_MIN_GAMES = 3`（下限）だけ。6本以上返ってきた場合、本doc の「最大20本文 / 最大約180KB / +約35秒」の上限を超える。**extract ループを追加するのと同じ箇所で上限を設けるか、上限が無いことを承知の上で実装すること**（§9 に別Issue候補として記録）。
+⚠️ **「最大5本」はプロンプト上の期待値で、コードで強制されていない。** `selectFeatureGames` は `selectedTitles` を slice せずに返し（`bedrock-client.ts:1272-1277` → `generate-articles.ts:944-964`）、コード側の定数は `FEATURE_MIN_GAMES = 3`（下限）だけ。6本以上返ってきた場合、本doc の「最大20本文 / 最大約180KB / +約35秒」の上限を超える。**extract ループを追加するのと同じ箇所で上限を設けるか、上限が無いことを承知の上で実装すること**。→ PR #375 は**上限を設けない判断をコードコメント**（`generate-articles.ts:1233-1237`）に記録した。その確定または観測の追加は **#379** で決める（§9）。
 
 **取得した本文は執筆プロンプトにも渡す。** judge だけに渡すと「執筆AIは知らないまま書き、judge だけが知っている」という逆向きの非対称になる。②の記述に執筆時点で根拠が生まれれば次号以降は `supported` になる（§2.3）。
 
@@ -353,7 +353,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 - [ ] `judgeArticle` の `maxTokens` を 2048 → 4096
 - [ ] `parseJudgeResponse` の戻り値を「JSON が見つからない / パース失敗」と「正当な `{"claims": []}`」を区別できる形に変え、前者を `judgeArticle` が `{ ok: false, reason: 'judge response parse failed' }` として返す
 
-2点目は本来 #363 の残穴だが、**本変更がこの穴を踏む確率を上げるため本Issueで閉じる**。呼び出し元は `judgeArticle` とテストのみで、影響は `judge-article.ts` 内に収まる。`invokeClaudeModel` の戻り値型（10箇所以上から呼ばれる）には触らない。**切り詰めの検知手段はこのパース失敗の可視化であって `stopReason` ではない**（`invokeClaudeModel` は `stopReason` を捨てている。頻発するようなら別Issueで `stopReason` を返す）。
+2点目は本来 #363 の残穴だが、**本変更がこの穴を踏む確率を上げるため本Issueで閉じる**。呼び出し元は `judgeArticle` とテストのみで、影響は `judge-article.ts` 内に収まる。`invokeClaudeModel` の戻り値型（10箇所以上から呼ばれる）には触らない。**切り詰めの検知手段はこのパース失敗の可視化であって `stopReason` ではない**（`invokeClaudeModel` は `stopReason` を捨てている。頻発するようなら **#378** で `stopReason` を返す。再開条件は #378 本文に記載）。
 
 ### 6.2 judge 側（`scripts/judge-article.ts`）
 
@@ -493,9 +493,9 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 - **`docs/hallucination-prevention.md` 2-2 表**の実装との乖離は #373 の担当
 - **Tavily 検索クエリの定式化**は変えない（`docs/article-category-spec.md` §11.3.3 の決着済み事項）
 
-### 別Issueとして起票すべき残作業
+### 起票済みの残作業（別Issue）
 
-**2026-09-10 に5件すべて起票済み。以下に追記する場合は起票までセットで行う。**
+**2026-09-10 に5件すべて起票済み。以下に追記する場合は起票までセットで行い、本文中の該当箇所（§3.2 / §5.2 / §6.1 等）にも Issue 番号を書くこと。** 番号が無いと、その節を入口に作業を始めた人が重複起票する。
 
 | Issue | 内容 | 参照 |
 |---|---|---|
@@ -514,3 +514,5 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 | 2026-09-09 | §0 の7論点すべてユーザー承認。§6.1 の `parseJudgeResponse` 戻り値変更を本Issueに含めることも承認済み。実装 → PR → `/code-review` までは自走可、**マージと Issue クローズは別途承認を取る** |
 | 2026-09-09（改訂） | PR #374 の `/code-review` 指摘13件を一次ソースで検証して反映。主な変更: ①**feature 記事は `article.game` を持たずメタデータが1文字も渡っていない**ことを §1.3 に追加（誤判定⑤の真の原因はここ。②⑤はどちらも feature）／②`primarySources` 単体案を**ゲーム単位の `judgeGrounding`** に変更（feature 複数ゲームの取り違え防止・`article.summary` との混同防止）／③`gameType` を渡す対象から除外（執筆側が newRelease のみ）／④`isMetadataOnlyClaim` に**表記正規化**を必須化（`発売日` に効かない）／⑤`claimsByVerdict` の集計順序・スキップ条件・`judgedSources` の型複製3箇所を §6.2 に追加／⑥feature 再生成経路（`FeatureArticleContext`）を §6.3 に追加／⑦§3.2 の「決定的バリデータと完全な重複」を実態（プラットフォームのみ・片方向）に訂正し検出の空白を明示／⑧トークン見積り・サイズ・レイテンシ・コストを最大構成（feature 5本）ベースに修正。**論点1〜7の決定そのものは変わっていない** |
 | 2026-09-10（改訂2） | 改訂版に対する `/code-review` 指摘12件を一次ソースで検証して反映。**論点1〜7の決定は変わっていない。** 主な変更: ①🔴**「検索結果のみ」の文言が systemPrompt 冒頭・ルール1〜4・JSON例・`buildJudgeUserMessage` 最後の指示文（`外部参照データのみを根拠に判定`）・`mapClaimsToWarnings` の警告メッセージの計6系統に散在**しており、1箇所だけ直すと新セクションが根拠から除外されて再設計が丸ごと無効化される点を §4.1 / §6.2 に明記／②`isMetadataOnlyClaim` は**空の `excerpt` で落としてはならない**（`parseJudgeResponse` が `''` を代入するため本物の `contradicted` が静かに消える）／③`KNOWN_PLATFORM_PATTERNS` は英語異体のみで**日本語別名テーブルの流用は不可**（§3.4 の合成ケースが通らない）と訂正／④スキップ条件を「`judgeGrounding` の存在」ではなく**「一次ソースか二次ソースが1件以上」**に確定（前者では誰もスキップされず、メタデータだけで judge が走って `unverifiable` が一斉に出る）／⑤feature の執筆側は **`webSearchContext` への追記ではなく `【公式ページ情報】` セクション新設**（閉じたマーカーの外に落ちる・検索失敗時はマーカー無し・メタデータ優先ガードが付かない）／⑥`generated-articles.json` は **`.gitignore:54` 対象でリポジトリに入らない**ため別ファイル化は不要と訂正。ローカル33KBは 2026-05-15 の旧フォーマットで基準にできず現行サイズは未知／⑦feature の**本数上限はコードで強制されていない**（`FEATURE_MIN_GAMES` は下限のみ）／⑧`filteredByScope` も `judgedSources` と同じ3箇所同時更新の罠にかかる |
+| 2026-09-10（実装） | **実装は PR #375 でマージ済み・Issue #361 はクローズ済み。** 本doc は以後「決定の記録」として読む（§6 のチェックリストは実装時の作業表であり、未チェックであることは未実装を意味しない） |
+| 2026-09-10（フォローアップ） | §9 の残作業5件を **#376〜#380** として起票し、§9 の表と §3.2 / §5.2 / §6.1 の該当箇所に Issue 番号を記録。**§9 に項目を追記する場合は起票と本文への番号記載までをセットで行う**（番号が無いと重複起票が起きる）。#379 は PR #375 が「上限を設けない」判断をコードコメントに残した状態なので、その確定を問う形で起票した |
