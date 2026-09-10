@@ -224,6 +224,23 @@ export interface JudgeGroundingGame {
   publisher?: string;
   /** IGDB 由来の提供概要。`GeneratedArticle.summary`（AI 生成のリード文）ではない */
   summary?: string;
+  /**
+   * 早期アクセス配信中か（Issue #26、§2.9）。
+   *
+   * 執筆プロンプトは 4 カテゴリすべてで `早期アクセス: 配信中（正式リリース前）` を渡し、
+   * さらに「早期アクセス配信中であることを必ず明記」と指示している。judge に渡さないと
+   * **指示どおり書いた記事が `unverifiable` になる**（`gameType` と違い執筆側の扱いが
+   * 全カテゴリで揃っているので、渡しても対称化は逆向きに破れない）。
+   */
+  isEarlyAccess?: boolean;
+  /**
+   * 同名の別作品の識別に使う参照URL。
+   *
+   * judge のシステムプロンプトは「タイトル・開発元・URL等を参照して正しい作品かを確認」
+   * と指示しているため、URL が渡らないと同名別作品（別ゲーム・映画・MSX版等）の
+   * 切り分けができない。一次ソースの抽出に失敗した記事でも URL は渡る。
+   */
+  sourceUrls?: { igdb?: string; steam?: string; official?: string };
   /** 一次ソース（公式サイト / Steam ストアページ）の抽出本文 */
   primarySources?: JudgePrimarySource[];
 }
@@ -401,9 +418,27 @@ export function buildJudgeGroundingGame(
     developer?: string;
     publisher?: string;
     summary?: string;
+    isEarlyAccess?: boolean;
+    sourceUrls?: {
+      igdb?: string;
+      steam?: string;
+      official?: string;
+      stores?: { platform: string; url: string }[];
+    };
   },
   primarySources: JudgePrimarySource[]
 ): JudgeGroundingGame {
+  // Steam URL は stores[] 形式（新）を優先し、無ければ steam（旧）を使う。
+  // judge-article.ts の旧フォールバック経路と同じ解決順にそろえる
+  const steamUrl =
+    game.sourceUrls?.stores?.find((s) => s.platform === 'steam')?.url ?? game.sourceUrls?.steam;
+  const sourceUrls = {
+    igdb: game.sourceUrls?.igdb,
+    steam: steamUrl,
+    official: game.sourceUrls?.official,
+  };
+  const hasAnyUrl = Object.values(sourceUrls).some((u) => u !== undefined);
+
   return {
     title: game.title,
     titleJa: game.titleJa,
@@ -413,6 +448,8 @@ export function buildJudgeGroundingGame(
     developer: game.developer,
     publisher: game.publisher,
     summary: game.summary,
+    isEarlyAccess: game.isEarlyAccess,
+    sourceUrls: hasAnyUrl ? sourceUrls : undefined,
     primarySources: primarySources.length > 0 ? primarySources : undefined,
   };
 }

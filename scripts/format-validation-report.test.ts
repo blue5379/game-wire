@@ -942,6 +942,28 @@ describe('formatReportMarkdown', () => {
     expect(md).not.toContain('https://a.example/1');
   });
 
+  it('kind の無い旧レポートの出典は「一次: 0 / 二次: 0」ではなく内訳未記録と表示する', () => {
+    // kind は Issue #361 で追加した。旧レポートを再描画したときに嘘の内訳を出さない
+    const report = makeReport({
+      status: 'warning',
+      llmJudge: {
+        claimsByVerdict: { supported: 1, contradicted: 0, unverifiable: 0 },
+        judgedArticles: 1,
+        skippedArticles: 0,
+        judgedSources: [
+          {
+            articleTitle: '旧レポートの記事',
+            sources: [{ index: 1, title: 'A', url: 'https://a.example/1' }],
+          },
+        ],
+        warnings: [],
+      },
+    });
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('旧レポートの記事 — 1件（一次/二次の内訳は未記録）');
+    expect(md).not.toContain('一次: 0 / 二次: 0');
+  });
+
   it('skipped / judgedSources が undefined の旧レポートでも落ちない', () => {
     const report = makeReport({
       status: 'warning',

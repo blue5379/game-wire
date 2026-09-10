@@ -653,9 +653,15 @@ export function formatReportMarkdown(report: ValidationReport): string {
       for (const s of j.judgedSources) {
         const primaryCount = s.sources.filter((src) => src.kind === 'primary').length;
         const secondaryCount = s.sources.filter((src) => src.kind === 'secondary').length;
-        out.push(
-          `- ${s.articleTitle} — ${s.sources.length}件（一次: ${primaryCount} / 二次: ${secondaryCount}）`
-        );
+        // kind は Issue #361 で追加した。旧レポートを再描画したときに
+        // 「一次: 0 / 二次: 0」と嘘の内訳を出さないよう、内訳不明として区別する
+        if (primaryCount + secondaryCount === 0 && s.sources.length > 0) {
+          out.push(`- ${s.articleTitle} — ${s.sources.length}件（一次/二次の内訳は未記録）`);
+        } else {
+          out.push(
+            `- ${s.articleTitle} — ${s.sources.length}件（一次: ${primaryCount} / 二次: ${secondaryCount}）`
+          );
+        }
       }
     }
 

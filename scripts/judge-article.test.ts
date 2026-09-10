@@ -21,6 +21,8 @@ import {
   type JudgeClaim,
 } from './judge-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
+// 執筆プロンプトと judge で同じ行を使うことを確認するため定義元から取る
+import { EARLY_ACCESS_LINE } from './bedrock-client.js';
 
 // Bedrock / Tavily への依存をモック
 const mockInvoke = vi.fn();
@@ -229,6 +231,60 @@ describe('buildGameMetadataSection', () => {
     expect(section).toContain('Game B');
     // 各ゲームのメタデータが独立したブロックとして現れる
     expect(section.split('【提供メタデータ（転記元・根拠として使用可）】')).toHaveLength(3); // 空文字列 + 2ゲーム
+  });
+
+  it('judgeGrounding 経路でも参照URLをゲーム単位で出す（同名別作品の識別が消えないこと）', () => {
+    // 全カテゴリが judgeGrounding を持つようになったため article.game フォールバックは
+    // 新規記事では通らない。URL をこちらに出さないと judgeSystemPrompt の判定ルール7
+    // （URL 等で同名別作品を識別）が根拠を失う
+    const article = makeArticle({
+      game: undefined,
+      judgeGrounding: {
+        games: [
+          {
+            title: 'Game A',
+            sourceUrls: {
+              igdb: 'https://www.igdb.com/games/game-a',
+              steam: 'https://store.steampowered.com/app/111',
+              official: 'https://game-a.example',
+            },
+          },
+          { title: 'Game B', sourceUrls: { igdb: 'https://www.igdb.com/games/game-b' } },
+        ],
+      },
+    });
+    const section = buildGameMetadataSection(article);
+    expect(section).toContain('参照URL: IGDB: https://www.igdb.com/games/game-a / Steam: https://store.steampowered.com/app/111 / 公式: https://game-a.example');
+    expect(section).toContain('参照URL: IGDB: https://www.igdb.com/games/game-b');
+    // ゲーム B のブロックにゲーム A の URL が混ざらない
+    const blockB = section.split('Game B')[1];
+    expect(blockB).not.toContain('game-a');
+  });
+
+  it('sourceUrls が無いゲームには参照URL行を出さない', () => {
+    const article = makeArticle({
+      game: undefined,
+      judgeGrounding: { games: [{ title: 'Game A' }] },
+    });
+    expect(buildGameMetadataSection(article)).not.toContain('参照URL');
+  });
+
+  it('早期アクセスを judge にも渡す（執筆プロンプトと同じ行。Issue #26 / #361）', () => {
+    // 執筆プロンプトは「早期アクセス配信中であることを必ず明記」と指示するので、
+    // judge に渡さないと指示どおり書いた記事が unverifiable になる
+    const article = makeArticle({
+      game: undefined,
+      judgeGrounding: { games: [{ title: 'Game A', isEarlyAccess: true }] },
+    });
+    expect(buildGameMetadataSection(article)).toContain(EARLY_ACCESS_LINE);
+  });
+
+  it('早期アクセスでないゲームには早期アクセス行を出さない', () => {
+    const article = makeArticle({
+      game: undefined,
+      judgeGrounding: { games: [{ title: 'Game A', isEarlyAccess: false }, { title: 'Game B' }] },
+    });
+    expect(buildGameMetadataSection(article)).not.toContain('早期アクセス');
   });
 });
 
@@ -955,6 +1011,32 @@ describe('isMetadataOnlyClaim', () => {
       excerpt: 'ニンテンドースイッチ2とPS5に対応',
     };
     expect(isMetadataOnlyClaim(claim, gamesJp)).toBe(true);
+  });
+
+  it('ゲーム間の取り違えを落とさない（値を全ゲームでプールしない）', () => {
+    // 「Xbox 360」は Grand Theft Auto: San Andreas の対応機種で、電車アタックのものではない。
+    // 全ゲームの値をプールして差し引くと「どちらもメタデータの値」として転記扱いになり、
+    // 特集記事で最も起きやすいゲーム間の取り違えが warnings と集計の両方から消える
+    const claim: JudgeClaim = {
+      claim: '電車アタックは Xbox 360 に対応している',
+      verdict: 'contradicted',
+      confidence: 0.9,
+      explanation: '',
+      excerpt: '電車アタックはXbox 360に対応',
+    };
+    expect(isMetadataOnlyClaim(claim, games)).toBe(false);
+  });
+
+  it('同一ゲーム内の対応機種の転記は落とす（取り違え検出の対照）', () => {
+    // 上のテストと同じ形だが、機種がそのゲーム自身のものである場合は転記なので落とす
+    const claim: JudgeClaim = {
+      claim: '電車アタックは Nintendo Switch 2 に対応している',
+      verdict: 'unverifiable',
+      confidence: 0.4,
+      explanation: '',
+      excerpt: '電車アタックはNintendo Switch 2に対応',
+    };
+    expect(isMetadataOnlyClaim(claim, games)).toBe(true);
   });
 
   it('メタデータ値に散文が付いた短い主張を落とさない（残余の文字数で切らない）', () => {

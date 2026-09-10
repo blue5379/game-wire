@@ -1145,4 +1145,58 @@ describe('buildJudgeGroundingGame', () => {
 
     expect(result.primarySources).toBeUndefined();
   });
+
+  it('参照URL を渡す（一次ソースの抽出に失敗しても同名別作品の識別は残る）', () => {
+    const game = {
+      title: 'Test Game',
+      sourceUrls: {
+        igdb: 'https://www.igdb.com/games/test-game',
+        official: 'https://test-game.example',
+        stores: [{ platform: 'steam', url: 'https://store.steampowered.com/app/777' }],
+      },
+    };
+
+    // 一次ソース0件（ページ抽出失敗）でも URL は載る
+    const result = buildJudgeGroundingGame(game, []);
+
+    expect(result.sourceUrls).toEqual({
+      igdb: 'https://www.igdb.com/games/test-game',
+      steam: 'https://store.steampowered.com/app/777',
+      official: 'https://test-game.example',
+    });
+  });
+
+  it('Steam URL は stores[] を優先し、無ければ steam 直下（@deprecated）を使う', () => {
+    const withStores = buildJudgeGroundingGame(
+      {
+        title: 'T',
+        sourceUrls: {
+          steam: 'https://store.steampowered.com/app/OLD',
+          stores: [{ platform: 'steam', url: 'https://store.steampowered.com/app/NEW' }],
+        },
+      },
+      []
+    );
+    expect(withStores.sourceUrls?.steam).toBe('https://store.steampowered.com/app/NEW');
+
+    const legacyOnly = buildJudgeGroundingGame(
+      { title: 'T', sourceUrls: { steam: 'https://store.steampowered.com/app/OLD' } },
+      []
+    );
+    expect(legacyOnly.sourceUrls?.steam).toBe('https://store.steampowered.com/app/OLD');
+  });
+
+  it('URL が1つも無ければ sourceUrls を undefined にする', () => {
+    expect(buildJudgeGroundingGame({ title: 'T' }, []).sourceUrls).toBeUndefined();
+    expect(
+      buildJudgeGroundingGame({ title: 'T', sourceUrls: { stores: [] } }, []).sourceUrls
+    ).toBeUndefined();
+  });
+
+  it('isEarlyAccess を judge 側に伝える（執筆プロンプトが明記を要求するため）', () => {
+    expect(buildJudgeGroundingGame({ title: 'T', isEarlyAccess: true }, []).isEarlyAccess).toBe(
+      true
+    );
+    expect(buildJudgeGroundingGame({ title: 'T' }, []).isEarlyAccess).toBeUndefined();
+  });
 });

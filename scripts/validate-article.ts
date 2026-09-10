@@ -133,7 +133,8 @@ export interface ValidationReport {
     /** 記事ごとに judge へ渡した出典（Issue #363 → #361。旧レポートでは undefined） */
     judgedSources?: {
       articleTitle: string;
-      sources: { kind: 'primary' | 'secondary'; index: number; title: string; url: string }[];
+      /** `kind` は Issue #361 で追加。旧レポートの出典には無いため optional */
+      sources: { kind?: 'primary' | 'secondary'; index: number; title: string; url: string }[];
     }[];
     warnings: ValidationWarning[];
   };

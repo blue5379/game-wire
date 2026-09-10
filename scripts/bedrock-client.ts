@@ -590,7 +590,7 @@ const GAME_TYPE_LABELS: Record<number, string> = {
  * 『ARK: Survival Ascended』）は、早期アクセスであることに触れずに完成品として
  * 紹介していた点が問題だった。
  */
-const EARLY_ACCESS_LINE = '早期アクセス: 配信中（正式リリース前）';
+export const EARLY_ACCESS_LINE = '早期アクセス: 配信中（正式リリース前）';
 
 /**
  * 早期アクセス配信中のタイトルに与える記述ルール（Issue #26、§2.9）。
