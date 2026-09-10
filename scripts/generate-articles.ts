@@ -456,9 +456,11 @@ export function buildJudgeGroundingGame(
 
 /**
  * 出力ファイルのサイズ内訳を1行にまとめる（Issue #380）。
- * generated-articles.json は gitignore 対象で CI のコミット・artifact 対象にも
- * 入らないため、CI ログ以外に実サイズを観測する手段が無い。記事数と
- * judgeGrounding のゲーム本数を併記して、サイズの内訳（特集のゲーム本数が
+ * generated-articles.json は追跡済みだが、週次ワークフローは git add の対象にしておらず
+ * （`weekly-build.yml:215-218`）、artifact のアップロード対象にも入っていない（同 `:198-206`）。
+ * リポジトリにあるのは 2026-08-14 の古いスナップショット（33KB、judgeGrounding を含まない
+ * 旧フォーマット）なので、**本番実行時の実サイズは CI ログに出す以外に観測手段が無い**。
+ * 記事数と judgeGrounding のゲーム本数を併記して、サイズの内訳（特集のゲーム本数が
  * 効いているか = Issue #379）が読めるようにする。
  */
 export function formatOutputSizeSummary(json: string, articles: GeneratedArticle[]): string {
