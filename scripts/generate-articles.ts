@@ -455,6 +455,19 @@ export function buildJudgeGroundingGame(
 }
 
 /**
+ * 出力ファイルのサイズ内訳を1行にまとめる（Issue #380）。
+ * generated-articles.json は gitignore 対象で CI のコミット・artifact 対象にも
+ * 入らないため、CI ログ以外に実サイズを観測する手段が無い。記事数と
+ * judgeGrounding のゲーム本数を併記して、サイズの内訳（特集のゲーム本数が
+ * 効いているか = Issue #379）が読めるようにする。
+ */
+export function formatOutputSizeSummary(json: string, articles: GeneratedArticle[]): string {
+  const kb = (Buffer.byteLength(json, 'utf8') / 1024).toFixed(1);
+  const groundedGames = articles.reduce((sum, a) => sum + (a.judgeGrounding?.games.length ?? 0), 0);
+  return `${kb} KB, ${articles.length} articles, ${groundedGames} grounded games`;
+}
+
+/**
  * AI によるコンテンツスクリーニング
  * ゲームタイトルと概要を元に成人向けコンテンツか判定する。
  * 判定が難しい場合は安全側（false）に倒す。
@@ -1809,7 +1822,8 @@ async function main(): Promise<void> {
   };
 
   const outputPath = path.join(DATA_DIR, 'generated-articles.json');
-  fs.writeFileSync(outputPath, JSON.stringify(generatedIssue, null, 2));
+  const outputJson = JSON.stringify(generatedIssue, null, 2);
+  fs.writeFileSync(outputPath, outputJson);
 
   console.log('');
   console.log('=== Summary ===');
@@ -1819,7 +1833,7 @@ async function main(): Promise<void> {
   console.log(`  - Features: ${articles.filter((a) => a.category === 'feature').length}`);
   console.log(`  - Classics: ${articles.filter((a) => a.category === 'classic').length}`);
   console.log('');
-  console.log(`Output saved to: ${outputPath}`);
+  console.log(`Output saved to: ${outputPath} (${formatOutputSizeSummary(outputJson, articles)})`);
 
   const totalFailures = webSearchStats.searchFailures + webSearchStats.pageContentFailures;
   if (totalFailures > 0) {

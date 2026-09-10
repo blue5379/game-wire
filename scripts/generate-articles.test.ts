@@ -71,7 +71,8 @@ vi.mock('./fetch-web-search.js', async (importOriginal) => ({
   fetchOfficialPageContents: vi.fn().mockResolvedValue({ steamContent: undefined, officialContent: undefined, failures: 0 }),
 }));
 
-import { __test, generateFeatureArticle, buildPrimarySources, buildJudgeGroundingGame } from './generate-articles.js';
+import { __test, generateFeatureArticle, buildPrimarySources, buildJudgeGroundingGame, formatOutputSizeSummary } from './generate-articles.js';
+import type { GeneratedArticle } from './generate-articles.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { invokeClaudeModel, selectFeatureGames, selectFeatureThemeWithAI } from './bedrock-client.js';
 import { isTavilyAvailable, searchGameInfo, fetchOfficialPageContents } from './fetch-web-search.js';
@@ -1198,5 +1199,121 @@ describe('buildJudgeGroundingGame', () => {
       true
     );
     expect(buildJudgeGroundingGame({ title: 'T' }, []).isEarlyAccess).toBeUndefined();
+  });
+});
+
+describe('formatOutputSizeSummary — CI ログ用サイズ内訳出力 (Issue #380)', () => {
+  it('マルチバイト文字を含む JSON で Buffer.byteLength ベースの KB を出力する', () => {
+    // 十分に長い日本語を含む JSON を作成（文字列の .length と Buffer.byteLength が明確に異なる）
+    const longJapaneseText = 'これは日本語のテストです。'.repeat(50); // 十分に長い文字列
+    const articles: GeneratedArticle[] = [
+      {
+        title: 'テストゲーム',
+        category: 'newRelease',
+        summary: longJapaneseText,
+        content: longJapaneseText,
+      },
+    ];
+    const json = JSON.stringify(articles);
+
+    // 実際の KB を手計算
+    const expectedKb = (Buffer.byteLength(json, 'utf8') / 1024).toFixed(1);
+    const result = formatOutputSizeSummary(json, articles);
+
+    expect(result).toContain(`${expectedKb} KB`);
+    expect(result).toContain('1 articles');
+    expect(result).toContain('0 grounded games');
+
+    // .length ベースだと異なる値になることを確認（マルチバイトの検証）
+    const wrongKb = (json.length / 1024).toFixed(1);
+    expect(Buffer.byteLength(json, 'utf8')).toBeGreaterThan(json.length);
+    expect(expectedKb).not.toBe(wrongKb);
+  });
+
+  it('judgeGrounding を持たない記事が混ざっても落ちず、ゲーム本数に加算されない', () => {
+    const articles: GeneratedArticle[] = [
+      {
+        title: 'Game 1',
+        category: 'newRelease',
+        summary: 'Summary 1',
+        content: 'Content 1',
+        judgeGrounding: { games: [{ title: 'Game 1' }] },
+      },
+      {
+        title: 'Game 2',
+        category: 'indie',
+        summary: 'Summary 2',
+        content: 'Content 2',
+        // judgeGrounding なし
+      },
+      {
+        title: 'Game 3',
+        category: 'classic',
+        summary: 'Summary 3',
+        content: 'Content 3',
+        judgeGrounding: { games: [{ title: 'Game 3' }] },
+      },
+    ];
+    const json = JSON.stringify(articles);
+    const result = formatOutputSizeSummary(json, articles);
+
+    expect(result).toContain('3 articles');
+    expect(result).toContain('2 grounded games'); // Game 2 は judgeGrounding がないのでカウントされない
+  });
+
+  it('games が複数ある記事で本数が合算される', () => {
+    const articles: GeneratedArticle[] = [
+      {
+        title: 'Feature Article',
+        category: 'feature',
+        summary: 'Feature summary',
+        content: 'Feature content',
+        judgeGrounding: {
+          games: [
+            { title: 'Game A' },
+            { title: 'Game B' },
+            { title: 'Game C' },
+          ],
+        },
+      },
+      {
+        title: 'Single Game',
+        category: 'newRelease',
+        summary: 'Single summary',
+        content: 'Single content',
+        judgeGrounding: { games: [{ title: 'Game D' }] },
+      },
+    ];
+    const json = JSON.stringify(articles);
+    const result = formatOutputSizeSummary(json, articles);
+
+    expect(result).toContain('2 articles');
+    expect(result).toContain('4 grounded games'); // 3 + 1 = 4
+  });
+
+  it('記事0件（空配列）の境界でも正しく動作する', () => {
+    const articles: GeneratedArticle[] = [];
+    const json = JSON.stringify(articles);
+    const result = formatOutputSizeSummary(json, articles);
+
+    const expectedKb = (Buffer.byteLength(json, 'utf8') / 1024).toFixed(1);
+    expect(result).toBe(`${expectedKb} KB, 0 articles, 0 grounded games`);
+  });
+
+  it('games が空配列の judgeGrounding でも落ちずカウントは0になる', () => {
+    const articles: GeneratedArticle[] = [
+      {
+        title: 'Empty Games',
+        category: 'feature',
+        summary: 'Summary',
+        content: 'Content',
+        judgeGrounding: { games: [] },
+      },
+    ];
+    const json = JSON.stringify(articles);
+    const result = formatOutputSizeSummary(json, articles);
+
+    expect(result).toContain('1 articles');
+    expect(result).toContain('0 grounded games');
   });
 });
