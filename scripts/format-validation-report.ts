@@ -378,7 +378,10 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   }
   if (contradicted > 0) {
     actions.push(
-      `❌ **LLM 事実性チェックで矛盾 ${contradicted} 件**: 検索結果と矛盾する記述です。該当箇所を確認・修正してください。`
+      // judge の照合先は「執筆AIに渡した入力」（提供メタデータ・一次ソース・二次ソース）で、
+      // 検索結果だけではない（Issue #361）。文言を検索結果に限ると、レポートを読む人が
+      // 「検索で裏付かなかっただけ」と読んで実際の創作を見逃す
+      `❌ **LLM 事実性チェックで矛盾 ${contradicted} 件**: 執筆AIに渡した情報（メタデータ・公式/Steamページ・検索結果）と矛盾する記述です。該当箇所を確認・修正してください。`
     );
   }
   if (earlyAccessIssues > 0) {
@@ -404,7 +407,9 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   }
   if (unverifiable > 0) {
     actions.push(
-      `❓ **LLM 事実性チェックで裏付け不能 ${unverifiable} 件**: 参考情報です。必要に応じて確認してください。`
+      // 定義上 unverifiable は「渡した入力に根拠が無い＝創作の疑い」だが、
+      // severity の見直しは Issue #350 / #364 の担当なので文言だけ実態に合わせる
+      `❓ **LLM 事実性チェックで裏付け不能 ${unverifiable} 件**: 執筆AIに渡した情報の中に根拠が見つからなかった記述です（創作の疑い、または grounding 不足）。必要に応じて確認してください。`
     );
   }
 
@@ -625,6 +630,9 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push(`| ✅ 支持 | ${j.claimsByVerdict.supported} |`);
     out.push(`| ❌ 矛盾 | ${j.claimsByVerdict.contradicted} |`);
     out.push(`| ❓ 裏付け不能 | ${j.claimsByVerdict.unverifiable} |`);
+    if (j.filteredByScope !== undefined) {
+      out.push(`| 🔍 スコープ外で除外 | ${j.filteredByScope} |`);
+    }
 
     // スキップされた記事は「無検証で通った記事」なので、件数だけでなく
     // どの記事かを出す（Issue #363）。URL 一覧は JSON 側にあるので md では件数に留める
@@ -643,7 +651,11 @@ export function formatReportMarkdown(report: ValidationReport): string {
       out.push('出典の URL 一覧は JSON レポートの `llmJudge.judgedSources` を参照。');
       out.push('');
       for (const s of j.judgedSources) {
-        out.push(`- ${s.articleTitle} — ${s.sources.length}件`);
+        const primaryCount = s.sources.filter((src) => src.kind === 'primary').length;
+        const secondaryCount = s.sources.filter((src) => src.kind === 'secondary').length;
+        out.push(
+          `- ${s.articleTitle} — ${s.sources.length}件（一次: ${primaryCount} / 二次: ${secondaryCount}）`
+        );
       }
     }
 

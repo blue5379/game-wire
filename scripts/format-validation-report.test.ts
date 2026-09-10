@@ -474,6 +474,30 @@ describe('buildRecommendedActions', () => {
     expect(highAction).toContain('修正');
   });
 
+  it('judge のアクション文が照合先を「検索結果」に限定していない（Issue #361）', () => {
+    // judge の照合先は執筆AIに渡した入力の総体（メタデータ・一次ソース・二次ソース）。
+    // 「検索結果と矛盾」と書くと、レポートを読む人が「検索で裏付かなかっただけ」と
+    // 読んで実際の創作を見逃す
+    const report = makeReport({
+      llmJudge: {
+        claimsByVerdict: { supported: 3, contradicted: 1, unverifiable: 2 },
+        judgedArticles: 1,
+        skippedArticles: 0,
+        warnings: [],
+      },
+    });
+    const actions = buildRecommendedActions(report);
+
+    const contradictedAction = actions.find((a) => a.includes('矛盾 1 件'));
+    expect(contradictedAction).toBeDefined();
+    expect(contradictedAction).toContain('執筆AIに渡した情報');
+    expect(contradictedAction).not.toMatch(/^.*検索結果と矛盾/);
+
+    const unverifiableAction = actions.find((a) => a.includes('裏付け不能 2 件'));
+    expect(unverifiableAction).toBeDefined();
+    expect(unverifiableAction).toContain('執筆AIに渡した情報');
+  });
+
   it('Steam API サーキットブレーカが開いていれば全滅検知のアクションを含む（Issue #360）', () => {
     const report = makeReport({
       steamApiHealth: {
@@ -902,8 +926,8 @@ describe('formatReportMarkdown', () => {
           {
             articleTitle: 'Onimusha の紹介',
             sources: [
-              { index: 1, title: 'A', url: 'https://a.example/1' },
-              { index: 2, title: 'B', url: 'https://b.example/2' },
+              { kind: 'primary', index: 1, title: 'A', url: 'https://a.example/1' },
+              { kind: 'secondary', index: 2, title: 'B', url: 'https://b.example/2' },
             ],
           },
         ],
@@ -912,7 +936,7 @@ describe('formatReportMarkdown', () => {
     });
     const md = formatReportMarkdown(report);
     expect(md).toContain('判定に使った出典の件数');
-    expect(md).toContain('Onimusha の紹介 — 2件');
+    expect(md).toContain('Onimusha の紹介 — 2件（一次: 1 / 二次: 1）');
     expect(md).toContain('llmJudge.judgedSources');
     // md は Job Summary と自動起票 Issue に貼られるため URL 一覧までは載せない
     expect(md).not.toContain('https://a.example/1');

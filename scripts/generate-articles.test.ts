@@ -27,7 +27,7 @@
  * 上の invokeClaudeModel モックを迂回して実 Bedrock/Tavily を呼びに行ってしまうため、
  * 個別に vi.fn() で上書きする。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GameData, IGDBGame } from './types.js';
 
 vi.mock('./fetch-igdb.js', () => ({
@@ -68,12 +68,13 @@ vi.mock('./fetch-web-search.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./fetch-web-search.js')>()),
   isTavilyAvailable: vi.fn().mockReturnValue(false),
   searchGameInfo: vi.fn(),
+  fetchOfficialPageContents: vi.fn().mockResolvedValue({ steamContent: undefined, officialContent: undefined, failures: 0 }),
 }));
 
-import { __test, generateFeatureArticle } from './generate-articles.js';
+import { __test, generateFeatureArticle, buildPrimarySources, buildJudgeGroundingGame } from './generate-articles.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { invokeClaudeModel, selectFeatureGames, selectFeatureThemeWithAI } from './bedrock-client.js';
-import { isTavilyAvailable, searchGameInfo } from './fetch-web-search.js';
+import { isTavilyAvailable, searchGameInfo, fetchOfficialPageContents } from './fetch-web-search.js';
 
 const mockEnrich = vi.mocked(enrichGameWithIGDB);
 const mockInvoke = vi.mocked(invokeClaudeModel);
@@ -81,6 +82,7 @@ const mockSelectFeatureGames = vi.mocked(selectFeatureGames);
 const mockSelectFeatureThemeWithAI = vi.mocked(selectFeatureThemeWithAI);
 const mockIsTavilyAvailable = vi.mocked(isTavilyAvailable);
 const mockSearchGameInfo = vi.mocked(searchGameInfo);
+const mockFetchOfficialPageContents = vi.mocked(fetchOfficialPageContents);
 
 // テスト用 GameData ファクトリ（必須フィールドのみ設定）
 function makeGame(overrides: Partial<GameData> = {}): GameData {
@@ -484,6 +486,127 @@ describe('generateClassicArticle — 歴史検索クエリへの発売年の伝�
   });
 });
 
+// Issue #361 / docs/llm-judge-redesign.md §6.3:
+// 非 feature 経路の judgeGrounding 配線テスト
+// （newRelease / indie は export されていないため classic のみで固定。
+// 3経路とも同一のヘルパー呼び出しで実装されている）
+describe('generateClassicArticle - judgeGrounding 配線（Issue #361 §6.3）', () => {
+  // vi.clearAllMocks()（file 直下の beforeEach）は呼び出し履歴だけを消し、
+  // mockReturnValue / mockResolvedValue で設定した実装は残る。
+  // アサーション失敗時にも後続テストへ漏れないよう、ここで既定値に戻す
+  afterEach(() => {
+    mockIsTavilyAvailable.mockReturnValue(false);
+    mockFetchOfficialPageContents.mockResolvedValue({
+      steamContent: undefined,
+      officialContent: undefined,
+      failures: 0,
+    });
+  });
+
+  it('article.judgeGrounding.games が1件で、IGDB メタデータが入っている', async () => {
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+    const game = makeGame({
+      title: 'Test Classic',
+      titleJa: 'テストクラシック',
+      genres: ['Action', 'RPG'],
+      platforms: ['PC', 'PS5'],
+      releaseDate: '2020-01-01',
+      developer: 'Test Studio',
+      publisher: 'Test Publisher',
+      summary: 'IGDB summary for Test Classic',
+    });
+
+    const article = await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    expect(article.judgeGrounding).toBeDefined();
+    expect(article.judgeGrounding?.games).toHaveLength(1);
+    expect(article.judgeGrounding?.games[0]).toMatchObject({
+      title: 'Test Classic',
+      titleJa: 'テストクラシック',
+      genres: ['Action', 'RPG'],
+      platforms: ['PC', 'PS5'],
+      releaseDate: '2020-01-01',
+      developer: 'Test Studio',
+      publisher: 'Test Publisher',
+      summary: 'IGDB summary for Test Classic',
+    });
+  });
+
+  it('isTavilyAvailable が false でもメタデータは入り、primarySources だけが undefined になる（メタデータは Tavily の可否に依存しない）', async () => {
+    mockIsTavilyAvailable.mockReturnValue(false); // extract が走らない
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+    const game = makeGame({
+      title: 'Test Classic',
+      genres: ['Action'],
+      platforms: ['PC'],
+      developer: 'Test Studio',
+      summary: 'IGDB summary',
+    });
+
+    const article = await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    expect(article.judgeGrounding).toBeDefined();
+    expect(article.judgeGrounding?.games[0]).toMatchObject({
+      title: 'Test Classic',
+      genres: ['Action'],
+      platforms: ['PC'],
+      developer: 'Test Studio',
+      summary: 'IGDB summary',
+    });
+    // primarySources は undefined（一次ソースが取得できなかった）
+    expect(article.judgeGrounding?.games[0].primarySources).toBeUndefined();
+  });
+
+  it('extract が成功したときに primarySources が入る', async () => {
+    mockIsTavilyAvailable.mockReturnValue(true); // extract が走る
+    mockFetchOfficialPageContents.mockResolvedValue({
+      steamContent: 'Steam page content',
+      officialContent: 'Official page content',
+      failures: 0,
+    });
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+    const game = makeGame({
+      title: 'Test Classic',
+      sourceUrls: {
+        steam: 'https://store.steampowered.com/app/123',
+        official: 'https://example.com/official',
+        officialUrlSource: 'tavily',
+      },
+    });
+
+    const article = await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    expect(article.judgeGrounding?.games[0].primarySources).toBeDefined();
+    expect(article.judgeGrounding?.games[0].primarySources).toEqual([
+      { kind: 'steam', url: 'https://store.steampowered.com/app/123', content: 'Steam page content' },
+      { kind: 'official', url: 'https://example.com/official', content: 'Official page content' },
+    ]);
+  });
+
+  it('judgeGrounding.games[0].summary が GeneratedArticle.summary（AI 生成のリード文）ではなく IGDB 由来の GameData.summary であること', async () => {
+    // generateClassicArticle は invokeClaudeModel を3回呼ぶ: 本文生成、タイトル生成、要約生成
+    mockInvoke
+      .mockResolvedValueOnce('AI generated article content') // 本文生成
+      .mockResolvedValueOnce('AI generated title') // タイトル生成
+      .mockResolvedValueOnce('AI generated summary for the article.'); // 要約生成
+
+    const game = makeGame({
+      title: 'Test Classic',
+      summary: 'IGDB original summary',
+    });
+
+    const article = await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    // GeneratedArticle.summary は AI 生成のリード文
+    // （generateSummary が末尾に「。」を追加するので「.。」で終わる）
+    expect(article.summary).toContain('AI generated summary for the article.');
+    // judgeGrounding.games[0].summary は IGDB 由来（GameData.summary）
+    expect(article.judgeGrounding?.games[0].summary).toBe('IGDB original summary');
+    // 2つは異なる（取り違えていない）
+    expect(article.judgeGrounding?.games[0].summary).not.toBe(article.summary);
+  });
+});
+
 describe('generateFeatureArticle — ファンゲーム除外フィルタ (Issue #232)', () => {
   beforeEach(() => {
     // selectFeatureGames はモックでタイトル一致のみで選定するため、
@@ -761,5 +884,265 @@ describe('generateFeatureArticle — イベント探索と 0 件週フォール�
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  it('再生成した特集記事にも judgeGrounding が引き継がれる（Issue #361 §4.4）', async () => {
+    setupMinimalFeatureRun();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const { article, context } = await generateFeatureArticle(
+        new Date('2026-08-22'),
+        999,
+        candidates,
+        []
+      );
+      const regenerated = await __test.buildFeatureArticleFromContext(context, '修正指示');
+
+      expect(regenerated.judgeGrounding).toEqual(article.judgeGrounding);
+      expect(regenerated.judgeGrounding).toBeDefined();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  // Issue #361 / docs/llm-judge-redesign.md §5.2:
+  // feature 経路で fetchOfficialPageContents が呼ばれる
+  it('選定されたゲーム本数だけ fetchOfficialPageContents が呼ばれ、一次ソースが judgeGrounding と執筆プロンプトに渡る', async () => {
+    // isTavilyAvailable を true にして extract が走るようにする
+    mockIsTavilyAvailable.mockReturnValue(true);
+    mockSearchGameInfo.mockResolvedValue({
+      gameTitle: 'dummy',
+      searchedAt: '2026-08-22T00:00:00.000Z',
+    });
+    mockSelectFeatureGames.mockResolvedValue(['Game A', 'Game B']);
+    mockFetchOfficialPageContents.mockResolvedValue({
+      steamContent: 'Steam content for game',
+      officialContent: 'Official content for game',
+      failures: 0,
+    });
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+
+    const candidatesWithUrls = [
+      makeGame({
+        title: 'Game A',
+        genres: ['Action'],
+        platforms: ['PC'],
+        developer: 'Studio A',
+        summary: 'Summary A',
+        sourceUrls: {
+          steam: 'https://store.steampowered.com/app/100',
+          official: 'https://example.com/game-a',
+          officialUrlSource: 'tavily',
+        },
+      }),
+      makeGame({
+        title: 'Game B',
+        genres: ['RPG'],
+        platforms: ['PS5'],
+        developer: 'Studio B',
+        summary: 'Summary B',
+        sourceUrls: {
+          steam: 'https://store.steampowered.com/app/200',
+          official: 'https://example.com/game-b',
+          officialUrlSource: 'igdb-official',
+        },
+      }),
+    ];
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      const { article } = await generateFeatureArticle(
+        new Date('2026-08-22'),
+        999,
+        candidatesWithUrls,
+        []
+      );
+
+      // 2ゲーム分の fetchOfficialPageContents が呼ばれている
+      expect(mockFetchOfficialPageContents).toHaveBeenCalledTimes(2);
+
+      // 引数が game.sourceUrls 由来であること
+      expect(mockFetchOfficialPageContents).toHaveBeenNthCalledWith(1, {
+        steamUrl: 'https://store.steampowered.com/app/100',
+        officialUrl: 'https://example.com/game-a',
+        officialUrlSource: 'tavily',
+      });
+      expect(mockFetchOfficialPageContents).toHaveBeenNthCalledWith(2, {
+        steamUrl: 'https://store.steampowered.com/app/200',
+        officialUrl: 'https://example.com/game-b',
+        officialUrlSource: 'igdb-official',
+      });
+
+      // judgeGrounding.games が2件で、それぞれに primarySources が入っている
+      expect(article.judgeGrounding?.games).toHaveLength(2);
+      expect(article.judgeGrounding?.games[0].primarySources).toHaveLength(2);
+      expect(article.judgeGrounding?.games[0].primarySources).toEqual([
+        { kind: 'steam', url: 'https://store.steampowered.com/app/100', content: 'Steam content for game' },
+        { kind: 'official', url: 'https://example.com/game-a', content: 'Official content for game' },
+      ]);
+      expect(article.judgeGrounding?.games[1].primarySources).toHaveLength(2);
+      expect(article.judgeGrounding?.games[1].primarySources).toEqual([
+        { kind: 'steam', url: 'https://store.steampowered.com/app/200', content: 'Steam content for game' },
+        { kind: 'official', url: 'https://example.com/game-b', content: 'Official content for game' },
+      ]);
+
+      // 複数ゲームで一次ソースがゲーム単位に正しく紐づくこと
+      // （ゲームAの本文がゲームBに入らないこと。URL で判別）
+      expect(article.judgeGrounding?.games[0].primarySources?.[0].url).toBe('https://store.steampowered.com/app/100');
+      expect(article.judgeGrounding?.games[1].primarySources?.[0].url).toBe('https://store.steampowered.com/app/200');
+
+      // 執筆プロンプトに【公式ページ情報】が含まれること
+      // （invokeClaudeModel に渡ったユーザーメッセージで検証）
+      // すべての invokeClaudeModel 呼び出しから【公式ページ情報】を含むものを探す
+      const contentGenerationCall = mockInvoke.mock.calls.find(call => {
+        const userMessage = call[1];
+        return typeof userMessage === 'string' && userMessage.includes('【紹介するゲーム】');
+      });
+      expect(contentGenerationCall).toBeDefined();
+      const userMessage = contentGenerationCall![1];
+      expect(userMessage).toContain('【公式ページ情報】');
+      expect(userMessage).toContain('[Steamストアページ]');
+      expect(userMessage).toContain('Steam content for game');
+      expect(userMessage).toContain('[公式サイト]');
+      expect(userMessage).toContain('Official content for game');
+    } finally {
+      warnSpy.mockRestore();
+      mockIsTavilyAvailable.mockReturnValue(false); // 元に戻す
+    }
+  });
+});
+
+// Issue #361 / docs/llm-judge-redesign.md §6.3: 共通ヘルパーのテスト
+describe('buildPrimarySources', () => {
+  it('両方の本文が取得できた場合に2件の一次ソースを返す', () => {
+    const pageContents = {
+      steamContent: 'Steam page content',
+      officialContent: 'Official page content',
+    };
+    const sources = buildPrimarySources(
+      pageContents,
+      'https://store.steampowered.com/app/123',
+      'https://example.com/official'
+    );
+
+    expect(sources).toHaveLength(2);
+    expect(sources[0]).toEqual({
+      kind: 'steam',
+      url: 'https://store.steampowered.com/app/123',
+      content: 'Steam page content',
+    });
+    expect(sources[1]).toEqual({
+      kind: 'official',
+      url: 'https://example.com/official',
+      content: 'Official page content',
+    });
+  });
+
+  it('Steam 本文のみ取得できた場合に1件（steam）を返す', () => {
+    const pageContents = {
+      steamContent: 'Steam page content',
+      officialContent: undefined,
+    };
+    const sources = buildPrimarySources(
+      pageContents,
+      'https://store.steampowered.com/app/123',
+      undefined
+    );
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toEqual({
+      kind: 'steam',
+      url: 'https://store.steampowered.com/app/123',
+      content: 'Steam page content',
+    });
+  });
+
+  it('公式本文のみ取得できた場合に1件（official）を返す', () => {
+    const pageContents = {
+      steamContent: undefined,
+      officialContent: 'Official page content',
+    };
+    const sources = buildPrimarySources(
+      pageContents,
+      undefined,
+      'https://example.com/official'
+    );
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toEqual({
+      kind: 'official',
+      url: 'https://example.com/official',
+      content: 'Official page content',
+    });
+  });
+
+  it('両方とも取得できなかった場合に空配列を返す（空エントリを作らない）', () => {
+    const pageContents = {
+      steamContent: undefined,
+      officialContent: undefined,
+    };
+    const sources = buildPrimarySources(pageContents, undefined, undefined);
+
+    expect(sources).toEqual([]);
+  });
+
+  it('URL があっても content が空なら含めない', () => {
+    const pageContents = {
+      steamContent: undefined,
+      officialContent: undefined,
+    };
+    const sources = buildPrimarySources(
+      pageContents,
+      'https://store.steampowered.com/app/123',
+      'https://example.com/official'
+    );
+
+    expect(sources).toEqual([]);
+  });
+});
+
+describe('buildJudgeGroundingGame', () => {
+  it('IGDB メタデータと一次ソースを持つ JudgeGroundingGame を返す', () => {
+    const game = {
+      title: 'Test Game',
+      titleJa: 'テストゲーム',
+      genres: ['Action', 'Adventure'],
+      platforms: ['PC', 'PS5'],
+      releaseDate: '2026-01-01',
+      developer: 'Test Studio',
+      publisher: 'Test Publisher',
+      summary: 'A test game summary',
+    };
+    const primarySources = [
+      { kind: 'steam' as const, url: 'https://steam.com/app/123', content: 'Steam content' },
+    ];
+
+    const result = buildJudgeGroundingGame(game, primarySources);
+
+    expect(result).toEqual({
+      title: 'Test Game',
+      titleJa: 'テストゲーム',
+      genres: ['Action', 'Adventure'],
+      platforms: ['PC', 'PS5'],
+      releaseDate: '2026-01-01',
+      developer: 'Test Studio',
+      publisher: 'Test Publisher',
+      summary: 'A test game summary',
+      primarySources,
+    });
+  });
+
+  it('一次ソースが空の場合に primarySources を undefined にする', () => {
+    const game = {
+      title: 'Test Game',
+      genres: ['Action'],
+      platforms: ['PC'],
+    };
+
+    const result = buildJudgeGroundingGame(game, []);
+
+    expect(result.primarySources).toBeUndefined();
   });
 });
