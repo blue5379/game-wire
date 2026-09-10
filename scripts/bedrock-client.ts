@@ -590,7 +590,7 @@ const GAME_TYPE_LABELS: Record<number, string> = {
  * 『ARK: Survival Ascended』）は、早期アクセスであることに触れずに完成品として
  * 紹介していた点が問題だった。
  */
-const EARLY_ACCESS_LINE = '早期アクセス: 配信中（正式リリース前）';
+export const EARLY_ACCESS_LINE = '早期アクセス: 配信中（正式リリース前）';
 
 /**
  * 早期アクセス配信中のタイトルに与える記述ルール（Issue #26、§2.9）。
@@ -725,13 +725,19 @@ export interface FeatureSelectedGame {
   isEarlyAccess?: boolean;
   /** formatSearchResultsForPrompt() が返す Tavily 検索結果（ゲーム単位） */
   webSearchContext?: string;
+  /**
+   * 公式サイト / Steam ストアページの抽出本文
+   * （Issue #361 / docs/llm-judge-redesign.md §5.2）。
+   * 執筆プロンプトへは `buildUserMessage` と同形の `【公式ページ情報】` セクションとして渡す。
+   */
+  officialPageContext?: string;
 }
 
 /**
  * 特集記事用のユーザーメッセージを生成
  *
  * ゲーム選定は別フェーズ（selectFeatureGames）で完了している前提。
- * ここでは確定済みゲームの正確なメタデータと検索結果のみを渡し、
+ * ここでは確定済みゲームの正確なメタデータ・公式/Steamページ本文・検索結果だけを渡し、
  * AI には「渡されたゲームを提供データの範囲で紹介する」ことだけをさせる。
  */
 export function buildFeatureUserMessage(
@@ -782,6 +788,14 @@ export function buildFeatureUserMessage(
     }
     if (game.summary) {
       lines.push(`概要: ${game.summary}`);
+    }
+    // Issue #361 / docs/llm-judge-redesign.md §5.2:
+    // 公式ページ情報セクション（buildUserMessage と同形）
+    if (game.officialPageContext) {
+      lines.push('');
+      lines.push(`【公式ページ情報】`);
+      lines.push(`※以下はSteamストアページおよび公式サイトから取得した情報です。対応機種・発売日の記述がゲーム情報欄と異なる場合はゲーム情報欄を優先すること。`);
+      lines.push(game.officialPageContext);
     }
     if (game.webSearchContext) {
       lines.push(game.webSearchContext);

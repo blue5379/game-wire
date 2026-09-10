@@ -186,6 +186,70 @@ export interface GeneratedArticle {
      */
     isEarlyAccess?: boolean;
   };
+  /**
+   * judge 専用の grounding（Issue #361、docs/llm-judge-redesign.md §4.2）。
+   *
+   * 執筆プロンプトに渡したものと同じ内容を judge にも渡すために持つ。judge の照合先は
+   * 「執筆AIに渡した入力」なので（定義A: ハルシネーション検出器）、執筆側にだけ渡って
+   * judge に渡らない入力があると、記事が正しくても `unverifiable` になる。
+   *
+   * 表示には使わない（`formatArticleForFrontmatter` には出さない）。
+   *
+   * ゲーム単位の配列にしている理由: 特集記事は 3〜5 本のゲームを扱うため、一次ソースを
+   * 平坦な配列で渡すと最大 10 本文が無ラベルで並び、あるゲームの主張を別ゲームの公式
+   * ページ本文と照合して `contradicted` を出す事故が起こり得る。
+   *
+   * ⚠️ `games[].summary` は IGDB 由来の提供概要であり、`GeneratedArticle.summary`
+   *    （AI が生成した記事のリード文）とは別物。混同すると記事を自分自身の生成物と
+   *    照合する循環になり `supported` が水増しされる。
+   */
+  judgeGrounding?: JudgeGrounding;
+}
+
+/**
+ * judge に渡す grounding（ゲーム単位）。`GeneratedArticle.judgeGrounding` の JSDoc を参照。
+ */
+export interface JudgeGrounding {
+  games: JudgeGroundingGame[];
+}
+
+/** judgeGrounding のゲーム1本分。値は執筆プロンプトに渡したものと同一 */
+export interface JudgeGroundingGame {
+  title: string;
+  titleJa?: string;
+  genres?: string[];
+  platforms?: string[];
+  releaseDate?: string;
+  developer?: string;
+  publisher?: string;
+  /** IGDB 由来の提供概要。`GeneratedArticle.summary`（AI 生成のリード文）ではない */
+  summary?: string;
+  /**
+   * 早期アクセス配信中か（Issue #26、§2.9）。
+   *
+   * 執筆プロンプトは 4 カテゴリすべてで `早期アクセス: 配信中（正式リリース前）` を渡し、
+   * さらに「早期アクセス配信中であることを必ず明記」と指示している。judge に渡さないと
+   * **指示どおり書いた記事が `unverifiable` になる**（`gameType` と違い執筆側の扱いが
+   * 全カテゴリで揃っているので、渡しても対称化は逆向きに破れない）。
+   */
+  isEarlyAccess?: boolean;
+  /**
+   * 同名の別作品の識別に使う参照URL。
+   *
+   * judge のシステムプロンプトは「タイトル・開発元・URL等を参照して正しい作品かを確認」
+   * と指示しているため、URL が渡らないと同名別作品（別ゲーム・映画・MSX版等）の
+   * 切り分けができない。一次ソースの抽出に失敗した記事でも URL は渡る。
+   */
+  sourceUrls?: { igdb?: string; steam?: string; official?: string };
+  /** 一次ソース（公式サイト / Steam ストアページ）の抽出本文 */
+  primarySources?: JudgePrimarySource[];
+}
+
+/** 一次ソース1件（公式サイト or Steam ストアページの抽出本文） */
+export interface JudgePrimarySource {
+  kind: 'official' | 'steam';
+  url: string;
+  content: string;
 }
 
 export interface GeneratedIssue {
@@ -313,6 +377,84 @@ ${content}`;
 }
 
 /**
+ * 公式ページ / Steam ストアページの抽出本文から JudgePrimarySource の配列を組む
+ * （Issue #361 / docs/llm-judge-redesign.md §6.3 共通ヘルパー）。
+ *
+ * @param pageContents fetchOfficialPageContents の戻り値
+ * @param steamUrl 対象の Steam URL（`kind: 'steam'` の `url` に入る）
+ * @param officialUrl 対象の公式サイト URL（`kind: 'official'` の `url` に入る）
+ * @returns 取得できた本文のみを含む配列（空の場合は空配列）
+ */
+export function buildPrimarySources(
+  pageContents: { steamContent?: string; officialContent?: string },
+  steamUrl?: string,
+  officialUrl?: string
+): JudgePrimarySource[] {
+  const sources: JudgePrimarySource[] = [];
+  if (pageContents.steamContent && steamUrl) {
+    sources.push({ kind: 'steam', url: steamUrl, content: pageContents.steamContent });
+  }
+  if (pageContents.officialContent && officialUrl) {
+    sources.push({ kind: 'official', url: officialUrl, content: pageContents.officialContent });
+  }
+  return sources;
+}
+
+/**
+ * IGDB メタデータから JudgeGroundingGame を組む
+ * （Issue #361 / docs/llm-judge-redesign.md §6.3 共通ヘルパー）。
+ *
+ * @param game GameData（IGDB 由来のメタデータを持つ）
+ * @param primarySources 一次ソース（公式/Steam 本文）の配列
+ * @returns judgeGrounding.games[0] に詰める1件分
+ */
+export function buildJudgeGroundingGame(
+  game: {
+    title: string;
+    titleJa?: string;
+    genres?: string[];
+    platforms?: string[];
+    releaseDate?: string;
+    developer?: string;
+    publisher?: string;
+    summary?: string;
+    isEarlyAccess?: boolean;
+    sourceUrls?: {
+      igdb?: string;
+      steam?: string;
+      official?: string;
+      stores?: { platform: string; url: string }[];
+    };
+  },
+  primarySources: JudgePrimarySource[]
+): JudgeGroundingGame {
+  // Steam URL は stores[] 形式（新）を優先し、無ければ steam（旧）を使う。
+  // judge-article.ts の旧フォールバック経路と同じ解決順にそろえる
+  const steamUrl =
+    game.sourceUrls?.stores?.find((s) => s.platform === 'steam')?.url ?? game.sourceUrls?.steam;
+  const sourceUrls = {
+    igdb: game.sourceUrls?.igdb,
+    steam: steamUrl,
+    official: game.sourceUrls?.official,
+  };
+  const hasAnyUrl = Object.values(sourceUrls).some((u) => u !== undefined);
+
+  return {
+    title: game.title,
+    titleJa: game.titleJa,
+    genres: game.genres,
+    platforms: game.platforms,
+    releaseDate: game.releaseDate,
+    developer: game.developer,
+    publisher: game.publisher,
+    summary: game.summary,
+    isEarlyAccess: game.isEarlyAccess,
+    sourceUrls: hasAnyUrl ? sourceUrls : undefined,
+    primarySources: primarySources.length > 0 ? primarySources : undefined,
+  };
+}
+
+/**
  * AI によるコンテンツスクリーニング
  * ゲームタイトルと概要を元に成人向けコンテンツか判定する。
  * 判定が難しい場合は安全側（false）に倒す。
@@ -415,8 +557,9 @@ async function generateNewReleaseArticle(
 
   // Steam/公式ページのコンテンツを取得（再生成時はスキップ）
   let officialPageContext: string | undefined;
+  let pageContents: { steamContent?: string; officialContent?: string; failures: number } = { failures: 0 };
   if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
-    const pageContents = await fetchOfficialPageContents({
+    pageContents = await fetchOfficialPageContents({
       steamUrl: game.sourceUrls?.steam,
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
@@ -427,6 +570,13 @@ async function generateNewReleaseArticle(
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
     if (parts.length > 0) officialPageContext = parts.join('\n\n');
   }
+
+  // Issue #361 / docs/llm-judge-redesign.md §6.3:
+  // judgeGrounding を組む（メタデータは Tavily の可否に関係なく常に詰める）
+  const primarySources = buildPrimarySources(pageContents, game.sourceUrls?.steam, game.sourceUrls?.official);
+  const judgeGrounding: JudgeGrounding = {
+    games: [buildJudgeGroundingGame(game, primarySources)],
+  };
 
   const userMessage = buildUserMessage(
     'newRelease',
@@ -488,6 +638,7 @@ async function generateNewReleaseArticle(
       screenshots: game.screenshots,
       isEarlyAccess: game.isEarlyAccess,
     },
+    judgeGrounding,
   };
 }
 
@@ -534,8 +685,9 @@ async function generateIndieArticle(
 
   // Steam/公式ページのコンテンツを取得
   let officialPageContext: string | undefined;
+  let pageContents: { steamContent?: string; officialContent?: string; failures: number } = { failures: 0 };
   if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
-    const pageContents = await fetchOfficialPageContents({
+    pageContents = await fetchOfficialPageContents({
       steamUrl: game.sourceUrls?.steam,
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
@@ -546,6 +698,13 @@ async function generateIndieArticle(
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
     if (parts.length > 0) officialPageContext = parts.join('\n\n');
   }
+
+  // Issue #361 / docs/llm-judge-redesign.md §6.3:
+  // judgeGrounding を組む（メタデータは Tavily の可否に関係なく常に詰める）
+  const primarySources = buildPrimarySources(pageContents, game.sourceUrls?.steam, game.sourceUrls?.official);
+  const judgeGrounding: JudgeGrounding = {
+    games: [buildJudgeGroundingGame(game, primarySources)],
+  };
 
   const userMessage = buildUserMessage(
     'indie',
@@ -608,6 +767,7 @@ async function generateIndieArticle(
       aiInferredFields: game.aiInferredFields,
       isEarlyAccess: game.isEarlyAccess,
     },
+    judgeGrounding,
   };
 }
 
@@ -737,6 +897,11 @@ interface FeatureArticleContext {
   publishDate: Date;
   /** テーマ起点の記念日（Issue #310）。再生成でも同じテーマを使うためコンテキストに載せる */
   featureEvent: FeatureEventInfo;
+  /**
+   * judge 用の grounding（Issue #361 / docs/llm-judge-redesign.md §4.4）。
+   * 再生成時にも引き継ぐため ctx に載せる。
+   */
+  judgeGrounding?: JudgeGrounding;
 }
 
 /**
@@ -775,6 +940,7 @@ async function buildFeatureArticleFromContext(
     recommendedGames: ctx.recommendedGames.length > 0 ? ctx.recommendedGames : undefined,
     webSearchSources: ctx.webSearchSources.length > 0 ? ctx.webSearchSources : undefined,
     featureEvent: ctx.featureEvent,
+    judgeGrounding: ctx.judgeGrounding,
   };
 }
 
@@ -1061,7 +1227,15 @@ export async function generateFeatureArticle(
   const recommendedGames: RecommendedGame[] = [];
   const webSearchSources: WebSearchSource[] = [];
   const featureGames: FeatureSelectedGame[] = [];
+  // Issue #361 / docs/llm-judge-redesign.md §4.2:
+  // judgeGrounding 用のゲーム配列（ゲーム単位にラベル付け）
+  const judgeGroundingGames: JudgeGroundingGame[] = [];
 
+  // Issue #361 / docs/llm-judge-redesign.md §5.2: ゲーム本数の上限について。
+  // `selectFeatureGames` は slice しないため、プロンプトの「3〜5本」を超えて選ばれる可能性がある。
+  // 判断：上限を設けない。テーマによっては6本以上が選ばれることを許容する設計と判断。
+  // 6本以上になった場合は docs/llm-judge-redesign.md §5.2 / §8.2 の見積り
+  // （最大20本文・最大約180KB・+約35秒）を超えるが、許容範囲と判断。
   for (const game of selectedGameData) {
     // 公式日本語URL（選定確定後にゲーム単位で取得）
     // verifyProposedGames() で検証済みの URL が既にある場合はそれを初期値とし、
@@ -1114,6 +1288,28 @@ export async function generateFeatureArticle(
       console.warn(`    Failed to fetch official URL for "${game.title}":`, error);
     }
 
+    // Issue #361 / docs/llm-judge-redesign.md §5.2:
+    // Steam/公式ページのコンテンツを取得（執筆用と judge 用の両方に載せる）
+    let officialPageContext: string | undefined;
+    let pageContents: { steamContent?: string; officialContent?: string; failures: number } = { failures: 0 };
+    if (isTavilyAvailable()) {
+      pageContents = await fetchOfficialPageContents({
+        steamUrl: game.sourceUrls?.steam,
+        officialUrl: game.sourceUrls?.official,
+        officialUrlSource: game.sourceUrls?.officialUrlSource,
+      });
+      if (stats) stats.pageContentFailures += pageContents.failures;
+      const parts: string[] = [];
+      if (pageContents.steamContent) parts.push(`[Steamストアページ]\n${pageContents.steamContent}`);
+      if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
+      if (parts.length > 0) officialPageContext = parts.join('\n\n');
+    }
+
+    // Issue #361 / docs/llm-judge-redesign.md §4.2:
+    // このゲームの judgeGroundingGame を組む（一次ソースはゲーム単位で持たせる）
+    const primarySources = buildPrimarySources(pageContents, game.sourceUrls?.steam, game.sourceUrls?.official);
+    judgeGroundingGames.push(buildJudgeGroundingGame(game, primarySources));
+
     // Tavily 検索（本文グラウンディング用）
     // prefilter 通過時に検索済みの場合はキャッシュを流用し再検索しない
     let webSearchContext: string | undefined;
@@ -1157,6 +1353,7 @@ export async function generateFeatureArticle(
       summary: game.summary,
       isEarlyAccess: game.isEarlyAccess,
       webSearchContext,
+      officialPageContext,
     });
   }
 
@@ -1171,6 +1368,12 @@ export async function generateFeatureArticle(
     // 画像生成に失敗しても記事は生成する
   }
 
+  // Issue #361 / docs/llm-judge-redesign.md §4.2:
+  // feature の judgeGrounding を組む（ゲーム単位の配列）
+  const judgeGrounding: JudgeGrounding = {
+    games: judgeGroundingGames,
+  };
+
   // --- フェーズ4: 本文生成 ---
   const context: FeatureArticleContext = {
     theme,
@@ -1180,6 +1383,7 @@ export async function generateFeatureArticle(
     featureImagePath,
     publishDate,
     featureEvent,
+    judgeGrounding,
   };
   const article = await buildFeatureArticleFromContext(context);
 
@@ -1237,8 +1441,9 @@ async function generateClassicArticle(
 
   // Steam/公式ページのコンテンツを取得
   let officialPageContext: string | undefined;
+  let pageContents: { steamContent?: string; officialContent?: string; failures: number } = { failures: 0 };
   if (!regenOpts?.cachedSearch && isTavilyAvailable()) {
-    const pageContents = await fetchOfficialPageContents({
+    pageContents = await fetchOfficialPageContents({
       steamUrl: game.sourceUrls?.steam,
       officialUrl: game.sourceUrls?.official,
       officialUrlSource: game.sourceUrls?.officialUrlSource,
@@ -1249,6 +1454,13 @@ async function generateClassicArticle(
     if (pageContents.officialContent) parts.push(`[公式サイト]\n${pageContents.officialContent}`);
     if (parts.length > 0) officialPageContext = parts.join('\n\n');
   }
+
+  // Issue #361 / docs/llm-judge-redesign.md §6.3:
+  // judgeGrounding を組む（メタデータは Tavily の可否に関係なく常に詰める）
+  const primarySources = buildPrimarySources(pageContents, game.sourceUrls?.steam, game.sourceUrls?.official);
+  const judgeGrounding: JudgeGrounding = {
+    games: [buildJudgeGroundingGame(game, primarySources)],
+  };
 
   const userMessage = buildUserMessage(
     'classic',
@@ -1299,6 +1511,7 @@ async function generateClassicArticle(
       screenshots: game.screenshots,
       isEarlyAccess: game.isEarlyAccess,
     },
+    judgeGrounding,
   };
 }
 

@@ -126,12 +126,15 @@ export interface ValidationReport {
     claimsByVerdict: { supported: number; contradicted: number; unverifiable: number };
     judgedArticles: number;
     skippedArticles: number;
+    /** 構造化メタデータの逐語転記のみと判定され、スコープ外として除外した claim 件数（Issue #361） */
+    filteredByScope?: number;
     /** judge をスキップした記事と理由（Issue #363。旧レポートでは undefined） */
     skipped?: { articleTitle: string; reason: string }[];
-    /** 記事ごとに judge へ渡した出典（Issue #363。旧レポートでは undefined） */
+    /** 記事ごとに judge へ渡した出典（Issue #363 → #361。旧レポートでは undefined） */
     judgedSources?: {
       articleTitle: string;
-      sources: { index: number; title: string; url: string }[];
+      /** `kind` は Issue #361 で追加。旧レポートの出典には無いため optional */
+      sources: { kind?: 'primary' | 'secondary'; index: number; title: string; url: string }[];
     }[];
     warnings: ValidationWarning[];
   };
