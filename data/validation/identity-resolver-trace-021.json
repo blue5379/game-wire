@@ -1,0 +1,394 @@
+{
+  "Wardogs": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "skipped",
+          "ok": false,
+          "reason": "not a Nintendo platform game"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"WARDOGS を購入\""
+        },
+        {
+          "method": "igdb-website",
+          "ok": true
+        }
+      ]
+    }
+  },
+  "トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": false,
+          "reason": "appId=4027450: name mismatch（steam=\"Dragon Quest Heroes: Torneko's Mystery Dungeon -Classic HD-\" Sep 9, 2026 vs 期待=\"トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター\" / \"トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター\" / \"dragon quest heroes tornekos mystery dungeon classic hd\" 2026-09-09）"
+        },
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no Steam URL in IGDB websites"
+        },
+        {
+          "method": "storesearch",
+          "ok": false,
+          "reason": "storesearch 不一致: \"トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター\": 検索結果 0 件 / \"トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター\": 検索結果 0 件 / \"dragon quest heroes tornekos mystery dungeon classic hd\": 2 件ヒットしたがタイトル一致なし（先頭: \"Dragon Quest Heroes: Torneko's Mystery Dungeon -Classic HD-\"）"
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"サバイバルホラーの悪夢再び『クロックタワー・リワインド』は本日発売。Nintendo Switchでも連打せずにはいられない。 | トピックス\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"発売スケジュール｜任天堂\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Nintendo Switch Online + 追加パック｜Nintendo Switch Online｜任天堂\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"カテゴリー | トピックス\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"特集一覧 | 任天堂\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "en: skipped (Japanese page candidates exist)"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "dead url: https://www.playstation.com/ja-jp/editorial/best-single-player-story-driven-adventures-on-ps4-and-ps5"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "dead url: https://www.playstation.com/ja-jp/final-fantasy"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Palworld / パルワールド\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"キュイジニア ポムとまんぷくダンジョン\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"ソフィーのアトリエ２ ～不思議な夢の錬金術士～\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "en: skipped (Japanese page candidates exist)"
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no IGDB websites provided"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"新着ゲーム\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "en: skipped (Japanese page candidates exist)"
+        }
+      ]
+    }
+  },
+  "Valheim": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": true
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"任天堂ホームページ\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"野原一家、秋田へ。Nintendo Switch『クレヨンしんちゃん「炭の町のシロ」』がこの冬発売。 | トピックス\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"『Celeste』が期間限定で遊び放題！ Nintendo Switch Online加入者限定イベント「いっせいトライアル」開催 | トピックス\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"ミッキー＆フレンズと、不思議な島を危機から救う冒険へ。『ディズニー・イリュージョンアイランド（原題）』がNintendo Switchで7月28日に発売決定。 | トピックス\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"検索結果 | トピックス\""
+        },
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "title mismatch: page=\"Valheim for Nintendo Switch 2 - Nintendo Official Site\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "en: skipped (Japanese page candidates exist)"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Valheim を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"レインボーシックス シージ を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"今週のセレクション\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"7 Days to Die (Game Preview) を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Core Keeper を購入\""
+        },
+        {
+          "method": "igdb-website",
+          "ok": true
+        }
+      ]
+    }
+  },
+  "Backrooms: Escape Together": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "known-appid",
+          "ok": false,
+          "reason": "appId=2141730: name mismatch（steam=\"Backrooms: Escape Together\" Oct 18, 2022 vs 期待=\"Backrooms: Escape Together\" / \"backrooms escape together\" 2026-06-18）"
+        },
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "appId=2141730: name mismatch（steam=\"Backrooms: Escape Together\" Oct 18, 2022 vs 期待=\"Backrooms: Escape Together\" / \"backrooms escape together\" 2026-06-18）"
+        },
+        {
+          "method": "storesearch",
+          "ok": false,
+          "reason": "storesearch は appId=2141730（\"Backrooms: Escape Together\"）にヒットしたが検証で不採用: name mismatch（steam=\"Backrooms: Escape Together\" Oct 18, 2022 vs 期待=\"Backrooms: Escape Together\" / \"backrooms escape together\" 2026-06-18）"
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "skipped",
+          "ok": false,
+          "reason": "not a Nintendo platform game"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": true
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Backrooms: Escape Together を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Escape the Backrooms を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"The Blackout Club を購入\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"その他のおすすめ\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"Escape the Backrooms Bodycam を購入\""
+        },
+        {
+          "method": "igdb-website",
+          "ok": true
+        }
+      ]
+    }
+  },
+  "The Last of Us": {
+    "steam": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no Steam URL in IGDB websites"
+        },
+        {
+          "method": "storesearch",
+          "ok": false,
+          "reason": "storesearch は appId=1888930（\"The Last of Us™ Part I\"）にヒットしたが検証で不採用: name mismatch（steam=\"The Last of Us™ Part I\" Mar 28, 2023 vs 期待=\"The Last of Us\" / \"the last of us\" 2013-06-14）"
+        }
+      ]
+    },
+    "nintendo": {
+      "attempts": [
+        {
+          "method": "skipped",
+          "ok": false,
+          "reason": "not a Nintendo platform game"
+        }
+      ]
+    },
+    "playstation": {
+      "attempts": [
+        {
+          "method": "igdb-website",
+          "ok": false,
+          "reason": "no PlayStation URL in IGDB websites"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "dead url: https://www.playstation.com/ja-jp/the-last-of-us"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "title mismatch: page=\"The Last of Us™ Part II Remastered\""
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "dead url: https://www.playstation.com/ja-jp/editorial/20-must-play-blockbusters-on-playstation-plus-extra"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "dead url: https://www.playstation.com/ja-jp/games/the-last-of-us-part-ii/accessibility"
+        },
+        {
+          "method": "web-search",
+          "ok": false,
+          "reason": "en: skipped (Japanese page candidates exist)"
+        }
+      ]
+    },
+    "xbox": {
+      "attempts": [
+        {
+          "method": "skipped",
+          "ok": false,
+          "reason": "not an Xbox platform game"
+        }
+      ]
+    }
+  }
+}

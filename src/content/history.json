@@ -924,6 +924,62 @@
       "category": "feature",
       "issueNumber": 20,
       "publishDate": "2026-09-05"
+    },
+    {
+      "normalizedTitle": "wardogs",
+      "title": "Wardogs",
+      "category": "newRelease",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター",
+      "title": "トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター",
+      "category": "newRelease",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "valheim",
+      "title": "Valheim",
+      "category": "indie",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "backrooms escape together",
+      "title": "Backrooms: Escape Together",
+      "category": "indie",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "the last of us",
+      "title": "The Last of Us",
+      "category": "classic",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "エースコンバット 7 スカイズ・アンノウン",
+      "title": "エースコンバット 7：スカイズ・アンノウン",
+      "category": "feature",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "エースコンバット04 シャッタードスカイ",
+      "title": "エースコンバット04 シャッタードスカイ",
+      "category": "feature",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
+    },
+    {
+      "normalizedTitle": "クリムゾンスカイ high road to revenge",
+      "title": "クリムゾンスカイ：High Road To Revenge",
+      "category": "feature",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12"
     }
   ],
   "featureEvents": [
@@ -950,6 +1006,12 @@
       "issueNumber": 20,
       "publishDate": "2026-09-05",
       "source": "forward"
+    },
+    {
+      "eventName": "空の日",
+      "issueNumber": 21,
+      "publishDate": "2026-09-12",
+      "source": "extended-forward"
     }
   ]
 }

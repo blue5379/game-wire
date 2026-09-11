@@ -1,0 +1,515 @@
+{
+  "issueNumber": 21,
+  "generatedAt": "2026-09-11T23:06:57.702Z",
+  "totalArticles": 6,
+  "totalWarnings": 9,
+  "warningsBySeverity": {
+    "high": 3,
+    "medium": 2,
+    "low": 4
+  },
+  "warnings": [
+    {
+      "articleTitle": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター』ついに海外デビュー、伝説の武器商人が挑む千の冒険",
+      "category": "newRelease",
+      "severity": "low",
+      "type": "numeric-anniversary",
+      "message": "本文に具体的な数値「40周年」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "40周年",
+      "context": "…のチュンソフトが開発し、『風来のシレン』シリーズでも知られる『不思議のダンジョン』シリーズの記念すべき第1作となりました。30年以上の時を経て、ドラゴンクエスト40周年を記念してリマスター版として復活を果たしました。 ## 👥 こんな人におすすめ - ローグライクゲームの原点を体験したい方 - 何度も挑戦する高難度ゲーム…",
+      "sourcedFrom": {
+        "url": "https://www.youtube.com/watch?v=5_D4VvpdTgk",
+        "title": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター』 ...",
+        "snippet": "※映像はすべて開発中のものです。\n\n© ARMOR PROJECT/BIRD STUDIO/SPIKE CHUNSOFT/SQUARE ENIX\n© SUGIYAMA KOBO\n\nこの動画で利用している株式会社スクウェア・エニックスを代表とする共同著作者が権利を所有する著作物及びスギヤマ工房有限会社が権利を所有する楽曲の転載・配布は禁止いたします\n\n＃トルネコの大冒険\n\n### Transcript\n[0:02] これは世界一の武器商人を目指す男。 トル猫の物語。\n[0:10] トル猫の大冒険不思議のダンジョン。 ちょっと素敵なリマスター。\n[0:17] 前回遊べるRPGが30年の時を超えて ちょっと素敵なリマスターになって帰って きた。\n[0:25] 武器屋としてコツコツと修行に励んでいた トル猫はある日すごいお宝が眠るという 不思議のダンジョンの噂を耳にします。\n[0:37] 夢を追い求める彼は家族と共に長い年月を かけてその場所を探し当てました。\n[0:45] まだ見ぬお宝を求めてトル猫は不思議の ダンジョンへ挑みます。\n[0:53] 待ち受けるのは挑むに姿を変える不思議の ダンジョン。手に入るアイテムも出会う\n[1:01] モンスターも全てが予測不能。手に入れた アイテムをどう使うのか、進むか引くか。\n[1:09] その1つの行動が冒険の運命を大きく採用 します。\n[1:15] 下の回へ進むほど危険は増していき、不に 強敵と遭遇することも。\n[1:23] 途中で力つけてしまうと手に入れた アイテムやお金を全て失いレベル1から 最戦に。\n[1:32] 何度倒れても何度失ってもまた潜る。\n[1:37] 果たしてト猫はお宝を手に入れることが できるのでしょうか?\n[1:50] ト猫の大冒険不思議のダンジョン。\n[1:53] ちょっと素敵なリマスター 好評発売中。 [...] # 『トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター』ローンチトレーラー｜SQUARE ENIX\n## Channel: SQUARE ENIX (verified)\n1.16M subscribers\nN/A likes\n\n### Description\n152,822 views\nPosted: 2026-09-09\n『トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター』好評発売中！\n2026年9月10日（木）より、スクウェア・エニックスe-STOREおよび各プラットフォームストアにて順次発売を開始いたしました。\n\nドラゴンクエスト40周年を記念して、\n『トルネコの大冒険 不思議のダンジョン』が30年の時を越えて帰ってきた！\n\n\"1000回遊べる\"おもしろさはそのままに、\nさらに遊びやすくなった「ちょっとステキなリマスター」として登場！\n\nこれは、世界一の武器商人を目指す男・トルネコの物語。\nトルネコが、長い年月をかけて、ついに探し当てた「不思議のダンジョン」。\n入るたびに姿を変える迷宮と、そこに待ち受ける数々の困難――\n果たして、トルネコはお宝を見つけ出し、無事に持ち帰ることができるのでしょうか？\n\n■対応機種\nNintendo Switch™ 2 /Nintendo Switch™/ Play Station 5 /Xbox Series X|S / Steam®/iOS/Android/Google Play Games on PC\n\n■『トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター』公式サイト\n\n■ドラゴンクエ"
+      }
+    },
+    {
+      "articleTitle": "最大6人Co-op対応、Unreal Engine 5で描く不気味な異空間『Backrooms: Escape Together』早期アクセス配信中",
+      "category": "indie",
+      "severity": "low",
+      "type": "numeric-kind-count",
+      "message": "本文に具体的な数値「11種類」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "11種類",
+      "context": "…まで徹底的にリアルに描写。カメラモードでは画面酔いするほどの臨場感で、新たな視点からのホラー演出を体験できる - **毎回異なる冒険**: 手続き型生成により、11種類のレベルが毎回異なる構造で生成される。同じプレイは二度となく、何度挑戦しても新鮮な緊張感が味わえる - **近接ボイスチャットの臨場感**: 空間オーディオが壁…"
+    },
+    {
+      "articleTitle": "空の日特集──大空を駆ける爽快フライトシミュレーションゲーム3選",
+      "category": "feature",
+      "severity": "medium",
+      "type": "numeric-play-hours",
+      "message": "本文に具体的な数値「12時間以上」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "12時間以上",
+      "context": "…加わった、ユニークな世界観が魅力です。 **おすすめポイント** - 架空の1930年代世界という独特の世界観と、空賊という設定による冒険活劇的な雰囲気 - 12時間以上のシングルプレイヤーモードと充実したオンラインモード - 各エリアが独自の特徴を持つ、丁寧に作り込まれた世界 ## 💡 遊び方のポイント フライトシミュレ…"
+    },
+    {
+      "articleTitle": "空の日特集──大空を駆ける爽快フライトシミュレーションゲーム3選",
+      "category": "feature",
+      "severity": "medium",
+      "type": "numeric-play-hours",
+      "message": "本文に具体的な数値「12時間以上」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "12時間以上",
+      "context": "…加わった、ユニークな世界観が魅力です。 **おすすめポイント** - 架空の1930年代世界という独特の世界観と、空賊という設定による冒険活劇的な雰囲気 - 12時間以上のシングルプレイヤーモードと充実したオンラインモード - 各エリアが独自の特徴を持つ、丁寧に作り込まれた世界 ## 💡 遊び方のポイント フライトシミュレ…"
+    },
+    {
+      "articleTitle": "感染者と人間、二つの脅威が交錯する終末世界──『The Last of Us』が描く生存と絆の物語",
+      "category": "classic",
+      "severity": "high",
+      "type": "platform-mismatch",
+      "message": "本文で「PlayStation 5」が言及されていますが、提供データには含まれていません。提供データのプラットフォーム: [PlayStation 3]",
+      "evidence": "PlayStation 5",
+      "context": "…を実現しています ## 💻 プレイ環境 オリジナル版はPlayStation 3で発売されました。その後、PlayStation 4向けにリマスター版が、PlayStation 5向けにフルリメイク版「The Last of Us Part I」が発売されており、現行機でも最新のグラフィックで体験できます。 ## 🎯 Creator'…"
+    },
+    {
+      "articleTitle": "感染者と人間、二つの脅威が交錯する終末世界──『The Last of Us』が描く生存と絆の物語",
+      "category": "classic",
+      "severity": "high",
+      "type": "platform-mismatch",
+      "message": "本文で「PlayStation 4」が言及されていますが、提供データには含まれていません。提供データのプラットフォーム: [PlayStation 3]",
+      "evidence": "PlayStation 4",
+      "context": "…ンアドベンチャーとして、緊張感のあるゲームプレイを実現しています ## 💻 プレイ環境 オリジナル版はPlayStation 3で発売されました。その後、PlayStation 4向けにリマスター版が、PlayStation 5向けにフルリメイク版「The Last of Us Part I」が発売されており、現行機でも最新のグラフィック…"
+    },
+    {
+      "articleTitle": "感染者と人間、二つの脅威が交錯する終末世界──『The Last of Us』が描く生存と絆の物語",
+      "category": "classic",
+      "severity": "high",
+      "type": "numeric-large-count",
+      "message": "本文に具体的な数値「340万本」が記載されています。提供データに無い数値の場合は捏造の可能性があります。",
+      "evidence": "340万本",
+      "context": "…は、単なるサバイバルホラーの枠を超え、感情を揺さぶるストーリーテリングによって名作の地位を確立しました。 ## 📜 ゲームの歴史 本作は発売から約3週間で340万本を突破し、PlayStation 3の新規タイトルとして最速のペースで売れた作品となりました。200以上のメディアでゲーム・オブ・ザ・イヤーを獲得し、ゲーム史上…",
+      "sourcedFrom": {
+        "url": "https://ja.wikipedia.org/wiki/The_Last_of_Us",
+        "title": "The Last of Us",
+        "snippet": "### 受賞\n\n[編集]\n\n2014年1月13日時点では、200以上ものメディアでゲーム・オブ・ザ・イヤー（GOTY）を獲得している。なお『グランド・セフト・オートV』は126のメディアでGOTYを受賞しており、同年に発売されたタイトルで唯一『The Last of Us』の獲得数に迫ったタイトルである。24日には受賞数が231を到達し、ついに『The Elder Scrolls V: Skyrim』の記録(226)を破り、ゲーム史上最多のGOTYを獲得したタイトルとなった。なお、受賞数はこれ以降も伸び続けている。\n\n2月には、全米脚本家組合賞ビデオゲーム部門を受賞し、AIASのDICEアワードでは、12部門のノミネート中、GOTYを含む10部門で受賞となる快挙を成し遂げた。また、3月にBAFTAが開催した第10回英国アカデミー賞ゲーム部門の授賞式でもGOTYを含む5部門を受賞した。\n\n### 売上\n\n[編集]\n\n全世界累計販売本数は2013年6月14日の世界同時発売より約3週間経過した2013年7月3日時点で、340万本を突破し、PlayStation 3(PS3)新規タイトルとして最速のペースで売れたタイトルとなった。日本では6月17日～23日の週間販売ランキングで11.7万本の売り上げを記録し1位となった。\n\n世界同時発売からちょうど9ヶ月後の3月14日には、ディスク版とダウンロード版を合わせた累計販売本数が600万本を突破した。\n\nPS4版は発売から半年で285万本に達している。\n\n発売から5年でリマスター含め累計1700万本以上の売り上げに到達した。\n\n## テレビドラマ\n\n[編集]\n\n→「The Last of Us (テレビドラマ) \"The Last of Us (テレビドラマ)\")」を参照 [...] | |  表  話\")  編  歴  メディアクリエイト週間ソフトセルスルーランキング第1位（2013年6月23日付） |  | 1月 |  6日・13日・27日 とびだせ どうぶつの森  20日 ディーエムシー デビル メイ クライ（PS3） | | 2月 |  3日 とびだせ どうぶつの森  10日・17日 ドラゴンクエストVII エデンの戦士たち（3DS）  24日 メタルギア ライジング リベンジェンス | | 3月 |  3日 真・三國無双7  10日 初音ミク -Project DIVA- F  17日 ソードアート・オンライン -インフィニティ・モーメント-  24日・31日 ルイージマンション2 | | 4月 |  7日・14日 ルイージマンション2  21日・28日 トモダチコレクション 新生活 | | 5月 |  5日・12日 トモダチコレクション 新生活  19日 サモンナイト5  26日 真・女神転生IV | | 6月 |  2日・9日 トモダチコレクション 新生活  16日 ドンキーコング リターンズ 3D  23日 The Last of Us  30日 ガンダムブレイカー（PS3） | | 7月 |  7日 地球防衛軍4（PS3）  14日 ピクミン3  21日 マリオ&ルイージRPG4 ドリームアドベンチャー  28日 逆転裁判5 | | 8月 |  4日・11日・18日 ディズニー マジックキャッスル マイ・ハッピー・ライフ  25日 スーパーロボット大戦OGサーガ 魔装機神III PRIDE OF JUSTICE（PS3） | | 9月 |  1日 ジョジョの奇妙な冒険 オールスターバトル  8"
+      }
+    },
+    {
+      "articleTitle": "最大6人Co-op対応、Unreal Engine 5で描く不気味な異空間『Backrooms: Escape Together』早期アクセス配信中",
+      "category": "indie",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
+    },
+    {
+      "articleTitle": "感染者と人間、二つの脅威が交錯する終末世界──『The Last of Us』が描く生存と絆の物語",
+      "category": "classic",
+      "severity": "low",
+      "type": "game-source-unchecked",
+      "message": "Steam appId が取得できなかったため、記事の game メタと Steam 実体の同一性照合を実行しませんでした。appId は sourceUrls.steam または sourceUrls.stores[] の platform='steam' から抽出されます。"
+    }
+  ],
+  "webSearchStats": {
+    "searchFailures": 0,
+    "pageContentFailures": 0,
+    "adultScreeningFailures": 0,
+    "unrecognizedScreeningResponses": 0
+  },
+  "articleCountShortfalls": [],
+  "earlyAccessStatementIssues": [],
+  "missingOfficialUrls": [
+    {
+      "articleTitle": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター』ついに海外デビュー、伝説の武器商人が挑む千の冒険",
+      "category": "newRelease",
+      "gameTitle": "トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター"
+    }
+  ],
+  "steamApiHealthByStage": {
+    "build-issue": {
+      "total": 6,
+      "succeeded": 6,
+      "failed": 0,
+      "consecutiveFailures": 0,
+      "circuitOpen": false,
+      "statusCounts": {},
+      "rateLimitHits": 0
+    },
+    "fetch-data": {
+      "total": 278,
+      "succeeded": 278,
+      "failed": 0,
+      "consecutiveFailures": 0,
+      "circuitOpen": false,
+      "statusCounts": {},
+      "rateLimitHits": 0,
+      "stage": "fetch-data"
+    }
+  },
+  "steamApiHealth": {
+    "total": 284,
+    "succeeded": 284,
+    "failed": 0,
+    "consecutiveFailures": 0,
+    "circuitOpen": false,
+    "statusCounts": {},
+    "rateLimitHits": 0
+  },
+  "llmJudge": {
+    "claimsByVerdict": {
+      "supported": 70,
+      "contradicted": 0,
+      "unverifiable": 0
+    },
+    "judgedArticles": 6,
+    "skippedArticles": 0,
+    "filteredByScope": 0,
+    "skipped": [],
+    "judgedSources": [
+      {
+        "articleTitle": "最大100人参加の大規模戦場、3チームで拠点を奪い合うFPS『Wardogs』早期アクセス配信中",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "Wardogs (steam)",
+            "url": "https://store.steampowered.com/app/1867240/"
+          },
+          {
+            "kind": "primary",
+            "index": 2,
+            "title": "Wardogs (official)",
+            "url": "https://bulkhead.com/games/wardogs/"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "WARDOGS | Worth Your Time and Money (Overview)",
+            "url": "https://www.youtube.com/watch?v=tbvosugU5J8"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "\"「WARDOGS」10時間以上遊んだ感想 勝ち負け気 ...",
+            "url": "https://x.com/H4ch1_p_8/status/2091134112560271722"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "『WARDOGS』のβテストを遊んだ感想｜renkt",
+            "url": "https://note.com/renkt/n/n016b35ddfa33"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "Report: Wardogs developer Bulkhead is laying off workers",
+            "url": "https://www.gamedeveloper.com/business/report-wardogs-developer-bulkhead-is-making-layoffs"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "『WARDOGS』が2026年内にSteamにてリリース予定",
+            "url": "https://news.denfaminicogamer.jp/news/260217x"
+          },
+          {
+            "kind": "secondary",
+            "index": 8,
+            "title": "大規模タクティカルシューター「WARDOGS」，ゲームを形作る“3 ...",
+            "url": "https://www.4gamer.net/games/981/G098198/20260522058"
+          }
+        ]
+      },
+      {
+        "articleTitle": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター』ついに海外デビュー、伝説の武器商人が挑む千の冒険",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "トルネコの大冒険 不思議のダンジョン　ちょっとステキなリマスター (steam)",
+            "url": "https://store.steampowered.com/app/4027450"
+          },
+          {
+            "kind": "secondary",
+            "index": 2,
+            "title": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリ ...",
+            "url": "https://www.gamespark.jp/article/2026/09/10/172057.html"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリ ...",
+            "url": "https://news.yahoo.co.jp/articles/56fcbad39ecea4392b7b089f3b1e7a298a796fe5"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "ダンジョンRPGの名作トルネコの大冒険リマスターを遊ぼう！【トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター】",
+            "url": "https://www.youtube.com/watch?v=LvPKaQAlRBU"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "『トルネコの大冒険 不思議のダンジョン』リマスター版発表。いきなりサプライズ配信へ - AUTOMATON",
+            "url": "https://automaton-media.com/articles/newsjp/20260909-466181"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "『トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター』 ...",
+            "url": "https://www.youtube.com/watch?v=5_D4VvpdTgk"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "トルネコの大冒険 不思議のダンジョン ちょっとステキなリマスター",
+            "url": "https://store.steampowered.com/app/4027450?l=japanese"
+          }
+        ]
+      },
+      {
+        "articleTitle": "北欧神話の世界で生き延びろ──『Valheim』オーディンに認められるための過酷なサバイバル",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "Valheim (steam)",
+            "url": "https://store.steampowered.com/app/892970/"
+          },
+          {
+            "kind": "primary",
+            "index": 2,
+            "title": "Valheim (official)",
+            "url": "http://www.valheimgame.com"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "【レビュー】『Valheim』は何故「圧倒的に好評」なのか",
+            "url": "https://lifeformyself.com?p=2576"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "色んなレビューを見たけど、ヴァルヘイムがなんでそんなに良い ...",
+            "url": "https://www.reddit.com/r/valheim/comments/rodmi9/after_watching_many_reviews_i_still_dont_see_what?tl=ja"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "『Valheim』感想 - PC 単発 - ゲーマーのゴミ箱",
+            "url": "https://gdgdwrite.blog.fc2.com/blog-entry-1331.html"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "大ヒット作『Valheim』の開発チームは「わずか8名」。競合ゲームが増えまくる中でも、少数精鋭にこだわる狙いは何なのか - AUTOMATON",
+            "url": "https://automaton-media.com/articles/interviewsjp/valheim-20251002-360166"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "Valheim",
+            "url": "https://en.wikipedia.org/wiki/Valheim"
+          },
+          {
+            "kind": "secondary",
+            "index": 8,
+            "title": "Valheim dev says the game's success is 'quite incredible and very ...",
+            "url": "https://www.pcgamer.com/valheim-dev-says-the-games-success-is-quite-incredible-and-very-humbling"
+          },
+          {
+            "kind": "secondary",
+            "index": 9,
+            "title": "【レビュー】『Valheim』は何故「圧倒的に好評」なのか",
+            "url": "https://lifeformyself.com?p=2576"
+          },
+          {
+            "kind": "secondary",
+            "index": 10,
+            "title": "ヴァルヘイムは面白い？Steamでの評判・レビューを徹底解説 ...",
+            "url": "https://game-pen.com/valheim"
+          },
+          {
+            "kind": "secondary",
+            "index": 11,
+            "title": "Game*Sparkレビュー：『Valheim』裸一貫から始まる“世界を ...",
+            "url": "https://news.yahoo.co.jp/articles/1d8bc4f4f1e84fb84452120054bd4a246f6c8da2"
+          }
+        ]
+      },
+      {
+        "articleTitle": "最大6人Co-op対応、Unreal Engine 5で描く不気味な異空間『Backrooms: Escape Together』早期アクセス配信中",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "Backrooms: Escape Together (official)",
+            "url": "https://www.backroomsescapetogether.com/"
+          },
+          {
+            "kind": "secondary",
+            "index": 2,
+            "title": "Backrooms: Escape Togetherを徹底レビュー！点数付き評価と魅力を解説 | ニチタン",
+            "url": "https://nichitan.com?p=3196"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "【4人実況】「何もない部屋を歩くだけ」の不気味なゲーム『 Backrooms: Escape Together 』",
+            "url": "https://www.youtube.com/watch?v=Syz-qWr4slU"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "Backrooms: Escape Together",
+            "url": "https://store.steampowered.com/app/2141730/Backrooms_Escape_Together?l=japanese&snr=1_1050_curatorsreviewing__suggested-curator-recommended&curator_clanid=9488901"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "Backrooms: Escape Together Wiki | Fandom",
+            "url": "https://backrooms-escape-together.fandom.com/wiki/Backrooms:_Escape_Together"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "Backrooms: Escape Together",
+            "url": "https://store.steampowered.com/app/2141730/Backrooms_Escape_Together"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "Backrooms: Escape Together",
+            "url": "https://store.playstation.com/en-tr/concept/10015041"
+          },
+          {
+            "kind": "secondary",
+            "index": 8,
+            "title": "【レビュー】Backrooms: Escape Togetherの魅力を点数付き ...",
+            "url": "https://nichitan.com?p=3196"
+          },
+          {
+            "kind": "secondary",
+            "index": 9,
+            "title": "Backrooms: Escape Together",
+            "url": "https://steamcommunity.com/app/2141730/reviews"
+          },
+          {
+            "kind": "secondary",
+            "index": 10,
+            "title": "Backrooms: Escape Together",
+            "url": "https://store.steampowered.com/app/2141730/Backrooms_Escape_Together?l=japanese&curator_clanid=26348881"
+          }
+        ]
+      },
+      {
+        "articleTitle": "空の日特集──大空を駆ける爽快フライトシミュレーションゲーム3選",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "Ace Combat 7: Skies Unknown (steam)",
+            "url": "https://store.steampowered.com/app/502500"
+          },
+          {
+            "kind": "primary",
+            "index": 2,
+            "title": "Ace Combat 7: Skies Unknown (official)",
+            "url": "https://ace7.acecombat.jp/"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "Steam コミュニティ :: ACE COMBAT™7: SKIES UNKNOWN",
+            "url": "https://steamcommunity.com/app/502500/negativereviews?l=japanese&browsefilter=toprated"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "フライトシューティングの金字塔「エースコンバット7」をクリアして ...",
+            "url": "https://tama-maga.com/game/ps4/acecombat7_review"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "みんなの「最終的な評価」はエースコンバット7についてどう？",
+            "url": "https://www.reddit.com/r/acecombat/comments/aq49mo/what_is_everyones_final_verdict_on_ace_combat_7?tl=ja"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "Ace Combat 04: Shattered Skies Review",
+            "url": "https://www.gamespot.com/reviews/ace-combat-04-shattered-skies-review/1900-2819749"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "ミニゲームレビュー「エースコンバット04 ... - mirainoid",
+            "url": "https://mirainoid.exblog.jp/30267926"
+          },
+          {
+            "kind": "secondary",
+            "index": 8,
+            "title": "エースコンバット04 - (良い点、悪い点、そして醜い点)",
+            "url": "https://www.reddit.com/r/patientgamers/comments/12yzklr/ace_combat_04_the_good_the_bad_the_ugly?tl=ja"
+          },
+          {
+            "kind": "secondary",
+            "index": 9,
+            "title": "Crimson Skies: High Road to Revenge Review",
+            "url": "https://www.youtube.com/watch?v=fZ35WWx0O0c"
+          },
+          {
+            "kind": "secondary",
+            "index": 10,
+            "title": "Crimson Skies: High Road to Revenge Review",
+            "url": "https://www.ign.com/articles/2003/10/21/crimson-skies-high-road-to-revenge-review"
+          },
+          {
+            "kind": "secondary",
+            "index": 11,
+            "title": "Crimson Skies: High Road to Revenge Review",
+            "url": "https://www.gamespot.com/reviews/crimson-skies-high-road-to-revenge-review/1900-6077239"
+          }
+        ]
+      },
+      {
+        "articleTitle": "感染者と人間、二つの脅威が交錯する終末世界──『The Last of Us』が描く生存と絆の物語",
+        "sources": [
+          {
+            "kind": "primary",
+            "index": 1,
+            "title": "The Last of Us (official)",
+            "url": "https://www.playstation.com/ja-jp/the-last-of-us"
+          },
+          {
+            "kind": "secondary",
+            "index": 2,
+            "title": "【「The Last of Us Part1」感想（ネタバレ）】人間ドラマは最高。リメイクの意味はない。 | GAME&LIFE",
+            "url": "https://ringamelife.net/5422"
+          },
+          {
+            "kind": "secondary",
+            "index": 3,
+            "title": "【ゲーム感想】ラストオブアス PS4リマスター版【総プレイ約18時間】｜momo-pockey",
+            "url": "https://note.com/momo_pockey/n/n963323193789"
+          },
+          {
+            "kind": "secondary",
+            "index": 4,
+            "title": "The Last of usに感じるロマンと絶望｜Sora_ly - note",
+            "url": "https://note.com/sora_0214/n/n5880724a4dec"
+          },
+          {
+            "kind": "secondary",
+            "index": 5,
+            "title": "初代『ラスアス』フルリメイク作『The Last of Us Part I ...",
+            "url": "https://news.denfaminicogamer.jp/news/220610d"
+          },
+          {
+            "kind": "secondary",
+            "index": 6,
+            "title": "The Last of Us",
+            "url": "https://ja.wikipedia.org/wiki/The_Last_of_Us"
+          },
+          {
+            "kind": "secondary",
+            "index": 7,
+            "title": "The Last of Us - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/The_Last_of_Us"
+          }
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "mode": "production",
+  "status": "error"
+}

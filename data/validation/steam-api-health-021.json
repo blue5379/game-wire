@@ -1,0 +1,10 @@
+{
+  "total": 278,
+  "succeeded": 278,
+  "failed": 0,
+  "consecutiveFailures": 0,
+  "circuitOpen": false,
+  "statusCounts": {},
+  "rateLimitHits": 0,
+  "stage": "fetch-data"
+}

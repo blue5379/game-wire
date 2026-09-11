@@ -1,0 +1,27 @@
+{
+  "mode": "fail",
+  "violations": [
+    {
+      "ruleId": "R3",
+      "gameTitle": "The Last of Us",
+      "detail": "official URL が到達不能（HTTP 403）: https://www.playstation.com/ja-jp/the-last-of-us"
+    }
+  ],
+  "replacedGames": [],
+  "hasMutableViolations": false,
+  "unresolvedMutableViolations": false,
+  "replacementShortfall": [],
+  "uncertainIdentity": [
+    {
+      "gameTitle": "Backrooms: Escape Together",
+      "evidence": {
+        "title": "agree",
+        "year": "disagree",
+        "company": "agree"
+      },
+      "detail": "game=[title=\"Backrooms: Escape Together\" year=2026 dev=\"Triiodide Studios\"] entity=[nameEn=\"Backrooms: Escape Together\" nameJa=\"Backrooms: Escape Together\" year=2022 devs=\"Triiodide Studios\"] evidence=(title=agree year=disagree company=agree) → uncertain"
+    }
+  ],
+  "replacementSummary": [],
+  "identityCheckSkipped": []
+}
