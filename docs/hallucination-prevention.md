@@ -86,6 +86,8 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 **※2** `early-access-*` は `ValidationWarning` ではなく `EarlyAccessStatementIssue` として `ValidationReport.earlyAccessStatementIssues` に記録される（`warnings` とは分離）。重大度は持たないが、`computeReportStatus` でステータス判定に算入される。
 
+**この表に載せない警告:** LLM-as-a-judge 由来の `llm-judge-contradicted` / `llm-judge-unverifiable` は、`ValidationReport.llmJudge.warnings` に入り `warnings` とは分離されているため、この表ではなく 3-3 に判定条件と重大度を記載する。
+
 **廃止済み:** `title-vs-igdb-slug`（IGDB slug との照合）は廃止された。理由: slug は IGDB 内部の URL 識別子であり、name と経年で食い違うことがあるため、記事品質の指標にならない（`validateBodyTitleConsistency` の doc comment 参照）。
 
 特集記事（`category: feature`）は、選定確定したゲームの `recommendedGames` metadata（`platforms` / `developer` / `publisher`）と、生成時に取得した `webSearchSources` をもとに以下を実施：
