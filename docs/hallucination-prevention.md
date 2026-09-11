@@ -62,7 +62,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は10個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
+複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は11個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
@@ -75,6 +75,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 | `numeric-*` | ソース不明の具体数値（件数・人数・プレイ時間・台数等、詳細は下記） | high / medium / low |
 | `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
 | `upcoming-evaluation-claim` | 未発売タイトルの記事が評価を断定していないか（「高く評価されている」等）。仕様: [article-category-spec.md §2.7](article-category-spec.md) | high |
+| `metadata-transcription-mismatch` | 記事本文の発売日表記（年月日が揃ったもののみ）がメタデータと一致するか。特集記事は対象外（`RecommendedGame` に `releaseDate` フィールドが無い）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #376 | medium |
 | `game-source-mismatch` | 記事の game メタと Steam 実体が別作品と判定された（※1） | high |
 | `game-source-uncertain` | 記事の game メタと Steam 実体の同一性を断定できない（※1） | medium |
 | `game-source-check-failed` | Steam 実体の取得に失敗し、同一性照合ができなかった（※1） | medium |
@@ -230,6 +231,14 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 |----------|------|---------|
 | `PC (Steam)` vs `PC (Microsoft Windows)` | 同一プラットフォームの表記ゆれ | 未対処（文脈で判断） |
 | `S&box` vs slug `s-and-box` | `&` → `and` の変換差異 | 未対処（文脈で判断） |
+
+#### `metadata-transcription-mismatch` の未検出パターン（Issue #376）
+
+実測では観測されていないが、以下のパターンで誤検知の可能性がある:
+
+- **前作・原作の発売日が発売文脈で年月日まで書かれた場合**: 例「前作は2015年10月26日に発売された」のような記述で、メタデータは本作の発売日であるのに対し、本文は別作品の日付を述べている場合、誤検知となる。ただし実測（公開20号・記事116本・発売文脈の完全日付35件）では前作系の語を含む文は0件であり、発生頻度が非常に低いと判断されるため、除外ロジックは導入していない。今後誤検知が観測された場合は、文脈語（「前作」「原作」「初代」「旧版」等）を除外パターンに追加する方針。
+
+この判断は `numeric-*` の英語表記の数値（実測0件のため対応しない）と同じ方針に従っている（2-2 の「未検出のパターン」参照）。
 
 ### 2-7. 手動検証ツール
 

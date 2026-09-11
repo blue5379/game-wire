@@ -16,6 +16,10 @@
 import type { GeneratedArticle, JudgeGroundingGame, JudgePrimarySource } from './generate-articles.js';
 import type { ValidationWarning, Severity } from './validate-article.js';
 import {
+  normalizeDateJpToIso,
+  normalizeDateIsoToJp,
+} from './validate-article.js';
+import {
   invokeClaudeModel,
   getReleaseStatus,
   isUpcomingForBody,
@@ -480,29 +484,6 @@ const PLATFORM_JP_ALIASES: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /Mac/gi, canonical: 'Mac' },
 ];
 
-/**
- * 日付の日本語表記を YYYY-MM-DD 形式に正規化する。
- * 例: `2026年9月2日` → `2026-09-02`
- */
-function normalizeDateJpToIso(text: string): string {
-  return text.replace(/(\d{4})年(\d{1,2})月(\d{1,2})日/g, (_, y, m, d) => {
-    const mm = m.padStart(2, '0');
-    const dd = d.padStart(2, '0');
-    return `${y}-${mm}-${dd}`;
-  });
-}
-
-/**
- * 日付の ISO 形式を日本語表記に正規化する。
- * 例: `2026-09-02` → `2026年9月2日`
- */
-function normalizeDateIsoToJp(text: string): string {
-  return text.replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m, d) => {
-    const mm = parseInt(m, 10);
-    const dd = parseInt(d, 10);
-    return `${y}年${mm}月${dd}日`;
-  });
-}
 
 /**
  * PLATFORM_JP_ALIASES を1本のパターンに束ねたもの。

@@ -17,6 +17,8 @@ import {
   validateGameSourceConsistencyForArticles,
   validateReleasedTitleExpression,
   validateUpcomingEvaluationClaims,
+  validateMetadataTranscription,
+  validateArticle,
   buildFixInstruction,
   extractNumericUnitKey,
   resolveReportMode,
@@ -2753,5 +2755,167 @@ describe('detectEarlyAccessStatementIssues（Issue #26。仕様 §2.9）', () =>
     expect(report.earlyAccessStatementIssues).toEqual([]);
     // EA の判定項が 0 件なら status を warning に押し上げない
     expect(computeReportStatus(report)).toBe('ok');
+  });
+});
+
+describe('validateMetadataTranscription', () => {
+  /**
+   * テスト用の記事を作成するヘルパー
+   */
+  function makeMetaArticle(opts: {
+    releaseDate: string;
+    content?: string;
+    summary?: string;
+    category?: 'newRelease' | 'indie' | 'classic' | 'feature';
+  }): GeneratedArticle {
+    return makeArticle({
+      title: 'Test Game Title',
+      category: opts.category ?? 'newRelease',
+      content: opts.content ?? '',
+      summary: opts.summary ?? '',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: [],
+        releaseDate: opts.releaseDate,
+      },
+    });
+  }
+
+  it('メタ 2026-09-02 と本文「2026年9月2日に発売」→ 警告0件（一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月2日に発売されました。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('メタ 2026-09-02 と本文「2026年9月20日発売」→ 警告1件（不一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月20日発売です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('metadata-transcription-mismatch');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].evidence).toBe('2026年9月20日');
+    expect(warnings[0].message).toContain('2026-09-02');
+    expect(warnings[0].message).toContain('2026年9月2日');
+  });
+
+  it('ゼロ埋めの差（メタ 2026-09-02 と本文「2026年9月2日」）で誤検知しない', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '発売日は2026年9月2日です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売文脈でない日付（歴史的日付）→ 警告0件（アンカーが無い）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: 'スタジオは2018年10月26日に設立されました。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('年月までの表記（「2026年9月発売」）→ 警告0件（年月日が揃っていない）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月発売予定です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('メタが部分日付（2026）→ 警告0件（照合しない）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026',
+      content: '本作は2026年9月2日に発売されました。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('メタが部分日付（2026-09）→ 警告0件（照合しない）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09',
+      content: '本作は2026年9月2日に発売されました。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('category: feature → 警告0件（対象外）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月20日に発売されました。',
+      category: 'feature',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('content と summary に同じ不一致が出ても警告1件に集約される', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月20日に発売されました。',
+      summary: '2026年9月20日発売の新作です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('2026年9月20日');
+  });
+
+  it('発売文脈アンカー: 「発売日は2026年9月2日」→ 警告0件（一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '発売日は2026年9月2日です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売文脈アンカー: 「2026年9月2日よりリリース」→ 警告0件（一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月2日よりリリースされました。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売文脈アンカー: 「2026年9月2日から配信」→ 警告0件（一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月2日から配信開始です。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売文脈アンカー: 「リリース日：2026年9月2日」→ 警告0件（一致）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: 'リリース日：2026年9月2日。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('validateArticle 経由でもこの警告が出る（配線のテスト）', () => {
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月20日発売です。',
+    });
+    const warnings = validateArticle(article);
+    const metaWarnings = warnings.filter((w) => w.type === 'metadata-transcription-mismatch');
+    expect(metaWarnings).toHaveLength(1);
+    expect(metaWarnings[0].severity).toBe('medium');
+    expect(metaWarnings[0].evidence).toBe('2026年9月20日');
   });
 });
