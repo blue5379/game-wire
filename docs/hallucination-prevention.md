@@ -62,7 +62,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-5種類のチェックを実施し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。
+複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は10個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
@@ -70,10 +70,25 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 |-------------|------|--------|
 | `title-mismatch` | 記事タイトル（見出し）にゲームの正式タイトル（en/ja）が含まれているか | high |
 | `body-title-mismatch` | **記事本文**にゲームの正式タイトル（en/ja のいずれか）が最低1回登場するか。特集は対象外。仕様: [article-category-spec.md §6.6](article-category-spec.md) | high |
-| `title-vs-igdb-slug` | `game.title` が IGDB slug と大幅に乖離していないか（word overlap < 60%） | high |
 | `platform-mismatch` | 本文中のプラットフォーム言及が提供データと矛盾しないか | high |
-| `person-quote` / `person-title` / `person-mention` | 「〜氏によると」「ディレクター〜」等の人物発言・肩書きパターン | high / medium |
-| `numeric-*` | ソース不明の具体数値（件数・人数・プレイ時間・台数等） | high / medium / low |
+| `person-quote` / `person-title` / `person-mention` | 「〜氏によると」「ディレクター〜」等の人物発言・肩書きパターン（詳細は下記） | high / medium |
+| `numeric-*` | ソース不明の具体数値（件数・人数・プレイ時間・台数等、詳細は下記） | high / medium / low |
+| `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
+| `upcoming-evaluation-claim` | 未発売タイトルの記事が評価を断定していないか（「高く評価されている」等）。仕様: [article-category-spec.md §2.7](article-category-spec.md) | high |
+| `game-source-mismatch` | 記事の game メタと Steam 実体が別作品と判定された（※1） | high |
+| `game-source-uncertain` | 記事の game メタと Steam 実体の同一性を断定できない（※1） | medium |
+| `game-source-check-failed` | Steam 実体の取得に失敗し、同一性照合ができなかった（※1） | medium |
+| `game-source-unchecked` | Steam appId が取得できず、同一性照合を実行しなかった（※1） | low |
+| `early-access-unstated` | 早期アクセス配信中のタイトルだが、本文・要約のどちらも早期アクセスに触れていない（※2）。仕様: [article-category-spec.md §2.9](article-category-spec.md) | — |
+| `early-access-release-claim` | 早期アクセス配信中のタイトルだが、正式リリース済みと読める断定がある（※2）。仕様: [article-category-spec.md §2.9](article-category-spec.md) | — |
+
+**※1** `game-source-*` は `validateGameSourceConsistencyForArticles` で実行される（`validateArticle` の外。build-issue の発行直前チェック）。
+
+**※2** `early-access-*` は `ValidationWarning` ではなく `EarlyAccessStatementIssue` として `ValidationReport.earlyAccessStatementIssues` に記録される（`warnings` とは分離）。重大度は持たないが、`computeReportStatus` でステータス判定に算入される。
+
+**この表に載せない警告:** LLM-as-a-judge 由来の `llm-judge-contradicted` / `llm-judge-unverifiable` は、`ValidationReport.llmJudge.warnings` に入り `warnings` とは分離されているため、この表ではなく 3-3 に判定条件と重大度を記載する。
+
+**廃止済み:** `title-vs-igdb-slug`（IGDB slug との照合）は廃止された。理由: slug は IGDB 内部の URL 識別子であり、name と経年で食い違うことがあるため、記事品質の指標にならない（`validateBodyTitleConsistency` の doc comment 参照）。
 
 特集記事（`category: feature`）は、選定確定したゲームの `recommendedGames` metadata（`platforms` / `developer` / `publisher`）と、生成時に取得した `webSearchSources` をもとに以下を実施：
 - `platform-mismatch`: 全推薦ゲームのプラットフォームの合算を許容セットとして検証
