@@ -18,6 +18,7 @@ import {
   validateReleasedTitleExpression,
   validateUpcomingEvaluationClaims,
   validateMetadataTranscription,
+  validatePlatformExclusivity,
   validateArticle,
   buildFixInstruction,
   extractNumericUnitKey,
@@ -2942,5 +2943,226 @@ describe('validateMetadataTranscription', () => {
     expect(metaWarnings).toHaveLength(1);
     expect(metaWarnings[0].severity).toBe('medium');
     expect(metaWarnings[0].evidence).toBe('2026年9月20日');
+  });
+});
+
+describe('validatePlatformExclusivity', () => {
+  /**
+   * テスト用の記事を作成するヘルパー
+   */
+  function makeExclusivityArticle(opts: {
+    platforms: string[];
+    content?: string;
+    summary?: string;
+    category?: 'newRelease' | 'indie' | 'classic' | 'feature';
+  }): GeneratedArticle {
+    return makeArticle({
+      title: 'Test Game Title',
+      category: opts.category ?? 'newRelease',
+      content: opts.content ?? '',
+      summary: opts.summary ?? '',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: opts.platforms,
+      },
+    });
+  }
+
+  it('「PS5専用」×提供データ [PlayStation 5, Nintendo Switch] → 警告1件（Nintendo Switch が残る）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('platform-exclusivity-mismatch');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].evidence).toBe('PS5専用');
+    expect(warnings[0].message).toContain('Nintendo Switch');
+  });
+
+  it('「PlayStation 5専用」×提供データ [PlayStation 5] → 警告0件（一致）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5'],
+      content: '本作はPlayStation 5専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「PC専用」×提供データ [PC (Microsoft Windows), Mac, Linux] → 警告0件（PC ファミリを束ねる担保・実測3の回帰テスト）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PC (Microsoft Windows)', 'Mac', 'Linux'],
+      content: '本作はPC専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「PC専用」×提供データ [PC (Microsoft Windows), PlayStation 5] → 警告1件（PlayStation 5 が残る）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PC (Microsoft Windows)', 'PlayStation 5'],
+      content: '本作はPC専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('platform-exclusivity-mismatch');
+    expect(warnings[0].evidence).toBe('PC専用');
+    expect(warnings[0].message).toContain('PlayStation 5');
+  });
+
+  it('「Xbox Series X|S専用」×提供データ [Xbox Series X|S, Xbox One] → 警告1件（世代を束ねない担保・実測4の回帰テスト）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['Xbox Series X|S', 'Xbox One'],
+      content: '本作はXbox Series X|S専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('platform-exclusivity-mismatch');
+    expect(warnings[0].evidence).toBe('Xbox Series X|S専用');
+    expect(warnings[0].message).toContain('Xbox One');
+  });
+
+  it('素の「Switch専用」を検出する', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['Nintendo Switch', 'PlayStation 5'],
+      content: '本作はSwitch専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('Switch専用');
+  });
+
+  it('日本語別名「ニンテンドースイッチ専用」を検出する', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['Nintendo Switch', 'PlayStation 5'],
+      content: '本作はニンテンドースイッチ専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('ニンテンドースイッチ専用');
+  });
+
+  it('「独占」語形でも検出する', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5独占タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PS5独占');
+  });
+
+  it('「のみ」語形でも検出する', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5版のみ配信されます。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PS5版のみ');
+  });
+
+  it('「協力プレイ専用」→ 警告0件（プラットフォームアンカーの担保・実測2の回帰テスト）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作は協力プレイ専用のゲームです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「2人専用」→ 警告0件（プラットフォームアンカーの担保）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作は2人専用のゲームです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「専用サーバー」→ 警告0件（プラットフォームアンカーの担保）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作は専用サーバーで動作します。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「PS5のみならず Xbox Series X|S でも展開」→ 警告0件（「のみならず」は排他の否定）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Xbox Series X|S'],
+      content: '本作はPS5のみならず Xbox Series X|S でも展開されます。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('主張キーが提供データに無い場合（「Xbox Series X|S専用」×提供データ [PlayStation 5]）→ 警告0件（platform-mismatch の担当領域）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5'],
+      content: '本作はXbox Series X|S専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('category: feature → 警告0件（対象外）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5専用タイトルです。',
+      category: 'feature',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('platforms 未設定 → 警告0件（対象外）', () => {
+    const article = makeArticle({
+      title: 'Test Game Title',
+      category: 'newRelease',
+      content: '本作はPS5専用タイトルです。',
+      game: {
+        title: 'Test Game',
+        genre: [],
+        platforms: [], // 空配列で platforms 未設定を表現
+      },
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('platforms 空配列 → 警告0件（対象外）', () => {
+    const article = makeExclusivityArticle({
+      platforms: [],
+      content: '本作はPS5専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('content と summary の両方に同じ主張がある場合に1件に集約される', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5専用タイトルです。',
+      summary: 'PS5専用の新作ゲーム。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PS5専用');
+  });
+
+  it('validateArticle 経由でもこの警告が出る（配線のテスト）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5専用タイトルです。',
+    });
+    const warnings = validateArticle(article);
+    const exclusivityWarnings = warnings.filter((w) => w.type === 'platform-exclusivity-mismatch');
+    expect(exclusivityWarnings).toHaveLength(1);
+    expect(exclusivityWarnings[0].severity).toBe('medium');
+    expect(exclusivityWarnings[0].evidence).toBe('PS5専用');
   });
 });
