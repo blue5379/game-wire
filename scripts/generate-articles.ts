@@ -455,6 +455,25 @@ export function buildJudgeGroundingGame(
 }
 
 /**
+ * 出力ファイルのサイズ内訳を1行にまとめる（Issue #380）。
+ * generated-articles.json は追跡済みだが、週次ワークフローの commit ステップは
+ * `src/content/` と `data/validation/` 等しか git add せず、`Upload diagnostic data`
+ * ステップの artifact 対象にも入っていない（どちらも `weekly-build.yml`）。
+ * リポジトリにあるのは 2026-05-16 生成の古いスナップショット（33KB、judgeGrounding を
+ * 含まない旧フォーマット）。artifact に追加すれば実ファイルごと取得できるが、
+ * judgeGrounding.primarySources に第三者ページ本文（1URLあたり最大3000字）が
+ * 含まれるため、公開リポジトリの artifact に載せるのは避けたい。
+ * **本番実行時の実サイズは CI ログに出して観測する**。
+ * 記事数と judgeGrounding のゲーム本数を併記して、サイズの内訳（特集のゲーム本数が
+ * 効いているか = Issue #379）が読めるようにする。
+ */
+export function formatOutputSizeSummary(json: string, articles: GeneratedArticle[]): string {
+  const kb = (Buffer.byteLength(json, 'utf8') / 1024).toFixed(1);
+  const groundedGames = articles.reduce((sum, a) => sum + (a.judgeGrounding?.games.length ?? 0), 0);
+  return `${kb} KB, ${articles.length} articles, ${groundedGames} grounded games`;
+}
+
+/**
  * AI によるコンテンツスクリーニング
  * ゲームタイトルと概要を元に成人向けコンテンツか判定する。
  * 判定が難しい場合は安全側（false）に倒す。
@@ -1809,7 +1828,8 @@ async function main(): Promise<void> {
   };
 
   const outputPath = path.join(DATA_DIR, 'generated-articles.json');
-  fs.writeFileSync(outputPath, JSON.stringify(generatedIssue, null, 2));
+  const outputJson = JSON.stringify(generatedIssue, null, 2);
+  fs.writeFileSync(outputPath, outputJson);
 
   console.log('');
   console.log('=== Summary ===');
@@ -1819,7 +1839,7 @@ async function main(): Promise<void> {
   console.log(`  - Features: ${articles.filter((a) => a.category === 'feature').length}`);
   console.log(`  - Classics: ${articles.filter((a) => a.category === 'classic').length}`);
   console.log('');
-  console.log(`Output saved to: ${outputPath}`);
+  console.log(`Output saved to: ${outputPath} (${formatOutputSizeSummary(outputJson, articles)})`);
 
   const totalFailures = webSearchStats.searchFailures + webSearchStats.pageContentFailures;
   if (totalFailures > 0) {
