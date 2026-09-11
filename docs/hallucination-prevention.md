@@ -62,7 +62,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数が以下の10個のバリデータを合成して実行する。
+複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は10個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
