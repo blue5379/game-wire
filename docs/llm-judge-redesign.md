@@ -288,11 +288,15 @@ judgeGrounding?: {
 
 `generate-articles.ts` が `data/generated-articles.json` を書き、`build-issue.ts` がそれを読んで `judgeArticles()` を呼ぶ。したがって **`judgeGrounding` は `generated-articles.json` に永続化される必要がある**。
 
-**サイズ影響（リポジトリには入らないので許容する）:** 非 feature 5記事（新作2/インディー2/名作1）× 2URL ＋ feature 3〜5本 × 2URL ＝ 12〜20本文。`OFFICIAL_PAGE_MAX_LENGTH=3000` なので最大 60,000字、日本語 UTF-8 なら**最大約180KB 増**。
+**サイズ影響（リポジトリには入らないので許容する）:** 非 feature 5記事（新作2/インディー2/名作1）× 2URL ＋ feature 3〜5本 × 2URL ＝ 12〜20本文。`OFFICIAL_PAGE_MAX_LENGTH=3000` なので最大 60,000字。
 
-⚠️ **`data/generated-articles.json` は `.gitignore:54` に明記されており、CI の `git add`（`weekly-build.yml:215-218` は `src/content/` と `data/validation/` のみ）にも入っていない。** よってサイズが増えてもリポジトリには入らず、ジョブ内の一時ファイルとして消える。**別ファイルに分ける必要はない。**
+> 📌 **2026-09-11 訂正:** 当初は「日本語 UTF-8 なら最大約180KB 増」と机上計算していたが、**同じ最悪ケース（3000字 × 2件 × 10ゲームがすべて日本語 = 20本文）を合成した実測値は `32KB → 235KB`（+約200KB）** で、`docs/hallucination-prevention.md` 3-5（PR #375 の `b43361f`）に記録されている。JSON エスケープと他フィールドのぶんで机上の 176KB を約11%上回る。**#380 の実測と突き合わせる基準は 180KB ではなく +約200KB / 総量 235KB（最悪ケース）** を使うこと。
 
-⚠️ **ローカルの `data/generated-articles.json`（33,119 バイト）を「現行サイズ」の基準にしないこと。** 2026-05-15 の古いスナップショットで、`webSearchSources` を1件も持たない旧フォーマット（キーは `title`/`category`/`summary`/`content`/`game`/`sourceUrls` のみ）。現在の本番出力は `webSearchSources`（1500字 × N件 × 記事数）を含むのでこれよりずっと大きい。CI はこのファイルのサイズをログにも artifact にも出していないため、**現行サイズは未知**（知りたければ `weekly-build.yml` の診断 artifact に追加する必要がある）。
+⚠️ **`data/generated-articles.json` は CI の `git add`（`weekly-build.yml` の commit ステップは `src/content/issues/` / `src/content/history.json` / `public/images/features/` / `data/validation/` のみ）にも `Upload diagnostic data` の artifact にも入っていない。** よって本番実行で増えたぶんはジョブ内の一時ファイルとして消え、リポジトリには入らない。**別ファイルに分ける必要はない。**
+
+> 📌 **2026-09-11 訂正:** 本doc は当初この理由を「`.gitignore:54` 対象だから」と書いていたが、**同ファイルは git 追跡済み**（`git ls-files` でヒット。最終コミットは `6caa954`）であり、**追跡済みファイルに `.gitignore` の記載は効かない**。結論（本番のサイズがリポジトリに入らない／観測できない）は `git add` と artifact の対象外であることから変わらないが、根拠は gitignore ではない。`docs/hallucination-prevention.md` 3-5 は当初からこの点を正しく書いている。
+
+⚠️ **リポジトリに入っている `data/generated-articles.json`（33,119 バイト）を「現行サイズ」の基準にしないこと。** `generatedAt` は `2026-05-16T14:54:59Z`（`publishDate` は `2026-05-15`）、コミットは `6caa954`（2026-05-17）という古いスナップショットで、`webSearchSources` を1件も持たない旧フォーマット（キーは `title`/`category`/`summary`/`content`/`game`/`sourceUrls` のみ）。現在の本番出力は `webSearchSources`（1500字 × N件 × 記事数）を含むのでこれよりずっと大きい。CI はこのファイルのサイズをログにも artifact にも出していないため、**本番出力の実サイズは未知**（合成した最悪ケースの実測は上記のとおり 235KB で存在する。無いのは本番実行での実測）。観測手段は **#380 / PR #382** で `Output saved to:` の行にサイズ・記事数・grounding ゲーム本数を併記する形で用意したが、**PR #382 は 2026-09-11 時点で未マージ（OPEN）**。2026-09-12 06:00 JST の実行で実測するには**その前にマージが必要**。
 
 **再生成経路の注意（§6.3 に対応項目あり）:**
 
@@ -324,7 +328,7 @@ judgeGrounding?: {
 - 911 Operator の `sourceUrls.official` は IGDB 公式タグ由来（`http://www.jutsugames.com/911`）で `officialUrlSource='igdb-official'` が付くため、`fetchOfficialPageContents` の信頼済みソース判定を通る。**Tavily 探索が失敗しても extract 対象になる**（第20号では Tavily が jutsugames.com トップページを「複数タイトル並列掲載」として正しく棄却し、IGDB 由来の値が残った）
 - レイテンシ実測: extract は 1URL 約3秒（+ delay 300ms）＝約3.3秒。feature は 3〜5本 ×2URL＝6〜10本文で **+20〜35秒**
 
-⚠️ **「最大5本」はプロンプト上の期待値で、コードで強制されていない。** `selectFeatureGames` は `selectedTitles` を slice せずに返し（`bedrock-client.ts:1272-1277` → `generate-articles.ts:944-964`）、コード側の定数は `FEATURE_MIN_GAMES = 3`（下限）だけ。6本以上返ってきた場合、本doc の「最大20本文 / 最大約180KB / +約35秒」の上限を超える。**extract ループを追加するのと同じ箇所で上限を設けるか、上限が無いことを承知の上で実装すること**。→ PR #375 は**上限を設けない判断をコードコメント**（`generate-articles.ts:1233-1237`）に記録した。その確定または観測の追加は **#379** で決める（§9）。
+⚠️ **「最大5本」はプロンプト上の期待値で、コードで強制されていない。** `selectFeatureGames` は `selectedTitles` を slice せずに返し（`bedrock-client.ts:1272-1277` → `generate-articles.ts:944-964`）、コード側の定数は `FEATURE_MIN_GAMES = 3`（下限）だけ。6本以上返ってきた場合、本doc の「最大20本文 / +約200KB / +約35秒」の上限を超える。**extract ループを追加するのと同じ箇所で上限を設けるか、上限が無いことを承知の上で実装すること**。→ PR #375 は**上限を設けない判断をコードコメント**（`generate-articles.ts:1233-1237`）に記録した。その確定または観測の追加は **#379** で決める（§9）。
 
 **取得した本文は執筆プロンプトにも渡す。** judge だけに渡すと「執筆AIは知らないまま書き、judge だけが知っている」という逆向きの非対称になる。②の記述に執筆時点で根拠が生まれれば次号以降は `supported` になる（§2.3）。
 
@@ -342,6 +346,14 @@ judgeGrounding?: {
 
 ## 6. 実装チェックリスト
 
+> **監査済み（2026-09-11、main `5f84821` 時点）。** 48項目を1件ずつマージ済みコード（PR #375）と突き合わせ、確認できたものだけ `- [x]` にした。参照したのは `scripts/judge-article.ts` / `generate-articles.ts` / `bedrock-client.ts` / `validate-article.ts` / `format-validation-report.ts` と各 `*.test.ts`、および `git diff 2f265a5^1..2f265a5`（「触らない」項目の確認）。
+>
+> ⚠️ **チェックが埋まっているのは「配線の実装状況」だけであり、判定精度ではない。** judge の判定結果は 2026-09-12 06:00 JST の週次実行が初の実測（§6.4「固定しない（できない）」・§8.2 の見積りも未検証）。
+>
+> **監査で見つかった差分は1件（テストの欠落。実装の欠落ではない）:**
+>
+> - §6.4 の「出力が切り詰められた / JSON でない場合に `{ ok: false }` になる」は `parseJudgeResponse` 単体では固定されている（`judge-article.test.ts` の「JSONブロックが無い応答」「不正なJSON」の2件）が、**その `ok: false` を `judgeArticles` が `skipped`（`reason: 'judge response parse failed: …'`）として記録し `judgedArticles` に数えない、という経路のテストが無い**。実装は `judgeArticle` → `judgeArticles` に入っており配線自体は成立している。`judgeArticles` レベルのテストがあるのは Bedrock 呼び出しが reject した場合のみ。切り詰めの検知はこのパース失敗の可視化に依存している（§6.1）ため、テストを足す価値はある（未実施）
+
 ### 6.1 前提条件（grounding 変更と不可分）
 
 grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエストあたりの上限**）で出力が切り詰められる確率が上がる。切り詰まると `parseJudgeResponse` が `JSON.parse` で throw し、catch で `[]` を返して **「judge 実行済み・claim 0件」として静かに消える**（`judge-article.ts` の `JudgeArticleOutcome` の doc コメントが自ら認めている穴）。
@@ -350,36 +362,36 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 
 第20号の judge 警告メッセージは 1件 115〜323字（平均約195字）。claim オブジェクトは `claim` + `explanation` + `excerpt` + キーで概ね 250〜350字＝日本語で **200〜300トークン規模**。7 claims/記事なら **1,400〜2,100トークン**で、**2048 に既に達しているおそれがある**。切り詰まった記事は claim 0件として静かに消えるため、レポートからは判別できない（＝「余裕は約2倍ある」という見方は号合計と1リクエスト上限を混同した過小評価）。
 
-- [ ] `judgeArticle` の `maxTokens` を 2048 → 4096
-- [ ] `parseJudgeResponse` の戻り値を「JSON が見つからない / パース失敗」と「正当な `{"claims": []}`」を区別できる形に変え、前者を `judgeArticle` が `{ ok: false, reason: 'judge response parse failed' }` として返す
+- [x] `judgeArticle` の `maxTokens` を 2048 → 4096
+- [x] `parseJudgeResponse` の戻り値を「JSON が見つからない / パース失敗」と「正当な `{"claims": []}`」を区別できる形に変え、前者を `judgeArticle` が `{ ok: false, reason: 'judge response parse failed' }` として返す
 
 2点目は本来 #363 の残穴だが、**本変更がこの穴を踏む確率を上げるため本Issueで閉じる**。呼び出し元は `judgeArticle` とテストのみで、影響は `judge-article.ts` 内に収まる。`invokeClaudeModel` の戻り値型（10箇所以上から呼ばれる）には触らない。**切り詰めの検知手段はこのパース失敗の可視化であって `stopReason` ではない**（`invokeClaudeModel` は `stopReason` を捨てている。頻発するようなら **#378** で `stopReason` を返す。再開条件は #378 本文に記載）。
 
 ### 6.2 judge 側（`scripts/judge-article.ts`）
 
-- [ ] `buildJudgeUserMessage` に発行日を文字列として渡す（`publishDate` 由来。`new Date()` は使わない）（§4.1）
-- [ ] メタデータセクションを `judgeGrounding.games` から**ゲーム単位で**組む。`article.game` しか無い記事へのフォールバックを残す（§4.2）
-- [ ] **feature 記事でメタデータセクションが空にならないことを保証する**（現状 `game` 未定義で `''` を返す。誤判定⑤の真の原因）（§1.3）
-- [ ] 一次ソースセクションを新設し `judgeGrounding.games[].primarySources` を**ゲーム単位のラベル付きで**描画。二次ソースと分離（§4.1 / §4.2）
-- [ ] メタデータセクションの見出しを「同定のみ・根拠禁止」から「転記元・根拠として使用可」に変更（§3.5）
-- [ ] `judgeSystemPrompt`: ルール6を撤去し同名別作品の識別機能のみ残す（§3.5）
-- [ ] `judgeSystemPrompt`: 「判定対象としない主張」に構造化メタデータを追記（§3.3）
-- [ ] `judgeSystemPrompt`: 一次ソース優先規則を追記（§5.1）
-- [ ] 🔴 **「検索結果のみ」と書かれた箇所を全部書き換える（1箇所だけ直すと再設計が無効化される）。** `grep -n '検索結果\|外部参照データのみ' scripts/judge-article.ts` で洗い出し、少なくとも下記を定義A の照合先（提供メタデータ・一次ソース・二次ソースの総体）に揃える:
+- [x] `buildJudgeUserMessage` に発行日を文字列として渡す（`publishDate` 由来。`new Date()` は使わない）（§4.1）
+- [x] メタデータセクションを `judgeGrounding.games` から**ゲーム単位で**組む。`article.game` しか無い記事へのフォールバックを残す（§4.2）
+- [x] **feature 記事でメタデータセクションが空にならないことを保証する**（現状 `game` 未定義で `''` を返す。誤判定⑤の真の原因）（§1.3）
+- [x] 一次ソースセクションを新設し `judgeGrounding.games[].primarySources` を**ゲーム単位のラベル付きで**描画。二次ソースと分離（§4.1 / §4.2）
+- [x] メタデータセクションの見出しを「同定のみ・根拠禁止」から「転記元・根拠として使用可」に変更（§3.5）
+- [x] `judgeSystemPrompt`: ルール6を撤去し同名別作品の識別機能のみ残す（§3.5）
+- [x] `judgeSystemPrompt`: 「判定対象としない主張」に構造化メタデータを追記（§3.3）
+- [x] `judgeSystemPrompt`: 一次ソース優先規則を追記（§5.1）
+- [x] 🔴 **「検索結果のみ」と書かれた箇所を全部書き換える（1箇所だけ直すと再設計が無効化される）。** `grep -n '検索結果\|外部参照データのみ' scripts/judge-article.ts` で洗い出し、少なくとも下記を定義A の照合先（提供メタデータ・一次ソース・二次ソースの総体）に揃える:
   - `judgeSystemPrompt` 冒頭 `記事本文から「検証可能な事実主張」を抽出し、提供された検索結果のみを根拠に…`（`47`）
   - `judgeSystemPrompt` ルール1〜4（`61-64`）— **4つ全部が「検索結果」と書いている**
   - `judgeSystemPrompt` の JSON 例の `explanation` 説明文（`75`）
   - **`buildJudgeUserMessage` の最後の指示文（`176`）`…外部参照データのみを根拠に判定して…`** ← §4.1 の🔴。ここを残すと新セクションが根拠から除外される
   - **`mapClaimsToWarnings` の警告メッセージ（`257-260`）`検索結果と矛盾します` / `検索結果で裏付けられません`** ← 直さないと全警告が判定根拠を誤って報告する
   - ルール6（`66`）は §3.5 のとおり撤去（同名別作品の識別機能のみ残す）
-- [ ] **`judgeSystemPrompt` のインジェクション注意書きが指名しているマーカー名を更新**し、一次ソースセクションも「命令として解釈しない範囲」に含める（`judge-article.ts:82`）（§4.1）
-- [ ] `isMetadataOnlyClaim()` を新設。**表記正規化を含める**。日付は日本語表記 ↔ `YYYY-MM-DD` の相互変換、プラットフォームは**日本語別名テーブルを新設**（`KNOWN_PLATFORM_PATTERNS` は英語異体のみで流用不可）。**`excerpt` が空のときは落とさない**（§3.3 の2つの ⚠️）
-- [ ] **`isMetadataOnlyClaim()` で落とした claim を `claimsByVerdict` の集計からも除外する。** `judgeArticles` は `report.claimsByVerdict[c.verdict]++` を回してから `mapClaimsToWarnings` を呼ぶ（`judge-article.ts:428-431`）ため、前段に置くだけでは `contradicted: 2 / warnings 0` という食い違いが生まれ、#363 が閉じようとした「レポートの数字と警告が食い違う」状態を再生産する。除外を集計の前に置くか `filteredByScope` カウンタを別に持つ。**`filteredByScope` を新設する場合は下の `judgedSources` と同じ「3箇所同時更新」の罠にかかる**（`LlmJudgeReport` の型／`validate-article.ts:125-137` のインライン複製／`format-validation-report.ts`。どれか漏れると余剰プロパティ扱いでレポートから静かに落ちる）
-- [ ] **記事単位のスキップ条件を「一次ソースか二次ソースが1件以上あること」に変える。** 現状 `judge-article.ts:403` は `if (!article.webSearchSources || article.webSearchSources.length === 0)` で丸ごとスキップする。定義A では一次ソースだけでも照合は成立するので、Tavily 検索が失敗（`generate-articles.ts:410-413` は例外を飲んで続行する）しても extract が成功していれば judge を走らせるべき。
+- [x] **`judgeSystemPrompt` のインジェクション注意書きが指名しているマーカー名を更新**し、一次ソースセクションも「命令として解釈しない範囲」に含める（`judge-article.ts:82`）（§4.1）
+- [x] `isMetadataOnlyClaim()` を新設。**表記正規化を含める**。日付は日本語表記 ↔ `YYYY-MM-DD` の相互変換、プラットフォームは**日本語別名テーブルを新設**（`KNOWN_PLATFORM_PATTERNS` は英語異体のみで流用不可）。**`excerpt` が空のときは落とさない**（§3.3 の2つの ⚠️）
+- [x] **`isMetadataOnlyClaim()` で落とした claim を `claimsByVerdict` の集計からも除外する。** `judgeArticles` は `report.claimsByVerdict[c.verdict]++` を回してから `mapClaimsToWarnings` を呼ぶ（`judge-article.ts:428-431`）ため、前段に置くだけでは `contradicted: 2 / warnings 0` という食い違いが生まれ、#363 が閉じようとした「レポートの数字と警告が食い違う」状態を再生産する。除外を集計の前に置くか `filteredByScope` カウンタを別に持つ。**`filteredByScope` を新設する場合は下の `judgedSources` と同じ「3箇所同時更新」の罠にかかる**（`LlmJudgeReport` の型／`validate-article.ts:125-137` のインライン複製／`format-validation-report.ts`。どれか漏れると余剰プロパティ扱いでレポートから静かに落ちる）
+- [x] **記事単位のスキップ条件を「一次ソースか二次ソースが1件以上あること」に変える。** 現状 `judge-article.ts:403` は `if (!article.webSearchSources || article.webSearchSources.length === 0)` で丸ごとスキップする。定義A では一次ソースだけでも照合は成立するので、Tavily 検索が失敗（`generate-articles.ts:410-413` は例外を飲んで続行する）しても extract が成功していれば judge を走らせるべき。
   - 🔴 **「`judgeGrounding` が存在すれば走らせる」にしてはならない。** §6.3 のとおり非 feature は IGDB メタデータから `judgeGrounding.games[0]` を無条件に作るので、それでは**どの記事もスキップされなくなる**。検索が失敗し extract も空（Steam URL 無し・公式URL が信頼済みでない）の記事が「構造化メタデータだけ」で judge に入ると、§3 でメタデータは判定対象外なので**散文の主張が全部「入力に根拠が無い」＝1記事分の `unverifiable` が一斉に出て、`skipped` は 0 のまま grounding 欠落が隠れる**
   - 正しい条件: `(primarySources の合計件数 > 0) || (webSearchSources.length > 0)`
   - `judge-article.ts:421` が `article.webSearchSources.map` を無ガードで参照しているので optional 対応が必要（typecheck で落ちるが、直す箇所として認識しておく）
-- [ ] `judgedSources` に一次ソースも記録する（#363 の観測可能性を新経路にも通す）。**下記3点を同時にやること**:
+- [x] `judgedSources` に一次ソースも記録する（#363 の観測可能性を新経路にも通す）。**下記3点を同時にやること**:
   - `JudgedArticleSources`（`judge-article.ts:285`）
   - **`validate-article.ts:132` のインライン複製**（「循環 import を避けるため」の複製。ここを直さないと余剰プロパティ扱いで型エラーにならずレポート型宣言に現れない）
   - **`format-validation-report.ts:639-645` の Markdown 出力**（ここを直さないとレポートに出ない）
@@ -389,39 +401,43 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 
 `GeneratedArticle` は `generate-articles.ts:156` 定義（`types.ts` ではない）。
 
-- [ ] `GeneratedArticle` に `judgeGrounding` を追加（§4.2）
-- [ ] newRelease / indie / classic の3経路で、`pageContents` と IGDB `summary` / `genres` / `platforms` / `releaseDate` / `developer` / `publisher` を `judgeGrounding.games[0]` に詰める（`officialPageContext` は執筆用にそのまま残す）
-- [ ] feature 経路（フェーズ3ループ）に `fetchOfficialPageContents` を追加し、取得した本文を**執筆用と judge 用の両方**に載せる（§5.2）
-- [ ] 🔴 執筆用は **`buildFeatureUserMessage` に `buildUserMessage` と同形の `【公式ページ情報】` セクションを新設**して渡す。**`FeatureSelectedGame.webSearchContext` への追記は禁止**（閉じたマーカーブロックの外に落ちる／検索失敗時はマーカー無し／メタデータ優先ガードが付かない。§5.2 の3点）
-- [ ] feature の extract ループで**ゲーム本数の上限を設けるか、上限が無いことを承知して実装する**（`selectFeatureGames` は slice しない。§5.2 の ⚠️）
-- [ ] feature の `judgeGrounding.games[]` を `FeatureSelectedGame`（`bedrock-client.ts:712`。`summary` を持つ）から組む。**`RecommendedGame`（`types.ts:196`）からは組めない** — `summary` / `genres` / `releaseDate` / `titleJa` を持たないため
-- [ ] **`FeatureArticleContext`（`generate-articles.ts:731`）と `buildFeatureArticleFromContext` の返り値（`769-778`）に `judgeGrounding` を載せる。** 載せないと自動再生成された特集記事だけ `judgeGrounding` を失う（§4.4）
-- [ ] `regenOpts.cachedSearch` には**手を入れない**（死んだ経路。§4.4）
+- [x] `GeneratedArticle` に `judgeGrounding` を追加（§4.2）
+- [x] newRelease / indie / classic の3経路で、`pageContents` と IGDB `summary` / `genres` / `platforms` / `releaseDate` / `developer` / `publisher` を `judgeGrounding.games[0]` に詰める（`officialPageContext` は執筆用にそのまま残す）
+- [x] feature 経路（フェーズ3ループ）に `fetchOfficialPageContents` を追加し、取得した本文を**執筆用と judge 用の両方**に載せる（§5.2）
+- [x] 🔴 執筆用は **`buildFeatureUserMessage` に `buildUserMessage` と同形の `【公式ページ情報】` セクションを新設**して渡す。**`FeatureSelectedGame.webSearchContext` への追記は禁止**（閉じたマーカーブロックの外に落ちる／検索失敗時はマーカー無し／メタデータ優先ガードが付かない。§5.2 の3点）
+- [x] feature の extract ループで**ゲーム本数の上限を設けるか、上限が無いことを承知して実装する**（`selectFeatureGames` は slice しない。§5.2 の ⚠️）
+  - 監査メモ: 「**上限を設けない**」判断をフェーズ3ループ直前のコードコメントに記録する形で実装されている（6本以上なら §5.2 / §8.2 の見積りを超えることも明記）。判断の確定は **#379** の担当
+- [x] feature の `judgeGrounding.games[]` を `FeatureSelectedGame`（`bedrock-client.ts:712`。`summary` を持つ）から組む。**`RecommendedGame`（`types.ts:196`）からは組めない** — `summary` / `genres` / `releaseDate` / `titleJa` を持たないため
+  - 監査メモ: 実装は `FeatureSelectedGame` ではなく、その元データである `selectedGameData` の `GameData` から `buildJudgeGroundingGame()` で直接組んでいる。`featureGames`（= `FeatureSelectedGame[]`）に詰める値と同一の変数から作っているので、本項の要件（`summary` / `genres` / `releaseDate` / `titleJa` が揃う・`RecommendedGame` 由来にしない）は満たしている
+- [x] **`FeatureArticleContext`（`generate-articles.ts:731`）と `buildFeatureArticleFromContext` の返り値（`769-778`）に `judgeGrounding` を載せる。** 載せないと自動再生成された特集記事だけ `judgeGrounding` を失う（§4.4）
+- [x] `regenOpts.cachedSearch` には**手を入れない**（死んだ経路。§4.4）
+  - 監査メモ: `git diff 2f265a5^1..2f265a5` に `cachedSearch` の変更行は無い（3箇所すべて context 行）
 
 ### 6.4 テスト — 固定するもの / しないもの
 
 **固定する（すべて配線・純関数）:**
 
-- [ ] `buildJudgeUserMessage` に発行日が文字列として現れる／`new Date()` に依存しない（同じ入力で2回呼んで同一出力）
-- [ ] `genres` / `platforms` / IGDB `summary` がメタデータセクションに現れる
-- [ ] **`game` を持たない feature 記事（`judgeGrounding` のみ）でメタデータセクションが空にならない**
-- [ ] `primarySources` が一次ソースセクションに現れ、二次ソースと分離されている
-- [ ] **feature で複数ゲームの一次ソースがゲーム単位にラベル付けされ、混同できない形になっている**
-- [ ] 一次ソースにもインジェクション対策マーカーが適用され、`judgeSystemPrompt` が指名するマーカー名と一致している
-- [ ] `judgeSystemPrompt` に一次ソース優先規則が存在する
-- [ ] `judgeSystemPrompt` にルール6（メタデータ根拠禁止）が存在しない
-- [ ] **`isMetadataOnlyClaim` が第20号①⑥の excerpt を落とし、②③④⑤の excerpt を残す**（§3.4。原文は `data/validation/validation-report-020.json` の `llmJudge.warnings[].context`）
-- [ ] **`isMetadataOnlyClaim` が日付の日本語表記・プラットフォーム別名を正規化して落とす**（§3.4 の合成ケース）
-- [ ] **`excerpt` が空の `contradicted` claim を `isMetadataOnlyClaim` が落とさない**（静かな検出消失の回帰。§3.3）
-- [ ] **落とした claim が `claimsByVerdict` にも計上されない**
-- [ ] **`webSearchSources` が空でも一次ソースがあればスキップされない／一次ソースも二次ソースも空ならスキップされる**（後者が無いと「メタデータだけで judge が走る」穴が開く。§6.2）
-- [ ] **`buildJudgeUserMessage` の最後の指示文と `judgeSystemPrompt` に「検索結果のみ」「外部参照データのみ」が残っていない**（§4.1 / §6.2 の🔴）
-- [ ] **`mapClaimsToWarnings` の警告メッセージが「検索結果」に限定した表現になっていない**
-- [ ] **feature の執筆プロンプトに `【公式ページ情報】` セクションとメタデータ優先ガードが現れる／`webSearchContext` の終了マーカーより後ろに公式ページ本文が出ない**（§5.2 の🔴）
-- [ ] feature 経路で `fetchOfficialPageContents` が呼ばれる
-- [ ] **feature の再生成（`buildFeatureArticleFromContext`）後も `judgeGrounding` が残る**
-- [ ] 出力が切り詰められた / JSON でない場合に `{ ok: false }` になる（§6.1）
-- [ ] `judgedSources` に一次ソースが含まれ、Markdown レポートにも現れる
+- [x] `buildJudgeUserMessage` に発行日が文字列として現れる／`new Date()` に依存しない（同じ入力で2回呼んで同一出力）
+- [x] `genres` / `platforms` / IGDB `summary` がメタデータセクションに現れる
+- [x] **`game` を持たない feature 記事（`judgeGrounding` のみ）でメタデータセクションが空にならない**
+- [x] `primarySources` が一次ソースセクションに現れ、二次ソースと分離されている
+- [x] **feature で複数ゲームの一次ソースがゲーム単位にラベル付けされ、混同できない形になっている**
+- [x] 一次ソースにもインジェクション対策マーカーが適用され、`judgeSystemPrompt` が指名するマーカー名と一致している
+- [x] `judgeSystemPrompt` に一次ソース優先規則が存在する
+- [x] `judgeSystemPrompt` にルール6（メタデータ根拠禁止）が存在しない
+- [x] **`isMetadataOnlyClaim` が第20号①⑥の excerpt を落とし、②③④⑤の excerpt を残す**（§3.4。原文は `data/validation/validation-report-020.json` の `llmJudge.warnings[].context`）
+- [x] **`isMetadataOnlyClaim` が日付の日本語表記・プラットフォーム別名を正規化して落とす**（§3.4 の合成ケース）
+- [x] **`excerpt` が空の `contradicted` claim を `isMetadataOnlyClaim` が落とさない**（静かな検出消失の回帰。§3.3）
+- [x] **落とした claim が `claimsByVerdict` にも計上されない**
+- [x] **`webSearchSources` が空でも一次ソースがあればスキップされない／一次ソースも二次ソースも空ならスキップされる**（後者が無いと「メタデータだけで judge が走る」穴が開く。§6.2）
+- [x] **`buildJudgeUserMessage` の最後の指示文と `judgeSystemPrompt` に「検索結果のみ」「外部参照データのみ」が残っていない**（§4.1 / §6.2 の🔴）
+- [x] **`mapClaimsToWarnings` の警告メッセージが「検索結果」に限定した表現になっていない**
+- [x] **feature の執筆プロンプトに `【公式ページ情報】` セクションとメタデータ優先ガードが現れる／`webSearchContext` の終了マーカーより後ろに公式ページ本文が出ない**（§5.2 の🔴）
+- [x] feature 経路で `fetchOfficialPageContents` が呼ばれる
+- [x] **feature の再生成（`buildFeatureArticleFromContext`）後も `judgeGrounding` が残る**
+- [x] 出力が切り詰められた / JSON でない場合に `{ ok: false }` になる（§6.1）
+  - ⚠️ 監査メモ: 固定されているのは `parseJudgeResponse` 単体まで。**`judgeArticles` がそれを `skipped`（`reason: 'judge response parse failed: …'`）として記録し `judgedArticles` に数えない経路のテストは無い**（`judgeArticles` レベルは Bedrock reject のケースのみ）。実装は入っている。本監査で見つかった唯一の差分
+- [x] `judgedSources` に一次ソースが含まれ、Markdown レポートにも現れる
 
 **固定しない（できない）:**
 
@@ -431,10 +447,11 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 
 ### 6.5 doc
 
-- [ ] `docs/hallucination-prevention.md` 3章を定義A で書き直す（3-1 検出対象 / 3-2 仕組み / 3-3 judge 自身のハルシネーション対策 ＋ 新設で責任分界＝judge がやらないことと、それを担う既存の仕組み）
-- [ ] 同3章のスキップ条件の記述（「記事に `webSearchSources` が無い場合」）を新しい条件に合わせる
-- [ ] 同3章から本doc へのポインタを張る（PR #374 で暫定版を設置済み。実装後に文言を更新する）
-- [ ] 同 doc 2-2 表の実装との乖離は **#373 の担当なので触らない**
+- [x] `docs/hallucination-prevention.md` 3章を定義A で書き直す（3-1 検出対象 / 3-2 仕組み / 3-3 judge 自身のハルシネーション対策 ＋ 新設で責任分界＝judge がやらないことと、それを担う既存の仕組み）
+- [x] 同3章のスキップ条件の記述（「記事に `webSearchSources` が無い場合」）を新しい条件に合わせる
+- [x] 同3章から本doc へのポインタを張る（PR #374 で暫定版を設置済み。実装後に文言を更新する）
+- [x] 同 doc 2-2 表の実装との乖離は **#373 の担当なので触らない**
+  - 監査メモ: `git diff 2f265a5^1..2f265a5 -- docs/hallucination-prevention.md` の hunk は `@@ -230`／`-248`／`-278` の3つで、いずれも3章以降。2-2 表（`67`〜`144` 行）は未変更
 
 ---
 
@@ -464,7 +481,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 | judge 出力 | 4記事29 claims（約7 claims/記事）。警告メッセージ 1件 115〜323字（平均約195字） |
 | extract 失敗 | 1件のみ（`rockstargames.com`、`pageContentFailures: 1`）。**undercoders.com の extract は成功していた**（執筆AIは読めて judge は読めなかったことの実測的裏付け） |
 
-⚠️ **`generated-articles.json` の現行サイズは実測できていない**（CI がログにも artifact にも出さない）。ローカルの 33KB は 2026-05-15 の旧フォーマットのスナップショットなので基準にしないこと（§4.4）。
+⚠️ **`generated-articles.json` の本番サイズは第20号の時点では実測できていない**（CI がログにも artifact にも出していない。ログ出力は #380 / PR #382 で用意したが**未マージ**、初の実測は 2026-09-12 の週次実行）。リポジトリにある 33KB は 2026-05-16 生成の旧フォーマットのスナップショットなので基準にしないこと（§4.4）。
 
 ⚠️ Issue #361 の作業指示にあった「CI 推定 15〜16分」は **#360 の Steam ペーシング増分を足した見込み値で、実測ではない**。
 
@@ -474,7 +491,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 - 一次ソースは最大20本文（非 feature 5記事×2URL ＋ feature 最大5本×2URL）× 3000字上限
 - **+$0.09〜0.14/号**。$0.3 → 約 **$0.39〜0.44/号**（年 +約$5〜7）
 - レイテンシ: feature の extract 追加で **+20〜35秒**（3本〜5本。上限は強制されていないので6本以上なら超える）。30分予算に対して無視できる
-- `generated-articles.json`: 最大約180KB 増えうるが `.gitignore` 対象でリポジトリには入らないため許容（§4.4）
+- `generated-articles.json`: 最悪ケースで **+約200KB（32KB → 235KB。合成実測値。`docs/hallucination-prevention.md` 3-5）** 増えうるが、CI の `git add` と artifact の対象外なので本番のぶんはリポジトリに入らず許容（§4.4。**`.gitignore` 対象だからではない** — 同ファイルは追跡済み）。実サイズの観測は #380 / PR #382 で用意（**未マージ**）、実測は 2026-09-12 の週次実行が初回
 
 ### 8.3 論点6の判断
 
@@ -503,7 +520,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 | **#377** | **`platform-mismatch` の片方向性。** 「公式リストにあるものが本文から落ちた／改変された」方向は現状どこも見ていない | §3.2 |
 | **#378** | **`stopReason` の伝播。** 切り詰めをパース失敗経由でなく直接検知したい場合に必要 | §6.1 |
 | **#379** | **特集記事のゲーム本数の上限。** `FEATURE_MIN_GAMES = 3` はあるが上限が無く、`selectFeatureGames` の戻り値は slice されない。PR #375 は「上限を設けない」判断をコードコメントに記録した状態なので、その確定または観測の追加を #379 で決める | §5.2 / §8.2 |
-| **#380** | **`generated-articles.json` のサイズ観測。** gitignore 対象で CI のログにも artifact にも出ないため現行サイズが未知。§8.2 の見積り検証に必要 | §4.4 / §8.2 |
+| **#380** | **`generated-articles.json` のサイズ観測。** CI の `git add`・artifact・ログのいずれにも出ないため現行サイズが未知（追跡済みファイルなので `.gitignore:54` の記載は効いていない）。§8.2 の見積り検証に必要（突き合わせる基準は合成実測値の **+約200KB / 総量 235KB**。机上計算の 180KB ではない）。**ログ出力は PR #382 で用意したが 2026-09-11 時点で未マージ（OPEN）。2026-09-12 06:00 JST の実行で実測するにはその前にマージが必要。実測して見積りと突き合わせるまでが #380 のゴール** | §4.4 / §8.2 |
 
 ---
 
@@ -513,6 +530,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 |---|---|
 | 2026-09-09 | §0 の7論点すべてユーザー承認。§6.1 の `parseJudgeResponse` 戻り値変更を本Issueに含めることも承認済み。実装 → PR → `/code-review` までは自走可、**マージと Issue クローズは別途承認を取る** |
 | 2026-09-09（改訂） | PR #374 の `/code-review` 指摘13件を一次ソースで検証して反映。主な変更: ①**feature 記事は `article.game` を持たずメタデータが1文字も渡っていない**ことを §1.3 に追加（誤判定⑤の真の原因はここ。②⑤はどちらも feature）／②`primarySources` 単体案を**ゲーム単位の `judgeGrounding`** に変更（feature 複数ゲームの取り違え防止・`article.summary` との混同防止）／③`gameType` を渡す対象から除外（執筆側が newRelease のみ）／④`isMetadataOnlyClaim` に**表記正規化**を必須化（`発売日` に効かない）／⑤`claimsByVerdict` の集計順序・スキップ条件・`judgedSources` の型複製3箇所を §6.2 に追加／⑥feature 再生成経路（`FeatureArticleContext`）を §6.3 に追加／⑦§3.2 の「決定的バリデータと完全な重複」を実態（プラットフォームのみ・片方向）に訂正し検出の空白を明示／⑧トークン見積り・サイズ・レイテンシ・コストを最大構成（feature 5本）ベースに修正。**論点1〜7の決定そのものは変わっていない** |
-| 2026-09-10（改訂2） | 改訂版に対する `/code-review` 指摘12件を一次ソースで検証して反映。**論点1〜7の決定は変わっていない。** 主な変更: ①🔴**「検索結果のみ」の文言が systemPrompt 冒頭・ルール1〜4・JSON例・`buildJudgeUserMessage` 最後の指示文（`外部参照データのみを根拠に判定`）・`mapClaimsToWarnings` の警告メッセージの計6系統に散在**しており、1箇所だけ直すと新セクションが根拠から除外されて再設計が丸ごと無効化される点を §4.1 / §6.2 に明記／②`isMetadataOnlyClaim` は**空の `excerpt` で落としてはならない**（`parseJudgeResponse` が `''` を代入するため本物の `contradicted` が静かに消える）／③`KNOWN_PLATFORM_PATTERNS` は英語異体のみで**日本語別名テーブルの流用は不可**（§3.4 の合成ケースが通らない）と訂正／④スキップ条件を「`judgeGrounding` の存在」ではなく**「一次ソースか二次ソースが1件以上」**に確定（前者では誰もスキップされず、メタデータだけで judge が走って `unverifiable` が一斉に出る）／⑤feature の執筆側は **`webSearchContext` への追記ではなく `【公式ページ情報】` セクション新設**（閉じたマーカーの外に落ちる・検索失敗時はマーカー無し・メタデータ優先ガードが付かない）／⑥`generated-articles.json` は **`.gitignore:54` 対象でリポジトリに入らない**ため別ファイル化は不要と訂正。ローカル33KBは 2026-05-15 の旧フォーマットで基準にできず現行サイズは未知／⑦feature の**本数上限はコードで強制されていない**（`FEATURE_MIN_GAMES` は下限のみ）／⑧`filteredByScope` も `judgedSources` と同じ3箇所同時更新の罠にかかる |
+| 2026-09-10（改訂2） | 改訂版に対する `/code-review` 指摘12件を一次ソースで検証して反映。**論点1〜7の決定は変わっていない。** 主な変更: ①🔴**「検索結果のみ」の文言が systemPrompt 冒頭・ルール1〜4・JSON例・`buildJudgeUserMessage` 最後の指示文（`外部参照データのみを根拠に判定`）・`mapClaimsToWarnings` の警告メッセージの計6系統に散在**しており、1箇所だけ直すと新セクションが根拠から除外されて再設計が丸ごと無効化される点を §4.1 / §6.2 に明記／②`isMetadataOnlyClaim` は**空の `excerpt` で落としてはならない**（`parseJudgeResponse` が `''` を代入するため本物の `contradicted` が静かに消える）／③`KNOWN_PLATFORM_PATTERNS` は英語異体のみで**日本語別名テーブルの流用は不可**（§3.4 の合成ケースが通らない）と訂正／④スキップ条件を「`judgeGrounding` の存在」ではなく**「一次ソースか二次ソースが1件以上」**に確定（前者では誰もスキップされず、メタデータだけで judge が走って `unverifiable` が一斉に出る）／⑤feature の執筆側は **`webSearchContext` への追記ではなく `【公式ページ情報】` セクション新設**（閉じたマーカーの外に落ちる・検索失敗時はマーカー無し・メタデータ優先ガードが付かない）／⑥`generated-articles.json` は **`.gitignore:54` 対象でリポジトリに入らない**ため別ファイル化は不要と訂正。ローカル33KBは 2026-05-15 の旧フォーマットで基準にできず現行サイズは未知（**⑥の根拠と日付は 2026-09-11 に訂正済み → §4.4。同ファイルは追跡済みで gitignore は効かない／スナップショットは `generatedAt 2026-05-16`。結論は `git add`・artifact 対象外という根拠で維持**）／⑦feature の**本数上限はコードで強制されていない**（`FEATURE_MIN_GAMES` は下限のみ）／⑧`filteredByScope` も `judgedSources` と同じ3箇所同時更新の罠にかかる |
 | 2026-09-10（実装） | **実装は PR #375 でマージ済み・Issue #361 はクローズ済み。** 本doc は以後「決定の記録」として読む（§6 のチェックリストは実装時の作業表であり、未チェックであることは未実装を意味しない） |
 | 2026-09-10（フォローアップ） | §9 の残作業5件を **#376〜#380** として起票し、§9 の表と §3.2 / §5.2 / §6.1 の該当箇所に Issue 番号を記録。**§9 に項目を追記する場合は起票と本文への番号記載までをセットで行う**（番号が無いと重複起票が起きる）。#379 は PR #375 が「上限を設けない」判断をコードコメントに残した状態なので、その確定を問う形で起票した |
+| 2026-09-11（監査） | **§6 の実装チェックリスト48項目を main `5f84821` のコードと1件ずつ突き合わせて監査し、`- [x]` を反映**（§6 冒頭に監査メモを追加）。**埋めたのは配線の実装状況であって判定精度ではない**（初の実測は 2026-09-12 06:00 JST の週次実行）。差分は1件のみ: **パース失敗を `judgeArticles` が `skipped` に記録する経路のテストが無い**（実装は入っている。§6.4 に注記）。あわせて `data/generated-articles.json` の記述を訂正 — 同ファイルは **git 追跡済み**（`6caa954`、`generatedAt` は 2026-05-16）で、**`.gitignore:54` の記載は追跡済みファイルには効かない**。「本番のサイズがリポジトリに入らない／観測できない」という結論は CI の `git add`・artifact の対象外であることから変わらないので、根拠だけを差し替えた（§4.4 / §8.1 / §8.2 / §9。改訂2 の⑥がこの誤りの出所なので、531 行の⑥にも前方ポインタを付けた）。サイズのログ出力は #380 / PR #382 で用意したが**未マージ**。あわせて PR #383 の `/code-review` 指摘を反映 — **サイズの基準を机上計算の「最大約180KB」から合成実測値の「+約200KB（32KB → 235KB）」に訂正**（同じ最悪ケースの実測が `docs/hallucination-prevention.md` 3-5 に既にあり、PR #375 由来。JSON エスケープ等で机上値を約11%上回る）。#380 本文には gitignore 前提の記述が残っているため、着手時に issue 側も同期すること |
