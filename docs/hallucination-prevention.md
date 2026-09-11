@@ -62,7 +62,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は11個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
+複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は12個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
@@ -76,6 +76,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 | `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
 | `upcoming-evaluation-claim` | 未発売タイトルの記事が評価を断定していないか（「高く評価されている」等）。仕様: [article-category-spec.md §2.7](article-category-spec.md) | high |
 | `metadata-transcription-mismatch` | 記事本文の発売日表記（年月日が揃ったもののみ）がメタデータと一致するか。特集記事は対象外（`RecommendedGame` に `releaseDate` フィールドが無い）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #376 | medium |
+| `platform-exclusivity-mismatch` | 本文が「◯◯専用」「◯◯独占」「◯◯のみ」のような排他的言及をしているが、提供データには他のプラットフォームも含まれる。新作（newRelease）・インディー（indie）・名作（classic）が対象。特集記事は対象外（複数ゲームの合算セットで検証しており、排他的言及がどのゲームの主張か特定できないため）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #377 | medium |
 | `game-source-mismatch` | 記事の game メタと Steam 実体が別作品と判定された（※1） | high |
 | `game-source-uncertain` | 記事の game メタと Steam 実体の同一性を断定できない（※1） | medium |
 | `game-source-check-failed` | Steam 実体の取得に失敗し、同一性照合ができなかった（※1） | medium |
@@ -232,6 +233,32 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 | `PC (Steam)` vs `PC (Microsoft Windows)` | 同一プラットフォームの表記ゆれ | 未対処（文脈で判断） |
 | `S&box` vs slug `s-and-box` | `&` → `and` の変換差異 | 未対処（文脈で判断） |
 
+#### `platform-exclusivity-mismatch` の未検出パターン（Issue #377）
+
+**検出範囲を排他的言及に絞った根拠:** 全機種の網羅を要求する方向は採らない。理由は省略と誤りを区別できず偽陽性が大量に出るため。例えば「本作は Nintendo Switch で発売される」という記述は、提供データに `[Nintendo Switch, PlayStation 5]` があるときに「省略」か「誤り（PS5を隠す意図）」かを判別できない。排他語（専用・独占・のみ）を伴う記述だけに絞ることで、「読者に誤解を与える断定」に的を絞る。
+
+**PC ファミリを束ね、コンソールの世代は束ねない根拠（実測）:**
+- 公開20号・記事116本で実測すると、PC ファミリ（`Linux + PC (Microsoft Windows) + Mac` 10件、`PC (Microsoft Windows) + Mac` 10件、`Linux + PC (Microsoft Windows)` 1件）が提供データに複数入っている記事が **21件**。「PC専用」は誤りではないため、PC ファミリを束ねないと 21件規模の偽陽性が出る
+- 世代違いのコンソールが同時に入っている記事は `Xbox Series X|S + Xbox One` 8件、`PlayStation 4 + PlayStation 5` 6件、`Nintendo Switch 2 + Nintendo Switch` 3件など。これらは束ねない。理由: 「Xbox Series X|S専用」と書かれたのに Xbox One でも遊べるなら読者は実害を受けるため、検出すべき誤り
+
+**実測での偽陽性・真陽性の比率:** プラットフォーム＋排他語の出現は3件（`Nintendo Switch専用` ×1、`PlayStation 5専用` ×2）。**3件すべて提供データと一致**していて、真の誤り候補・偽陽性候補はいずれも0件。
+
+**同一文スコープと偽陰性のトレードオフ:**
+- マッチした排他的言及を含む**文**（句点・改行で区切られた範囲）を抽出し、その文の中に現れるプラットフォーム名を全部主張として扱う。例: 「本作はPS4/PS5専用タイトルです。」× 提供データ `[PlayStation 4, PlayStation 5]` → 警告なし（正確な記述）
+- **実測: プラットフォーム名を含む文144件のうち100件（69.4%）が2種類以上を同一文に列挙している**。列挙の末尾に排他語が付く書き方（「PS4/PS5専用」「PS5とXbox Series X|Sのみ」）は正確な記述であり、警告してはいけない
+- **トレードオフ（偽陰性側に倒す）**: 同一文に他機種が列挙されていると検出しない。これは省略は誤りではないという本バリデータの方針と整合する。文スコープが文をまたがない担保として、複数文にまたがる場合は警告が出る（例: 「Nintendo Switchでも配信中です。本作はPlayStation 5専用です。」× `[PlayStation 5, Nintendo Switch]` → 1件）
+
+**PC ファミリの境界指定:**
+- `Windows` は `Windows Phone` を除外する negative lookahead 付き（`Windows(?!\s*Phone)`）。実測では `Windows Phone` が1件存在（GTA: San Andreas）。境界指定が無いと `Windows Phone` が PC ファミリに束ねられ、モバイル機種が PC 扱いになる
+- `PC (Microsoft Windows)` の括弧は**全角・半角の両方**を受ける。実測では公開20号の本文で半角 69 箇所 / 全角 14 箇所が使われており、半角だけを受けると「PC（Microsoft Windows）専用」が検出漏れになる（素の `PC` パターンは排他語が隣接しないためマッチしない）
+
+**未検出のパターン:**
+- `限定`（実測5件すべてが `期間限定` / `限定装飾アイテムパック` / `限定販売` 等でプラットフォーム排他ではない。「PS5版限定の特典」のように排他ではない用法が主）
+- ストアフロント名（`Steam` / `Epic` 等）の排他語。例: `Steam版のみ`。理由: プラットフォームの排他ではなく販売ストアの話であり得るため区別できない
+- `PC専用サーバー` `PS5専用コントローラー` のように、排他語の後ろに周辺機器・サーバー・機能名が続く場合（タイトルの排他ではなく部品の排他を述べている）。実測0件のため除外ロジックは入れていない。観測されたら後続語の除外を検討する方針。**その際 `専用ソフト` を除外してはならない**（実測3件のうち `Nintendo Switch専用ソフトとして、任天堂から発売されています` は本来検証したい形であり、後続語で機械的に除外すると真の検出対象が落ちる）
+- 世代を持たないファミリ名だけの排他的言及。例: 提供データ `[Xbox Series X|S, PC (Microsoft Windows)]` に対する「Xbox専用」は、主張キー `Xbox` が提供データのキー（`Xbox Series X|S`）と一致しないため警告しない。ファミリ単位に解決する処理は入れていない（実測では素の `Xbox` の出現7件がすべて `Xbox Game Studios` `Xboxチーム` のような企業・組織名で、プラットフォーム主張としての使用は0件だったため）
+- **`platform-mismatch` 語彙ギャップによる未検出**: 主張されたキーが提供データに無い場合は `platform-mismatch`（high）に委譲するが、`KNOWN_PLATFORM_PATTERNS` は素の `Switch` / `Switch 2` / 日本語別名（`ニンテンドースイッチ` `プレステ5` 等）/ 素の `PC` を持たないため、これらの表記では**どちらも警告しないことがある**。例: 提供データ `[PlayStation 5]` に対する「Switch専用」は、どちらのバリデータも警告しない。`KNOWN_PLATFORM_PATTERNS` の拡張は既存 high 警告の挙動を変えるため本Issueでは扱わない
+
 #### `metadata-transcription-mismatch` の未検出パターン（Issue #376）
 
 実測では観測されていないが、以下のパターンで誤検知の可能性がある:
@@ -360,7 +387,7 @@ judge は**入力が正しいこと**を前提にする。入力の質の担保�
 |---|---|
 | IGDB / Steam メタデータ自体の正しさ | 同一性照合ゲート（`docs/article-category-spec.md`）・`finalize-game-metadata` |
 | 参照URLが本当にそのゲームの公式ページか | URL検証（`verify-official-url.ts`）・IGDB 公式タグ限定（Issue #117 / #234） |
-| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** `platform-mismatch` が「本文で言及されたが公式リストに無い」方向だけを見る。発売日・ジャンル・種別を検証するバリデータは存在しない（redesign doc §3.2 / §9 の別Issue候補） |
+| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** 発売日は `metadata-transcription-mismatch`（Issue #376 / PR #386）で実装済み。プラットフォームは `platform-mismatch`（high）が「本文で言及されたが公式リストに無い」方向を見る＋ `platform-exclusivity-mismatch`（Issue #377）が排他的言及に限って「主張されたキー以外のキーが提供データに残る」方向を検証する。残る空白は**ジャンル・種別**（Issue #387 に切り出し済み）と、**排他的言及を伴わない機種の省略**。 |
 | Tavily 検索結果に混入した誤情報の転記 | **どこも担っていない**（4章の限界） |
 | 本文の記述が現実に正しいか | **誰も担っていない。** これは定義上の非目標（3-0） |
 

@@ -1125,6 +1125,208 @@ export function validateUpcomingEvaluationClaims(
 }
 
 /**
+ * プラットフォーム排他的言及の検出用の語彙表（正規表現ソース文字列）。
+ *
+ * 既存の `KNOWN_PLATFORM_PATTERNS` は素の `PC` / 素の `Switch` / `Switch 2` / 日本語別名を持たないため流用不可。
+ * 長い方優先の順序を維持する（`Nintendo Switch 2` を `Nintendo Switch` より先に等）。
+ *
+ * 各エントリの `source` は `new RegExp(source, 'i')` で使用する。
+ * `key` は提供データとの比較用の正規化キー。
+ */
+const EXCLUSIVITY_PLATFORM_SOURCES: Array<{ source: string; key: string }> = [
+  // Switch ファミリ（長い方優先: Switch 2 → Switch）
+  { source: 'Switch\\s*2', key: 'Nintendo Switch 2' },
+  { source: 'Nintendo\\s*Switch\\s*2|ニンテンドースイッチ\\s*2', key: 'Nintendo Switch 2' },
+  { source: 'Nintendo\\s*Switch|ニンテンドースイッチ|\\bSwitch\\b', key: 'Nintendo Switch' },
+  // Xbox ファミリ（長い方優先: Series X|S → One → Xbox）
+  { source: 'Xbox\\s*Series\\s*X[|｜/]S', key: 'Xbox Series X|S' },
+  { source: 'Xbox\\s*One', key: 'Xbox One' },
+  { source: '\\bXbox\\b', key: 'Xbox' },
+  // PlayStation
+  { source: 'PlayStation\\s*5|プレイステーション\\s*5|プレステ\\s*5|PS\\s*5', key: 'PlayStation 5' },
+  { source: 'PlayStation\\s*4|プレイステーション\\s*4|プレステ\\s*4|PS\\s*4', key: 'PlayStation 4' },
+  // PC ファミリ（すべて単一キー `PC` に束ねる。Windows Phone を除外する negative lookahead 付き）
+  // 括弧は全角・半角の両方を受ける。記事本文は両方の表記で書かれる
+  // （実測: 公開20号の本文で半角 69 箇所 / 全角 14 箇所。全角を受けないと
+  //  「PC（Microsoft Windows）専用」が検出漏れになる）
+  { source: 'PC\\s*[（(]Microsoft\\s*Windows[）)]', key: 'PC' },
+  { source: 'Microsoft\\s*Windows', key: 'PC' },
+  { source: 'Windows(?!\\s*Phone)', key: 'PC' },
+  { source: '\\bMac\\b', key: 'PC' },
+  { source: 'macOS', key: 'PC' },
+  { source: '\\bLinux\\b', key: 'PC' },
+  { source: '\\bPC\\b', key: 'PC' },
+  // モバイル
+  { source: '\\biOS\\b', key: 'iOS' },
+  { source: '\\bAndroid\\b', key: 'Android' },
+];
+
+/**
+ * 排他的言及の検出パターンのソース文字列（`FULL_DATE_JP_SOURCE` と同じ方式）。
+ *
+ * `<プラットフォーム名>(版)?(専用|独占|のみ)` の形にマッチさせる。
+ * - `のみ` は `のみならず` / `のみでなく` / `のみではなく` / `のみに限らず` を除外する。
+ *   実測0件だが語そのものの曖昧性を解消する措置であり、ヒューリスティックな除外ロジックではない。
+ * - `限定` は排他語に含めない（実測5件すべてが期間・特典の限定でプラットフォーム排他ではない）。
+ * - ストアフロント名（`Steam` / `Epic` 等）は排他語のトリガーにしない
+ *   （「Steam版のみ」はプラットフォームの排他ではなく販売ストアの話であり得るため区別できない）。
+ */
+const EXCLUSIVITY_PATTERN_SOURCE =
+  '(' +
+  EXCLUSIVITY_PLATFORM_SOURCES.map((e) => e.source).join('|') +
+  ')' +
+  '(?:版)?' +
+  '(?:専用|独占|のみ(?!ならず|でなく|ではなく|に限らず))';
+
+/**
+ * プラットフォーム排他的言及の双方向検証（Issue #377）
+ *
+ * 「PS5専用」「Steam独占」「Switch版のみ」のような排他的言及が本文にある場合、
+ * 提供データに**主張されたキー以外のキーが残っている**かを検証する。
+ *
+ * ## スコープと方針
+ * - 検証するのは**排他的言及（「専用」「独占」「のみ」を伴うもの）だけ**。
+ *   全機種の網羅を要求する方向は採らない（省略と誤りを区別できず偽陽性が大量に出るため）。
+ * - 主張されたキーが提供データに**含まれない**場合は警告しない。既存の `platform-mismatch`（high）に
+ *   委譲する想定だが、**`KNOWN_PLATFORM_PATTERNS` は素の `Switch` / `Switch 2` / 日本語別名 / 素の `PC` を
+ *   持たないため、これらの表記では**どちらも警告しないことがある**。`KNOWN_PLATFORM_PATTERNS` の拡張は
+ *   既存 high 警告の挙動を変えるため本Issueでは扱わない。
+ *
+ * ## 対象外の早期 return
+ * - `article.category === 'feature'` → `[]`
+ *   理由: 特集は全推薦ゲームのプラットフォームを合算した許容セットで検証しているため、
+ *   排他的言及がどのゲームについての主張なのかを特定できない（`validateFeaturePlatformConsistency` の構造）。
+ * - `article.game?.platforms` が空なら対象外
+ *
+ * ## 検出パターンと同一文スコープ
+ * マッチした排他的言及を含む**文**（句点・改行で区切られた範囲）を抽出し、その文の中に現れる
+ * プラットフォーム名を全部キーに正規化して**主張されたキーの集合 `claimedKeys`** とする。
+ * 提供データから `claimedKeys` を差し引いて残りがある場合にのみ警告する。
+ *
+ * **トレードオフ（偽陰性側に倒す）**: 同一文に他機種が列挙されていると検出しない。
+ * 例: 「本作はPS4/PS5専用タイトルです。」× 提供データ `[PlayStation 4, PlayStation 5]` → 警告なし。
+ * これは省略は誤りではないという本バリデータの方針と整合する。実測では**プラットフォーム名を含む文144件のうち
+ * 100件（69.4%）が2種類以上を同一文に列挙している**ため、列挙の末尾に排他語が付く書き方
+ * （「PS4/PS5専用」「PS5とXbox Series X|Sのみ」）は正確な記述であり、警告してはいけない。
+ *
+ * ## 比較キーへの正規化
+ * - **PC ファミリ**（`PC (Microsoft Windows)` / `Microsoft Windows` / `Windows` / `Mac` / `macOS` / `Linux` / 素の `PC`）
+ *   → 単一キー `PC`（公開20号・記事116本の実測で、PCファミリが複数入っている記事が21件あり、
+ *   束ねないと21件規模の偽陽性が出る）。`Windows Phone` は PC に束ねない（実測1件存在）。
+ * - **コンソール・モバイル**は世代・機種ごとに別キー
+ *   （`PlayStation 5` / `PlayStation 4` / `Nintendo Switch 2` / `Nintendo Switch` / `Xbox Series X|S` / `Xbox One` / `iOS` / `Android` など。
+ *   実測では `Xbox Series X|S + Xbox One` 8件、`PlayStation 4 + PlayStation 5` 6件、`Nintendo Switch 2 + Nintendo Switch` 3件など。
+ *   「Xbox Series X|S専用」と書かれたのに Xbox One でも遊べるなら読者は実害を受けるため、検出すべき誤り）
+ * - パターンに一致しない提供データの文字列は、既存 `normalizePlatforms` と同じ方針でそのまま比較キーとして残す
+ *   （未知のプラットフォームを黙って捨てない）
+ *
+ * ## 警告条件
+ * - 主張されたキーの集合を差し引いた後、提供データにキーが残っている場合に警告
+ * - `type: 'platform-exclusivity-mismatch'`
+ * - `severity: 'medium'` — **暫定値**。Issue #350（重大度設計）の結論で見直す
+ * - 同一記事内で同じ主張キー（マッチしたプラットフォームのキー）が複数回出た場合は1件に集約する（#376 の `seenMismatches` と同じ方針）
+ *
+ * 仕様: Issue #377
+ */
+export function validatePlatformExclusivity(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  // 特集記事は対象外（理由: 複数ゲームの合算セットで検証しており、排他的言及がどのゲームの主張か特定できない）
+  if (article.category === 'feature') return warnings;
+
+  const platforms = article.game?.platforms;
+  if (!platforms || platforms.length === 0) return warnings;
+
+  // 提供データのプラットフォームを比較キーに正規化する
+  function normalizePlatformToKey(p: string): string {
+    for (const { source, key } of EXCLUSIVITY_PLATFORM_SOURCES) {
+      if (new RegExp(source, 'i').test(p)) return key;
+    }
+    // パターンに一致しない文字列はそのまま返す（未知のプラットフォームを捨てない）
+    return p;
+  }
+
+  const providedKeys = new Set(platforms.map((p) => normalizePlatformToKey(p)));
+
+  // 排他的言及の検出パターン（g フラグ付きで毎回新規作成。lastIndex 事故を避けるため）
+  const exclusivityPattern = new RegExp(EXCLUSIVITY_PATTERN_SOURCE, 'gi');
+
+  // 検査対象のフィールド
+  const fieldsToCheck: Array<{ name: string; text: string }> = [
+    { name: '本文', text: article.content },
+    { name: '要約', text: article.summary },
+  ];
+
+  // 同じ主張キー（マッチしたプラットフォームのキー）が複数回出た場合は1件に集約する
+  const seenMismatches = new Set<string>();
+
+  for (const field of fieldsToCheck) {
+    if (!field.text) continue;
+
+    for (const match of field.text.matchAll(exclusivityPattern)) {
+      const fullMatch = match[0];
+      const platformName = match[1];
+
+      // マッチしたプラットフォームを比較キーに正規化
+      const matchedKey = normalizePlatformToKey(platformName);
+
+      // このキーでの警告を既に出したか
+      if (seenMismatches.has(matchedKey)) continue;
+
+      // 主張されたキーが提供データに含まれない場合は警告しない
+      // （platform-mismatch に委譲。ただし語彙ギャップにより一部表記ではどちらも警告しない）
+      if (!providedKeys.has(matchedKey)) continue;
+
+      // マッチを含む文を切り出す（句点・改行で区切られた範囲）
+      const matchIndex = match.index ?? 0;
+      const textBeforeMatch = field.text.slice(0, matchIndex);
+      const textAfterMatch = field.text.slice(matchIndex);
+      const sentenceStart = Math.max(
+        textBeforeMatch.lastIndexOf('。'),
+        textBeforeMatch.lastIndexOf('\n')
+      ) + 1;
+      const sentenceEndInAfter = Math.min(
+        textAfterMatch.indexOf('。') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('。'),
+        textAfterMatch.indexOf('\n') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('\n')
+      );
+      const sentence = field.text.slice(sentenceStart, matchIndex + sentenceEndInAfter);
+
+      // その文の中に現れるプラットフォーム名を全部キーに正規化して主張されたキーの集合とする
+      const claimedKeys = new Set<string>();
+      const allPlatformPattern = new RegExp(
+        EXCLUSIVITY_PLATFORM_SOURCES.map((e) => `(${e.source})`).join('|'),
+        'gi'
+      );
+      for (const platformMatch of sentence.matchAll(allPlatformPattern)) {
+        const name = platformMatch[0];
+        const key = normalizePlatformToKey(name);
+        claimedKeys.add(key);
+      }
+
+      // 提供データから主張されたキーの集合を差し引いて、残りがある場合に警告
+      const otherKeys = Array.from(providedKeys).filter((k) => !claimedKeys.has(k));
+
+      if (otherKeys.length > 0) {
+        seenMismatches.add(matchedKey);
+        warnings.push({
+          articleTitle: article.title,
+          category: article.category,
+          severity: 'medium', // 暫定値。Issue #350 で見直し
+          type: 'platform-exclusivity-mismatch',
+          message:
+            `本文が「${fullMatch}」と書いていますが、提供データには ${otherKeys.map((k) => `「${k}」`).join(', ')} も含まれています。` +
+            `排他的な表現は読者に誤解を与えます。`,
+          evidence: fullMatch,
+          context: extractContext(field.text, fullMatch),
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * メタデータの逐語転記を検証（Issue #376: 発売日のみ）
  *
  * Issue #361 で LLM-as-a-judge のスコープから構造化メタデータの逐語転記を外した結果、
@@ -1259,6 +1461,7 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
     ...validateReleasedTitleExpression(article, publishDate),
     ...validateUpcomingEvaluationClaims(article, publishDate),
     ...validateMetadataTranscription(article),
+    ...validatePlatformExclusivity(article),
   ];
 }
 
