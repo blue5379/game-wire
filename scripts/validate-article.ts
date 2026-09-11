@@ -1146,7 +1146,10 @@ const EXCLUSIVITY_PLATFORM_SOURCES: Array<{ source: string; key: string }> = [
   { source: 'PlayStation\\s*5|プレイステーション\\s*5|プレステ\\s*5|PS\\s*5', key: 'PlayStation 5' },
   { source: 'PlayStation\\s*4|プレイステーション\\s*4|プレステ\\s*4|PS\\s*4', key: 'PlayStation 4' },
   // PC ファミリ（すべて単一キー `PC` に束ねる。Windows Phone を除外する negative lookahead 付き）
-  { source: 'PC\\s*\\(Microsoft\\s*Windows\\)', key: 'PC' },
+  // 括弧は全角・半角の両方を受ける。記事本文は両方の表記で書かれる
+  // （実測: 公開20号の本文で半角 69 箇所 / 全角 14 箇所。全角を受けないと
+  //  「PC（Microsoft Windows）専用」が検出漏れになる）
+  { source: 'PC\\s*[（(]Microsoft\\s*Windows[）)]', key: 'PC' },
   { source: 'Microsoft\\s*Windows', key: 'PC' },
   { source: 'Windows(?!\\s*Phone)', key: 'PC' },
   { source: '\\bMac\\b', key: 'PC' },

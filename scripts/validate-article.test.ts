@@ -3202,27 +3202,37 @@ describe('validatePlatformExclusivity', () => {
     });
     const warnings = validatePlatformExclusivity(article);
     expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PlayStation 5専用');
+    expect(warnings[0].message).toContain('「Nintendo Switch」');
   });
 
   // Switch 2 略記のテスト（/code-review 指摘4の修正）
-  it('「Switch 2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（略記を検出）', () => {
+  // 「Nintendo Switch 2」は「Nintendo Switch」を部分文字列として含むため、
+  // toContain('Nintendo Switch') だけでは略記が Switch 2 として解決されたことを検証できない
+  // （素の Switch と誤解決しても通ってしまう）。残った機種を「」込みで指定し、
+  // Switch 2 が残っていないことも確認する。
+  it('「Switch 2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（略記が Switch 2 として解決される）', () => {
     const article = makeExclusivityArticle({
       platforms: ['Nintendo Switch 2', 'Nintendo Switch'],
       content: '本作はSwitch 2専用タイトルです。',
     });
     const warnings = validatePlatformExclusivity(article);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toContain('Nintendo Switch');
+    expect(warnings[0].evidence).toBe('Switch 2専用');
+    expect(warnings[0].message).toContain('「Nintendo Switch」');
+    expect(warnings[0].message).not.toContain('「Nintendo Switch 2」');
   });
 
-  it('「Switch2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（スペース無しの略記も検出）', () => {
+  it('「Switch2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（スペース無しの略記も Switch 2 として解決される）', () => {
     const article = makeExclusivityArticle({
       platforms: ['Nintendo Switch 2', 'Nintendo Switch'],
       content: '本作はSwitch2専用タイトルです。',
     });
     const warnings = validatePlatformExclusivity(article);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toContain('Nintendo Switch');
+    expect(warnings[0].evidence).toBe('Switch2専用');
+    expect(warnings[0].message).toContain('「Nintendo Switch」');
+    expect(warnings[0].message).not.toContain('「Nintendo Switch 2」');
   });
 
   // のみの否定形のテスト（/code-review 指摘3の修正）
@@ -3262,5 +3272,29 @@ describe('validatePlatformExclusivity', () => {
     const warnings = validatePlatformExclusivity(article);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].message).toContain('Windows Phone');
+  });
+
+  // 記事本文は `PC (Microsoft Windows)` を全角括弧でも書く（実測: 半角69箇所 / 全角14箇所）。
+  // 全角を受けないと素の `PC` パターンでも排他語が隣接しないためマッチせず、検出漏れになる。
+  it('「PC（Microsoft Windows）専用」（全角括弧）× [PC (Microsoft Windows), PlayStation 5] → 1件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PC (Microsoft Windows)', 'PlayStation 5'],
+      content: '本作はPC（Microsoft Windows）専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PC（Microsoft Windows）専用');
+    expect(warnings[0].message).toContain('「PlayStation 5」');
+  });
+
+  it('「PC (Microsoft Windows)専用」（半角括弧）× [PC (Microsoft Windows), PlayStation 5] → 1件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PC (Microsoft Windows)', 'PlayStation 5'],
+      content: '本作はPC (Microsoft Windows)専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('PC (Microsoft Windows)専用');
+    expect(warnings[0].message).toContain('「PlayStation 5」');
   });
 });
