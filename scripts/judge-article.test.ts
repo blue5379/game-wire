@@ -794,6 +794,70 @@ describe('judgeArticles', () => {
     expect(report.warnings).toHaveLength(0);
   });
 
+  // parseJudgeResponse 単体の { ok: false } は上の describe で検証済み。
+  // ここで固定するのは judgeArticles 側の配線 —— パース失敗を「判定済み」に数えず
+  // skipped の reason に残すこと（Issue #361 §6.4 / #363 レビュー指摘）。
+  // maxTokens: 4096 に張り付いた場合の切り詰めがこの経路に落ちる。
+  it('応答が途中で切り詰められた記事は skipped に記録され judgedArticles に数えない', async () => {
+    // claims 配列が閉じないまま終わった応答（切り詰めの実際の形）。
+    // 先頭 `{` から最後の `}` までを取ると括弧が閉じないので JSON.parse が throw する
+    mockInvoke.mockResolvedValue(
+      '{"claims": [{"claim":"A","verdict":"supported","confidence":0.9,"explanation":"理由","excerpt":"抜粋"},'
+    );
+    const report = await judgeArticles([withSources()]);
+    expect(report.judgedArticles).toBe(0);
+    expect(report.skippedArticles).toBe(1);
+    expect(report.skipped).toHaveLength(1);
+    expect(report.skipped![0].articleTitle).toBe(withSources().title);
+    expect(report.skipped![0].reason).toContain('judge response parse failed');
+    expect(report.skipped![0].reason).toContain('JSON parse failed');
+    // 判定結果が無いので出典も集計も載せない（「判定した記事 1 / 矛盾 0」にならない）
+    expect(report.judgedSources).toHaveLength(0);
+    expect(report.claimsByVerdict).toEqual({ supported: 0, contradicted: 0, unverifiable: 0 });
+    expect(report.filteredByScope).toBe(0);
+    expect(report.warnings).toHaveLength(0);
+  });
+
+  it('JSON ブロックを含まない応答も skipped の reason に理由付きで記録される', async () => {
+    mockInvoke.mockResolvedValue('判定できませんでした。出典が読めません。');
+    const report = await judgeArticles([withSources()]);
+    expect(report.judgedArticles).toBe(0);
+    expect(report.skippedArticles).toBe(1);
+    expect(report.skipped![0].reason).toContain('judge response parse failed');
+    expect(report.skipped![0].reason).toContain('No JSON block');
+    expect(report.warnings).toHaveLength(0);
+  });
+
+  it('パース失敗した記事だけがスキップされ、他の記事の判定結果は残る', async () => {
+    mockInvoke
+      .mockResolvedValueOnce('壊れた応答（JSON なし）')
+      .mockResolvedValueOnce(
+        JSON.stringify({
+          claims: [
+            {
+              claim: '架空の機能',
+              verdict: 'contradicted',
+              confidence: 0.9,
+              explanation: '矛盾',
+              excerpt: '架空の機能について説明します。この機能は実在しません。',
+            },
+          ],
+        })
+      );
+    const report = await judgeArticles([
+      withSources({ title: 'Broken Article' }),
+      withSources({ title: 'Valid Article' }),
+    ]);
+    expect(report.judgedArticles).toBe(1);
+    expect(report.skippedArticles).toBe(1);
+    expect(report.skipped!.map((s) => s.articleTitle)).toEqual(['Broken Article']);
+    // 判定できた記事の出典と集計だけが残る
+    expect(report.judgedSources!.map((s) => s.articleTitle)).toEqual(['Valid Article']);
+    expect(report.claimsByVerdict.contradicted).toBe(1);
+    expect(report.warnings).toHaveLength(1);
+    expect(report.warnings[0].type).toBe('llm-judge-contradicted');
+  });
+
   it('構造化メタデータの逐語転記を filteredByScope としてカウントする（Issue #361）', async () => {
     mockInvoke.mockResolvedValue(
       JSON.stringify({
