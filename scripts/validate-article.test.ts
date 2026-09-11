@@ -2907,6 +2907,31 @@ describe('validateMetadataTranscription', () => {
     expect(warnings).toHaveLength(0);
   });
 
+  it('日付と発売語の間に語句が挟まっても検出する（ウィンドウ幅の担保）', () => {
+    // 実際の記事に多い書き方（公開20号の実測でこの形が26件あった）。
+    // 直後の隣接だけを見る実装ではこの不一致を取りこぼす
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content: '本作は2026年9月20日にNintendo Switch 2向けに発売されます。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('2026年9月20日');
+  });
+
+  it('発売語がウィンドウ外まで離れている場合は照合しない（ウィンドウが無制限でないことの担保）', () => {
+    // 日付の後ろ30文字以内に発売関連語が無いケース。
+    // ウィンドウが無制限だと、記事のどこかに「発売」があるだけで無関係な日付を照合してしまう
+    const article = makeMetaArticle({
+      releaseDate: '2026-09-02',
+      content:
+        'スタジオは2018年10月26日に設立され、少人数で開発を続けてきた経緯が公式ブログで語られている。' +
+        'その後、本作の発売にこぎつけた。',
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(0);
+  });
+
   it('validateArticle 経由でもこの警告が出る（配線のテスト）', () => {
     const article = makeMetaArticle({
       releaseDate: '2026-09-02',

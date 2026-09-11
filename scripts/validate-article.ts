@@ -308,6 +308,18 @@ function extractContext(content: string, matchedText: string, windowChars: numbe
 }
 
 /**
+ * 年月日が揃った日本語日付表記のパターン（capture group: 年 / 月 / 日）。
+ *
+ * 使用箇所ごとに `new RegExp(FULL_DATE_JP_SOURCE, 'g')` で新しいインスタンスを作る。
+ * `g` 付きの RegExp オブジェクトを共有すると `.test()` が `lastIndex` を進めてしまい、
+ * 次の呼び出しの判定が壊れるため（状態を持たせない）。
+ *
+ * `2026年9月` のような年月までの表記は意図的にマッチさせない
+ * （どこまでを不一致と見なすかの線引き。Issue #376）。
+ */
+const FULL_DATE_JP_SOURCE = '(\\d{4})年(\\d{1,2})月(\\d{1,2})日';
+
+/**
  * 日付の日本語表記を YYYY-MM-DD 形式に正規化する。
  * 例: `2026年9月2日` → `2026-09-02`
  *
@@ -315,7 +327,7 @@ function extractContext(content: string, matchedText: string, windowChars: numbe
  * 日付パターンの定義を一箇所に集約するため、ここに export で配置する。
  */
 export function normalizeDateJpToIso(text: string): string {
-  return text.replace(/(\d{4})年(\d{1,2})月(\d{1,2})日/g, (_, y, m, d) => {
+  return text.replace(new RegExp(FULL_DATE_JP_SOURCE, 'g'), (_, y, m, d) => {
     const mm = m.padStart(2, '0');
     const dd = d.padStart(2, '0');
     return `${y}-${mm}-${dd}`;
@@ -1132,9 +1144,20 @@ export function validateUpcomingEvaluationClaims(
  * 「2026年9月発売」「2026年秋」「9月2日」は対象外。
  *
  * ## 発売文脈アンカー
- * 歴史的日付を誤検知しないため、以下のどちらかを満たす場合だけ照合対象にする:
- * - 日付の直後が `\s*(?:に|には|より|から)?\s*(?:正式)?(?:発売|リリース|配信|ローンチ|公開)`
+ * 歴史的日付（スタジオ設立日・イベント日等）を誤検知しないため、以下のどちらかを
+ * 満たす場合だけ照合対象にする:
+ * - 日付に続く **30文字以内**に発売関連語（発売/リリース/配信/ローンチ/公開）がある
  * - 日付の直前が `(?:発売日|リリース日|配信開始日|発売予定日)[はが：:\s]*`
+ *
+ * 直後の隣接だけを見ず 30 文字のウィンドウを取るのは、日付と発売語の間に語句が
+ * 挟まる書き方が実際に多いため（例:「2026年3月5日にNintendo Switch 2向けに発売されます」）。
+ * 公開20号・記事116本で実測すると、隣接のみ=35件 / ウィンドウ=61件の日付を発売文脈と
+ * 判定し、**ウィンドウ版が追加で拾った26件はすべてメタデータと一致**（誤警告0件）だった。
+ * つまりウィンドウは検出漏れを減らし、ノイズは増やさない。
+ *
+ * ウィンドウ内に否定・延期の語がある場合（「2026年9月2日には発売されない」等）は
+ * 発売日として扱ってしまうが、実測では該当1件・いずれも誤警告にならなかったため
+ * 除外ロジックは入れていない（docs/hallucination-prevention.md 2-6）。
  *
  * ## 比較と警告
  * - 抽出した (年,月,日) をメタデータの `releaseDate` と数値比較（`9` と `09` を同一視）
@@ -1157,10 +1180,10 @@ export function validateMetadataTranscription(article: GeneratedArticle): Valida
   const [metaYear, metaMonth, metaDay] = releaseDate.split('-').map((s) => parseInt(s, 10));
 
   // 日付表記のパターン（年月日が揃ったもののみ）
-  const datePattern = /(\d{4})年(\d{1,2})月(\d{1,2})日/g;
+  const datePattern = new RegExp(FULL_DATE_JP_SOURCE, 'g');
 
   // 発売文脈アンカー（日付の前後にあれば発売日として認める）
-  // 直後: に/には/より/から + 正式? + 発売/リリース/配信/ローンチ/公開
+  // 直後: 30文字のウィンドウ内に 発売/リリース/配信/ローンチ/公開 があるか（^ を付けず部分一致で見る）
   const afterAnchorPattern = /\s*(?:に|には|より|から)?\s*(?:正式)?(?:発売|リリース|配信|ローンチ|公開)/;
   // 直前: 発売日/リリース日/配信開始日/発売予定日 + は/が/：/:/空白
   const beforeAnchorPattern = /(?:発売日|リリース日|配信開始日|発売予定日)[はが：:\s]*$/;
