@@ -308,6 +308,48 @@ function extractContext(content: string, matchedText: string, windowChars: numbe
 }
 
 /**
+ * 年月日が揃った日本語日付表記のパターン（capture group: 年 / 月 / 日）。
+ *
+ * 使用箇所ごとに `new RegExp(FULL_DATE_JP_SOURCE, 'g')` で新しいインスタンスを作る。
+ * `g` 付きの RegExp オブジェクトを共有すると `.test()` が `lastIndex` を進めてしまい、
+ * 次の呼び出しの判定が壊れるため（状態を持たせない）。
+ *
+ * `2026年9月` のような年月までの表記は意図的にマッチさせない
+ * （どこまでを不一致と見なすかの線引き。Issue #376）。
+ */
+const FULL_DATE_JP_SOURCE = '(\\d{4})年(\\d{1,2})月(\\d{1,2})日';
+
+/**
+ * 日付の日本語表記を YYYY-MM-DD 形式に正規化する。
+ * 例: `2026年9月2日` → `2026-09-02`
+ *
+ * この関数は judge-article.ts からも import されている。
+ * 日付パターンの定義を一箇所に集約するため、ここに export で配置する。
+ */
+export function normalizeDateJpToIso(text: string): string {
+  return text.replace(new RegExp(FULL_DATE_JP_SOURCE, 'g'), (_, y, m, d) => {
+    const mm = m.padStart(2, '0');
+    const dd = d.padStart(2, '0');
+    return `${y}-${mm}-${dd}`;
+  });
+}
+
+/**
+ * 日付の ISO 形式を日本語表記に正規化する。
+ * 例: `2026-09-02` → `2026年9月2日`
+ *
+ * この関数は judge-article.ts からも import されている。
+ * 日付パターンの定義を一箇所に集約するため、ここに export で配置する。
+ */
+export function normalizeDateIsoToJp(text: string): string {
+  return text.replace(/(\d{4})-(\d{2})-(\d{2})/g, (_, y, m, d) => {
+    const mm = parseInt(m, 10);
+    const dd = parseInt(d, 10);
+    return `${y}年${mm}月${dd}日`;
+  });
+}
+
+/**
  * 提供データのプラットフォーム配列を canonical な形に正規化
  */
 function normalizePlatforms(platforms: string[]): Set<string> {
@@ -1083,6 +1125,125 @@ export function validateUpcomingEvaluationClaims(
 }
 
 /**
+ * メタデータの逐語転記を検証（Issue #376: 発売日のみ）
+ *
+ * Issue #361 で LLM-as-a-judge のスコープから構造化メタデータの逐語転記を外した結果、
+ * 発売日の転記が正しいかを検証する仕組みが無くなった。その空白のうち**発売日だけ**を
+ * 決定的バリデータで埋めるのが今回のスコープ。
+ *
+ * ## 対象外の早期 return
+ * - `article.category === 'feature'` → `[]`
+ *   理由: `RecommendedGame` に `releaseDate` フィールドが存在しないため、
+ *   特集記事には照合できるメタデータが無い。
+ * - `article.game?.releaseDate` が `/^\d{4}-\d{2}-\d{2}$/` に完全一致しない場合 → `[]`
+ *   （`2026` や `2026-09` のような部分日付は照合しない）
+ *
+ * ## 本文中の日付表記の抽出
+ * `article.content` と `article.summary` の両方を走査する。
+ * 拾うのは**年月日が揃った表記のみ**: `(\d{4})年(\d{1,2})月(\d{1,2})日`。
+ * 「2026年9月発売」「2026年秋」「9月2日」は対象外。
+ *
+ * ## 発売文脈アンカー
+ * 歴史的日付（スタジオ設立日・イベント日等）を誤検知しないため、以下のどちらかを
+ * 満たす場合だけ照合対象にする:
+ * - 日付に続く **30文字以内**に発売関連語（発売/リリース/配信/ローンチ/公開）がある
+ * - 日付の直前（**20文字以内**を遡って見る）が
+ *   `(?:発売日|リリース日|配信開始日|発売予定日)[はが：:\s]*` で終わる
+ *
+ * 直後の隣接だけを見ず 30 文字のウィンドウを取るのは、日付と発売語の間に語句が
+ * 挟まる書き方が実際に多いため（例:「2026年3月5日にNintendo Switch 2向けに発売されます」）。
+ * 公開20号・記事116本で実測すると、隣接のみ=35件 / ウィンドウ=61件の日付を発売文脈と
+ * 判定し、**ウィンドウ版が追加で拾った26件はすべてメタデータと一致**（誤警告0件）だった。
+ * つまりウィンドウは検出漏れを減らし、ノイズは増やさない。
+ *
+ * ウィンドウ内に否定・延期の語がある場合（「2026年9月2日には発売されない」等）は
+ * 発売日として扱ってしまうが、実測では該当1件・いずれも誤警告にならなかったため
+ * 除外ロジックは入れていない（docs/hallucination-prevention.md 2-6）。
+ *
+ * ## 比較と警告
+ * - 抽出した (年,月,日) をメタデータの `releaseDate` と数値比較（`9` と `09` を同一視）
+ * - 不一致なら警告を1件 push:
+ *   - `type: 'metadata-transcription-mismatch'`
+ *   - `severity: 'medium'` — **暫定値**。Issue #350（重大度設計）の結論で見直す
+ *   - 同一記事内で同じ日付表記が複数回出ても警告は1件に集約する
+ */
+export function validateMetadataTranscription(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  // 特集記事は RecommendedGame に releaseDate フィールドが無いため対象外
+  if (article.category === 'feature') return warnings;
+
+  const releaseDate = article.game?.releaseDate;
+  // 年月日が揃った完全日付のみ照合（部分日付は対象外）
+  if (!releaseDate || !/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) return warnings;
+
+  // メタデータの日付をパースして数値で持つ
+  const [metaYear, metaMonth, metaDay] = releaseDate.split('-').map((s) => parseInt(s, 10));
+
+  // 日付表記のパターン（年月日が揃ったもののみ）
+  const datePattern = new RegExp(FULL_DATE_JP_SOURCE, 'g');
+
+  // 発売文脈アンカー（日付の前後にあれば発売日として認める）
+  // 直後: 30文字のウィンドウ内に 発売/リリース/配信/ローンチ/公開 があるか（^ を付けず部分一致で見る）
+  const afterAnchorPattern = /\s*(?:に|には|より|から)?\s*(?:正式)?(?:発売|リリース|配信|ローンチ|公開)/;
+  // 直前: 発売日/リリース日/配信開始日/発売予定日 + は/が/：/:/空白
+  const beforeAnchorPattern = /(?:発売日|リリース日|配信開始日|発売予定日)[はが：:\s]*$/;
+
+  // 検証対象のフィールド（content と summary）
+  const fieldsToCheck: Array<{ name: string; text: string }> = [
+    { name: '本文', text: article.content },
+    { name: '要約', text: article.summary },
+  ];
+
+  // 不一致を集約するための Set（同じ日付表記が複数回出ても1件に集約）
+  const seenMismatches = new Set<string>();
+
+  for (const field of fieldsToCheck) {
+    if (!field.text) continue;
+
+    for (const match of field.text.matchAll(datePattern)) {
+      const fullMatch = match[0];
+      const matchIndex = match.index ?? 0;
+      const year = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10);
+      const day = parseInt(match[3], 10);
+
+      // 発売文脈アンカーのチェック
+      const textBefore = field.text.slice(Math.max(0, matchIndex - 20), matchIndex);
+      const textAfter = field.text.slice(matchIndex + fullMatch.length, matchIndex + fullMatch.length + 30);
+
+      const hasBeforeAnchor = beforeAnchorPattern.test(textBefore);
+      const hasAfterAnchor = afterAnchorPattern.test(textAfter);
+
+      // アンカーが無い場合は発売日ではないと判断してスキップ
+      if (!hasBeforeAnchor && !hasAfterAnchor) continue;
+
+      // メタデータと数値比較
+      if (year !== metaYear || month !== metaMonth || day !== metaDay) {
+        // 不一致だった日付の値をキーにして集約
+        const mismatchKey = `${year}-${month}-${day}`;
+        if (seenMismatches.has(mismatchKey)) continue;
+        seenMismatches.add(mismatchKey);
+
+        warnings.push({
+          articleTitle: article.title,
+          category: article.category,
+          severity: 'medium', // 暫定値。Issue #350 で見直し
+          type: 'metadata-transcription-mismatch',
+          message:
+            `本文の発売日表記「${fullMatch}」がメタデータ「${releaseDate}（${normalizeDateIsoToJp(releaseDate)}）」と一致しません。` +
+            `AI が転記を誤った可能性があります。`,
+          evidence: fullMatch,
+          context: extractContext(field.text, fullMatch),
+        });
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 1つの記事に対して全バリデーションを実行
  */
 export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
@@ -1097,6 +1258,7 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
     ...validateFeatureNumericClaims(article),
     ...validateReleasedTitleExpression(article, publishDate),
     ...validateUpcomingEvaluationClaims(article, publishDate),
+    ...validateMetadataTranscription(article),
   ];
 }
 
