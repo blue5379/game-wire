@@ -3165,4 +3165,102 @@ describe('validatePlatformExclusivity', () => {
     expect(exclusivityWarnings[0].severity).toBe('medium');
     expect(exclusivityWarnings[0].evidence).toBe('PS5専用');
   });
+
+  // 同一文スコープのテスト（/code-review 指摘1の修正）
+  it('複数プラットフォーム列挙時の偽陽性回避: 「本作はPS4/PS5専用タイトルです。」→ 警告0件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 4', 'PlayStation 5'],
+      content: '本作はPS4/PS5専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('複数プラットフォーム列挙時の偽陽性回避: 「PlayStation 5とXbox Series X|Sのみで展開します。」→ 警告0件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Xbox Series X|S'],
+      content: 'PlayStation 5とXbox Series X|Sのみで展開します。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('同一文に列挙があっても提供データに更に別機種が残る場合は警告: 「本作はPS4/PS5専用タイトルです。」× 3機種 → 1件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 4', 'PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS4/PS5専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Nintendo Switch');
+  });
+
+  it('文スコープが文をまたがない担保: 「Nintendo Switchでも配信中です。本作はPlayStation 5専用です。」→ 1件', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: 'Nintendo Switchでも配信中です。本作はPlayStation 5専用です。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+  });
+
+  // Switch 2 略記のテスト（/code-review 指摘4の修正）
+  it('「Switch 2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（略記を検出）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['Nintendo Switch 2', 'Nintendo Switch'],
+      content: '本作はSwitch 2専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Nintendo Switch');
+  });
+
+  it('「Switch2専用」× [Nintendo Switch 2, Nintendo Switch] → 1件（スペース無しの略記も検出）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['Nintendo Switch 2', 'Nintendo Switch'],
+      content: '本作はSwitch2専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Nintendo Switch');
+  });
+
+  // のみの否定形のテスト（/code-review 指摘3の修正）
+  it('「のみでなく」→ 警告0件（排他の否定形）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5のみでなくNintendo Switchでも発売されます。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「のみではなく」→ 警告0件（排他の否定形）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5のみではなくNintendo Switchでも発売されます。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「のみに限らず」→ 警告0件（排他の否定形）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PlayStation 5', 'Nintendo Switch'],
+      content: '本作はPS5のみに限らず他機種でも展開されます。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(0);
+  });
+
+  // Windows Phone のテスト（/code-review 指摘5の修正）
+  it('「PC専用」× [PC (Microsoft Windows), Windows Phone] → 1件（Windows Phone が PC に束ねられない担保）', () => {
+    const article = makeExclusivityArticle({
+      platforms: ['PC (Microsoft Windows)', 'Windows Phone'],
+      content: '本作はPC専用タイトルです。',
+    });
+    const warnings = validatePlatformExclusivity(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Windows Phone');
+  });
 });

@@ -76,7 +76,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 | `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
 | `upcoming-evaluation-claim` | 未発売タイトルの記事が評価を断定していないか（「高く評価されている」等）。仕様: [article-category-spec.md §2.7](article-category-spec.md) | high |
 | `metadata-transcription-mismatch` | 記事本文の発売日表記（年月日が揃ったもののみ）がメタデータと一致するか。特集記事は対象外（`RecommendedGame` に `releaseDate` フィールドが無い）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #376 | medium |
-| `platform-exclusivity-mismatch` | 本文が「◯◯専用」「◯◯独占」「◯◯のみ」のような排他的言及をしているが、提供データには他のプラットフォームも含まれる。内容記事・名作記事が対象。特集記事は対象外（複数ゲームの合算セットで検証しており、排他的言及がどのゲームの主張か特定できないため）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #377 | medium |
+| `platform-exclusivity-mismatch` | 本文が「◯◯専用」「◯◯独占」「◯◯のみ」のような排他的言及をしているが、提供データには他のプラットフォームも含まれる。新作（newRelease）・インディー（indie）・名作（classic）が対象。特集記事は対象外（複数ゲームの合算セットで検証しており、排他的言及がどのゲームの主張か特定できないため）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #377 | medium |
 | `game-source-mismatch` | 記事の game メタと Steam 実体が別作品と判定された（※1） | high |
 | `game-source-uncertain` | 記事の game メタと Steam 実体の同一性を断定できない（※1） | medium |
 | `game-source-check-failed` | Steam 実体の取得に失敗し、同一性照合ができなかった（※1） | medium |
@@ -243,10 +243,19 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 
 **実測での偽陽性・真陽性の比率:** プラットフォーム＋排他語の出現は3件（`Nintendo Switch専用` ×1、`PlayStation 5専用` ×2）。**3件すべて提供データと一致**していて、真の誤り候補・偽陽性候補はいずれも0件。
 
+**同一文スコープと偽陰性のトレードオフ:**
+- マッチした排他的言及を含む**文**（句点・改行で区切られた範囲）を抽出し、その文の中に現れるプラットフォーム名を全部主張として扱う。例: 「本作はPS4/PS5専用タイトルです。」× 提供データ `[PlayStation 4, PlayStation 5]` → 警告なし（正確な記述）
+- **実測: プラットフォーム名を含む文144件のうち100件（69.4%）が2種類以上を同一文に列挙している**。列挙の末尾に排他語が付く書き方（「PS4/PS5専用」「PS5とXbox Series X|Sのみ」）は正確な記述であり、警告してはいけない
+- **トレードオフ（偽陰性側に倒す）**: 同一文に他機種が列挙されていると検出しない。これは省略は誤りではないという本バリデータの方針と整合する。文スコープが文をまたがない担保として、複数文にまたがる場合は警告が出る（例: 「Nintendo Switchでも配信中です。本作はPlayStation 5専用です。」× `[PlayStation 5, Nintendo Switch]` → 1件）
+
+**PC ファミリの境界指定:**
+- `Windows` は `Windows Phone` を除外する negative lookahead 付き（`Windows(?!\s*Phone)`）。実測では `Windows Phone` が1件存在（GTA: San Andreas）。境界指定が無いと `Windows Phone` が PC ファミリに束ねられ、モバイル機種が PC 扱いになる
+
 **未検出のパターン:**
 - `限定`（実測5件すべてが `期間限定` / `限定装飾アイテムパック` / `限定販売` 等でプラットフォーム排他ではない。「PS5版限定の特典」のように排他ではない用法が主）
 - ストアフロント名（`Steam` / `Epic` 等）の排他語。例: `Steam版のみ`。理由: プラットフォームの排他ではなく販売ストアの話であり得るため区別できない
 - `PC専用サーバー` のように排他語の後ろに周辺機器・サーバー等が続く場合。実測0件のため除外ロジックは入れていない。観測されたら後続語の除外を検討する方針
+- **`platform-mismatch` 語彙ギャップによる未検出**: 主張されたキーが提供データに無い場合は `platform-mismatch`（high）に委譲するが、`KNOWN_PLATFORM_PATTERNS` は素の `Switch` / `Switch 2` / 日本語別名（`ニンテンドースイッチ` `プレステ5` 等）/ 素の `PC` を持たないため、これらの表記では**どちらも警告しないことがある**。例: 提供データ `[PlayStation 5]` に対する「Switch専用」は、どちらのバリデータも警告しない。`KNOWN_PLATFORM_PATTERNS` の拡張は既存 high 警告の挙動を変えるため本Issueでは扱わない
 
 #### `metadata-transcription-mismatch` の未検出パターン（Issue #376）
 
