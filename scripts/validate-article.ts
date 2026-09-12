@@ -684,6 +684,13 @@ export function validatePlatformConsistency(article: GeneratedArticle): Validati
  */
 export function validatePersonAttribution(article: GeneratedArticle): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
+
+  // feature は validateFeaturePersonAttribution が担当する（Issue #390）。
+  // ガードが無いと validateArticle で両方走り、同一警告が2件出るうえ、
+  // 許容リストの取得元が feature 記事に無い article.game なので空集合になり、
+  // feature 版が「開発元・発売元名なので許容」と判定する名前を high で誤検出する
+  if (article.category === 'feature') return warnings;
+
   const content = article.content;
 
   // 「〜氏によると」「〜氏は語った」「〜氏は述べた」「〜氏のコメント」等
@@ -735,6 +742,12 @@ export function validatePersonAttribution(article: GeneratedArticle): Validation
  */
 export function validateNumericClaims(article: GeneratedArticle): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
+
+  // feature は validateFeatureNumericClaims が担当する（Issue #390）。
+  // ガードが無いと validateArticle で両方走り、同一警告が2件出る
+  // （第17号「3時間程度」・第21号「12時間以上」で実測）
+  if (article.category === 'feature') return warnings;
+
   const content = article.content;
 
   // 提供データから既知の数値を集める（これらは警告対象外）

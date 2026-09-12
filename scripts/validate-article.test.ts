@@ -3298,3 +3298,108 @@ describe('validatePlatformExclusivity', () => {
     expect(warnings[0].message).toContain('「PlayStation 5」');
   });
 });
+
+describe('feature 記事の警告重複（Issue #390 回帰）', () => {
+  /**
+   * 第21号（2026-09-12 発行）の本番実行で、feature 記事の
+   * numeric-play-hours「12時間以上」が完全に同一の内容で2件出た。
+   * 本文には1回しか出現しておらず、validateArticle が
+   * validateNumericClaims（カテゴリガード無し）と
+   * validateFeatureNumericClaims（feature 限定）の両方を呼んでいたことが原因。
+   */
+  function makeFeatureArticle(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
+    return makeArticle({
+      title: '空の日特集──大空を駆ける爽快フライトシミュレーションゲーム3選',
+      category: 'feature',
+      ...overrides,
+    });
+  }
+
+  it('validateNumericClaims: feature 記事 → 警告0件（対象外）', () => {
+    const article = makeFeatureArticle({
+      content: '12時間以上のシングルプレイヤーモードと充実したオンラインモードを備える。',
+    });
+    expect(validateNumericClaims(article)).toHaveLength(0);
+  });
+
+  it('validatePersonAttribution: feature 記事 → 警告0件（対象外）', () => {
+    const article = makeFeatureArticle({
+      content: '開発の裏側について、山田氏は語った。',
+    });
+    expect(validatePersonAttribution(article)).toHaveLength(0);
+  });
+
+  it('validateArticle: feature 記事の数値警告が2件に重複しない（第21号の実データ）', () => {
+    const article = makeFeatureArticle({
+      content:
+        '架空の1930年代世界という独特の世界観が魅力です。12時間以上のシングルプレイヤーモードと充実したオンラインモードを備えています。',
+    });
+
+    const playHours = validateArticle(article).filter((w) => w.type === 'numeric-play-hours');
+    expect(playHours).toHaveLength(1);
+    expect(playHours[0].evidence).toBe('12時間以上');
+    expect(playHours[0].category).toBe('feature');
+    expect(playHours[0].severity).toBe('medium');
+  });
+
+  it('validateArticle: feature 記事の人物警告が2件に重複しない', () => {
+    const article = makeFeatureArticle({
+      content: '開発の裏側について、山田氏は語った。',
+    });
+
+    const personWarnings = validateArticle(article).filter((w) => w.type.startsWith('person-'));
+    expect(personWarnings).toHaveLength(1);
+    expect(personWarnings[0].type).toBe('person-quote');
+    expect(personWarnings[0].evidence).toBe('山田氏は語');
+  });
+
+  it('validateArticle: feature 記事では recommendedGames の開発元名が許容される（誤検出しない）', () => {
+    // 非 feature 版の許容リストは article.game 由来なので、feature 記事では
+    // 空集合になり、recommendedGames にある開発元名を high で誤検出していた。
+    // feature 版は recommendedGames の developer/publisher を許容する
+    const article = makeFeatureArticle({
+      content: '本作のプロデューサーはStudioSky。',
+      recommendedGames: [
+        {
+          title: 'Sky Racer',
+          platforms: ['PC (Steam)'],
+          developer: 'StudioSky',
+        },
+      ],
+    });
+
+    const personWarnings = validateArticle(article).filter((w) => w.type.startsWith('person-'));
+    expect(personWarnings).toHaveLength(0);
+  });
+
+  it('validateArticle: feature 記事で同一 (type, evidence) の警告が2件出ない', () => {
+    // 件数ではなく「同じ指摘が2回出ない」ことを直接検証する。
+    // 1つの文に複数パターンが当たって別 type の警告が並ぶのは既存の仕様なので、
+    // 重複の有無だけを見る
+    const article = makeFeatureArticle({
+      content:
+        '12時間以上のシングルプレイヤーモードを収録。開発の裏側について、山田氏は語った。全11種類のステージを用意している。',
+    });
+
+    const keys = validateArticle(article).map((w) => `${w.type} ${w.evidence ?? ''}`);
+    expect(keys.length).toBeGreaterThan(0);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('newRelease 記事では従来どおり数値・人物警告が出る（ガード追加の副作用が無いこと）', () => {
+    const article = makeArticle({
+      title: 'テストタイトル',
+      category: 'newRelease',
+      content: '12時間以上のキャンペーンを収録。開発の裏側について、山田氏は語った。',
+      game: {
+        title: 'テストタイトル',
+        genre: [],
+        platforms: ['PC (Steam)'],
+      },
+    });
+
+    const warnings = validateArticle(article);
+    expect(warnings.filter((w) => w.type === 'numeric-play-hours')).toHaveLength(1);
+    expect(warnings.filter((w) => w.type.startsWith('person-'))).toHaveLength(1);
+  });
+});
