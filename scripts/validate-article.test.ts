@@ -3762,3 +3762,329 @@ describe('validateGameTypeTranscription（Issue #387）', () => {
     expect(instruction).toContain('削除');
   });
 });
+
+describe('NUMERIC_PATTERNS の万・億表記の束ね（Issue #391）', () => {
+  /**
+   * 万・億を含む数値表記が下位桁だけを切り出さず、全体を1マッチに束ねることを検証する。
+   * - 「3万5000人」→ evidence = `3万5000人`（`5000人` の断片が出ないこと）
+   * - 断片 evidence の出現により、本文検索で見つからない・修正指示が無効・high 件数が汚れる問題を修正
+   */
+
+  describe('large-count: 万・億・千 + 人・本・DL・ユーザー・プレイヤー', () => {
+    it('「約3万5000人」→ large-count 1件、evidence = `3万5000人`', () => {
+      const article = makeArticle({
+        content: '約3万5000人が参加した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('3万5000人');
+      expect(userCount).toHaveLength(0); // `5000人` の断片が出ないこと
+    });
+
+    it('「同時接続数は12万3000人」→ large-count 1件、evidence = `12万3000人`', () => {
+      const article = makeArticle({
+        content: '同時接続数は12万3000人を記録した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('12万3000人');
+    });
+
+    it('「1億2000万人」→ large-count 1件、evidence = `1億2000万人`', () => {
+      const article = makeArticle({
+        content: '世界中で1億2000万人が遊んでいる。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('1億2000万人');
+      // `2000万人` の断片が出ないことを確認
+      expect(warnings.filter((w) => w.evidence === '2000万人')).toHaveLength(0);
+    });
+
+    it('「2万5千人」→ large-count 1件、evidence = `2万5千人`', () => {
+      const article = makeArticle({
+        content: 'イベントには2万5千人が来場した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('2万5千人');
+    });
+
+    it('「15万人」「3万人」→ large-count 1件ずつ（回帰）', () => {
+      const article1 = makeArticle({ content: '15万人が視聴した。' });
+      const article2 = makeArticle({ content: '3万人が購入した。' });
+
+      const warnings1 = validateNumericClaims(article1);
+      const warnings2 = validateNumericClaims(article2);
+
+      expect(warnings1.filter((w) => w.type === 'numeric-large-count')).toHaveLength(1);
+      expect(warnings1[0].evidence).toBe('15万人');
+
+      expect(warnings2.filter((w) => w.type === 'numeric-large-count')).toHaveLength(1);
+      expect(warnings2[0].evidence).toBe('3万人');
+    });
+
+    it('「1億2000万5000人」→ large-count 1件、evidence = `1億2000万5000人`', () => {
+      const article = makeArticle({
+        content: '累計で1億2000万5000人が登録した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('1億2000万5000人');
+      // `2000万5000人` の断片が出ないこと
+      expect(warnings.filter((w) => w.evidence === '2000万5000人')).toHaveLength(0);
+    });
+
+    it('「1億2千万人」→ large-count 1件、evidence = `1億2千万人`', () => {
+      const article = makeArticle({
+        content: '世界で1億2千万人が利用している。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('1億2千万人');
+    });
+
+    it('「5千人」→ large-count 1件、evidence = `5千人`', () => {
+      const article = makeArticle({
+        content: '約5千人が参加した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('5千人');
+    });
+
+    it('「2万 5000人」（空白あり）→ large-count 1件のみ、user-count 0件', () => {
+      const article = makeArticle({
+        content: '本作は2万 5000人を記録した。',
+      });
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('2万 5000人');
+      expect(userCount).toHaveLength(0); // `5000人` の断片が出ないこと
+    });
+  });
+
+  describe('user-count: 平地の人（4桁以上・カンマ区切り）', () => {
+    it('「1,234人」→ user-count 1件（回帰）', () => {
+      const article = makeArticle({ content: '1,234人が参加した。' });
+      const warnings = validateNumericClaims(article);
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(userCount).toHaveLength(1);
+      expect(userCount[0].evidence).toBe('1,234人');
+    });
+
+    it('「12345人」→ user-count 1件（回帰）', () => {
+      const article = makeArticle({ content: '12345人が訪れた。' });
+      const warnings = validateNumericClaims(article);
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(userCount).toHaveLength(1);
+      expect(userCount[0].evidence).toBe('12345人');
+    });
+  });
+
+  describe('review-count: 件（平地 + 万・億）', () => {
+    it('「18万5000件」→ review-count 1件、evidence = `18万5000件`', () => {
+      const article = makeArticle({
+        content: 'Steam では18万5000件のレビューが投稿されている。',
+      });
+      const warnings = validateNumericClaims(article);
+      const reviewCount = warnings.filter((w) => w.type === 'numeric-review-count');
+
+      expect(reviewCount).toHaveLength(1);
+      expect(reviewCount[0].evidence).toBe('18万5000件');
+      // `5000件` の断片が出ないこと
+      expect(warnings.filter((w) => w.evidence === '5000件')).toHaveLength(0);
+    });
+
+    it('「1,234件」→ review-count 1件（回帰）', () => {
+      const article = makeArticle({ content: '1,234件のレビューがある。' });
+      const warnings = validateNumericClaims(article);
+      const reviewCount = warnings.filter((w) => w.type === 'numeric-review-count');
+
+      expect(reviewCount).toHaveLength(1);
+      expect(reviewCount[0].evidence).toBe('1,234件');
+    });
+  });
+
+  describe('price: 円・ドル・USD・$（平地 + 万・億）', () => {
+    it('「1万2000円」→ price 1件、evidence = `1万2000円`', () => {
+      const article = makeArticle({
+        content: '価格は1万2000円で販売中だ。',
+      });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('1万2000円');
+      // `2000円` の断片が出ないこと
+      expect(warnings.filter((w) => w.evidence === '2000円')).toHaveLength(0);
+    });
+
+    it('「3万円」→ price 1件、evidence = `3万円`', () => {
+      const article = makeArticle({
+        content: 'コレクターズエディションは3万円で予約受付中だ。',
+      });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('3万円');
+    });
+
+    it('「2,980円」「1980円」→ price 1件ずつ（回帰）', () => {
+      const article1 = makeArticle({ content: '2,980円で購入できる。' });
+      const article2 = makeArticle({ content: '1980円の特価セール中だ。' });
+
+      const warnings1 = validateNumericClaims(article1);
+      const warnings2 = validateNumericClaims(article2);
+
+      expect(warnings1.filter((w) => w.type === 'numeric-price')).toHaveLength(1);
+      expect(warnings1[0].evidence).toBe('2,980円');
+
+      expect(warnings2.filter((w) => w.type === 'numeric-price')).toHaveLength(1);
+      expect(warnings2[0].evidence).toBe('1980円');
+    });
+
+    it('「19.99ドル」→ price 1件、evidence = `19.99ドル`（回帰：小数）', () => {
+      const article = makeArticle({ content: '19.99ドルで配信中だ。' });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('19.99ドル');
+    });
+
+    it('「60ドル」→ price 1件、evidence = `60ドル`（回帰：2桁）', () => {
+      const article = makeArticle({ content: '60ドルで販売されている。' });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('60ドル');
+    });
+
+    it('「980円」→ price 1件、evidence = `980円`（回帰：3桁）', () => {
+      const article = makeArticle({ content: '980円で買える。' });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('980円');
+    });
+
+    it('「5千円」→ price 1件、evidence = `5千円`', () => {
+      const article = makeArticle({ content: '5千円のDLCが登場した。' });
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].evidence).toBe('5千円');
+    });
+  });
+
+  describe('意図的な未検出（台・種・時間・%・周年 の万表記）', () => {
+    it('「1万2000種」→ kind-count 0件（未検出を許容）', () => {
+      const article = makeArticle({
+        content: '1万2000種のアイテムが登場する。',
+      });
+      const warnings = validateNumericClaims(article);
+      const kindCount = warnings.filter((w) => w.type === 'numeric-kind-count');
+
+      expect(kindCount).toHaveLength(0);
+      // 断片 `2000種` も出ないこと（後読みにより始まらない）
+      expect(warnings.filter((w) => w.evidence?.includes('2000種'))).toHaveLength(0);
+    });
+  });
+
+  describe('sourcedFrom 解決テスト', () => {
+    it('webSearchSources の snippet に含まれる万表記が sourcedFrom に解決される', () => {
+      const article = makeArticle({
+        content: '正式版リリース直後には最大同接数約3万5000人を記録した。',
+        webSearchSources: [
+          {
+            title: 'ゲーム News',
+            url: 'https://example.com/news',
+            snippet: '正式版リリース直後には最大同接数約3万5000人を記録するなど、大きな盛り上がりを見せた。',
+          },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('3万5000人');
+      expect(largeCount[0].sourcedFrom?.url).toBe('https://example.com/news');
+    });
+  });
+
+  describe('buildFixInstruction', () => {
+    it('numeric-large-count / evidence `3万5000人` の指示に `3万5000人` が含まれる', () => {
+      const warning: ValidationWarning = {
+        articleTitle: 'テスト記事',
+        category: 'newRelease',
+        type: 'numeric-large-count',
+        severity: 'high',
+        message: 'ソース不明な大数クレーム',
+        evidence: '3万5000人',
+      };
+
+      const instruction = buildFixInstruction([warning]);
+
+      expect(instruction).toContain('3万5000人');
+      // `5000人` 単独の指示にならないこと
+      expect(instruction).not.toMatch(/(?<!万)5000人/);
+    });
+  });
+
+  describe('validateFeatureNumericClaims でも同じ束ね方になる', () => {
+    it('feature 記事で「3万5000人」→ large-count 1件', () => {
+      const article = makeArticle({
+        category: 'feature',
+        content: '約3万5000人が参加するイベントが開催された。',
+      });
+
+      const warnings = validateFeatureNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('3万5000人');
+    });
+  });
+
+  describe('第17号の実例を使った回帰テスト', () => {
+    it('「正式版リリース直後には最大同接数約3万5000人を記録するなど」→ large-count 1件', () => {
+      const article = makeArticle({
+        content: '正式版リリース直後には最大同接数約3万5000人を記録するなど、大きな盛り上がりを見せた。',
+      });
+
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].evidence).toBe('3万5000人');
+      expect(userCount).toHaveLength(0);
+    });
+  });
+});

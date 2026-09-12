@@ -598,6 +598,36 @@ export function validateFeaturePersonAttribution(article: GeneratedArticle): Val
 }
 
 /**
+ * 平地の数値表記（4桁以上またはカンマ区切り）。直前が数字・カンマ・万・億・空白の位置では始まらない。
+ *
+ * 否定後読み `(?<![\d,万億]\s*)` により、`3万 5000人` の `5000` のような下位桁の断片を拾わない
+ * （空白を挟む場合も対応）。capture group は数値部分全体を取る（単位を含まない）。
+ */
+const PLAIN_COUNT_BODY = String.raw`(?<![\d,万億]\s*)(\d{1,3}(?:,\d{3})+|\d{4,})`;
+
+/**
+ * 価格の平地表記。3桁以下・小数も対象（60ドル / 19.99ドル / 980円）。
+ * 万・億表記の下位桁は拾わない。
+ */
+const PLAIN_PRICE_BODY = String.raw`(?<![\d,万億]\s*)(\d+(?:[.,]\d+)?)`;
+
+/**
+ * 万・億・千を含む大数表記。万・億・千の連鎖を1マッチに束ねる。
+ * 「3万5000」「1億2000万5000」「2万5千」「1.5万」「5千」「1億2千万」を1マッチに。
+ *
+ * capture group は数値部分全体（万・億・千を含む）を取る。先頭の数字だけを capture すると
+ * `validateNumericClaims` の `knownNumbers.has(numericValue)` に引っかかる問題がある
+ * （例: 発売日 2024-3-1 の号で「3万5000人」の match[1] が "3" になると既知数値として黙って捨てられる）。
+ * `extractNumericUnitKey` は `matchFull.startsWith(numericPart)`（空白・カンマ正規化後）を前提にしているため、
+ * 全体 capture でも単位キーは正しく `3万5000人` になる。
+ *
+ * 繰り返しパターン `(?:\s*[万億千]\s*\d*(?:[.,]\d+)?)+` は各繰り返しが必ず `[万億千]` を
+ * 1文字消費するため、繰り返し回数は文字数で上限が決まる（曖昧な入れ子量指定にならず、
+ * バックトラック爆発の心配はない）。
+ */
+const LARGE_COUNT_BODY = String.raw`(?<![\d,]\s*)(\d+(?:[.,]\d+)?(?:\s*[万億千]\s*\d*(?:[.,]\d+)?)+)`;
+
+/**
  * ソース不明な可能性が高い数値パターン（捏造リスクの高い具体数値）。
  *
  * validateNumericClaims（newRelease/indie/classic）と
@@ -607,24 +637,27 @@ export function validateFeaturePersonAttribution(article: GeneratedArticle): Val
  * - 範囲表記（例: `40〜60時間`）は 1 マッチに束ねる。両端を別々に拾うと二重カウントになるため
  * - capture group `match[1]` は数値部分。概数パターン（`数百〜` / `何十〜`）は数値を持たないので
  *   呼び出し側では `match[1]` が undefined になりうる前提で扱うこと（knownNumbers 照合をスキップ）
+ * - 万・億・千を含む表記は下位桁まで1マッチに束ねる（Issue #391）。evidence の断片化を防ぎ、
+ *   修正指示の妥当性・high 件数の正確性を保つ。空白を挟む表記（`2万 5000人`）も対応
  */
 const NUMERIC_PATTERNS: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
   // レビュー件数・ユーザー数・販売数（高リスク）
-  { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*件/g, type: 'review-count', severity: 'high' },
-  { pattern: /(\d+(?:[.,]\d+)?)\s*万\s*件/g, type: 'review-count', severity: 'high' }, // 「18万件」等、万を挟む表記
-  { pattern: /(\d{1,3}(?:,\d{3})+|\d{4,})\s*人/g, type: 'user-count', severity: 'high' },
-  { pattern: /(\d+(?:[.,]\d+)?)\s*(?:万|億)\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)/g, type: 'large-count', severity: 'high' },
-  { pattern: /(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
+  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high' },
+  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high' },
+  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*人`, 'g'), type: 'user-count', severity: 'high' },
+  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)`, 'g'), type: 'large-count', severity: 'high' },
+  { pattern: /(?<![\d,万億]\s*)(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
   // プレイ時間（中リスク）: 「プレイ/遊」直後限定を撤廃し、範囲表記・「以上/超え」等に対応
-  { pattern: /(?<!\d)((?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?(?:[〜～\-](?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
+  { pattern: /(?<![\d,万億]\s*)((?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?(?:[〜～\-](?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
   // 価格（中リスク）
-  { pattern: /(\d+(?:[.,]\d+)?)\s*(?:円|ドル|USD|\$)/g, type: 'price', severity: 'medium' },
+  { pattern: new RegExp(`${PLAIN_PRICE_BODY}\\s*(?:円|ドル|USD|\\$)`, 'g'), type: 'price', severity: 'medium' },
+  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*(?:円|ドル|USD|\\$)`, 'g'), type: 'price', severity: 'medium' },
   // 評価率（中リスク）: 範囲表記を 1 マッチに束ねる
-  { pattern: /(\d{1,3}(?:[〜～\-]\d{1,3})?)\s*[%％]/g, type: 'percentage', severity: 'medium' },
+  { pattern: /(?<![\d,万億]\s*)(\d{1,3}(?:[〜～\-]\d{1,3})?)\s*[%％]/g, type: 'percentage', severity: 'medium' },
   // 収録種類数（低リスク）: 2 桁以上に限定してノイズを抑制
-  { pattern: /(\d{2,}(?:[.,]\d+)?)\s*種(?:類)?(?:以上)?/g, type: 'kind-count', severity: 'low' },
+  { pattern: /(?<![\d,万億]\s*)(\d{2,}(?:[.,]\d+)?)\s*種(?:類)?(?:以上)?/g, type: 'kind-count', severity: 'low' },
   // 周年（低リスク）
-  { pattern: /(\d+)\s*(?:周年)/g, type: 'anniversary', severity: 'low' },
+  { pattern: /(?<![\d,万億]\s*)(\d+)\s*(?:周年)/g, type: 'anniversary', severity: 'low' },
   // 概数表現（低リスク）: 数値捏造というより誇張寄り。capture group を持たない
   { pattern: /(?:数|何)[十百千万億]+(?:以上)?\s*(?:件|人|本|台|種類?|時間|万本|ユーザー|プレイヤー|ダウンロード|DL|円)/g, type: 'approx-count', severity: 'low' },
 ];
