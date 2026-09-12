@@ -178,6 +178,18 @@ export interface GeneratedArticle {
     isAiInferred?: boolean;
     aiInferredFields?: string[];
     /**
+     * IGDB のゲーム種別（0=Main Game / 8=Remake / 9=Remaster）。`GameData.gameType` の転記。
+     *
+     * `validateGameTypeTranscription`（Issue #387）が本文の種別表記との照合に使うため記事に載せる。
+     * 転記が無かった間は「執筆プロンプトには `種別: リマスター` として渡っているのに
+     * バリデータの手元に値が来ない」状態で、種別の転記だけが検証の空白になっていた
+     * （docs/hallucination-prevention.md 3-1）。
+     *
+     * `formatArticleForFrontmatter` には出さない（公開 Markdown には載らない）。
+     * 読者に伝える手段は本文の記述であって frontmatter ではないため、`isEarlyAccess` と同じ扱い。
+     */
+    gameType?: number;
+    /**
      * 早期アクセス配信中か（Issue #26、§2.9）。`validateEarlyAccessStatements` が
      * 発火条件に使うため記事に載せる。判定の由来は `GameData.isEarlyAccess` の JSDoc を参照。
      *
@@ -655,6 +667,7 @@ async function generateNewReleaseArticle(
       coverImage: game.coverImage,
       coverImageOrientation: game.coverImageOrientation,
       screenshots: game.screenshots,
+      gameType: game.gameType,
       isEarlyAccess: game.isEarlyAccess,
     },
     judgeGrounding,
@@ -784,6 +797,7 @@ async function generateIndieArticle(
       screenshots: game.screenshots,
       isAiInferred: game.isAiInferred,
       aiInferredFields: game.aiInferredFields,
+      gameType: game.gameType,
       isEarlyAccess: game.isEarlyAccess,
     },
     judgeGrounding,
@@ -1528,6 +1542,7 @@ async function generateClassicArticle(
       developerCountry: game.developerCountry,
       coverImage: game.coverImage,
       screenshots: game.screenshots,
+      gameType: game.gameType,
       isEarlyAccess: game.isEarlyAccess,
     },
     judgeGrounding,
@@ -1882,6 +1897,8 @@ async function main(): Promise<void> {
 export const __test = {
   verifyProposedGames,
   screenOutAdultGames,
+  generateNewReleaseArticle,
+  generateIndieArticle,
   generateClassicArticle,
   buildFeatureArticleFromContext,
 };

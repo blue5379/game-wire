@@ -18,7 +18,7 @@ import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 import type { SteamApiHealth } from './steam-api-client.js';
-import { getReleaseStatus, isUpcomingForBody } from './bedrock-client.js';
+import { getReleaseStatus, isUpcomingForBody, GAME_TYPE_LABELS } from './bedrock-client.js';
 import { isMainModule } from './entrypoint.js';
 import {
   ARTICLE_CATEGORY_LABELS,
@@ -295,9 +295,18 @@ function findSourceFor(
 
 /**
  * 本文中の該当箇所の前後文を抽出する（人間が判断するための文脈）
+ *
+ * @param matchIndex マッチ位置が既に分かっている場合に渡す。同じ語が複数箇所に現れ、
+ *   そのうち特定の1箇所だけを警告している場合、先頭からの `indexOf` では別の（警告対象外の）
+ *   出現箇所の文脈を出してしまうため。省略時は先頭から検索する。
  */
-function extractContext(content: string, matchedText: string, windowChars: number = 80): string {
-  const idx = content.indexOf(matchedText);
+function extractContext(
+  content: string,
+  matchedText: string,
+  windowChars: number = 80,
+  matchIndex?: number
+): string {
+  const idx = matchIndex ?? content.indexOf(matchedText);
   if (idx === -1) return matchedText;
   const start = Math.max(0, idx - windowChars);
   const end = Math.min(content.length, idx + matchedText.length + windowChars);
@@ -305,6 +314,29 @@ function extractContext(content: string, matchedText: string, windowChars: numbe
   const prefix = start > 0 ? '…' : '';
   const suffix = end < content.length ? '…' : '';
   return `${prefix}${excerpt}${suffix}`;
+}
+
+/**
+ * `matchIndex` を含む「文」を切り出す（句点 `。` または改行で区切られた範囲）。
+ *
+ * 主張のスコープを文単位に閉じるために使う。文をまたいで判断すると、隣の文の
+ * 主語・目的語を取り込んでしまい、どの対象についての主張なのかが特定できなくなる。
+ * `validatePlatformExclusivity`（Issue #377）と `validateGameTypeTranscription`（Issue #387）で共用。
+ *
+ * @param text 走査対象のテキスト（本文または要約）
+ * @param matchIndex マッチの開始位置
+ * @returns 文（前後の区切り文字は含まない）
+ */
+function extractSentenceAt(text: string, matchIndex: number): string {
+  const textBeforeMatch = text.slice(0, matchIndex);
+  const textAfterMatch = text.slice(matchIndex);
+  const sentenceStart =
+    Math.max(textBeforeMatch.lastIndexOf('。'), textBeforeMatch.lastIndexOf('\n')) + 1;
+  const sentenceEndInAfter = Math.min(
+    textAfterMatch.indexOf('。') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('。'),
+    textAfterMatch.indexOf('\n') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('\n')
+  );
+  return text.slice(sentenceStart, matchIndex + sentenceEndInAfter);
 }
 
 /**
@@ -1291,18 +1323,7 @@ export function validatePlatformExclusivity(article: GeneratedArticle): Validati
       if (!providedKeys.has(matchedKey)) continue;
 
       // マッチを含む文を切り出す（句点・改行で区切られた範囲）
-      const matchIndex = match.index ?? 0;
-      const textBeforeMatch = field.text.slice(0, matchIndex);
-      const textAfterMatch = field.text.slice(matchIndex);
-      const sentenceStart = Math.max(
-        textBeforeMatch.lastIndexOf('。'),
-        textBeforeMatch.lastIndexOf('\n')
-      ) + 1;
-      const sentenceEndInAfter = Math.min(
-        textAfterMatch.indexOf('。') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('。'),
-        textAfterMatch.indexOf('\n') === -1 ? textAfterMatch.length : textAfterMatch.indexOf('\n')
-      );
-      const sentence = field.text.slice(sentenceStart, matchIndex + sentenceEndInAfter);
+      const sentence = extractSentenceAt(field.text, match.index ?? 0);
 
       // その文の中に現れるプラットフォーム名を全部キーに正規化して主張されたキーの集合とする
       const claimedKeys = new Set<string>();
@@ -1459,6 +1480,169 @@ export function validateMetadataTranscription(article: GeneratedArticle): Valida
 }
 
 /**
+ * 種別（リメイク / リマスター）の転記を検証（Issue #387）
+ *
+ * Issue #376（PR #386）で発売日の転記照合を入れた際、`ジャンル` と `種別` は前提が欠けていて
+ * 実装から外した。本バリデータはそのうち**種別**を埋める。
+ * （`ジャンル` は実測で単純照合の誤検出率が 37/37 = 100% だったため検証を入れない。
+ *  根拠は `docs/hallucination-prevention.md` 2-6「ジャンルの転記は検証しない」）
+ *
+ * ## 検証する2方向
+ *
+ * **未言及方向**（`game-type-unstated`）: `gameType` が 8/9 なのに、タイトル・本文・要約の
+ * どこにも「リメイク」「リマスター」が現れない。
+ *
+ * **矛盾方向**（`game-type-mismatch`）: 本文が「本作はリマスター」と書いているが、
+ * メタデータの `gameType` に対応するラベルは別の語（または該当なし）。
+ *
+ * ## 対象カテゴリ
+ *
+ * - **未言及方向は `newRelease` のみ**。`gameType` を執筆プロンプトに渡しているのは
+ *   新作枠だけで（`scripts/generate-articles.ts` の `buildUserMessage('newRelease', …)` に
+ *   `gameType` があり、`'indie'` / `'classic'` には無い）、渡していない情報の欠落を
+ *   責めることになるため。indie / classic にも広げるには執筆プロンプト側に `種別` を
+ *   渡す変更（＝記事本文が変わる変更）が必要で、それは本Issueのスコープ外。
+ * - **矛盾方向は非 feature の全カテゴリ**（newRelease / indie / classic）。
+ *   本文が言っている内容とメタデータの食い違いなので、プロンプトに渡したかとは無関係に照合できる。
+ * - feature は両方対象外。`RecommendedGame` に `gameType` フィールドが無く、
+ *   照合できるメタデータが存在しない（`validateMetadataTranscription` の発売日と同じ理由）。
+ *
+ * ## 矛盾方向の偽陽性対策（公開21号・非feature記事101本での実測に基づく）
+ *
+ * 本文に「リメイク / リマスター」が現れる記事は 101 本中 9 本しかないが、そのうち **3 件は
+ * 他作品・別バージョンへの言及**で、語の有無だけでは区別できない。
+ * - 「グレース…のパートは、初代『バイオハザード』の**リメイク**を彷彿とさせる」（vol.003）
+ * - 「2024 年には**リマスター**版『The Last of Us Part II Remastered』がリリースされ」（vol.005）
+ * - 「PlayStation 4 向けに**リマスター**版が、PlayStation 5 向けにフル**リメイク**版…が発売されており」（vol.021）
+ *
+ * そこで以下3つの絞り込みを掛ける。実測ではこの絞り込みで**上記3件すべてを抑止**し、
+ * 発火したのは 7 箇所（4 タイトル）で、いずれも実際にリメイク / リマスターの作品だった。
+ *
+ * 1. **同一文スコープ + 「本作 / 同作」の主語**: マッチを含む文（`extractSentenceAt`）に
+ *    「本作」または「同作」が現れる場合だけ、本作についての主張と見なす。
+ *    上記3件はいずれもこの語を持たない文なので落ちる。
+ * 2. **ゲームタイトル内のマッチを除外**: 記事のゲームタイトル（`title` / `titleJa`）自体が
+ *    「〜リマスター」を含む場合（vol.021 のトルネコ等）、タイトルの出現範囲に入るマッチは
+ *    種別の主張ではないので数えない。
+ * 3. **同一文に正しいラベルがあれば警告しない**: `gameType` に対応するラベルが同じ文にあるなら、
+ *    その文は正しい種別を述べている。実測では vol.015 の
+ *    「…蘇る本作は、ただの**リマスター**ではなく、忠実に再構築された本格的な**リメイク**作品だ」
+ *    がこれに該当する（`gameType=8`＝リメイクに対し「リマスター」も同じ文に出る）。
+ *    否定表現（「〜ではなく」）をパースせずに抑止できる。
+ *
+ * ## 重大度
+ * どちらも `medium`（**暫定値**。Issue #350（重大度設計）の結論で見直す）。
+ * #376 の `metadata-transcription-mismatch` / #377 の `platform-exclusivity-mismatch` と揃えた。
+ *
+ * 仕様: Issue #387
+ */
+export function validateGameTypeTranscription(article: GeneratedArticle): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  // 特集記事は RecommendedGame に gameType フィールドが無いため対象外
+  if (article.category === 'feature') return warnings;
+
+  const gameType = article.game?.gameType;
+  // gameType が無ければ照合先が無い（IGDB から取れなかった場合など）
+  if (gameType === undefined) return warnings;
+
+  // 期待するラベル。0（Main Game）・未知の値では undefined（= 種別の該当なし）
+  const expectedLabel = GAME_TYPE_LABELS[gameType];
+
+  // 種別を表す語の全集合。expectedLabel との比較にも使う
+  const typeWords = Object.values(GAME_TYPE_LABELS);
+
+  const fieldsToCheck: Array<{ name: string; text: string }> = [
+    { name: '本文', text: article.content },
+    { name: '要約', text: article.summary },
+  ];
+
+  // --- 未言及方向（newRelease のみ） ---
+  if (expectedLabel !== undefined && article.category === 'newRelease') {
+    // タイトル・本文・要約のいずれかに種別語が1つでもあれば「触れている」と見なす。
+    // 誤った語（リマスターなのに「リメイク」）が書かれている場合は矛盾方向が担当するので、
+    // ここで expectedLabel だけを探すと同じ箇所に2件の警告が出てしまう
+    const allText = [article.title, article.content, article.summary].filter(Boolean).join('\n');
+    const mentionsAnyTypeWord = typeWords.some((w) => allText.includes(w));
+
+    if (!mentionsAnyTypeWord) {
+      warnings.push({
+        articleTitle: article.title,
+        category: article.category,
+        severity: 'medium', // 暫定値。Issue #350 で見直し
+        type: 'game-type-unstated',
+        message:
+          `提供データの種別は「${expectedLabel}」（IGDB game_type=${gameType}）ですが、` +
+          `タイトル・本文・要約のいずれにも「${expectedLabel}」に相当する記述がありません。` +
+          `${expectedLabel}であることは読者が購入判断に使う情報のため本文に明記してください。`,
+      });
+    }
+  }
+
+  // --- 矛盾方向（非 feature の全カテゴリ） ---
+
+  // 記事のゲームタイトル。タイトル自体が種別語を含む場合にマッチを除外するために使う
+  const gameTitles = [article.game?.title, article.game?.titleJa].filter(
+    (t): t is string => typeof t === 'string' && t.length > 0
+  );
+
+  /** `index` がゲームタイトルの出現範囲に含まれるか */
+  function isInsideGameTitle(text: string, index: number): boolean {
+    for (const title of gameTitles) {
+      let from = -1;
+      while ((from = text.indexOf(title, from + 1)) !== -1) {
+        if (index >= from && index < from + title.length) return true;
+      }
+    }
+    return false;
+  }
+
+  // 同じ語について複数箇所で警告しない
+  const seenMismatches = new Set<string>();
+
+  for (const field of fieldsToCheck) {
+    if (!field.text) continue;
+
+    for (const word of typeWords) {
+      // 期待するラベルと同じ語は矛盾ではない
+      if (word === expectedLabel) continue;
+      if (seenMismatches.has(word)) continue;
+
+      let index = -1;
+      while ((index = field.text.indexOf(word, index + 1)) !== -1) {
+        // ゲームタイトル自体に含まれる語は種別の主張ではない
+        if (isInsideGameTitle(field.text, index)) continue;
+
+        const sentence = extractSentenceAt(field.text, index);
+
+        // 本作についての主張でなければ対象外（他作品・別バージョンへの言及を落とす）
+        if (!sentence.includes('本作') && !sentence.includes('同作')) continue;
+
+        // 同じ文が正しいラベルも述べているなら、その文は種別を正しく書いている
+        if (expectedLabel !== undefined && sentence.includes(expectedLabel)) continue;
+
+        seenMismatches.add(word);
+        warnings.push({
+          articleTitle: article.title,
+          category: article.category,
+          severity: 'medium', // 暫定値。Issue #350 で見直し
+          type: 'game-type-mismatch',
+          message:
+            `本文が本作を「${word}」と書いていますが、提供データの種別は` +
+            `${expectedLabel !== undefined ? `「${expectedLabel}」` : '「該当なし」'}` +
+            `（IGDB game_type=${gameType}）です。`,
+          evidence: word,
+          context: extractContext(field.text, word, 80, index),
+        });
+        break;
+      }
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * 1つの記事に対して全バリデーションを実行
  */
 export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
@@ -1475,6 +1659,7 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
     ...validateUpcomingEvaluationClaims(article, publishDate),
     ...validateMetadataTranscription(article),
     ...validatePlatformExclusivity(article),
+    ...validateGameTypeTranscription(article),
   ];
 }
 
@@ -1523,6 +1708,21 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
     } else if (w.type.startsWith('person-')) {
       instructions.add(
         `人物「${ev}」への言及・発言引用は提供データにありません。人物の名前・肩書き・発言を記載しないでください。`
+      );
+    } else if (w.type === 'game-type-unstated') {
+      // この type は evidence を持たない（本文に該当語が「無い」ことが問題なので、
+      // 指摘できるマッチ断片が存在しない）。message 自体が
+      // 「〜であることを本文に明記してください」という完結した指示文なのでそのまま使う
+      instructions.add(w.message);
+    } else if (w.type === 'game-type-mismatch') {
+      // 「【ゲーム情報】の種別に合わせよ」だけでは、gameType が 0（Main Game）で
+      // プロンプトに「種別」行が出ていないケースの指示にならない（合わせる先が無い）。
+      // そのため「記載がある場合／無い場合」の両方を書く
+      instructions.add(
+        `本文が本作を「${ev}」と表現していますが、提供データはそれを裏付けていません。` +
+          `【ゲーム情報】に「種別」の記載がある場合はその表記に合わせ、` +
+          `記載が無い場合は本作をリメイク・リマスターと述べる記述を削除してください` +
+          `（他作品・別バージョンについての言及であれば、その対象が本作でないことを明確に書いてください）。`
       );
     } else if (w.type === 'upcoming-evaluation-claim') {
       // §11.3.4: 未発売タイトルの評価断定に対する専用指示
