@@ -1317,3 +1317,46 @@ describe('formatOutputSizeSummary — CI ログ用サイズ内訳出力 (Issue #
     expect(result).toContain('0 grounded games');
   });
 });
+
+describe('GeneratedArticle.game.gameType の転記（Issue #387）', () => {
+  // validateGameTypeTranscription は article.game.gameType を照合先にする。
+  // ここが転記されていないと、執筆プロンプトには `種別: リマスター` が渡っているのに
+  // バリデータは常に早期 return して何も検出しない（無言の無効化になる）ため、
+  // 非 feature の3カテゴリすべてで転記を検証する
+  beforeEach(() => {
+    mockIsTavilyAvailable.mockReturnValue(false);
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+  });
+
+  it('newRelease: gameType=9 が article.game.gameType に転記される', async () => {
+    const article = await __test.generateNewReleaseArticle(
+      makeGame({ title: 'Test Remaster', gameType: 9 }),
+      new Date('2026-09-12')
+    );
+    expect(article.game?.gameType).toBe(9);
+  });
+
+  it('indie: gameType=8 が article.game.gameType に転記される', async () => {
+    const article = await __test.generateIndieArticle(
+      makeGame({ title: 'Test Remake', gameType: 8 }),
+      new Date('2026-09-12')
+    );
+    expect(article.game?.gameType).toBe(8);
+  });
+
+  it('classic: gameType=0 が article.game.gameType に転記される（0 が undefined に落ちない）', async () => {
+    const article = await __test.generateClassicArticle(
+      makeGame({ title: 'Test Classic', gameType: 0 }),
+      new Date('2026-09-12')
+    );
+    expect(article.game?.gameType).toBe(0);
+  });
+
+  it('GameData に gameType が無い場合は undefined のまま（値を捏造しない）', async () => {
+    const article = await __test.generateNewReleaseArticle(
+      makeGame({ title: 'Test Game' }),
+      new Date('2026-09-12')
+    );
+    expect(article.game?.gameType).toBeUndefined();
+  });
+});

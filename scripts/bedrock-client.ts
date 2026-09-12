@@ -563,9 +563,15 @@ ${BODY_TITLE_MENTION_RULE}
 出力形式: タイトルのみを1行で出力`,
 };
 
-// IGDB game_type → 記事本文に明記する種別ラベル。
-// 0（Main Game）・undefined・未知の値は行を出さない（該当なし）。
-const GAME_TYPE_LABELS: Record<number, string> = {
+/**
+ * IGDB game_type → 記事本文に明記する種別ラベル。
+ * 0（Main Game）・undefined・未知の値は行を出さない（該当なし）。
+ *
+ * `validateGameTypeTranscription`（Issue #387）も本文の種別表記の照合にこの表を使う。
+ * 執筆プロンプトに出す語と検証に使う語が別定義になると、片方だけ増やしたときに
+ * 「プロンプトは書けと指示しているのに検証は知らない」状態になるため一元化する。
+ */
+export const GAME_TYPE_LABELS: Record<number, string> = {
   8: 'リメイク',
   9: 'リマスター',
 };

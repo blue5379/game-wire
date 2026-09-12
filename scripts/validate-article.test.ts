@@ -19,6 +19,7 @@ import {
   validateUpcomingEvaluationClaims,
   validateMetadataTranscription,
   validatePlatformExclusivity,
+  validateGameTypeTranscription,
   validateArticle,
   buildFixInstruction,
   extractNumericUnitKey,
@@ -3401,5 +3402,363 @@ describe('feature 記事の警告重複（Issue #390 回帰）', () => {
     const warnings = validateArticle(article);
     expect(warnings.filter((w) => w.type === 'numeric-play-hours')).toHaveLength(1);
     expect(warnings.filter((w) => w.type.startsWith('person-'))).toHaveLength(1);
+  });
+});
+
+describe('validateGameTypeTranscription（Issue #387）', () => {
+  /**
+   * 種別（リメイク / リマスター）の転記検証。
+   * `gameType` は IGDB の `game_type`（0=Main Game / 8=Remake / 9=Remaster）。
+   */
+  function makeGameTypeArticle(
+    overrides: {
+      category?: GeneratedArticle['category'];
+      title?: string;
+      summary?: string;
+      content?: string;
+      gameType?: number;
+      gameTitle?: string;
+      titleJa?: string;
+    } = {}
+  ): GeneratedArticle {
+    return makeArticle({
+      title: overrides.title ?? 'テストタイトル の魅力',
+      category: overrides.category ?? 'newRelease',
+      summary: overrides.summary ?? '',
+      content: overrides.content ?? '',
+      game: {
+        title: overrides.gameTitle ?? 'Test Game',
+        titleJa: overrides.titleJa,
+        genre: [],
+        platforms: ['PlayStation 5'],
+        gameType: overrides.gameType,
+      },
+    });
+  }
+
+  // --- 未言及方向（game-type-unstated） ---
+
+  it('newRelease × gameType=9（リマスター）× 種別語なし → game-type-unstated 1件', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      content: '本作は往年の名作をもとに、現行機で快適に遊べるよう調整された一本だ。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-type-unstated');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].message).toContain('リマスター');
+    expect(warnings[0].message).toContain('game_type=9');
+  });
+
+  it('newRelease × gameType=8（リメイク）× 種別語なし → game-type-unstated 1件（メッセージはリメイク）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 8,
+      content: '本作はシリーズの原点をもとに作り直された意欲作だ。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-type-unstated');
+    expect(warnings[0].message).toContain('リメイク');
+    expect(warnings[0].message).toContain('game_type=8');
+  });
+
+  it('本文に種別語があれば警告0件', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      content: '本作は往年の名作のリマスター版として現行機に登場する。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('要約に種別語があれば警告0件（本文に無くても可）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      summary: '名作がリマスターされて帰ってきた。',
+      content: '本作は現行機で快適に遊べるよう調整された一本だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('記事タイトルに種別語があれば警告0件（vol.021 トルネコ型）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      title: '名作ローグライクが甦る『トルネコの大冒険 ちょっとステキなリマスター』',
+      content: '本作は現行機で快適に遊べるよう調整された一本だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('indie × gameType=9 × 種別語なし → 警告0件（執筆プロンプトに種別を渡していないカテゴリ）', () => {
+    const article = makeGameTypeArticle({
+      category: 'indie',
+      gameType: 9,
+      content: '本作は少人数チームが手がけた意欲作だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('classic × gameType=9 × 種別語なし → 警告0件（同上）', () => {
+    const article = makeGameTypeArticle({
+      category: 'classic',
+      gameType: 9,
+      content: '本作は今なお評価の高い一本だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('feature 記事 → 警告0件（RecommendedGame に gameType が無く照合先が存在しない）', () => {
+    const article = makeGameTypeArticle({
+      category: 'feature',
+      gameType: 9,
+      content: '本作は往年の名作を現行機向けに仕上げた一本だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('gameType が undefined → 警告0件（IGDB から取れなかった場合）', () => {
+    const article = makeGameTypeArticle({
+      gameType: undefined,
+      content: '本作は現行機で快適に遊べるよう調整された一本だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('gameType=0（Main Game）× 種別語なし → 警告0件（明記すべき種別が無い）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: '本作は完全新作のアクションゲームだ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('gameType=9 なのに本文が「リメイク」と書いている → mismatch 1件のみ（unstated と二重に出ない）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      content: '本作はリメイクとして原作から作り直された。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-type-mismatch');
+    expect(warnings[0].evidence).toBe('リメイク');
+  });
+
+  // --- 矛盾方向（game-type-mismatch） ---
+
+  it('gameType=0 × 「本作はリメイクである」→ game-type-mismatch 1件（該当なしと明示される）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: '本作は初代から作り直されたリメイクである。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('game-type-mismatch');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].evidence).toBe('リメイク');
+    expect(warnings[0].message).toContain('該当なし');
+    expect(warnings[0].message).toContain('game_type=0');
+  });
+
+  it('vol.003 回帰: 「初代『バイオハザード』のリメイクを彷彿とさせる」→ 警告0件（本作/同作を主語に持たない文）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content:
+        'グレース・アシュクロフトのパートは、初代『バイオハザード』のリメイクを彷彿とさせる本格的なサバイバルホラーだ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('vol.005 回帰: 「2024年にはリマスター版『… Remastered』がリリースされ」→ 警告0件', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content:
+        '2024年にはリマスター版『The Last of Us Part II Remastered』がリリースされ、新モードが追加された。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('vol.021 回帰: 「PS4向けにリマスター版が、PS5向けにフルリメイク版…が発売されており」→ 警告0件', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content:
+        'PlayStation 4 向けにリマスター版が、PlayStation 5 向けにフルリメイク版「The Last of Us Part I」が発売されており、いずれも高い評価を得ている。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('vol.015 回帰: 「本作は、ただのリマスターではなく…リメイク作品だ」→ 警告0件（同一文に正しいラベルがある）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 8,
+      content:
+        '現代の技術で蘇る本作は、ただのリマスターではなく、忠実に再構築された本格的なリメイク作品だ。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('同一文に正しいラベルが無ければ警告する: gameType=8 × 「本作はリマスターとして生まれ変わった」→ 1件', () => {
+    const article = makeGameTypeArticle({
+      gameType: 8,
+      content: '本作はリマスターとして生まれ変わった。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('リマスター');
+    expect(warnings[0].message).toContain('「リメイク」');
+  });
+
+  it('ゲームタイトル内の種別語は数えない: titleJa に「リマスター」を含む × gameType=0 → 警告0件', () => {
+    // gameType=0 にしているのは「リマスター」を矛盾語として扱わせるため。
+    // タイトル内の出現しか無いので、除外が効かなければ 1 件出てしまう
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      titleJa: 'トルネコの大冒険 ちょっとステキなリマスター',
+      content: '本作『トルネコの大冒険 ちょっとステキなリマスター』は名作ローグライクの系譜にある。',
+    });
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('タイトル内の出現を除外しても、別箇所の出現は検出する', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      titleJa: 'トルネコの大冒険 ちょっとステキなリマスター',
+      content:
+        '本作『トルネコの大冒険 ちょっとステキなリマスター』は名作の系譜にある。本作はリマスターとして生まれ変わった。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('リマスター');
+  });
+
+  it('英語タイトル（game.title）内の種別語も数えない', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      gameTitle: 'Final Fantasy VII Remake',
+      content: '本作 Final Fantasy VII Remake は原作の序盤を大きく拡張している。',
+    });
+    // 「Remake」は GAME_TYPE_LABELS の語（リメイク / リマスター）ではないため、
+    // そもそも矛盾語として走査されない。タイトル除外とは別に 0 件であることを確認する
+    expect(validateGameTypeTranscription(article)).toHaveLength(0);
+  });
+
+  it('要約側の矛盾も検出する', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      summary: '本作はシリーズ初期作のリメイクだ。',
+      content: '幅広い層に向けた作りになっている。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('リメイク');
+  });
+
+  it('同じ語が複数箇所にあっても警告は1件（重複排除）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      summary: '本作はリメイクだ。',
+      content: '本作はリメイクである。本作はリメイクとして高く評価されている。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('リメイクとリマスターの両方が矛盾する場合は語ごとに1件ずつ（計2件）', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: '本作はリメイクである。本作はリマスターでもある。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(2);
+    expect(warnings.map((w) => w.evidence).sort()).toEqual(['リマスター', 'リメイク']);
+  });
+
+  it('context は警告対象の出現箇所を指す（先頭の対象外マッチではない）', () => {
+    // 1文目の「リメイク」は本作/同作を持たないので対象外。2文目が警告対象。
+    // context が先頭からの indexOf で作られていると 1文目の文脈が出てしまう
+    const filler = 'ゲームの世界観は非常に緻密で、探索の楽しさが随所に散りばめられている。';
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: `初代のリメイクを彷彿とさせる演出が光る。${filler}${filler}${filler}本作はリメイクとして再構築されている。`,
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].context).toContain('本作はリメイク');
+    expect(warnings[0].context).not.toContain('彷彿');
+  });
+
+  it('「同作」も本作を指す主語として扱う', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: '同作はリメイクとして原作から作り直されている。',
+    });
+
+    const warnings = validateGameTypeTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('リメイク');
+  });
+
+  // --- validateArticle への組み込み ---
+
+  it('validateArticle: 未言及方向が合成結果に含まれる', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      title: 'Test Game の魅力',
+      gameTitle: 'Test Game',
+      content: 'Test Game は現行機で快適に遊べるよう調整された一本だ。',
+    });
+
+    const warnings = validateArticle(article).filter((w) => w.type === 'game-type-unstated');
+    expect(warnings).toHaveLength(1);
+  });
+
+  it('validateArticle: 矛盾方向が合成結果に含まれる', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      title: 'Test Game の魅力',
+      gameTitle: 'Test Game',
+      content: 'Test Game は良作だ。本作は初代のリメイクである。',
+    });
+
+    const warnings = validateArticle(article).filter((w) => w.type === 'game-type-mismatch');
+    expect(warnings).toHaveLength(1);
+  });
+
+  // --- buildFixInstruction ---
+
+  it('buildFixInstruction: game-type-unstated は明記を求める指示になる', () => {
+    const article = makeGameTypeArticle({
+      gameType: 9,
+      content: '本作は現行機で快適に遊べるよう調整された一本だ。',
+    });
+    const warnings = validateGameTypeTranscription(article);
+
+    const instruction = buildFixInstruction(warnings);
+    expect(instruction).toContain('リマスター');
+    expect(instruction).toContain('本文に明記してください');
+    // evidence を持たない type なので、汎用指示の「「」は提供データで裏付けられません」に
+    // 落ちて空の鉤括弧が出ていないこと
+    expect(instruction).not.toContain('「」');
+  });
+
+  it('buildFixInstruction: game-type-mismatch は該当語と削除/修正の両方を示す', () => {
+    const article = makeGameTypeArticle({
+      gameType: 0,
+      content: '本作は初代のリメイクである。',
+    });
+    const warnings = validateGameTypeTranscription(article);
+
+    const instruction = buildFixInstruction(warnings);
+    expect(instruction).toContain('「リメイク」');
+    expect(instruction).toContain('種別');
+    expect(instruction).toContain('削除');
   });
 });
