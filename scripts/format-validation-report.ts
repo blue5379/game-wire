@@ -22,6 +22,11 @@
  * （仕様 §9.1 保留1）の議論対象がさらに不均一になる。また `warningsBySeverity.high` は
  * writeAndCheckReport の fail 閾値（既定 5 件）と自動再生成の判断にも使われる数値なので、
  * 本文品質以外の要因で動かさない。
+ * （Issue #350 で §9.1 保留1 は決着し、fail 閾値は `VALIDATION_HIGH_THRESHOLD` ごと廃止、
+ *  自動再生成は critical 型のみに変更された。現在 high は記録のみで自動アクションに
+ *  接続していないため、Issue #364 では裏付けの取れた数値警告を high から medium に
+ *  格下げしている。本数不足を独立フィールドに分ける判断はレポートの可読性の観点で
+ *  引き続き有効）
  *
  * AI成人向けスクリーニング失敗（Issue #222）は、キーワード検索失敗（searchFailures）と同様
  * 「本来行うべき安全確認ができないまま fail-open で通過した」という性質が共通するため、
@@ -116,6 +121,15 @@ export function articleCountShortfallCount(report: ValidationReport): number {
  */
 export function earlyAccessStatementIssueCount(report: ValidationReport): number {
   return report.earlyAccessStatementIssues?.length ?? 0;
+}
+
+/**
+ * 裏付けが取れたため severity を格下げした数値警告（Issue #364）。
+ * 数値自体は出典に存在するが、文脈（期間・対象の帰属）は未検証なので、
+ * 「警告一覧」からは外して独立セクションで人の目に触れさせる。
+ */
+function isSourcedNumericWarning(w: ValidationWarning): boolean {
+  return w.severityDowngradedBySource === true;
 }
 
 /** LLM judge が矛盾・裏付け不能と判定した claim の総数 */
@@ -307,6 +321,7 @@ const STATUS_META: Record<ReportStatus, { icon: string; label: string }> = {
 /**
  * 運用者が「次に何をすべきか」の箇条書きを組み立てる。
  * 検出内容に応じて具体的なアクションだけを列挙する。
+ * Issue #364 で裏付けあり数値の行を追加。
  */
 export function buildRecommendedActions(report: ValidationReport): string[] {
   const actions: string[] = [];
@@ -382,6 +397,13 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
   if (high > 0) {
     actions.push(
       `🔴 **HIGH 警告 ${high} 件**: 該当記事の本文を確認し、事実誤り・ハルシネーションを修正してください。`
+    );
+  }
+  // Issue #364: 裏付けあり数値（文脈は未検証）
+  const sourcedNumericCount = report.warnings.filter(isSourcedNumericWarning).length;
+  if (sourcedNumericCount > 0) {
+    actions.push(
+      `🔗 **裏付けあり数値 ${sourcedNumericCount} 件**: 数値は出典に存在します。期間・対象の帰属など文脈だけ確認してください（自動アクションの対象外）。`
     );
   }
   // Issue #349: 2 種の失敗は必要なアクションが違うので分けて出す。
@@ -592,11 +614,27 @@ export function formatReportMarkdown(report: ValidationReport): string {
     }
   }
 
-  // 警告詳細
-  if (report.warnings.length > 0) {
+  // 警告詳細（Issue #364: 裏付けあり数値は独立セクションに移動）
+  const regularWarnings = report.warnings.filter((w) => !isSourcedNumericWarning(w));
+  if (regularWarnings.length > 0) {
     out.push('');
     out.push('### 警告一覧');
-    for (const w of report.warnings) {
+    for (const w of regularWarnings) {
+      out.push(formatWarningBlock(w));
+    }
+  }
+
+  // 裏付けあり数値（Issue #364）
+  const sourcedNumericWarnings = report.warnings.filter(isSourcedNumericWarning);
+  if (sourcedNumericWarnings.length > 0) {
+    out.push('');
+    out.push(`### 🔗 裏付けあり数値（文脈は未検証）（${sourcedNumericWarnings.length}件）`);
+    out.push('');
+    out.push(
+      '数値そのものは出典に存在することを確認済みのため重大度を下げています（Issue #364）。' +
+      '出典との一致は数値の存在だけを担保し、期間・対象の帰属は検証していません。'
+    );
+    for (const w of sourcedNumericWarnings) {
       out.push(formatWarningBlock(w));
     }
   }

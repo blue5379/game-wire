@@ -1374,3 +1374,173 @@ describe('早期アクセスの表記（Issue #26。仕様 §2.9）', () => {
     });
   });
 });
+
+describe('裏付けあり数値（Issue #364）', () => {
+  it('severityDowngradedBySource: true の警告は「警告一覧」に出ず、「裏付けあり数値」セクションに出る', () => {
+    const md = formatReportMarkdown(
+      makeReport({
+        warnings: [
+          {
+            articleTitle: 'Test Game',
+            category: 'newRelease',
+            severity: 'medium',
+            type: 'numeric-large-count',
+            message: '本文に具体的な数値「600万人」が記載されています。',
+            evidence: '600万人',
+            sourcedFrom: { url: 'https://example.com', title: 'News', snippet: '600万人' },
+            severityDowngradedBySource: true,
+          },
+          {
+            articleTitle: 'Test Game 2',
+            category: 'newRelease',
+            severity: 'high',
+            type: 'numeric-large-count',
+            message: '本文に具体的な数値「700万人」が記載されています。',
+            evidence: '700万人',
+          },
+        ],
+      })
+    );
+
+    expect(md).toContain('### 警告一覧');
+    const sourcedHeading = '### 🔗 裏付けあり数値（文脈は未検証）（1件）';
+    expect(md).toContain(sourcedHeading);
+
+    // セクション単位で切って「どちらに出たか」を検証する。
+    // md 全体に対する toContain だけでは、両セクションに出ていても通ってしまう
+    const regularSection = md.slice(md.indexOf('### 警告一覧'), md.indexOf(sourcedHeading));
+    const sourcedSection = md.slice(md.indexOf(sourcedHeading));
+
+    // 格下げ済み（600万人）は裏付けありセクションのみ
+    expect(sourcedSection).toContain('600万人');
+    expect(regularSection).not.toContain('600万人');
+
+    // フラグの無い警告（700万人）は警告一覧のみ
+    expect(regularSection).toContain('700万人');
+    expect(sourcedSection).not.toContain('700万人');
+  });
+
+  it('フラグの無い警告（旧レポート相当）は従来どおり「警告一覧」に出る', () => {
+    const md = formatReportMarkdown(
+      makeReport({
+        warnings: [
+          {
+            articleTitle: 'Test Game',
+            category: 'newRelease',
+            severity: 'high',
+            type: 'numeric-large-count',
+            message: '本文に具体的な数値「600万人」が記載されています。',
+            evidence: '600万人',
+            sourcedFrom: { url: 'https://example.com', title: 'News', snippet: '600万人' },
+            // severityDowngradedBySource は無い（旧レポート相当）
+          },
+        ],
+      })
+    );
+
+    expect(md).toContain('### 警告一覧');
+    expect(md).toContain('600万人');
+    expect(md).not.toContain('### 🔗 裏付けあり数値');
+  });
+
+  it('格下げ済みが 0 件ならセクション見出しが出ない', () => {
+    const md = formatReportMarkdown(
+      makeReport({
+        warnings: [
+          {
+            articleTitle: 'Test Game',
+            category: 'newRelease',
+            severity: 'high',
+            type: 'numeric-large-count',
+            message: '本文に具体的な数値「600万人」が記載されています。',
+            evidence: '600万人',
+          },
+        ],
+      })
+    );
+
+    expect(md).not.toContain('### 🔗 裏付けあり数値');
+    expect(md).toContain('### 警告一覧');
+  });
+
+  it('格下げ済みだけで他に警告が無い号では「警告一覧」の見出しが出ない', () => {
+    const md = formatReportMarkdown(
+      makeReport({
+        warnings: [
+          {
+            articleTitle: 'Test Game',
+            category: 'newRelease',
+            severity: 'medium',
+            type: 'numeric-large-count',
+            message: '本文に具体的な数値「600万人」が記載されています。',
+            evidence: '600万人',
+            sourcedFrom: { url: 'https://example.com', title: 'News', snippet: '600万人' },
+            severityDowngradedBySource: true,
+          },
+        ],
+      })
+    );
+
+    expect(md).not.toContain('### 警告一覧');
+    expect(md).toContain('### 🔗 裏付けあり数値');
+  });
+
+  it('buildRecommendedActions に上記の 1 行が含まれる（0 件のときは含まれない）', () => {
+    const report = makeReport({
+      warnings: [
+        {
+          articleTitle: 'Test Game',
+          category: 'newRelease',
+          severity: 'medium',
+          type: 'numeric-large-count',
+          message: '本文に具体的な数値「600万人」が記載されています。',
+          evidence: '600万人',
+          sourcedFrom: { url: 'https://example.com', title: 'News', snippet: '600万人' },
+          severityDowngradedBySource: true,
+        },
+      ],
+    });
+
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('🔗 **裏付けあり数値 1 件**'))).toBe(true);
+    expect(actions.some((a) => a.includes('数値は出典に存在します'))).toBe(true);
+  });
+
+  it('buildRecommendedActions: 0 件のときは行が含まれない', () => {
+    const report = makeReport({
+      warnings: [
+        {
+          articleTitle: 'Test Game',
+          category: 'newRelease',
+          severity: 'high',
+          type: 'numeric-large-count',
+          message: '本文に具体的な数値「600万人」が記載されています。',
+          evidence: '600万人',
+        },
+      ],
+    });
+
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('🔗 **裏付けあり数値'))).toBe(false);
+  });
+
+  it('computeReportStatus の結果が変わらないこと（格下げ済み警告だけの号で error にならない）', () => {
+    const report = makeReport({
+      warnings: [
+        {
+          articleTitle: 'Test Game',
+          category: 'newRelease',
+          severity: 'medium',
+          type: 'numeric-large-count',
+          message: '本文に具体的な数値「600万人」が記載されています。',
+          evidence: '600万人',
+          sourcedFrom: { url: 'https://example.com', title: 'News', snippet: '600万人' },
+          severityDowngradedBySource: true,
+        },
+      ],
+      warningsBySeverity: { critical: 0, high: 0, medium: 1, low: 0 },
+    });
+
+    expect(computeReportStatus(report)).toBe('warning');
+  });
+});

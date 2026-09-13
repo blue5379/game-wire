@@ -505,6 +505,7 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 - **`VALIDATION_AUTO_REGENERATE` の既定値**（当時 OFF）は変えない（#350 の判断待ち）→ その後 #350 で対象を critical 型に絞り、#372 で既定 ON に反転した
 - **high 警告の重大度設計そのもの**は変えない（#350 / #364 の担当）。§7 は申し送りであって実装ではない
 - **`webSearchSources` の中身**は変えない（§4.2）。数値・人名の `sourcedFrom` 判定に一次ソースを載せるかは別Issueの判断
+  - 追記（#364 実施後）: `sourcedFrom` は数値警告の重大度を自動で格下げする入力になったため、`webSearchSources` に何を載せるかは**警告の重大度を直接動かす**ようになった。判断する際はこの副作用を前提にすること
 - **`invokeClaudeModel` の戻り値型**は変えない（§6.1）
 - **`regenOpts.cachedSearch`** には手を入れない（死んだ経路。§4.4）
 - **`docs/hallucination-prevention.md` 2-2 表**の実装との乖離は #373 の担当

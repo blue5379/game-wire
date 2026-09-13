@@ -1202,6 +1202,7 @@ vol.17 の検証レポートは「記事 4 本」を**記録していました**
 |---|---|---|---|---|
 | **critical ≥ 1 件** | error | ○ | ×（`VALIDATION_STRICT=true` のときのみ） | ○ |
 | **high ≥ 1 件** | **warning**（← 従来 error から降格） | × | × | × |
+| **数値系で `sourcedFrom` あり** | warning（medium に格下げ・独立セクション表示。Issue #364） | × | × | × |
 | **judge contradicted（confidence ≥ 0.7）≥ 1 件** | **error**（← 従来 warning） | ○ | × | × |
 | judge unverifiable / 低確信 contradicted | warning | × | × | × |
 | 検索失敗 / アダルト判定失敗 / 記事本数不足 | error | ○ | × | × |
@@ -1217,6 +1218,15 @@ vol.17 の検証レポートは「記事 4 本」を**記録していました**
 3. **judge の contradicted-high を error 条件に追加**（confidence >= 0.7 = 事実誤りの直接証拠）。ただし critical にはしない（自動再生成では直せないため起票のみ）
 4. **`VALIDATION_HIGH_THRESHOLD` を廃止**。代わりに critical ≥ 1 件で fail（既定ではビルドは止めず、`VALIDATION_STRICT=true` のときのみ）
 5. **自動再生成の対象を critical 型のみに絞る**（既定 OFF のまま。既定 ON 化は Issue #372 の修正後 → **Issue #372 で実施済み**）
+
+#### 後続の決定（Issue #364・2026-09-13）
+
+上の表の枠組みを前提にした追加決定。**#350 の決定 1〜5 の内容は変えていない。**
+
+6. **数値系警告の裏付けあり格下げ**: 高リスク5型（`review-count` ×2 / `user-count` / `large-count` / `vehicle-count`）は `sourcedFrom` が見つかった場合 high → medium に格下げし、レポートでは「🔗 裏付けあり数値（文脈は未検証）」の独立セクションに分離する。`computeReportStatus` の判定条件は変更しない
+   - 根拠: 第17〜21号の実測で HIGH の数値警告 7 件のうち 5 件が `sourcedFrom` あり、そのすべてが事実だった（捏造 0 件）。`data/validation/validation-report-0{17..21}.json` で確認
+   - 格下げしても文脈（期間・対象の帰属）は未検証なので、独立セクションと「対応すべきこと」の行で人の目に触れる経路を残す。第18号「発売後わずか6週間で600万本」は数値は出典に存在するが期間の帰属が食い違っている可能性がある実例
+   - `high` は #350 の時点で自動起票・fail・自動再生成のいずれにも接続していないため、この格下げによって自動アクションの挙動は変わらない
 
 #### 決着した保留（2026-09-13）
 
