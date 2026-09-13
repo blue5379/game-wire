@@ -481,15 +481,15 @@ judge は**入力が正しいこと**を前提にする。入力の質の担保�
 
 ### 検出 → 改善の閉ループ（実装済み）
 
-high 警告（正規表現バリデータ由来）を持つ記事を、警告内容をプロンプトにフィードバックして**1回だけ自動再生成**する（`scripts/generate-articles.ts` の `main()`）。
+critical 警告（正規表現バリデータ由来）を持つ記事を、警告内容をプロンプトにフィードバックして**1回だけ自動再生成**する（`scripts/generate-articles.ts` の `runAutoRegeneration()`）。
 
-- トリガー: `validateArticle()` の high 警告（正規表現由来のみ。LLM-judge は非決定的なため再生成トリガーにしない）
-- フィードバック: `buildFixInstruction()` が警告 type 別の修正指示文を組み立て、`buildUserMessage` / `buildFeatureUserMessage` の `fixInstruction` 引数で本文生成プロンプトに付与する
+- トリガー: `validateArticle()` の critical 警告（正規表現由来のみ。LLM-judge は非決定的なため再生成トリガーにしない）
+- フィードバック: `buildFixInstruction()` が警告 type 別の修正指示文を組み立て、本文生成プロンプトに付与。`buildTitleFixInstruction()` が見出し専用の修正指示を組み立て、`generateTitle` に付与（Issue #372）
 - 全カテゴリ対象。feature は本文だけ作り直し、テーマ選定・ゲーム選定・検索・画像生成はやり直さない（コスト抑制）。newRelease/indie/classic も再生成時は検索結果を流用可能
-- 再生成は1記事1回まで（無限ループ防止）。再生成後も high が残る場合はそのまま通す（警告は後段の validate/judge で記録される）
-- **デフォルト OFF**。`VALIDATION_AUTO_REGENERATE=true` で有効化（再生成は生成コストが増えるため opt-in）
+- 再生成は1記事1回まで（無限ループ防止）。再生成後も critical が残る場合はそのまま通す（警告は後段の validate/judge で記録される）
+- **デフォルト ON**（Issue #372 で見出し生成にも修正指示が届くようになったため）。無効化は `VALIDATION_AUTO_REGENERATE=false`
 
 ### 今後の課題
 
 - LLM-judge 結果の fail 判定への算入（運用が安定したら、環境変数で contradicted を high 算入）
-- 自動再生成のデフォルト ON 化（運用が安定したら）
+- ~~自動再生成のデフォルト ON 化~~ → ✅ 完了（Issue #372）

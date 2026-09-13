@@ -23,6 +23,7 @@ import {
   validateGameTypeTranscription,
   validateArticle,
   buildFixInstruction,
+  buildTitleFixInstruction,
   extractNumericUnitKey,
   resolveReportMode,
   writeAndCheckReport,
@@ -999,11 +1000,9 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('人物');
   });
 
-  it('title-mismatch はタイトル正確使用の指示を出し、body-title-mismatch 用の文言は含まない', () => {
+  it('title-mismatch のみ → 空文字列を返す（Issue #372。本文プロンプトには不要）', () => {
     const out = buildFixInstruction([w('title-mismatch', '')]);
-    expect(out).toContain('タイトル');
-    expect(out).toContain('短縮・翻訳・改変は禁止');
-    expect(out).not.toContain('一度も登場しませんでした');
+    expect(out).toBe('');
   });
 
   it('body-title-mismatch は本文への正式タイトル記載を求める専用の指示を出す（Issue #362）', () => {
@@ -1018,15 +1017,29 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('【ゲーム情報】に「タイトル（日本語）」がある場合');
   });
 
-  it('title-mismatch と body-title-mismatch を同時に渡すと2件の別々の指示が出る（Issue #362。以前は1件に統合されていた）', () => {
+  it('title-mismatch と body-title-mismatch を同時に渡すと body-title-mismatch のみ出力（Issue #372）', () => {
     const out = buildFixInstruction([
       w('title-mismatch', ''),
       w('body-title-mismatch', 'Grand Theft Auto: San Andreas'),
     ]);
-    const instructionLines = out.split('\n').filter((l) => l.startsWith('- '));
-    expect(instructionLines.length).toBe(2);
-    expect(out).toContain('短縮・翻訳・改変は禁止');
+    // title-mismatch は見出し専用なので本文プロンプトには含まれない
+    expect(out).not.toContain('短縮・翻訳・改変は禁止');
+    // body-title-mismatch のみ出る
+    expect(out).toContain('Grand Theft Auto: San Andreas');
     expect(out).toContain('一度も登場しませんでした');
+    const instructionLines = out.split('\n').filter((l) => l.startsWith('- '));
+    expect(instructionLines.length).toBe(1);
+  });
+
+  it('title-mismatch と numeric-* を同時に渡すと numeric-* のみ出力（Issue #372）', () => {
+    const out = buildFixInstruction([
+      w('title-mismatch', ''),
+      w('numeric-user-count', '40万人'),
+    ]);
+    expect(out).toContain('40万人');
+    expect(out).toContain('根拠のない具体的な数値');
+    // title-mismatch の旧文言は含まれない
+    expect(out).not.toContain('ゲームタイトルは提供データのものを正確に使用してください');
   });
 
   it('同一内容の指示は重複排除される', () => {
@@ -1048,6 +1061,65 @@ describe('buildFixInstruction', () => {
     expect(out).toContain('Switch');
     expect(out).toContain('40万人');
     expect(out).toContain('山田');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// buildTitleFixInstruction — Issue #372: 見出し専用の修正指示ビルダー
+// ─────────────────────────────────────────────────────────────────────────────
+describe('buildTitleFixInstruction', () => {
+  function w(type: string, evidence: string): ValidationWarning {
+    return {
+      articleTitle: 'test article',
+      category: 'newRelease' as const,
+      severity: 'critical' as const,
+      type,
+      message: 'test',
+      evidence,
+    };
+  }
+
+  it('title-mismatch 1件 → evidence の文字列が指示に含まれる', () => {
+    const out = buildTitleFixInstruction([w('title-mismatch', '前回生成した記事タイトル例')]);
+    expect(out).toContain('前回生成した記事タイトル例');
+    expect(out).toContain('上記のゲームタイトルがそのままの表記で含まれていませんでした');
+    expect(out).toContain('一字一句そのまま記事タイトルに含めてください');
+  });
+
+  it('title-mismatch 以外のみ → 空文字列', () => {
+    const out = buildTitleFixInstruction([
+      w('numeric-user-count', '40万人'),
+      w('body-title-mismatch', 'Grand Theft Auto: San Andreas'),
+      w('platform-mismatch', 'Switch'),
+    ]);
+    expect(out).toBe('');
+  });
+
+  it('空配列 → 空文字列', () => {
+    const out = buildTitleFixInstruction([]);
+    expect(out).toBe('');
+  });
+
+  it('同じ evidence の title-mismatch 2件 → 指示が1つだけになる（重複排除）', () => {
+    const out = buildTitleFixInstruction([
+      w('title-mismatch', '同じ見出し'),
+      w('title-mismatch', '同じ見出し'),
+    ]);
+    const occurrences = out.split('同じ見出し').length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it('title-mismatch と他の型が混在 → 出力に他の型向けの文言が含まれない', () => {
+    const out = buildTitleFixInstruction([
+      w('title-mismatch', '前回の見出し'),
+      w('numeric-user-count', '40万人'),
+      w('platform-mismatch', 'Switch'),
+    ]);
+    expect(out).toContain('前回の見出し');
+    // 他の型向けの文言は含まれない
+    expect(out).not.toContain('根拠のない具体的な数値');
+    expect(out).not.toContain('40万人');
+    expect(out).not.toContain('Switch');
   });
 });
 

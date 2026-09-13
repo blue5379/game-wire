@@ -41,7 +41,7 @@ import {
 } from './fetch-web-search.js';
 import { fetchOfficialJpUrl } from './fetch-official-jp-url.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
-import { validateArticle, buildFixInstruction } from './validate-article.js';
+import { validateArticle, buildFixInstruction, buildTitleFixInstruction } from './validate-article.js';
 import { isBlockedAdultGame } from './adult-blocklist.js';
 import { pickNewReleaseLabelCompany } from './indie-classifier.js';
 import { normalizeTitle } from './normalize.js';
@@ -122,10 +122,13 @@ export interface WebSearchSource {
 /**
  * 記事再生成（P4）のオプション。
  * - fixInstruction: バリデーション警告から組み立てた修正指示（プロンプトに付与）
+ * - titleFixInstruction: 再生成時に見出し生成プロンプトへ渡す修正指示（Issue #372）。本文用の fixInstruction とは別
  * - cachedSearch: 前回生成時の Tavily 検索結果。再生成時の再検索を避けてコスト・レートを抑える
  */
 export interface RegenerateOptions {
   fixInstruction?: string;
+  /** 再生成時に見出し生成プロンプトへ渡す修正指示（Issue #372）。本文用の fixInstruction とは別 */
+  titleFixInstruction?: string;
   cachedSearch?: {
     context: string;
     sources: WebSearchSource[];
@@ -293,32 +296,42 @@ export interface GeneratedIssue {
 async function generateTitle(
   category: string,
   gameTitle: string,
-  summary?: string,
-  itemCount?: number,
-  titleJa?: string,
-  releaseDate?: string,
-  publishDate?: Date,
-  isEarlyAccess?: boolean
+  opts: {
+    summary?: string;
+    itemCount?: number;
+    titleJa?: string;
+    releaseDate?: string;
+    publishDate?: Date;
+    isEarlyAccess?: boolean;
+    /** 再生成時に見出し生成プロンプトへ付与する修正指示（Issue #372） */
+    fixInstruction?: string;
+  } = {}
 ): Promise<string> {
-  const countNote = itemCount !== undefined ? `\n紹介するゲームの本数: ${itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
+  const countNote = opts.itemCount !== undefined ? `\n紹介するゲームの本数: ${opts.itemCount}本（タイトルに「N選」を含める場合はこの数を使うこと）` : '';
 
   // タイトル指定: 日本語タイトルがあれば日本語を優先、無ければ英語をそのまま使用
-  const titleSection = titleJa
-    ? `タイトル（日本語、記事内で優先使用）: ${titleJa}\nタイトル（英語/国際名、変更禁止）: ${gameTitle}`
+  const titleSection = opts.titleJa
+    ? `タイトル（日本語、記事内で優先使用）: ${opts.titleJa}\nタイトル（英語/国際名、変更禁止）: ${gameTitle}`
     : `タイトル（英語/国際名、変更禁止）: ${gameTitle}`;
 
-  const _releaseStatus = releaseDate && publishDate ? getReleaseStatus(releaseDate, publishDate) : null;
+  const _releaseStatus = opts.releaseDate && opts.publishDate ? getReleaseStatus(opts.releaseDate, opts.publishDate) : null;
   const releaseStatusNote = _releaseStatus ? `\n発売状態: ${_releaseStatus}` : '';
   // 早期アクセスは発売状態と直交する軸（§2.9）。`true` のときだけ渡し、undefined（未判定）では
   // 何も渡さない = 見出しで早期アクセスに触れさせない
-  const earlyAccessNote = isEarlyAccess === true ? '\n早期アクセス: 配信中' : '';
+  const earlyAccessNote = opts.isEarlyAccess === true ? '\n早期アクセス: 配信中' : '';
 
-  const userMessage = `カテゴリ: ${category}
-${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${earlyAccessNote}${countNote}
+  let userMessage = `カテゴリ: ${category}
+${titleSection}${opts.summary ? `\n概要: ${opts.summary}` : ''}${releaseStatusNote}${earlyAccessNote}${countNote}
 
 上記の情報を元に、記事タイトルを1つ生成してください。
 ゲームタイトルは提供された通りに正確に使用し、短縮・翻訳・並べ替え・改変は禁止です。
 記事タイトルには必ず上記のゲームタイトル（日本語名があれば日本語名）をそのまま含めてください。`;
+
+  // 修正指示を既存の指示文の後に追記（Issue #372）。
+  // 空文字列（= 対象の警告が無い）は追記しない
+  if (opts.fixInstruction) {
+    userMessage += `\n\n${opts.fixInstruction}`;
+  }
 
   try {
     const response = await invokeClaudeModel(
@@ -330,7 +343,7 @@ ${titleSection}${summary ? `\n概要: ${summary}` : ''}${releaseStatusNote}${ear
   } catch (error) {
     console.warn(`Title generation failed, using fallback: ${error}`);
     // フォールバック: ゲームタイトルをそのまま使用
-    return `注目タイトル『${titleJa || gameTitle}』をご紹介`;
+    return `注目タイトル『${opts.titleJa || gameTitle}』をご紹介`;
   }
 }
 
@@ -645,7 +658,14 @@ async function generateNewReleaseArticle(
   // なるのは正常な動作（新作紹介枠は企業規模を問わない = 論点A / Issue #336）。
   const labelCompany = pickNewReleaseLabelCompany(game.developer, game.publisher);
   const newReleaseCategoryLabel = labelCompany ? `${labelCompany}の新作` : '注目新作';
-  const title = await generateTitle(newReleaseCategoryLabel, game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate, game.isEarlyAccess);
+  const title = await generateTitle(newReleaseCategoryLabel, game.title, {
+    summary: game.summary,
+    titleJa: game.titleJa,
+    releaseDate: game.releaseDate,
+    publishDate,
+    isEarlyAccess: game.isEarlyAccess,
+    fixInstruction: regenOpts?.titleFixInstruction,
+  });
   const summary = await generateSummary(content);
 
   return {
@@ -764,16 +784,14 @@ async function generateIndieArticle(
     })
   );
 
-  const title = await generateTitle(
-    '話題のインディーゲーム',
-    game.title,
-    game.summary,
-    undefined,
-    game.titleJa,
-    game.releaseDate,
+  const title = await generateTitle('話題のインディーゲーム', game.title, {
+    summary: game.summary,
+    titleJa: game.titleJa,
+    releaseDate: game.releaseDate,
     publishDate,
-    game.isEarlyAccess
-  );
+    isEarlyAccess: game.isEarlyAccess,
+    fixInstruction: regenOpts?.titleFixInstruction,
+  });
   const summary = await generateSummary(content);
 
   return {
@@ -962,7 +980,11 @@ async function buildFeatureArticleFromContext(
   );
 
   const summary = await generateSummary(content);
-  const title = await generateTitle('特集', ctx.theme, summary, ctx.featureGames.length);
+  // 特集は `title-mismatch` の対象外なので fixInstruction を渡さない（Issue #372）
+  const title = await generateTitle('特集', ctx.theme, {
+    summary,
+    itemCount: ctx.featureGames.length,
+  });
 
   return {
     title,
@@ -1521,7 +1543,14 @@ async function generateClassicArticle(
     })
   );
 
-  const title = await generateTitle('名作深掘り', game.title, game.summary, undefined, game.titleJa, game.releaseDate, publishDate, game.isEarlyAccess);
+  const title = await generateTitle('名作深掘り', game.title, {
+    summary: game.summary,
+    titleJa: game.titleJa,
+    releaseDate: game.releaseDate,
+    publishDate,
+    isEarlyAccess: game.isEarlyAccess,
+    fixInstruction: regenOpts?.titleFixInstruction,
+  });
   const summary = await generateSummary(content);
 
   return {
@@ -1580,6 +1609,71 @@ function createFallbackGame(
   };
 
   return fallbacks[category];
+}
+
+/**
+ * 生成済み記事と、その記事を修正指示付きで作り直す再生成クロージャの組。
+ *
+ * `regenerate` の第1引数は本文プロンプト用、第2引数は見出し生成プロンプト用の修正指示
+ * （別経路である理由は Issue #372 / `buildTitleFixInstruction` の JSDoc を参照）。
+ */
+export interface Regenerable {
+  article: GeneratedArticle;
+  regenerate: (fix: string, titleFix: string) => Promise<GeneratedArticle>;
+}
+
+/**
+ * 自動再生成（P4）: critical 警告（正規表現バリデータ由来）を持つ記事を1回だけ作り直す。
+ *
+ * 既定 ON。無効化は `VALIDATION_AUTO_REGENERATE=false`（`'false'` 以外の値はすべて有効扱い）。
+ * Issue #372 で見出し生成にも修正指示が届くようになったため既定を ON にした（Issue #350 決定4）。
+ * 対象を critical に限定しているのは、critical が「プロンプトで明示的に禁止しているのに
+ * 守られていない」型だけであり、作り直しで直る見込みがあるため（Issue #350）。
+ *
+ * 再生成に失敗した記事は元のまま残す。改善したかどうかに関わらず結果を採用し、
+ * 2回目の再生成はしない（残存警告は後続の validate / judge が記録する）。
+ *
+ * `regenerables` の要素を破壊的に更新する（`item.article` を差し替える）。
+ */
+export async function runAutoRegeneration(
+  regenerables: Regenerable[],
+  publishDate: Date
+): Promise<void> {
+  if (process.env.VALIDATION_AUTO_REGENERATE === 'false') {
+    console.log('');
+    console.log('Auto-regeneration disabled by VALIDATION_AUTO_REGENERATE=false.');
+    return;
+  }
+
+  console.log('');
+  console.log('Auto-regeneration enabled. Checking for critical-severity warnings...');
+  for (const item of regenerables) {
+    const criticalBefore = validateArticle(item.article, publishDate).filter(
+      (w) => w.severity === 'critical'
+    );
+    if (criticalBefore.length === 0) continue;
+
+    // 本文用と見出し用で別の指示を組む。見出しの欠陥（title-mismatch）は本文プロンプトに
+    // 載せても届かないため（Issue #372）
+    const fix = buildFixInstruction(criticalBefore);
+    const titleFix = buildTitleFixInstruction(criticalBefore);
+    console.log(
+      `  [regenerate] "${item.article.title}" critical=${criticalBefore.length} → 再生成`
+    );
+    try {
+      const regenerated = await item.regenerate(fix, titleFix);
+      const criticalAfter = validateArticle(regenerated, publishDate).filter(
+        (w) => w.severity === 'critical'
+      );
+      console.log(`  [regenerate] critical: ${criticalBefore.length} → ${criticalAfter.length}`);
+      item.article = regenerated; // 1回だけ。残存警告は許容（次の validate/judge で記録される）
+    } catch (error) {
+      console.error(
+        `  [regenerate] failed for "${item.article.title}", keeping original:`,
+        error
+      );
+    }
+  }
 }
 
 /**
@@ -1659,10 +1753,7 @@ async function main(): Promise<void> {
 
   // 記事と、その記事を修正指示付きで作り直す再生成クロージャをまとめて保持する。
   // 各 generate 関数のシグネチャ差は regenerate クロージャで吸収する。
-  const regenerables: Array<{
-    article: GeneratedArticle;
-    regenerate: (fix: string) => Promise<GeneratedArticle>;
-  }> = [];
+  const regenerables: Regenerable[] = [];
 
   // zombie 除去後の件数チェック（不足でも続行してサイレント短縮を可視化する）
   if (selectedGames.newReleases.length < 2) {
@@ -1683,7 +1774,8 @@ async function main(): Promise<void> {
       const article = await generateNewReleaseArticle(game, publishDate, undefined, webSearchStats);
       regenerables.push({
         article,
-        regenerate: (fix) => generateNewReleaseArticle(game, publishDate, { fixInstruction: fix }),
+        regenerate: (fix, titleFix) =>
+          generateNewReleaseArticle(game, publishDate, { fixInstruction: fix, titleFixInstruction: titleFix }),
       });
       // レート制限対策
       await new Promise((r) => setTimeout(r, 1000));
@@ -1704,7 +1796,8 @@ async function main(): Promise<void> {
       const article = await generateIndieArticle(game, publishDate, undefined, webSearchStats);
       regenerables.push({
         article,
-        regenerate: (fix) => generateIndieArticle(game, publishDate, { fixInstruction: fix }),
+        regenerate: (fix, titleFix) =>
+          generateIndieArticle(game, publishDate, { fixInstruction: fix, titleFixInstruction: titleFix }),
       });
       await new Promise((r) => setTimeout(r, 1000));
     } catch (error) {
@@ -1772,7 +1865,8 @@ async function main(): Promise<void> {
     );
     regenerables.push({
       article: featureArticle,
-      // feature はテーマ選定・ゲーム選定・検索・画像生成をやり直さず本文だけ作り直す
+      // feature はテーマ選定・ゲーム選定・検索・画像生成をやり直さず本文だけ作り直す。
+      // 特集は `title-mismatch` の対象外なので第2引数を受け取らない（Issue #372）
       regenerate: (fix) => buildFeatureArticleFromContext(featureContext, fix),
     });
     await new Promise((r) => setTimeout(r, 1000));
@@ -1792,7 +1886,8 @@ async function main(): Promise<void> {
         const article = await generateClassicArticle(classicGame, publishDate, undefined, webSearchStats);
         regenerables.push({
           article,
-          regenerate: (fix) => generateClassicArticle(classicGame, publishDate, { fixInstruction: fix }),
+          regenerate: (fix, titleFix) =>
+            generateClassicArticle(classicGame, publishDate, { fixInstruction: fix, titleFixInstruction: titleFix }),
         });
       }
     } catch (error) {
@@ -1805,28 +1900,8 @@ async function main(): Promise<void> {
     console.warn('No classic game selected, skipping');
   }
 
-  // 5. 自動再生成（P4）: critical 警告（正規表現由来）を持つ記事を1回だけ作り直す。
-  // デフォルト OFF。VALIDATION_AUTO_REGENERATE=true で有効化（再生成は生成コストが増えるため）。
-  // Issue #350 で対象を critical 型に限定（プロンプト遵守失敗型のみ）。既定 ON 化は Issue #372 の修正後。
-  if (process.env.VALIDATION_AUTO_REGENERATE === 'true') {
-    console.log('');
-    console.log('Auto-regeneration enabled. Checking for critical-severity warnings...');
-    for (const item of regenerables) {
-      const criticalBefore = validateArticle(item.article, publishDate).filter((w) => w.severity === 'critical');
-      if (criticalBefore.length === 0) continue;
-
-      const fix = buildFixInstruction(criticalBefore);
-      console.log(`  [regenerate] "${item.article.title}" critical=${criticalBefore.length} → 再生成`);
-      try {
-        const regenerated = await item.regenerate(fix);
-        const criticalAfter = validateArticle(regenerated, publishDate).filter((w) => w.severity === 'critical');
-        console.log(`  [regenerate] critical: ${criticalBefore.length} → ${criticalAfter.length}`);
-        item.article = regenerated; // 1回だけ。残存警告は許容（次の validate/judge で記録される）
-      } catch (error) {
-        console.error(`  [regenerate] failed for "${item.article.title}", keeping original:`, error);
-      }
-    }
-  }
+  // 5. 自動再生成（P4）
+  await runAutoRegeneration(regenerables, publishDate);
 
   const articles: GeneratedArticle[] = regenerables.map((r) => r.article);
 
