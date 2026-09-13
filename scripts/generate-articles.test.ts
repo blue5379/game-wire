@@ -1587,3 +1587,128 @@ describe('runAutoRegeneration（Issue #372）', () => {
     expect(regenerables[0].article).toBe(stillBroken);
   });
 });
+
+describe('要約のタイトル忠実性（Issue #371）', () => {
+  beforeEach(() => {
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+  });
+
+  it('classic（titleJa なし）: 要約プロンプトに英語タイトルとタイトル忠実性ルールが含まれる', async () => {
+    const game = makeGame({
+      title: 'Grand Theft Auto: San Andreas',
+      titleJa: undefined,
+    });
+
+    await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    // 要約生成の呼び出しを特定する。`【重要なルール】` は生成系プロンプトのうち
+    // generateSummary の user message にしか現れないので、呼び出し順序に依存せず特定できる
+    const summaryCall = mockInvoke.mock.calls.find(call => {
+      const userMessage = call[1];
+      return typeof userMessage === 'string' && userMessage.includes('【重要なルール】');
+    });
+
+    expect(summaryCall).toBeDefined();
+    const userMessage = summaryCall![1];
+
+    // タイトル指定セクションが含まれる
+    expect(userMessage).toContain('タイトル（英語/国際名、変更禁止）: Grand Theft Auto: San Andreas');
+
+    // タイトル忠実性ルールが含まれる
+    expect(userMessage).toContain('上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること（短縮・翻訳・並べ替え・改変、独自の日本語名の作成は禁止）');
+    expect(userMessage).toContain('続編・リメイク・DLC・拡張であっても、原作や前作のタイトルだけで代用せず、本作のタイトルを出すこと');
+    expect(userMessage).toContain('文字数が足りない場合は他の情報を削り、ゲームタイトルを優先すること');
+  });
+
+  it('titleJa あり: 日本語名・英語名の両方が要約プロンプトに載る', async () => {
+    const game = makeGame({
+      title: 'Elden Ring',
+      titleJa: 'エルデンリング',
+    });
+
+    await __test.generateNewReleaseArticle(game, new Date('2026-08-08'));
+
+    const summaryCall = mockInvoke.mock.calls.find(call => {
+      const userMessage = call[1];
+      return typeof userMessage === 'string' && userMessage.includes('【重要なルール】');
+    });
+
+    expect(summaryCall).toBeDefined();
+    const userMessage = summaryCall![1];
+
+    // 日本語タイトルと英語タイトルの両方が含まれる
+    expect(userMessage).toContain('タイトル（日本語、要約内で優先使用）: エルデンリング');
+    expect(userMessage).toContain('タイトル（英語/国際名、変更禁止）: Elden Ring');
+
+    // タイトル忠実性ルールが含まれる
+    expect(userMessage).toContain('上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること');
+  });
+
+  // indie の呼び出し箇所も newRelease / classic と同じ引数を渡していることを確認する
+  // （3箇所を別々に直しているので、1箇所だけ漏れても他のテストでは落ちない）。
+  // 題材は実測の分類 B（続編で原作の名前だけが summary に出る）の実例
+  it('indie: 続編タイトルでも本作の表記と原作代用の禁止行が要約プロンプトに載る', async () => {
+    const game = makeGame({
+      title: 'Hollow Knight: Silksong',
+      titleJa: undefined,
+    });
+
+    await __test.generateIndieArticle(game, new Date('2026-08-08'));
+
+    const summaryCall = mockInvoke.mock.calls.find(call => {
+      const userMessage = call[1];
+      return typeof userMessage === 'string' && userMessage.includes('【重要なルール】');
+    });
+
+    expect(summaryCall).toBeDefined();
+    const userMessage = summaryCall![1];
+
+    // 原作（Hollow Knight）ではなく本作の表記が渡っている
+    expect(userMessage).toContain('タイトル（英語/国際名、変更禁止）: Hollow Knight: Silksong');
+    // 続編・リメイク・DLC 代用の禁止ルールが含まれる
+    expect(userMessage).toContain('続編・リメイク・DLC・拡張であっても、原作や前作のタイトルだけで代用せず、本作のタイトルを出すこと');
+  });
+
+  // シグネチャ変更（位置引数 maxLength → opts.maxLength）で既定値 120 の経路が
+  // 壊れていないことを確認する。既存テストは末尾の「。」補完だけを見ており、
+  // 文字数超過時の切り詰めを検証していなかった
+  it('要約が120文字を超える場合は上限内の最後の句点で切る（既定 maxLength の回帰）', async () => {
+    const sentence = 'これは要約の文です。'; // 10文字
+    const longSummary = sentence.repeat(15); // 150文字（句点は10文字ごと）
+
+    mockInvoke.mockImplementation(async (_system: string, userMessage: string) =>
+      userMessage.includes('【重要なルール】') ? longSummary : 'テスト用ダミー応答。'
+    );
+
+    const article = await __test.generateClassicArticle(
+      makeGame({ title: 'Grand Theft Auto: San Andreas' }),
+      new Date('2026-08-08')
+    );
+
+    // 120文字以内の最後の句点 = 120文字目で切られる（12文 = 120文字）
+    expect(article.summary).toBe(sentence.repeat(12));
+    expect(article.summary.length).toBe(120);
+  });
+
+  it('feature: 要約プロンプトにタイトル指定セクションが無い（現状維持）', async () => {
+    const candidates = [
+      makeGame({ title: 'Game A' }),
+      makeGame({ title: 'Game B' }),
+    ];
+
+    await generateFeatureArticle(new Date('2026-08-08'), 999, candidates, []);
+
+    const summaryCall = mockInvoke.mock.calls.find(call => {
+      const userMessage = call[1];
+      return typeof userMessage === 'string' && userMessage.includes('【重要なルール】');
+    });
+
+    expect(summaryCall).toBeDefined();
+    const userMessage = summaryCall![1];
+
+    // タイトル指定セクションが無いことを確認（タイトル忠実性ルールも無い）
+    expect(userMessage).not.toContain('タイトル（日本語、要約内で優先使用）');
+    expect(userMessage).not.toContain('タイトル（英語/国際名、変更禁止）');
+    expect(userMessage).not.toContain('上記のゲームタイトルを要約に最低1回');
+  });
+});
