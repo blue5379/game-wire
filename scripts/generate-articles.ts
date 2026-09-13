@@ -349,15 +349,71 @@ ${titleSection}${opts.summary ? `\n概要: ${opts.summary}` : ''}${releaseStatus
 
 /**
  * 記事の要約を生成
+ *
+ * @param content - 要約対象の記事本文
+ * @param opts - オプション
+ * @param opts.title - ゲームの英語タイトル（提供すると要約にタイトル忠実性ルールが付く）
+ * @param opts.titleJa - ゲームの日本語タイトル（優先使用）
+ * @param opts.maxLength - 最大文字数（デフォルト: 120）
+ *
+ * `title` / `titleJa` を渡すと、要約プロンプトにタイトル指定セクションが追加され、
+ * 以下のタイトル忠実性ルールが適用される:
+ * - 提供されたタイトルを要約に最低1回含める（短縮・翻訳・並べ替え・改変、独自の日本語名の作成は禁止）
+ * - 続編・リメイク・DLC であっても、原作や前作のタイトルだけで代用せず、本作のタイトルを出す
+ * - 文字数が足りない場合は他の情報を削り、ゲームタイトルを優先する
+ *
+ * タイトル忠実性を検証するバリデータは意図的に置いていない（実測の照合ロジックを
+ * そのままバリデータにすると偽陽性が約32%になる見積りのため、プロンプト修正後の
+ * 分布を見てから判断する）。なお `summary` を検査対象に含めるバリデータ自体は
+ * `validateUpcomingEvaluationClaims`（§2.7）が既にあり、仕組みとしては存在する。
+ *
+ * 実測（発行済み全21号の非 feature 記事 101本を照合）:
+ * - 25本（24.8%）で `summary` に `game.titleJa` / `game.title` のどちらの表記も含まれていなかった
+ * - 内訳: ゲーム名が一度も出ない 7本、リメイク・続編・DLC で原作／前作の名前だけが出る 8本、
+ *   短縮・分割言及 7本、表記ゆれ 1本、データに無い日本語名を作成 2本
+ * - 第21号のトルネコ記事（Issue #362 初適用）で、見出しにも本文にも正式表記があるのに
+ *   summary からは落ちており、「本文が直れば要約にも入る」という間接解消の想定は成立しないことが判明
+ *
+ * @see docs/article-category-spec.md §6.6
+ * @see Issue #371
  */
 async function generateSummary(
   content: string,
-  maxLength: number = 120
+  opts: { title?: string; titleJa?: string; maxLength?: number } = {}
 ): Promise<string> {
-  const userMessage = `以下の記事を${maxLength}文字以内で要約してください。
+  const maxLength = opts.maxLength ?? 120;
+
+  // タイトル指定セクション（generateTitle と同じラベル書式。ラベル内の
+  // 「記事内で優先使用」だけは出力先に合わせて「要約内で優先使用」に差し替えている）。
+  // `opts.title` が無ければ何も足さない = feature の現状の挙動そのまま。
+  // `titleJa` 単独は呼び出し元から発生しない（`GameData.title` は必須）ため、
+  // 分岐の起点は `title` の有無に一本化する
+  let titleSection = '';
+  if (opts.title) {
+    titleSection = opts.titleJa
+      ? `タイトル（日本語、要約内で優先使用）: ${opts.titleJa}\nタイトル（英語/国際名、変更禁止）: ${opts.title}\n\n`
+      : `タイトル（英語/国際名、変更禁止）: ${opts.title}\n\n`;
+  }
+
+  // タイトル忠実性ルール。ルール行が「上記のゲームタイトル」を参照するので、
+  // タイトル指定セクションを出したときだけ足す（条件を titleSection と一本化する）。
+  //
+  // 「どちらか一方でよく、日本語タイトルがある場合はそちらを優先」は本文ルール
+  // （`BODY_TITLE_MENTION_RULE` / `INTRO_TITLE_MENTION_NOTE`）と同じ許容で、仕様は
+  // docs/article-category-spec.md §6.6「受け入れる表記」に一本化されている。
+  // 本文側のように定数を共有しないのは、要約特有の制約（120文字上限・続編の代用禁止）を
+  // 同じ行に載せているため。文言を変えるときは §6.6 と本文ルール側も併せて見ること
+  const titleFidelityRules = titleSection
+    ? `- 上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること（日本語タイトルと英語タイトルのどちらか一方でよく、日本語タイトルがある場合はそちらを優先する。短縮・翻訳・並べ替え・改変、独自の日本語名の作成は禁止）
+- 続編・リメイク・DLC・拡張であっても、原作や前作のタイトルだけで代用せず、本作のタイトルを出すこと
+- 文字数が足りない場合は他の情報を削り、ゲームタイトルを優先すること
+`
+    : '';
+
+  const userMessage = `${titleSection}以下の記事を${maxLength}文字以内で要約してください。
 
 【重要なルール】
-- 必ず完全な文で終わること（「。」で終わる）
+${titleFidelityRules}- 必ず完全な文で終わること（「。」で終わる）
 - 文の途中で切れないこと
 - 要約文のみを出力すること
 
@@ -666,7 +722,7 @@ async function generateNewReleaseArticle(
     isEarlyAccess: game.isEarlyAccess,
     fixInstruction: regenOpts?.titleFixInstruction,
   });
-  const summary = await generateSummary(content);
+  const summary = await generateSummary(content, { title: game.title, titleJa: game.titleJa });
 
   return {
     title,
@@ -792,7 +848,7 @@ async function generateIndieArticle(
     isEarlyAccess: game.isEarlyAccess,
     fixInstruction: regenOpts?.titleFixInstruction,
   });
-  const summary = await generateSummary(content);
+  const summary = await generateSummary(content, { title: game.title, titleJa: game.titleJa });
 
   return {
     title,
@@ -979,6 +1035,8 @@ async function buildFeatureArticleFromContext(
     })
   );
 
+  // feature 記事は単一の game を持たないため、タイトル忠実性ルールを適用しない
+  // （§6.6 の本文ルールと同じ判断。Issue #371）
   const summary = await generateSummary(content);
   // 特集は `title-mismatch` の対象外なので fixInstruction を渡さない（Issue #372）
   const title = await generateTitle('特集', ctx.theme, {
@@ -1551,7 +1609,7 @@ async function generateClassicArticle(
     isEarlyAccess: game.isEarlyAccess,
     fixInstruction: regenOpts?.titleFixInstruction,
   });
-  const summary = await generateSummary(content);
+  const summary = await generateSummary(content, { title: game.title, titleJa: game.titleJa });
 
   return {
     title,
