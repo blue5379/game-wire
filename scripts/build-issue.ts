@@ -17,7 +17,13 @@ import type { GeneratedIssue, GeneratedArticle } from './generate-articles.js';
 import { saveHistory, createHistoryEntry, createFeatureEventHistoryEntry } from './game-history.js';
 import type { FeatureEventHistoryEntry } from './game-history.js';
 import { validateArticles, writeAndCheckReport, validateGameSourceConsistencyForArticles } from './validate-article.js';
-import { getSteamApiHealth, readSteamApiHealth, mergeSteamApiHealth } from './steam-api-client.js';
+import type { SteamApiHealthStageEntry } from './validate-article.js';
+import {
+  getSteamApiHealth,
+  readSteamApiHealth,
+  mergeSteamApiHealth,
+  checkSteamApiHealthSnapshotFreshness,
+} from './steam-api-client.js';
 import { ARTICLE_CATEGORY_LABELS } from './format-validation-report.js';
 import { judgeArticles } from './judge-article.js';
 import { isMainModule } from './entrypoint.js';
@@ -810,10 +816,36 @@ async function main(): Promise<void> {
   const fetchDataSteamHealth = readSteamApiHealth(steamHealthSnapshotPath);
   const buildIssueSteamHealth = getSteamApiHealth();
 
-  const steamApiHealthByStage: Record<string, import('./steam-api-client.js').SteamApiHealth> = {
+  const steamApiHealthByStage: Record<string, SteamApiHealthStageEntry> = {
     'build-issue': buildIssueSteamHealth,
   };
   if (fetchDataSteamHealth) {
+    // Issue #368: スナップショットの鮮度を判定
+    const freshness = checkSteamApiHealthSnapshotFreshness(fetchDataSteamHealth);
+    if (freshness.kind !== 'fresh') {
+      let reason: string;
+      if (freshness.kind === 'unknown') {
+        reason =
+          freshness.reason === 'missing'
+            ? `スナップショットに writtenAt が無いため鮮度不明: ${steamHealthSnapshotPath}`
+            : `スナップショットの writtenAt が壊れているため鮮度不明: ${steamHealthSnapshotPath}`;
+      } else if (freshness.kind === 'future') {
+        const ageHours = (-freshness.ageMs / (60 * 60 * 1000)).toFixed(1);
+        reason = `スナップショットの writtenAt が未来（${ageHours}時間後）: ${steamHealthSnapshotPath}`;
+      } else {
+        // stale
+        const ageHours = (freshness.ageMs / (60 * 60 * 1000)).toFixed(1);
+        reason = `スナップショットが古い（${ageHours}時間前）: ${steamHealthSnapshotPath}`;
+      }
+      console.warn(
+        JSON.stringify({
+          scope: 'build-issue',
+          step: 'steam-api-health',
+          reason,
+        })
+      );
+    }
+    // 鮮度に関わらず合算は続ける（スナップショットを黙って除外するとレポートの数字が説明なしに変わるため）
     steamApiHealthByStage['fetch-data'] = fetchDataSteamHealth;
   } else {
     console.warn(

@@ -75,6 +75,8 @@
  * レポートに載せると、fetch-data プロセスで発生した大半の失敗（第20号の実測はほぼ全てここ）が
  * レポートから漏れる。そのため fetch-data プロセスの終了時にヘルス状態をファイルに書き出し、
  * build-issue プロセスがそれを読んで自プロセスの集計と合算する。
+ * スナップショットには `writtenAt`（書き込み時刻）が記録され、build-issue.ts は鮮度を判定して
+ * 古い場合は警告を出す（合算は fail-open で続ける）。
  */
 
 import * as fs from 'node:fs';
@@ -630,6 +632,14 @@ export function resetSteamApiClient(): void {
 export interface SteamApiHealthSnapshot extends SteamApiHealth {
   /** このスナップショットを書き出したプロセス・ステージ名（例: 'fetch-data'） */
   stage: string;
+  /**
+   * このスナップショットを書き出した時刻（ISO 8601）。Issue #368
+   *
+   * optional: このフィールド追加前に書き出された旧スナップショットには存在しないため、
+   * readSteamApiHealth の必須フィールド検査には**加えない**（rateLimitHits と同じ理由）。
+   * 欠けている場合は「いつのものか不明」であり、「新しい」と見なしてはいけない。
+   */
+  writtenAt?: string;
 }
 
 /**
@@ -637,7 +647,11 @@ export interface SteamApiHealthSnapshot extends SteamApiHealth {
  * 呼び出し元（fetch-data.ts）のプロセス終了前に呼ぶことを想定する。
  */
 export function writeSteamApiHealth(filePath: string, stage: string): void {
-  const snapshot: SteamApiHealthSnapshot = { ...getSteamApiHealth(), stage };
+  const snapshot: SteamApiHealthSnapshot = {
+    ...getSteamApiHealth(),
+    stage,
+    writtenAt: new Date().toISOString(),
+  };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(snapshot, null, 2));
 }
@@ -646,8 +660,8 @@ export function writeSteamApiHealth(filePath: string, stage: string): void {
  * スナップショットを読み込む。ファイルが無い・壊れている場合は undefined を返す
  * （DEV 実行や fetch-data を経ない単独実行で build-issue.ts を落とさないため）。
  *
- * rateLimitHits は必須フィールド検査に含めない: このフィールド追加前に書き出された
- * 旧スナップショットにはこのキーが無く、それを読めなくしてはいけない。
+ * rateLimitHits と writtenAt は必須フィールド検査に含めない: このフィールド追加前に
+ * 書き出された旧スナップショットにはこのキーが無く、それを読めなくしてはいけない。
  */
 export function readSteamApiHealth(filePath: string): SteamApiHealthSnapshot | undefined {
   try {
@@ -716,4 +730,68 @@ export function mergeSteamApiHealth(parts: SteamApiHealth[]): SteamApiHealth {
     merged.rateLimitHits = rateLimitHitsSum;
   }
   return merged;
+}
+
+/**
+ * ヘルススナップショットが「今回の run のもの」と見なせる最大経過時間（ミリ秒）。Issue #368
+ *
+ * CI は fetch-data → generate → build-issue が同一ジョブの連続ステップで、実測でも
+ * 記事生成を含めて1時間を大きく下回る。6時間はローカルで「前日の残骸を読んだ」を
+ * 確実に捕まえつつ、正常な run を誤って stale と呼ばない余裕を取った値。
+ */
+export const STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * スナップショットの鮮度。`unknown` は writtenAt が無い/壊れている場合で、
+ * 「新しい」とも「古い」とも判定できないことを表す（推論で埋めない）。
+ */
+export type SteamApiHealthSnapshotFreshness =
+  | { kind: 'fresh'; ageMs: number }
+  | { kind: 'stale'; ageMs: number }
+  /** writtenAt が現在時刻より未来（時計のずれ・改変）。fresh 扱いにせず区別して報告する */
+  | { kind: 'future'; ageMs: number }
+  | { kind: 'unknown'; reason: 'missing' | 'unparsable' };
+
+/**
+ * スナップショットの鮮度を判定する（Issue #368）。
+ *
+ * 判定規則:
+ * - `snapshot.writtenAt` が `undefined` → `{ kind: 'unknown', reason: 'missing' }`
+ * - `Date.parse(snapshot.writtenAt)` が `NaN` → `{ kind: 'unknown', reason: 'unparsable' }`
+ * - `ageMs = nowMs - parsed` が負 → `{ kind: 'future', ageMs }`（`ageMs` は負の値のまま返す）
+ * - `ageMs > maxAgeMs` → `{ kind: 'stale', ageMs }`
+ * - それ以外（`0 <= ageMs <= maxAgeMs`）→ `{ kind: 'fresh', ageMs }`（境界値 `ageMs === maxAgeMs` は fresh）
+ *
+ * @param snapshot - 鮮度を判定するスナップショット
+ * @param opts - オプション
+ * @param opts.nowMs - 現在時刻（デフォルト: `Date.now()`）。テストでの固定用
+ * @param opts.maxAgeMs - 鮮度の最大経過時間（デフォルト: `STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS`）
+ * @returns 鮮度の判定結果
+ */
+export function checkSteamApiHealthSnapshotFreshness(
+  snapshot: SteamApiHealthSnapshot,
+  opts?: { nowMs?: number; maxAgeMs?: number }
+): SteamApiHealthSnapshotFreshness {
+  const nowMs = opts?.nowMs ?? Date.now();
+  const maxAgeMs = opts?.maxAgeMs ?? STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS;
+
+  if (snapshot.writtenAt === undefined) {
+    return { kind: 'unknown', reason: 'missing' };
+  }
+
+  const parsed = Date.parse(snapshot.writtenAt);
+  if (Number.isNaN(parsed)) {
+    return { kind: 'unknown', reason: 'unparsable' };
+  }
+
+  const ageMs = nowMs - parsed;
+  if (ageMs < 0) {
+    return { kind: 'future', ageMs };
+  }
+
+  if (ageMs > maxAgeMs) {
+    return { kind: 'stale', ageMs };
+  }
+
+  return { kind: 'fresh', ageMs };
 }
