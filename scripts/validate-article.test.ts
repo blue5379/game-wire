@@ -4238,3 +4238,158 @@ describe('NUMERIC_PATTERNS の万・億表記の束ね（Issue #391）', () => {
     });
   });
 });
+
+describe('数値警告の重大度と裏付け（Issue #364）', () => {
+  describe('validateNumericClaims', () => {
+    it('高リスク型（large-count）: sourcedFrom あり → severity medium, severityDowngradedBySource true', () => {
+      const article = makeArticle({
+        content: '累計プレイヤー数は600万人を突破している。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '600万人を達成した' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].severity).toBe('medium');
+      expect(largeCount[0].severityDowngradedBySource).toBe(true);
+      expect(largeCount[0].sourcedFrom).toBeDefined();
+      expect(largeCount[0].sourcedFrom?.url).toBe('https://example.com/news');
+    });
+
+    it('高リスク型（large-count）: sourcedFrom なし → severity high, severityDowngradedBySource undefined', () => {
+      const article = makeArticle({
+        content: '累計プレイヤー数は600万人を突破している。',
+        webSearchSources: [],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].severity).toBe('high');
+      expect(largeCount[0].severityDowngradedBySource).toBeUndefined();
+      expect(largeCount[0].sourcedFrom).toBeUndefined();
+    });
+
+    it('中リスク型（price）: sourcedFrom あり → severity medium のまま, severityDowngradedBySource undefined', () => {
+      const article = makeArticle({
+        content: '価格は1980円で配信中。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '1980円' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const price = warnings.filter((w) => w.type === 'numeric-price');
+
+      expect(price).toHaveLength(1);
+      expect(price[0].severity).toBe('medium');
+      expect(price[0].severityDowngradedBySource).toBeUndefined();
+      expect(price[0].sourcedFrom).toBeDefined();
+    });
+
+    it('低リスク型（kind-count）: sourcedFrom あり → severity low のまま, severityDowngradedBySource undefined', () => {
+      const article = makeArticle({
+        content: '全11種類のマップが収録されている。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '11種類のマップ' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const kindCount = warnings.filter((w) => w.type === 'numeric-kind-count');
+
+      expect(kindCount).toHaveLength(1);
+      expect(kindCount[0].severity).toBe('low');
+      expect(kindCount[0].severityDowngradedBySource).toBeUndefined();
+      expect(kindCount[0].sourcedFrom).toBeDefined();
+    });
+
+    it('高リスク型（review-count）: sourcedFrom あり → 格下げ', () => {
+      const article = makeArticle({
+        content: 'Steamで1万5000件のレビューを集めている。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '1万5000件のレビュー' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const reviewCount = warnings.filter((w) => w.type === 'numeric-review-count');
+
+      expect(reviewCount).toHaveLength(1);
+      expect(reviewCount[0].severity).toBe('medium');
+      expect(reviewCount[0].severityDowngradedBySource).toBe(true);
+    });
+
+    it('高リスク型（user-count）: sourcedFrom あり → 格下げ', () => {
+      const article = makeArticle({
+        content: '既に5000人がプレイしている。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '5000人' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const userCount = warnings.filter((w) => w.type === 'numeric-user-count');
+
+      expect(userCount).toHaveLength(1);
+      expect(userCount[0].severity).toBe('medium');
+      expect(userCount[0].severityDowngradedBySource).toBe(true);
+    });
+
+    it('高リスク型（vehicle-count）: sourcedFrom あり → 格下げ', () => {
+      const article = makeArticle({
+        content: '実在する200台の車が登場する。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '200台の車両' },
+        ],
+      });
+
+      const warnings = validateNumericClaims(article);
+      const vehicleCount = warnings.filter((w) => w.type === 'numeric-vehicle-count');
+
+      expect(vehicleCount).toHaveLength(1);
+      expect(vehicleCount[0].severity).toBe('medium');
+      expect(vehicleCount[0].severityDowngradedBySource).toBe(true);
+    });
+  });
+
+  describe('validateFeatureNumericClaims', () => {
+    it('高リスク型: sourcedFrom あり → severity medium, severityDowngradedBySource true', () => {
+      const article = makeArticle({
+        category: 'feature',
+        content: '累計プレイヤー数は600万人を突破している。',
+        webSearchSources: [
+          { url: 'https://example.com/news', title: 'Game News', snippet: '600万人を達成した' },
+        ],
+      });
+
+      const warnings = validateFeatureNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].severity).toBe('medium');
+      expect(largeCount[0].severityDowngradedBySource).toBe(true);
+      expect(largeCount[0].sourcedFrom).toBeDefined();
+    });
+
+    it('高リスク型: sourcedFrom なし → severity high, severityDowngradedBySource undefined', () => {
+      const article = makeArticle({
+        category: 'feature',
+        content: '累計プレイヤー数は600万人を突破している。',
+        webSearchSources: [],
+      });
+
+      const warnings = validateFeatureNumericClaims(article);
+      const largeCount = warnings.filter((w) => w.type === 'numeric-large-count');
+
+      expect(largeCount).toHaveLength(1);
+      expect(largeCount[0].severity).toBe('high');
+      expect(largeCount[0].severityDowngradedBySource).toBeUndefined();
+      expect(largeCount[0].sourcedFrom).toBeUndefined();
+    });
+  });
+});

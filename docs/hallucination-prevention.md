@@ -136,10 +136,10 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 | パターン例 | 種別 | 重大度 |
 |-----------|------|--------|
-| `75,995件のレビュー` `12000件` `18万件` `18万5000件` | `numeric-review-count` | high |
-| `5,000人が参加` `10000人` | `numeric-user-count` | high |
-| `1,000万ユーザー` `3億ダウンロード` `3万5000人` `1億2000万5000人` `2万5千人` `5千人` | `numeric-large-count` | high |
-| `550台以上の実車` `200台の車両` | `numeric-vehicle-count` | high |
+| `75,995件のレビュー` `12000件` `18万件` `18万5000件` | `numeric-review-count` | 裏付けなし: high / 裏付けあり: medium（Issue #364） |
+| `5,000人が参加` `10000人` | `numeric-user-count` | 裏付けなし: high / 裏付けあり: medium（Issue #364） |
+| `1,000万ユーザー` `3億ダウンロード` `3万5000人` `1億2000万5000人` `2万5千人` `5千人` | `numeric-large-count` | 裏付けなし: high / 裏付けあり: medium（Issue #364） |
+| `550台以上の実車` `200台の車両` | `numeric-vehicle-count` | 裏付けなし: high / 裏付けあり: medium（Issue #364） |
 | `100時間超え` `50時間以上` `40〜60時間` `100時間プレイ` | `numeric-play-hours` | medium |
 | `3,980円` `29.99ドル` `19.99ドル` `60ドル` `980円` `1万2000円` `5千円` | `numeric-price` | medium |
 | `96%の高評価` `10〜15%` | `numeric-percentage` | medium |
@@ -187,11 +187,12 @@ Game Wire における記事生成時・生成後のハルシネーション対�
     title: string;
     snippet: string;
   };
+  severityDowngradedBySource?: boolean;  // Issue #364: sourcedFrom が見つかったため severity を格下げした場合 true
 }
 ```
 
 - `context`: 該当箇所の前後 80 文字を含む引用。人間が問題の深刻さを判断するための文脈
-- `sourcedFrom`: `person-*` / `numeric-*` 警告に付与。該当キーワードが Tavily 検索結果のいずれかに含まれていた場合にセットされる。**根拠ありの場合は捏造ではない可能性が高く、根拠なしの場合は捏造の可能性が高い**
+- `sourcedFrom`: `person-*` / `numeric-*` 警告に付与。該当キーワードが Tavily 検索結果のいずれかに含まれていた場合にセットされる。**Issue #364 で、数値クレーム検出の自動格下げの入力になった**（元の設計意図の明示的な改訂）。根拠ありの場合は捏造ではない可能性が高く、根拠なしの場合は捏造の可能性が高い
   - 照合に使う検索結果の snippet は最大 1500 文字を保持する（`readSearchContentMaxLength()`。環境変数 `SEARCH_CONTENT_MAX_LENGTH` で変更可能）。短すぎると本文の数値・人名がコンテンツ後半にあるとき「根拠なし」と誤判定する（false negative）ため
   - **記事を書く LLM に渡すプロンプト抜粋も同じ上限を使う**（2026-08-13。Issue #307）。かつてプロンプトは 300 文字・照合用 snippet は 1500 文字と別々に定義されており、**300〜1500 文字の区間にある定量値は LLM に渡っていないのにバリデータが `sourcedFrom` を付けて警告を抑制する**という逆向きの偽陰性があった（実測: プロンプト内の定量値 10 個に対し、この区間にのみ存在するものが 31 個）。**上限を 2 箇所に分けるとこの穴が再び開く**ため、`fetch-web-search.ts` の単一の定義元を共有している
   - `numeric-*` の照合は数値を「独立したトークン」（前後が数字でない）として扱う。本文の「96」が検索結果の「1996」の一部に誤って一致する false positive を防ぐ
@@ -220,7 +221,7 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 表示例:
 
 ```
-**[HIGH] numeric-review-count**
+**[MEDIUM] numeric-review-count**
 記事: ARK: Survival Ascended の紹介
 内容: 本文に具体的な数値「75,995件」が記載されています。...
 > …Steamでは75,995件のレビューが投稿され、「賛否両論」の評価を受けている…
@@ -233,6 +234,11 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 > …田中氏によると、開発には2年を要したという…
 ⚠️ 検索結果に根拠なし（捏造の可能性あり）
 ```
+
+Issue #364 以降、`sourcedFrom` が見つかって重大度を格下げした数値警告（上の例の 1 件目）は
+「警告一覧」ではなく `### 🔗 裏付けあり数値（文脈は未検証）` セクションにまとめて出力される。
+ブロックの書式は共通（`formatWarningBlock`）で、格下げされたかどうかは
+`severityDowngradedBySource` フラグで判別する（ブロック本文には出力しない）。
 
 これにより、**AIによる自己評価ではなく人間がコンテキストと根拠URLを確認して問題の深刻さを判断できる**。
 

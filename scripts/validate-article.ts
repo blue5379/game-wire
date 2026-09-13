@@ -14,8 +14,8 @@
  * - critical: プロンプトで明示的に禁止しているのに守られていない型のみ
  *   （body-title-mismatch / title-mismatch / platform-mismatch）。1 件でも Issue を自動起票し、
  *   自動再生成の対象になる（既定 ON。`VALIDATION_AUTO_REGENERATE=false` で無効化。Issue #372）
- * - high: 要確認だが記録のみ。誤検知（検索結果に根拠がある数値の転記など）が混ざるため、
- *   自動起票もビルド fail もさせない。人間が毎号レポートを読む前提
+ * - high: 裏付けの取れなかった数値クレーム等、人間が外部確認すべきもの。記録のみで、
+ *   自動起票もビルド fail もさせない。人間が毎号レポートを読む前提（Issue #364）
  * - medium / low: 記録のみ
  *
  * 「一定数以上の high 警告で fail」（旧 `VALIDATION_HIGH_THRESHOLD`）は Issue #350 で廃止した。
@@ -51,6 +51,13 @@ export interface ValidationWarning {
     title: string;
     snippet: string;
   };
+  /**
+   * `sourcedFrom` が見つかったことで severity を格下げした警告に立つフラグ（Issue #364）。
+   * レポート表示側が「裏付けあり数値（文脈は未検証）」セクションを組むために使う。
+   * 型名リストを表示側に複製しないよう、判定はここ（検出側）に一本化する。
+   * 旧レポート JSON にはこのキーが無い（undefined = 格下げ判定が存在しなかった号）。
+   */
+  severityDowngradedBySource?: boolean;
 }
 
 /**
@@ -669,14 +676,17 @@ const LARGE_COUNT_BODY = String.raw`(?<![\d,]\s*)(\d+(?:[.,]\d+)?(?:\s*[万億�
  *   呼び出し側では `match[1]` が undefined になりうる前提で扱うこと（knownNumbers 照合をスキップ）
  * - 万・億・千を含む表記は下位桁まで1マッチに束ねる（Issue #391）。evidence の断片化を防ぎ、
  *   修正指示の妥当性・high 件数の正確性を保つ。空白を挟む表記（`2万 5000人`）も対応
+ * - `sourcedSeverity`（Issue #364）: 高リスク型のみ、`sourcedFrom` が見つかったときの格下げ先を
+ *   指定できる。数値の存在を確認できても文脈（期間・対象の帰属）は未検証なので、格下げしても
+ *   人間の目視確認は必要。第18号「6週間で600万本」（実際は累計）がその実例
  */
-const NUMERIC_PATTERNS: Array<{ pattern: RegExp; type: string; severity: Severity }> = [
+const NUMERIC_PATTERNS: Array<{ pattern: RegExp; type: string; severity: Severity; sourcedSeverity?: Severity }> = [
   // レビュー件数・ユーザー数・販売数（高リスク）
-  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high' },
-  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high' },
-  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*人`, 'g'), type: 'user-count', severity: 'high' },
-  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)`, 'g'), type: 'large-count', severity: 'high' },
-  { pattern: /(?<![\d,万億]\s*)(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high' },
+  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high', sourcedSeverity: 'medium' },
+  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*件`, 'g'), type: 'review-count', severity: 'high', sourcedSeverity: 'medium' },
+  { pattern: new RegExp(`${PLAIN_COUNT_BODY}\\s*人`, 'g'), type: 'user-count', severity: 'high', sourcedSeverity: 'medium' },
+  { pattern: new RegExp(`${LARGE_COUNT_BODY}\\s*(?:人|本|ダウンロード|DL|ユーザー|プレイヤー)`, 'g'), type: 'large-count', severity: 'high', sourcedSeverity: 'medium' },
+  { pattern: /(?<![\d,万億]\s*)(\d+)\s*台(?:以上)?(?:の(?:車|実車|車両))/g, type: 'vehicle-count', severity: 'high', sourcedSeverity: 'medium' },
   // プレイ時間（中リスク）: 「プレイ/遊」直後限定を撤廃し、範囲表記・「以上/超え」等に対応
   { pattern: /(?<![\d,万億]\s*)((?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?(?:[〜～\-](?:\d{1,3}(?:,\d{3})*|\d{4,})(?:[.]\d+)?)?)\s*時間(?:以上|超え?|程度|ほど|遊|プレイ|の|を要|もの|に拡張|没入)/g, type: 'play-hours', severity: 'medium' },
   // 価格（中リスク）
@@ -702,27 +712,34 @@ export function validateFeatureNumericClaims(article: GeneratedArticle): Validat
 
   const content = article.content;
 
-  for (const { pattern, type, severity } of NUMERIC_PATTERNS) {
+  for (const { pattern, type, severity, sourcedSeverity } of NUMERIC_PATTERNS) {
     const matches = content.matchAll(pattern);
     for (const match of matches) {
       // 概数パターン（approx-count）は capture group を持たないため match[1] が undefined
       const numericValue = match[1] ? match[1].replace(/,/g, '') : undefined;
       // 単位まで含めた照合キーを生成して誤マッチを防ぐ（例: "40万人" ≠ "40ダメ"）
       const unitKey = numericValue ? extractNumericUnitKey(match[0].trim(), numericValue) : undefined;
+      // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
+      const sourcedFrom = numericValue
+        ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
+        : undefined;
+      // Issue #364: 出典に同じ数値が存在するなら「人手の外部確認が必要」ではないので格下げする。
+      // ただし出典との一致は数値の存在だけを担保し、文脈（期間・対象の帰属）は未検証。
+      const downgraded = Boolean(sourcedFrom && sourcedSeverity);
+      const finalSeverity: Severity = downgraded ? sourcedSeverity! : severity;
+
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity,
+        severity: finalSeverity,
         type: `numeric-${type}`,
         message:
           `本文に具体的な数値「${match[0].trim()}」が記載されています。` +
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
-        // 新フローで feature にも webSearchSources が乗るため、根拠の有無を判定できる
-        sourcedFrom: numericValue
-          ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
-          : undefined,
+        sourcedFrom,
+        ...(downgraded ? { severityDowngradedBySource: true } : {}),
       });
     }
   }
@@ -854,7 +871,7 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
     knownNumbers.add(String(parseInt(parts[0], 10)));
   }
 
-  for (const { pattern, type, severity } of NUMERIC_PATTERNS) {
+  for (const { pattern, type, severity, sourcedSeverity } of NUMERIC_PATTERNS) {
     const matches = content.matchAll(pattern);
     for (const match of matches) {
       // 概数パターン（approx-count）は capture group を持たないため match[1] が undefined。
@@ -865,19 +882,26 @@ export function validateNumericClaims(article: GeneratedArticle): ValidationWarn
       // 単位まで含めた照合キーを生成して誤マッチを防ぐ（例: "40万人" ≠ "40ダメ"）
       const unitKey = numericValue ? extractNumericUnitKey(match[0].trim(), numericValue) : undefined;
 
+      const sourcedFrom = numericValue
+        ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
+        : undefined;
+      // Issue #364: 出典に同じ数値が存在するなら「人手の外部確認が必要」ではないので格下げする。
+      // ただし出典との一致は数値の存在だけを担保し、文脈（期間・対象の帰属）は未検証。
+      const downgraded = Boolean(sourcedFrom && sourcedSeverity);
+      const finalSeverity: Severity = downgraded ? sourcedSeverity! : severity;
+
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity,
+        severity: finalSeverity,
         type: `numeric-${type}`,
         message:
           `本文に具体的な数値「${match[0].trim()}」が記載されています。` +
           `提供データに無い数値の場合は捏造の可能性があります。`,
         evidence: match[0].trim(),
         context: extractContext(content, match[0].trim()),
-        sourcedFrom: numericValue
-          ? findSourceFor(numericValue, article.webSearchSources, true, unitKey)
-          : undefined,
+        sourcedFrom,
+        ...(downgraded ? { severityDowngradedBySource: true } : {}),
       });
     }
   }
