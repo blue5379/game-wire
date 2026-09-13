@@ -201,8 +201,8 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 
 ### 2-4. CI との連携
 
-- `VALIDATION_HIGH_THRESHOLD`（デフォルト: 5）を超える `high` 警告がある場合、`build-issue` が失敗する
-- `VALIDATION_STRICT=true` を設定することでさらに厳格な運用が可能
+- `critical` 警告が 1 件以上ある場合、検証が失敗する（Issue #350。従来の `VALIDATION_HIGH_THRESHOLD` は廃止）
+- `VALIDATION_STRICT=true` を設定すると `build-issue` が `process.exit(1)` でビルドを停止する（デフォルトでは号は発行し、Issue 自動起票で運用）
 - DEV_MODE では `data/validation-dev/` に出力、本番では `data/validation/` に出力
 
 ### 2-5. GitHub Actions Job Summary への出力

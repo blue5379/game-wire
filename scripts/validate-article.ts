@@ -27,7 +27,7 @@ import {
   type ReportStatus,
 } from './format-validation-report.js';
 
-export type Severity = 'high' | 'medium' | 'low';
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 export interface ValidationWarning {
   articleTitle: string;
@@ -456,7 +456,7 @@ export function validateBodyTitleConsistency(article: GeneratedArticle): Validat
     warnings.push({
       articleTitle: article.title,
       category: article.category,
-      severity: 'high',
+      severity: 'critical',
       type: 'body-title-mismatch',
       message:
         `記事本文に正式ゲームタイトルが一度も登場しません。` +
@@ -505,7 +505,7 @@ export function validateTitleConsistency(article: GeneratedArticle): ValidationW
     warnings.push({
       articleTitle,
       category: article.category,
-      severity: 'high',
+      severity: 'critical',
       type: 'title-mismatch',
       message:
         `記事タイトルに正式ゲームタイトルが含まれていません。` +
@@ -548,7 +548,7 @@ export function validateFeaturePlatformConsistency(article: GeneratedArticle): V
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity: 'high',
+        severity: 'critical',
         type: 'platform-mismatch',
         message:
           `本文で「${mentioned}」が言及されていますが、紹介ゲームのいずれにも含まれていません。` +
@@ -744,7 +744,7 @@ export function validatePlatformConsistency(article: GeneratedArticle): Validati
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity: 'high',
+        severity: 'critical',
         type: 'platform-mismatch',
         message:
           `本文で「${mentioned}」が言及されていますが、提供データには含まれていません。` +
@@ -2003,6 +2003,7 @@ export function validateArticles(
   }
 
   const warningsBySeverity: Record<Severity, number> = {
+    critical: warnings.filter((w) => w.severity === 'critical').length,
     high: warnings.filter((w) => w.severity === 'high').length,
     medium: warnings.filter((w) => w.severity === 'medium').length,
     low: warnings.filter((w) => w.severity === 'low').length,
@@ -2052,8 +2053,7 @@ export function resolveReportMode(outputDir: string): ReportMode {
  */
 export function writeAndCheckReport(
   report: ValidationReport,
-  outputDir: string,
-  highWarningThreshold: number = 5
+  outputDir: string
 ): boolean {
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -2082,7 +2082,7 @@ export function writeAndCheckReport(
   console.log(`Total articles: ${report.totalArticles}`);
   console.log(`Total warnings: ${report.totalWarnings}`);
   console.log(
-    `  - high: ${report.warningsBySeverity.high}, medium: ${report.warningsBySeverity.medium}, low: ${report.warningsBySeverity.low}`
+    `  - critical: ${report.warningsBySeverity.critical}, high: ${report.warningsBySeverity.high}, medium: ${report.warningsBySeverity.medium}, low: ${report.warningsBySeverity.low}`
   );
   if (report.webSearchStats) {
     const s = report.webSearchStats;
@@ -2185,11 +2185,13 @@ export function writeAndCheckReport(
     }
   }
 
-  // fail 判定は正規表現バリデータ由来の warnings のみで行う（judge は算入しない）
-  if (report.warningsBySeverity.high > highWarningThreshold) {
+  // fail 判定は critical 警告のみで行う（Issue #350）。
+  // critical = プロンプトで明示的に禁止しているのに守られていない型のみ（body-title-mismatch / title-mismatch / platform-mismatch）。
+  // 1 件でも存在すれば false を返す（ビルド fail は VALIDATION_STRICT=true のときのみ）。
+  if (report.warningsBySeverity.critical > 0) {
     console.error('');
     console.error(
-      `❌ Too many high-severity warnings (${report.warningsBySeverity.high} > ${highWarningThreshold}). Validation failed.`
+      `❌ Critical warnings detected (${report.warningsBySeverity.critical}). Validation failed.`
     );
     return false;
   }

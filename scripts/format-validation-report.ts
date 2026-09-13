@@ -5,11 +5,12 @@
  *  1. 人間（運用者）向け: 「対応が必要か」「何をすべきか」がひと目で分かる Markdown サマリ
  *  2. 自動起票判定: 総合ステータス（ok/warning/error）を機械的に算出
  *
- * 総合ステータスの定義（Issue #349 で searchFailures と pageContentFailures を分離）:
- *  - error   (🔴 要対応):   high 警告が1件以上、またはキーワード検索失敗（searchFailures）がある、
+ * 総合ステータスの定義（Issue #350 で critical/high を分離、judge contradicted-high を error に昇格）:
+ *  - error   (🔴 要対応):   critical 警告が1件以上、または judge contradicted-high（confidence ≥ 0.7）が1件以上、
+ *                           またはキーワード検索失敗（searchFailures）がある、
  *                           または AI成人向けスクリーニング失敗（fail-open）がある、
  *                           または記事本数が期待を下回ったカテゴリがある
- *  - warning (🟡 要確認):   error ではないが、medium 警告・公式ページ本文取得失敗（pageContentFailures）・
+ *  - warning (🟡 要確認):   error ではないが、high/medium 警告・公式ページ本文取得失敗（pageContentFailures）・
  *                           公式URL未取得・LLM judge の矛盾/裏付け不能・早期アクセス表記問題のいずれかがある
  *  - ok      (🟢 対応不要): 上記いずれも無い
  *
@@ -124,6 +125,24 @@ function judgeProblemCount(report: ValidationReport): number {
   return j.claimsByVerdict.contradicted + j.claimsByVerdict.unverifiable;
 }
 
+/**
+ * LLM judge が高確信度で矛盾と判定した警告の件数（Issue #350）。
+ * judge-article.ts:416 が confidence >= 0.7 で severity: 'high' を付与する。
+ * 「出典と矛盾する」= 事実誤りの直接証拠であり、error に昇格させる。
+ * ただし critical にはしない（critical はプロンプト遵守失敗型のみ）。
+ * 理由: 自動再生成では直せない性質のため起票のみに接続する。
+ */
+function judgeContradictedHighCount(report: ValidationReport): number {
+  const j = report.llmJudge;
+  if (!j || !j.warnings) return 0;
+  // 型名は judge-article.ts:417 が付ける固定文字列。includes ではなく厳密一致で見る
+  // （将来 'llm-judge-...-contradicted' のような別の型が増えたときに黙って巻き込まないため）。
+  // severity で絞るだけでも現状は同義（unverifiable は judge-article.ts:420 で必ず low）だが、
+  // 「contradicted のみを error に昇格する」という判断を条件として明示しておく。
+  return j.warnings.filter((w) => w.severity === 'high' && w.type === 'llm-judge-contradicted')
+    .length;
+}
+
 /** steamApiHealth が定義されている場合の型（optional を剥いだもの） */
 type SteamApiHealthValue = NonNullable<ValidationReport['steamApiHealth']>;
 
@@ -189,10 +208,11 @@ function steamApiHasCircuitOpenSkips(health: SteamApiHealthValue): boolean {
 }
 
 /**
- * レポートから総合ステータスを算出する（Issue #349 で searchFailures と pageContentFailures を分離）。
+ * レポートから総合ステータスを算出する（Issue #350 で critical/high を分離、judge contradicted-high を error に昇格）。
  *
  * error 条件（Issue 自動起票の対象）:
- *  - high 警告が 1 件以上
+ *  - critical 警告が 1 件以上（プロンプトで明示的に禁止しているのに守られていない型のみ）
+ *  - judge contradicted-high（confidence >= 0.7）が 1 件以上（出典と矛盾する事実誤りの直接証拠）
  *  - キーワード検索失敗（searchFailures > 0）: 根拠データがゼロになる
  *  - AI 成人向けスクリーニング失敗（adultScreeningFailures > 0）: 安全確認が fail-open で通過
  *  - 記事本数の不足（articleCountShortfalls > 0）: カテゴリ構成の欠落
@@ -206,11 +226,12 @@ function steamApiHasCircuitOpenSkips(health: SteamApiHealthValue): boolean {
  *    （steamApiHasCircuitOpenSkips）: `circuitOpen` の終了時スナップショットだけでは
  *    半開プローブによる自動回復後の状態を検知できないため、独立した条件として持つ。
  *
- * warning 条件（観測のみ・Issue 自動起票しない）:
+ * warning 条件（観測のみ・Issue 自動起票しない。記録のみで人間が毎号読む）:
+ *  - high 警告が 1 件以上（要確認だが、記録のみ）
  *  - medium 警告が 1 件以上
  *  - 公式ページの本文取得失敗（pageContentFailures > 0）: 補助ソース 1 件の欠落
  *  - 公式 URL 未取得（missingOfficialUrls > 0）
- *  - LLM judge の矛盾・裏付け不能（judgeProblemCount > 0）
+ *  - LLM judge の矛盾・裏付け不能（judgeProblemCount > 0）。contradicted-high は error に昇格済み
  *  - 早期アクセスの表記問題（earlyAccessStatementIssues > 0）
  *  - Steam API の呼び出しに1件以上の失敗があるが、上記 error 条件（非429失敗率10%以上・
  *    circuit-open スキップ）には達していない: 429 のバックプレッシャのみ、または
@@ -225,7 +246,8 @@ function steamApiHasCircuitOpenSkips(health: SteamApiHealthValue): boolean {
  *  - 前例: earlyAccessStatementIssues も同じ理由で warning 止まり（validate-article.ts:148）
  */
 export function computeReportStatus(report: ValidationReport): ReportStatus {
-  const high = report.warningsBySeverity.high;
+  const critical = report.warningsBySeverity.critical ?? 0; // 旧レポートには critical キーが無い
+  const high = report.warningsBySeverity.high ?? 0; // 念のため ?? 0 で潰す
   const steamApiHealth = report.steamApiHealth;
   const steamApiCircuitOpen = steamApiHealth?.circuitOpen === true;
   const steamApiHighFailureRate = steamApiHealth
@@ -235,7 +257,8 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
     ? steamApiHasCircuitOpenSkips(steamApiHealth)
     : false;
   if (
-    high > 0 ||
+    critical > 0 ||
+    judgeContradictedHighCount(report) > 0 ||
     searchFailureCount(report) > 0 ||
     adultScreeningFailureCount(report) > 0 ||
     articleCountShortfallCount(report) > 0 ||
@@ -246,10 +269,11 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
     return 'error';
   }
 
-  const medium = report.warningsBySeverity.medium;
+  const medium = report.warningsBySeverity.medium ?? 0; // 念のため ?? 0 で潰す
   const missingUrls = report.missingOfficialUrls?.length ?? 0;
   const steamApiHasAnyFailure = (steamApiHealth?.failed ?? 0) > 0;
   if (
+    high > 0 ||
     medium > 0 ||
     pageContentFailureCount(report) > 0 ||
     missingUrls > 0 ||
@@ -264,8 +288,9 @@ export function computeReportStatus(report: ValidationReport): ReportStatus {
 }
 
 /**
- * この号について Issue を自動起票すべきか。
- * 条件: high 警告が1件以上、または**キーワード検索失敗**（searchFailures）がある、
+ * この号について Issue を自動起票すべきか（Issue #350）。
+ * 条件: critical 警告が1件以上、または judge contradicted-high（confidence ≥ 0.7）が1件以上、
+ * または**キーワード検索失敗**（searchFailures）がある、
  * または AI成人向けスクリーニング失敗（fail-open）がある、
  * または記事本数が期待を下回ったカテゴリがある（= 総合ステータスが error）。
  */
@@ -285,8 +310,9 @@ const STATUS_META: Record<ReportStatus, { icon: string; label: string }> = {
  */
 export function buildRecommendedActions(report: ValidationReport): string[] {
   const actions: string[] = [];
-  const high = report.warningsBySeverity.high;
-  const medium = report.warningsBySeverity.medium;
+  const critical = report.warningsBySeverity.critical ?? 0;
+  const high = report.warningsBySeverity.high ?? 0;
+  const medium = report.warningsBySeverity.medium ?? 0;
   const searchFail = searchFailureCount(report);
   const pageContentFail = pageContentFailureCount(report);
   const adultScreeningFail = adultScreeningFailureCount(report);
@@ -346,6 +372,11 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
       `📉 **記事本数の不足 ${shortfalls.length} カテゴリ**（${detail}）: ` +
         `枠を埋めるために不適格なゲームを載せる対応はしません（号は少ない本数のまま発行済み）。` +
         `選定ログを確認し、どの段階で候補が落ちたかを調べてください。`
+    );
+  }
+  if (critical > 0) {
+    actions.push(
+      `🚨 **CRITICAL 警告 ${critical} 件**: プロンプトで明示的に禁止しているのに守られていない型です（タイトル不整合・プラットフォーム矛盾）。該当記事の本文・タイトルを確認し、修正してください。`
     );
   }
   if (high > 0) {
@@ -488,9 +519,10 @@ export function formatReportMarkdown(report: ValidationReport): string {
     out.push('| ✅ 早期アクセスの表記 | 0 |');
   }
   out.push(`| 警告合計 | ${report.totalWarnings} |`);
-  out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high} |`);
-  out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium} |`);
-  out.push(`| 🟢 LOW | ${report.warningsBySeverity.low} |`);
+  out.push(`| 🚨 CRITICAL | ${report.warningsBySeverity.critical ?? 0} |`);
+  out.push(`| 🔴 HIGH | ${report.warningsBySeverity.high ?? 0} |`);
+  out.push(`| 🟡 MEDIUM | ${report.warningsBySeverity.medium ?? 0} |`);
+  out.push(`| 🟢 LOW | ${report.warningsBySeverity.low ?? 0} |`);
   // Issue #349: キーワード検索失敗（error 要因）とページ本文取得失敗（warning 要因）は
   // 重大度が違うので、0 件のときも行を分けて出す（1 行に潰すと分離が表から読み取れない）。
   // ただし webSearchStats 自体が無い旧キャッシュは「未計測」であり「計測して 0 件」ではない。

@@ -9,6 +9,7 @@ import {
   validateTitleConsistency,
   validateBodyTitleConsistency,
   validatePlatformConsistency,
+  validateFeaturePlatformConsistency,
   validatePersonAttribution,
   validateNumericClaims,
   validateFeatureNumericClaims,
@@ -63,7 +64,7 @@ describe('validateTitleConsistency', () => {
     const warnings = validateTitleConsistency(article);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].type).toBe('title-mismatch');
-    expect(warnings[0].severity).toBe('high');
+    expect(warnings[0].severity).toBe('critical'); // Issue #350: critical に昇格
   });
 
   it('英語タイトルがそのまま含まれていれば警告しない', () => {
@@ -123,7 +124,7 @@ describe('validateBodyTitleConsistency', () => {
     const warnings = validateBodyTitleConsistency(article);
     expect(warnings).toHaveLength(1);
     expect(warnings[0].type).toBe('body-title-mismatch');
-    expect(warnings[0].severity).toBe('high');
+    expect(warnings[0].severity).toBe('critical'); // Issue #350: critical に昇格
   });
 
   it('本文中に英語の正式タイトルが含まれていれば警告しない', () => {
@@ -219,6 +220,9 @@ describe('validatePlatformConsistency', () => {
     const types = warnings.map((w) => w.evidence);
     expect(types).toContain('Linux');
     expect(types).toContain('Mac');
+    // Issue #350: platform-mismatch は critical（プロンプトで明示的に禁止しているのに守られていない型）
+    expect(warnings.map((w) => w.severity)).toEqual(warnings.map(() => 'critical'));
+    expect(warnings.map((w) => w.type)).toEqual(warnings.map(() => 'platform-mismatch'));
   });
 
   it('提供データに合致するプラットフォーム言及は警告しない', () => {
@@ -249,6 +253,68 @@ describe('validatePlatformConsistency', () => {
     });
 
     expect(validatePlatformConsistency(article)).toHaveLength(0);
+  });
+});
+
+describe('validateFeaturePlatformConsistency', () => {
+  function makeFeature(overrides: Partial<GeneratedArticle> = {}): GeneratedArticle {
+    return makeArticle({
+      title: '2026年注目のRPG特集',
+      category: 'feature',
+      recommendedGames: [
+        { title: 'Game A', platforms: ['Nintendo Switch'] },
+        { title: 'Game B', platforms: ['PlayStation 5'] },
+      ],
+      ...overrides,
+    });
+  }
+
+  it('推薦ゲームのいずれにも無いプラットフォームの言及を critical として検出する（Issue #350）', () => {
+    const article = makeFeature({
+      content: '本特集の3作品はいずれも Nintendo Switch と Xbox Series X|S で遊べます。',
+    });
+
+    const warnings = validateFeaturePlatformConsistency(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('platform-mismatch');
+    expect(warnings[0].severity).toBe('critical');
+    expect(warnings[0].evidence).toBe('Xbox Series X|S');
+  });
+
+  it('推薦ゲームのプラットフォームを合算した集合に含まれていれば警告しない', () => {
+    // Game A が Switch、Game B が PS5 なので、両方の言及は合算集合に収まる
+    const article = makeFeature({
+      content: 'Nintendo Switch 版と PlayStation 5 版があります。',
+    });
+
+    expect(validateFeaturePlatformConsistency(article)).toHaveLength(0);
+  });
+
+  it('feature 以外のカテゴリは対象外（validatePlatformConsistency の担当領域）', () => {
+    const article = makeFeature({
+      category: 'newRelease',
+      content: '本作は Linux でも遊べます。',
+    });
+
+    expect(validateFeaturePlatformConsistency(article)).toHaveLength(0);
+  });
+
+  it('recommendedGames が空なら照合できないので警告しない', () => {
+    const article = makeFeature({
+      recommendedGames: [],
+      content: '本特集の作品は Linux で遊べます。',
+    });
+
+    expect(validateFeaturePlatformConsistency(article)).toHaveLength(0);
+  });
+
+  it('recommendedGames に platforms が1件も無ければ警告しない（合算が空になるため）', () => {
+    const article = makeFeature({
+      recommendedGames: [{ title: 'Game A' }, { title: 'Game B' }],
+      content: '本特集の作品は Linux で遊べます。',
+    });
+
+    expect(validateFeaturePlatformConsistency(article)).toHaveLength(0);
   });
 });
 
@@ -868,7 +934,9 @@ describe('validateArticles (集約)', () => {
     expect(report.issueNumber).toBe(8);
     expect(report.totalArticles).toBe(2);
     expect(report.totalWarnings).toBeGreaterThanOrEqual(2);
-    expect(report.warningsBySeverity.high).toBeGreaterThanOrEqual(2);
+    // Issue #350: body-title-mismatch は critical、numeric-vehicle-count は high
+    expect(report.warningsBySeverity.critical).toBeGreaterThanOrEqual(1);
+    expect(report.warningsBySeverity.high).toBeGreaterThanOrEqual(1);
   });
 
   it('webSearchStats の adultScreeningFailures がレポートにそのまま引き継がれる（Issue #222）', () => {
@@ -1917,7 +1985,7 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
       generatedAt: '2026-07-19T00:00:00.000Z',
       totalArticles: 0,
       totalWarnings: 0,
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       warnings: [],
     };
   }
@@ -1976,10 +2044,20 @@ describe('writeAndCheckReport (mode ラベル・ファイル名・Issue #193)', 
     expect(saved.status).toBe('ok');
   });
 
-  it('high 警告がある号は status=error になる（Issue #202）', () => {
+  it('high 警告がある号は status=warning になる（Issue #350: error から降格）', () => {
     const dir = path.join(tmpBase, 'validation');
     const report = makeReport(16);
     report.warningsBySeverity.high = 1;
+    report.totalWarnings = 1;
+    writeAndCheckReport(report, dir);
+
+    expect(report.status).toBe('warning');
+  });
+
+  it('critical 警告がある号は status=error になる（Issue #350）', () => {
+    const dir = path.join(tmpBase, 'validation');
+    const report = makeReport(16);
+    report.warningsBySeverity.critical = 1;
     report.totalWarnings = 1;
     writeAndCheckReport(report, dir);
 

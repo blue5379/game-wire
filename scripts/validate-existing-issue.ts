@@ -167,10 +167,10 @@ async function main(): Promise<void> {
     hiddenArticleTitles
   );
 
-  // レポートを一時ディレクトリに出力（CIには影響させない）
+  // レポートを一時ディレクトリに出力（CIには影響させない。観察目的のため）
   const tmpDir = path.join(process.cwd(), 'data', 'validation-manual');
-  // しきい値を非常に大きくして必ず通すモードで出力（観察目的のため）
-  writeAndCheckReport(report, tmpDir, 9999);
+  // Issue #350: critical 警告が無ければ通過する（観察目的のため）
+  writeAndCheckReport(report, tmpDir);
 
   if (verifyUrls) {
     console.log('');

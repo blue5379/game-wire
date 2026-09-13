@@ -4594,7 +4594,7 @@ Issue 本文は「救済できるのは49件中5件のみ（issue-013 / 014×2 /
 
 ### severity=low を選んだ理由
 
-fail 閾値は `VALIDATION_HIGH_THRESHOLD`（`:695`。コメントは `:694`）で high 件数のみを見る。`build-issue.ts` の hidden 化・号停止は `game-source-mismatch` のみが対象（2件以上で `process.exit(1)` が `:563`、1件なら hidden で続行が `:574`）。**severity=low なら号の発行判定に一切影響しない**。
+fail 閾値は **critical 警告 1 件以上**（Issue #350。従来の `VALIDATION_HIGH_THRESHOLD` は廃止）で判定する。`build-issue.ts` の hidden 化・号停止は `game-source-mismatch` のみが対象（2件以上で `process.exit(1)` が `:563`、1件なら hidden で続行が `:574`）。**severity=low なら号の発行判定に一切影響しない**。
 
 ### 総称レンダリングが機能する理由
 
