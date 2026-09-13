@@ -1722,3 +1722,78 @@ describe('要約のタイトル忠実性（Issue #371）', () => {
     expect(userMessage).not.toContain('上記のゲームタイトルを要約に最低1回');
   });
 });
+
+describe('generateFeatureArticle — ゲーム選定本数の観測（Issue #379）', () => {
+  // vi.clearAllMocks()（file 直下の beforeEach）は呼び出し履歴だけを消し、他テストが
+  // mockResolvedValue で入れた実装は残る（:425-431 の注意書きと同じ理由）。選定結果が
+  // 空だと generateFeatureArticle が throw するため、他テストの残留値に頼らず
+  // この describe 内で明示的に与える
+  beforeEach(() => {
+    mockSelectFeatureGames.mockResolvedValue(['Game A', 'Game B', 'Game C']);
+    mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+  });
+
+  it('generateFeatureArticle が selection（theme / llmSelectedCount / finalGameCount）を返すこと', async () => {
+    const candidates = [
+      makeGame({ title: 'Game A' }),
+      makeGame({ title: 'Game B' }),
+      makeGame({ title: 'Game C' }),
+    ];
+
+    // mockSelectFeatureGames は beforeEach で 3本を返すよう設定済み
+    const result = await generateFeatureArticle(new Date('2026-08-08'), 999, candidates, []);
+
+    // テーマはモックの selectFeatureThemeWithAI が返す値（:45）がそのまま入る
+    expect(result.selection.theme).toBe('テスト特集テーマ');
+    expect(result.selection.llmSelectedCount).toBe(3); // selectFeatureGames が返した件数
+    expect(result.selection.finalGameCount).toBe(3); // recommendedGames の件数
+    expect(result.selection.expectedMax).toBe(5); // 生成時点の期待上限を記録している
+    // 記事に載った本数と記録が一致していること（レポートの数字の根拠）
+    expect(result.article.recommendedGames).toHaveLength(result.selection.finalGameCount);
+  });
+
+  it('LLM が6本選んだ場合に超過警告が出ること（境界値テスト: 6本）', async () => {
+    const candidates = Array.from({ length: 6 }, (_, i) =>
+      makeGame({ title: `Game ${String.fromCharCode(65 + i)}` }) // Game A, Game B, ...
+    );
+
+    // 6本を返すようモックを設定（境界値: 期待上限5本を超える）
+    mockSelectFeatureGames.mockResolvedValue(
+      candidates.map((g) => g.title)
+    );
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await generateFeatureArticle(new Date('2026-08-08'), 999, candidates, []);
+
+    expect(result.selection.finalGameCount).toBe(6);
+    // 超過警告が出ることを確認
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('⚠ Feature article has 6 games (expected <= 5)')
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it('5本のときは超過警告が出ないこと（境界値テスト: ちょうど5本）', async () => {
+    const candidates = Array.from({ length: 5 }, (_, i) =>
+      makeGame({ title: `Game ${String.fromCharCode(65 + i)}` })
+    );
+
+    mockSelectFeatureGames.mockResolvedValue(
+      candidates.map((g) => g.title)
+    );
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await generateFeatureArticle(new Date('2026-08-08'), 999, candidates, []);
+
+    expect(result.selection.finalGameCount).toBe(5);
+    // 超過警告が出ないことを確認（5本は期待上限そのものであり超過ではない）。
+    // 文言全体ではなく `expected <=` だけで照合し、警告文を書き換えても
+    // 「5本で警告が出ない」ことの検証が効かなくならないようにする
+    expect(consoleSpy).not.toHaveBeenCalledWith(expect.stringContaining('expected <='));
+
+    consoleSpy.mockRestore();
+  });
+});

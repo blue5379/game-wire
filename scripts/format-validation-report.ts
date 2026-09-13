@@ -448,6 +448,19 @@ export function buildRecommendedActions(report: ValidationReport): string[] {
         `書かれているか確認し、正式リリース済みと読める記述があれば修正してください。`
     );
   }
+  // Issue #379: 特集記事のゲーム本数が期待上限を超過した場合。
+  // 閾値は生成時点の値（featureSelection.expectedMax）を使い、ここでは持たない
+  if (report.featureSelection) {
+    const { llmSelectedCount, finalGameCount, expectedMax } = report.featureSelection;
+    if (llmSelectedCount > expectedMax || finalGameCount > expectedMax) {
+      actions.push(
+        `📚 **特集記事のゲーム本数が期待上限（${expectedMax}本）を超過**: ` +
+          `LLM選定 ${llmSelectedCount}本 / 最終 ${finalGameCount}本。` +
+          `上限は設けていませんが、docs/llm-judge-redesign.md §8.1/§8.2 のコスト・レイテンシ見積りは ` +
+          `${expectedMax}本を最大構成として計算されています（観測項・対応は任意）。`
+      );
+    }
+  }
   if (missingUrls > 0) {
     actions.push(
       `🔗 **公式URL未取得 ${missingUrls} 件**: 該当記事に公式URLを手動で補完してください。`
@@ -611,6 +624,28 @@ export function formatReportMarkdown(report: ValidationReport): string {
     }
     if (h.rateLimitHits !== undefined) {
       out.push(`| ・Steam API レート制限（429）ヒット数 | ${h.rateLimitHits} |`);
+    }
+  }
+
+  // 特集記事の選定本数（Issue #379）。undefined のときは何も出さない
+  if (report.featureSelection) {
+    const { theme, llmSelectedCount, finalGameCount, expectedMax } = report.featureSelection;
+    out.push('');
+    out.push('### 📚 特集記事の選定本数');
+    out.push('');
+    out.push(`- テーマ: ${theme}`);
+    // 超過している場合は ⚠️ を付ける（閾値は生成時点の値を使う）
+    const llmWarning = llmSelectedCount > expectedMax ? ' ⚠️' : '';
+    const finalWarning = finalGameCount > expectedMax ? ' ⚠️' : '';
+    out.push(`- LLM 選定本数: ${llmSelectedCount}本${llmWarning}`);
+    out.push(`- 最終本数: ${finalGameCount}本${finalWarning}`);
+    // いずれかが超過している場合は説明を追加
+    if (llmSelectedCount > expectedMax || finalGameCount > expectedMax) {
+      out.push('');
+      out.push(
+        `⚠️ プロンプトは「3〜5本」を期待していますが、上限は強制していません（テーマに合うゲームが多い号では6本以上が選ばれることを許容する設計）。` +
+          `ただし、docs/llm-judge-redesign.md §8.1/§8.2 のコスト・レイテンシ見積りは ${expectedMax}本を最大構成として計算されています。`
+      );
     }
   }
 

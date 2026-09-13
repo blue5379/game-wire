@@ -860,6 +860,10 @@ async function main(): Promise<void> {
   report.steamApiHealthByStage = steamApiHealthByStage;
   report.steamApiHealth = mergeSteamApiHealth(Object.values(steamApiHealthByStage));
 
+  // Issue #379: 特集記事のゲーム選定本数を後付けで代入（生成側でしか分からない値なのでレポートに後付けする）。
+  // steamApiHealth と同じ構造で、生成側（generate-articles）から値を取得してレポートに載せる。
+  report.featureSelection = generatedIssue.featureSelection;
+
   // LLM-as-a-judge による事実性チェック（デフォルトON、VALIDATION_LLM_JUDGE=false で無効化可）。
   // 結果は report.llmJudge に記録するが、非決定的なため fail 判定には算入しない。
   report.llmJudge = await judgeArticles(generatedIssue.articles, publishDate);
