@@ -81,6 +81,13 @@ const ISSUES_DIR = DEV_MODE
 const FEATURE_CANDIDATE_LIMIT = 20;
 // 特集記事に最低限欲しいゲーム本数。これを下回ると警告を出す（selectFeatureGames の下限と揃える）。
 const FEATURE_MIN_GAMES = 3;
+/**
+ * 特集記事で期待するゲーム本数の上限（プロンプトの「3〜5本」に対応）。
+ * **強制しない**（slice しない）。超過を警告ログとレポートで観測するためだけの値（Issue #379）。
+ * レポート表示側はこの定数を import せず、`FeatureSelectionStats.expectedMax` に
+ * 記録された値を読む（理由は同フィールドの JSDoc）。
+ */
+const FEATURE_EXPECTED_MAX_GAMES = 5;
 
 /**
  * 次の号番号を取得
@@ -267,6 +274,36 @@ export interface JudgePrimarySource {
   content: string;
 }
 
+/**
+ * 特集記事のゲーム選定本数の内訳（Issue #379。上限は設けず観測のみ行う）
+ */
+export interface FeatureSelectionStats {
+  /** テーマ（どのテーマで本数が増えたのかを後から追えるようにする） */
+  theme: string;
+  /**
+   * selectFeatureGames（LLM 最終選定）が返したタイトル数。プロンプトの「3〜5本」に対する LLM の遵守状況。
+   * `finalGameCount` と一致しない場合がある: タイトル突き合わせで落ちると減り、
+   * fringe 補充・フォールバック選定が走ると増える。
+   */
+  llmSelectedCount: number;
+  /**
+   * 候補 GameData への突き合わせ・fringe 補充・成人向けスクリーニングを経た最終本数（= recommendedGames の件数）。
+   * タイトル突き合わせで落ちると減り、fringe 補充・フォールバック選定が走ると増える。
+   */
+  finalGameCount: number;
+  /**
+   * 生成時点の期待上限（`FEATURE_EXPECTED_MAX_GAMES`）。超過判定の閾値をレポート側で
+   * 再定義しないよう、値そのものを記録する（Issue #379）。
+   *
+   * 定数を export して読み側が import する形にしないのは、レポート整形
+   * （`format-validation-report.ts`）が記事生成モジュールを実行時 import することになり、
+   * `format-validation-report` → `generate-articles` → `validate-article` →
+   * `format-validation-report` の循環 import が成立してしまうため。
+   * 記録しておけば、閾値を将来変えても過去レポートは生成時点の閾値で読める。
+   */
+  expectedMax: number;
+}
+
 export interface GeneratedIssue {
   articles: GeneratedArticle[];
   generatedAt: string;
@@ -288,6 +325,15 @@ export interface GeneratedIssue {
      */
     unrecognizedScreeningResponses?: number;
   };
+  /**
+   * 特集記事のゲーム選定本数の内訳（Issue #379）。
+   * optional の理由（2つ）:
+   *  1. 特集記事がスキップされた号では存在しない
+   *  2. 本フィールド追加前の古い `data/generated-articles.json` を読むことがある
+   * いずれも build-issue.ts が `JSON.parse(...) as GeneratedIssue` で旧フォーマットの
+   * キャッシュを読むときに実行時は undefined になる。webSearchStats と同じ後方互換の理由で optional。
+   */
+  featureSelection?: FeatureSelectionStats;
 }
 
 /**
@@ -1072,7 +1118,7 @@ export async function generateFeatureArticle(
   excludeTitles?: string[],
   stats?: GenerationStats,
   excludeEventNames?: Iterable<string>
-): Promise<{ article: GeneratedArticle; context: FeatureArticleContext }> {
+): Promise<{ article: GeneratedArticle; context: FeatureArticleContext; selection: FeatureSelectionStats }> {
   // --- フェーズ1: テーマ選定 ---
   // 未来方向 7 日 → 0 件なら過去方向に最大 7 日 → それでも 0 件なら 8 日目以降の未来方向
   // という段階的フォールバック（§4.3 / §4.4。Issue #310）。
@@ -1227,6 +1273,9 @@ export async function generateFeatureArticle(
   );
   console.log(`  Selected ${selectedTitles.length} games for feature: ${selectedTitles.join(', ')}`);
 
+  // Issue #379: LLM 最終選定が返したタイトル数を記録（プロンプトの「3〜5本」に対する遵守状況）
+  const llmSelectedCount = selectedTitles.length;
+
   // 選定タイトルを候補 GameData に突き合わせる（完全一致 → 正規化一致のフォールバック）
   // 検索対象は prefiltered（qualified のうちテーマ事前フィルタ通過分）
   let selectedGameData: GameData[] = [];
@@ -1344,11 +1393,15 @@ export async function generateFeatureArticle(
   // judgeGrounding 用のゲーム配列（ゲーム単位にラベル付け）
   const judgeGroundingGames: JudgeGroundingGame[] = [];
 
-  // Issue #361 / docs/llm-judge-redesign.md §5.2: ゲーム本数の上限について。
+  // Issue #361 / docs/llm-judge-redesign.md §5.2 / Issue #379: ゲーム本数の上限について。
   // `selectFeatureGames` は slice しないため、プロンプトの「3〜5本」を超えて選ばれる可能性がある。
-  // 判断：上限を設けない。テーマによっては6本以上が選ばれることを許容する設計と判断。
-  // 6本以上になった場合は docs/llm-judge-redesign.md §5.2 / §8.2 の見積り
-  // （最大20本文・最大約180KB・+約35秒）を超えるが、許容範囲と判断。
+  // 判断（Issue #379 で確定）：上限を設けない。テーマによっては6本以上が選ばれることを許容する設計と判断。
+  // 実測（発行済み全21号）：3本7号 / 4本8号 / 5本6号 / 6本以上0号。上限を設けなかったことによる実害は0件。
+  // 本数は `ValidationReport.featureSelection` に記録して観測する（超過時は警告ログとレポートに出るが、
+  // ステータスには算入しない）。6本以上になった場合は docs/llm-judge-redesign.md §5.2 / §8.2 の見積り
+  // （最大20本文・+約200KB＝総量 235KB・+約35秒）を超えるが、許容範囲と判断。
+  // サイズの基準は机上計算の「最大約180KB」ではなく合成実測値の「+約200KB」を使う
+  // （2026-09-11 訂正。docs/llm-judge-redesign.md §4.4 の 📌 / docs/hallucination-prevention.md 3-5）。
   for (const game of selectedGameData) {
     // 公式日本語URL（選定確定後にゲーム単位で取得）
     // verifyProposedGames() で検証済みの URL が既にある場合はそれを初期値とし、
@@ -1470,6 +1523,21 @@ export async function generateFeatureArticle(
     });
   }
 
+  // Issue #379: 本数の超過警告。未達警告（FEATURE_MIN_GAMES）と対にならない位置にあるのは、
+  // 本数の定義を「実際に記事に載った件数」= recommendedGames.length に揃えているため。
+  // 上のループには `continue` が無く全件 push するので、現状この値は未達警告が見ている
+  // selectedGameData.length と常に一致する（成人向けスクリーニングは未達警告より前に済んでいる）。
+  // それでもここで数えるのは、レポートに記録する finalGameCount と警告が見る数を
+  // 同じ式にしておき、将来ループにスキップ経路が入っても両者が食い違わないようにするため。
+  const finalGameCount = recommendedGames.length;
+  if (finalGameCount > FEATURE_EXPECTED_MAX_GAMES) {
+    console.warn(
+      `  ⚠ Feature article has ${finalGameCount} games (expected <= ${FEATURE_EXPECTED_MAX_GAMES}). ` +
+        `Theme "${theme}" matched more games than the prompt's 3-5 range; ` +
+        `cost/latency estimates in docs/llm-judge-redesign.md §8.1/§8.2 assume ${FEATURE_EXPECTED_MAX_GAMES} as the maximum.`
+    );
+  }
+
   // 特集記事用の画像を生成（再生成時は流用するため先に1回だけ生成）
   let featureImagePath: string | undefined;
   try {
@@ -1500,7 +1568,15 @@ export async function generateFeatureArticle(
   };
   const article = await buildFeatureArticleFromContext(context);
 
-  return { article, context };
+  // Issue #379: 選定本数の内訳を返す（観測用）
+  const selection: FeatureSelectionStats = {
+    theme,
+    llmSelectedCount,
+    finalGameCount,
+    expectedMax: FEATURE_EXPECTED_MAX_GAMES,
+  };
+
+  return { article, context, selection };
 }
 
 /**
@@ -1866,6 +1942,8 @@ async function main(): Promise<void> {
   // 3. 特集記事（1本）
   console.log('');
   console.log('Generating feature article...');
+  // Issue #379: 特集記事の選定本数を記録する（try の外で宣言し、生成が throw しても undefined のまま保持）
+  let featureSelection: FeatureSelectionStats | undefined;
   try {
     // 全ゲームデータを読み込んで関連ゲームを取得
     const aggregatedPath = path.join(DATA_DIR, 'aggregated.json');
@@ -1913,7 +1991,7 @@ async function main(): Promise<void> {
       );
     }
 
-    const { article: featureArticle, context: featureContext } = await generateFeatureArticle(
+    const { article: featureArticle, context: featureContext, selection } = await generateFeatureArticle(
       publishDate,
       nextIssueNumber,
       filteredAllGames,
@@ -1921,6 +1999,8 @@ async function main(): Promise<void> {
       webSearchStats,
       recentFeatureEventNames
     );
+    // Issue #379: 選定本数を try の外側で宣言した変数に保持（throw された場合は undefined のまま）
+    featureSelection = selection;
     regenerables.push({
       article: featureArticle,
       // feature はテーマ選定・ゲーム選定・検索・画像生成をやり直さず本文だけ作り直す。
@@ -1974,6 +2054,8 @@ async function main(): Promise<void> {
       adultScreeningFailures: webSearchStats.adultScreeningFailures,
       unrecognizedScreeningResponses: webSearchStats.unrecognizedScreeningResponses,
     },
+    // Issue #379: 特集記事の選定本数の内訳（特集がスキップされた号では undefined）
+    featureSelection,
   };
 
   const outputPath = path.join(DATA_DIR, 'generated-articles.json');

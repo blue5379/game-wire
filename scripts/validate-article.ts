@@ -204,6 +204,35 @@ export interface ValidationReport {
    * build-issue ステージは自プロセスの実測なので持たない。
    */
   steamApiHealthByStage?: Record<string, SteamApiHealthStageEntry>;
+  /**
+   * 特集記事のゲーム選定本数の内訳（Issue #379）。
+   *
+   * **上限は設けないという判断を維持したまま、6本以上が起きたことに気づけるようにするための記録**。
+   * プロンプトは「3〜5本」と指示しているが、`selectFeatureGames` は slice しないため、
+   * テーマに合うゲームが多い号では6本以上が選ばれる可能性がある（実測: 発行済み全21号で
+   * 3本7号・4本8号・5本6号・6本以上0号）。上限を設けずに観測する方針。
+   *
+   * `undefined` の意味が2つある（`0` とは意味が違う）:
+   *  1. 本フィールド追加前の旧レポート（未計測）
+   *  2. その号で特集記事が生成されなかった
+   *
+   * **ステータス判定には算入しない**。`computeReportStatus` / `shouldFileIssue` /
+   * `writeAndCheckReport` の fail 判定も変更しない。上限超過は事故ではなく
+   * 「テーマに合うゲームが多い号」で自然に起きるため。
+   *
+   * `expectedMax` は生成時点の期待上限（`FEATURE_EXPECTED_MAX_GAMES`）。超過判定の閾値を
+   * レポート整形側で再定義せず、記録された値を読ませるために持つ（定数を export して
+   * `format-validation-report.ts` に import させると循環 import になる。理由は
+   * `generate-articles.ts` の `FeatureSelectionStats.expectedMax` の JSDoc）。
+   *
+   * 型はインライン定義（循環 import を避けるため。`llmJudge`（:145）と同じ理由。:143 のコメント参照）。
+   */
+  featureSelection?: {
+    theme: string;
+    llmSelectedCount: number;
+    finalGameCount: number;
+    expectedMax: number;
+  };
 }
 
 /**

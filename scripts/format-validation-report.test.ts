@@ -1544,3 +1544,109 @@ describe('裏付けあり数値（Issue #364）', () => {
     expect(computeReportStatus(report)).toBe('warning');
   });
 });
+
+describe('formatReportMarkdown — 特集記事の選定本数（Issue #379）', () => {
+  it('featureSelection が undefined のときセクションが出ない', () => {
+    const report = makeReport({
+      featureSelection: undefined,
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).not.toContain('### 📚 特集記事の選定本数');
+  });
+
+  it('3本のときセクションが出て ⚠️ が付かない（境界値）', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 3, finalGameCount: 3, expectedMax: 5 },
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('### 📚 特集記事の選定本数');
+    expect(md).toContain('- テーマ: テストテーマ');
+    expect(md).toContain('- LLM 選定本数: 3本');
+    expect(md).toContain('- 最終本数: 3本');
+    // ⚠️ が付かないことを確認
+    expect(md).not.toContain('3本 ⚠️');
+  });
+
+  it('5本のときセクションが出て ⚠️ が付かない（境界値: ちょうど期待上限）', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 5, finalGameCount: 5, expectedMax: 5 },
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('### 📚 特集記事の選定本数');
+    expect(md).toContain('- LLM 選定本数: 5本');
+    expect(md).toContain('- 最終本数: 5本');
+    // ⚠️ が付かないことを確認（5本は期待上限であり、超過ではない）
+    expect(md).not.toContain('5本 ⚠️');
+  });
+
+  it('6本のとき ⚠️ が付き、説明が出る（境界値: 超過）', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 6, finalGameCount: 6, expectedMax: 5 },
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('### 📚 特集記事の選定本数');
+    expect(md).toContain('- LLM 選定本数: 6本 ⚠️');
+    expect(md).toContain('- 最終本数: 6本 ⚠️');
+    expect(md).toContain('⚠️ プロンプトは「3〜5本」を期待していますが');
+    expect(md).toContain('上限は強制していません');
+  });
+
+  it('llmSelectedCount だけ超過した場合も ⚠️ が付く', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 7, finalGameCount: 4, expectedMax: 5 },
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('- LLM 選定本数: 7本 ⚠️');
+    expect(md).toContain('- 最終本数: 4本');
+    expect(md).not.toContain('4本 ⚠️'); // finalGameCount は5以下なので ⚠️ なし
+    expect(md).toContain('⚠️ プロンプトは「3〜5本」を期待していますが');
+  });
+
+  it('buildRecommendedActions: 6本超過のとき推奨アクションに行が出る', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 6, finalGameCount: 6, expectedMax: 5 },
+    });
+
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('📚 **特集記事のゲーム本数が期待上限（5本）を超過**'))).toBe(
+      true
+    );
+    expect(actions.some((a) => a.includes('LLM選定 6本 / 最終 6本'))).toBe(true);
+  });
+
+  // 閾値がレポート整形側にハードコードされていないことの回帰テスト。
+  // expectedMax は生成時点の値を記録しているので、これを上げたレポートでは
+  // 6本でも超過扱いにならない（format-validation-report.ts が 5 を持っていたら落ちる）
+  it('閾値は記録された expectedMax を使う（6本 + expectedMax 6 なら超過扱いにしない）', () => {
+    const report = makeReport({
+      featureSelection: {
+        theme: 'テストテーマ',
+        llmSelectedCount: 6,
+        finalGameCount: 6,
+        expectedMax: 6,
+      },
+    });
+
+    const md = formatReportMarkdown(report);
+    expect(md).toContain('- 最終本数: 6本');
+    expect(md).not.toContain('6本 ⚠️');
+    expect(md).not.toContain('⚠️ プロンプトは「3〜5本」を期待していますが');
+    expect(buildRecommendedActions(report).some((a) => a.includes('📚 **特集記事のゲーム本数'))).toBe(
+      false
+    );
+  });
+
+  it('buildRecommendedActions: 5本以下のとき推奨アクションに行が出ない', () => {
+    const report = makeReport({
+      featureSelection: { theme: 'テストテーマ', llmSelectedCount: 5, finalGameCount: 5, expectedMax: 5 },
+    });
+
+    const actions = buildRecommendedActions(report);
+    expect(actions.some((a) => a.includes('📚 **特集記事のゲーム本数'))).toBe(false);
+  });
+});
