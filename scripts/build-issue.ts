@@ -865,9 +865,8 @@ async function main(): Promise<void> {
   report.llmJudge = await judgeArticles(generatedIssue.articles, publishDate);
 
   const validationDir = path.join(DATA_DIR, DEV_MODE ? 'validation-dev' : 'validation');
-  // 環境変数 VALIDATION_HIGH_THRESHOLD で fail 閾値を上書き可能（デフォルト: 5）
-  const threshold = parseInt(process.env.VALIDATION_HIGH_THRESHOLD || '5', 10);
-  const passed = writeAndCheckReport(report, validationDir, threshold);
+  // Issue #350: VALIDATION_HIGH_THRESHOLD を廃止。判定は critical 警告の有無のみ。
+  const passed = writeAndCheckReport(report, validationDir);
 
   if (!passed) {
     console.error(

@@ -8,8 +8,17 @@
  * - 人物発言捏造リスク: 「〜氏」「〜CTO」「〜ディレクター」等の肩書き付き人名や、
  *   「〜と語った」「〜によると」等の発言引用パターンを検出
  *
- * これらは「検出」が目的であり、誤検知も含まれる。重大度（high/medium/low）を付与し、
- * 一定数以上の high 警告がある場合に build-issue を fail させる運用を想定する。
+ * これらは「検出」が目的であり、誤検知も含まれる。重大度（critical/high/medium/low）を付与する。
+ *
+ * Issue #350 で重大度と自動アクションの対応を整理した（仕様 §9.1 の表が正）:
+ * - critical: プロンプトで明示的に禁止しているのに守られていない型のみ
+ *   （body-title-mismatch / title-mismatch / platform-mismatch）。1 件でも Issue を自動起票し、
+ *   `VALIDATION_AUTO_REGENERATE=true` なら再生成の対象になる
+ * - high: 要確認だが記録のみ。誤検知（検索結果に根拠がある数値の転記など）が混ざるため、
+ *   自動起票もビルド fail もさせない。人間が毎号レポートを読む前提
+ * - medium / low: 記録のみ
+ *
+ * 「一定数以上の high 警告で fail」（旧 `VALIDATION_HIGH_THRESHOLD`）は Issue #350 で廃止した。
  */
 
 import * as fs from 'node:fs';
@@ -27,7 +36,7 @@ import {
   type ReportStatus,
 } from './format-validation-report.js';
 
-export type Severity = 'high' | 'medium' | 'low';
+export type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 export interface ValidationWarning {
   articleTitle: string;
@@ -119,7 +128,11 @@ export interface ValidationReport {
   };
   /**
    * LLM-as-a-judge による事実性チェックの結果（P3）。
-   * 正規表現バリデータ（warnings）とは分離して保持し、fail 判定には算入しない（記録のみ）。
+   * 正規表現バリデータ（warnings）とは分離して保持するため、warningsBySeverity には算入されない。
+   * `writeAndCheckReport` の fail 判定（critical のみ）にも算入しない。
+   * ただし Issue #350 以降、contradicted かつ severity=high（confidence >= 0.7）の警告は
+   * `computeReportStatus` が status=error に昇格させ、Issue 自動起票の対象になる
+   * （judge 由来は自動再生成では直せないため critical にはせず、起票のみに接続する）。
    * judge-article.ts の LlmJudgeReport と構造互換。循環 import を避けるためインライン定義。
    */
   llmJudge?: {
@@ -456,7 +469,7 @@ export function validateBodyTitleConsistency(article: GeneratedArticle): Validat
     warnings.push({
       articleTitle: article.title,
       category: article.category,
-      severity: 'high',
+      severity: 'critical',
       type: 'body-title-mismatch',
       message:
         `記事本文に正式ゲームタイトルが一度も登場しません。` +
@@ -505,7 +518,7 @@ export function validateTitleConsistency(article: GeneratedArticle): ValidationW
     warnings.push({
       articleTitle,
       category: article.category,
-      severity: 'high',
+      severity: 'critical',
       type: 'title-mismatch',
       message:
         `記事タイトルに正式ゲームタイトルが含まれていません。` +
@@ -548,7 +561,7 @@ export function validateFeaturePlatformConsistency(article: GeneratedArticle): V
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity: 'high',
+        severity: 'critical',
         type: 'platform-mismatch',
         message:
           `本文で「${mentioned}」が言及されていますが、紹介ゲームのいずれにも含まれていません。` +
@@ -744,7 +757,7 @@ export function validatePlatformConsistency(article: GeneratedArticle): Validati
       warnings.push({
         articleTitle: article.title,
         category: article.category,
-        severity: 'high',
+        severity: 'critical',
         type: 'platform-mismatch',
         message:
           `本文で「${mentioned}」が言及されていますが、提供データには含まれていません。` +
@@ -2003,6 +2016,7 @@ export function validateArticles(
   }
 
   const warningsBySeverity: Record<Severity, number> = {
+    critical: warnings.filter((w) => w.severity === 'critical').length,
     high: warnings.filter((w) => w.severity === 'high').length,
     medium: warnings.filter((w) => w.severity === 'medium').length,
     low: warnings.filter((w) => w.severity === 'low').length,
@@ -2052,8 +2066,7 @@ export function resolveReportMode(outputDir: string): ReportMode {
  */
 export function writeAndCheckReport(
   report: ValidationReport,
-  outputDir: string,
-  highWarningThreshold: number = 5
+  outputDir: string
 ): boolean {
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -2082,7 +2095,7 @@ export function writeAndCheckReport(
   console.log(`Total articles: ${report.totalArticles}`);
   console.log(`Total warnings: ${report.totalWarnings}`);
   console.log(
-    `  - high: ${report.warningsBySeverity.high}, medium: ${report.warningsBySeverity.medium}, low: ${report.warningsBySeverity.low}`
+    `  - critical: ${report.warningsBySeverity.critical}, high: ${report.warningsBySeverity.high}, medium: ${report.warningsBySeverity.medium}, low: ${report.warningsBySeverity.low}`
   );
   if (report.webSearchStats) {
     const s = report.webSearchStats;
@@ -2185,11 +2198,13 @@ export function writeAndCheckReport(
     }
   }
 
-  // fail 判定は正規表現バリデータ由来の warnings のみで行う（judge は算入しない）
-  if (report.warningsBySeverity.high > highWarningThreshold) {
+  // fail 判定は critical 警告のみで行う（Issue #350）。
+  // critical = プロンプトで明示的に禁止しているのに守られていない型のみ（body-title-mismatch / title-mismatch / platform-mismatch）。
+  // 1 件でも存在すれば false を返す（ビルド fail は VALIDATION_STRICT=true のときのみ）。
+  if (report.warningsBySeverity.critical > 0) {
     console.error('');
     console.error(
-      `❌ Too many high-severity warnings (${report.warningsBySeverity.high} > ${highWarningThreshold}). Validation failed.`
+      `❌ Critical warnings detected (${report.warningsBySeverity.critical}). Validation failed.`
     );
     return false;
   }

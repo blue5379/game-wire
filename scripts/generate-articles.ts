@@ -1805,21 +1805,22 @@ async function main(): Promise<void> {
     console.warn('No classic game selected, skipping');
   }
 
-  // 5. 自動再生成（P4）: high 警告（正規表現由来）を持つ記事を1回だけ作り直す。
+  // 5. 自動再生成（P4）: critical 警告（正規表現由来）を持つ記事を1回だけ作り直す。
   // デフォルト OFF。VALIDATION_AUTO_REGENERATE=true で有効化（再生成は生成コストが増えるため）。
+  // Issue #350 で対象を critical 型に限定（プロンプト遵守失敗型のみ）。既定 ON 化は Issue #372 の修正後。
   if (process.env.VALIDATION_AUTO_REGENERATE === 'true') {
     console.log('');
-    console.log('Auto-regeneration enabled. Checking for high-severity warnings...');
+    console.log('Auto-regeneration enabled. Checking for critical-severity warnings...');
     for (const item of regenerables) {
-      const highBefore = validateArticle(item.article, publishDate).filter((w) => w.severity === 'high');
-      if (highBefore.length === 0) continue;
+      const criticalBefore = validateArticle(item.article, publishDate).filter((w) => w.severity === 'critical');
+      if (criticalBefore.length === 0) continue;
 
-      const fix = buildFixInstruction(highBefore);
-      console.log(`  [regenerate] "${item.article.title}" high=${highBefore.length} → 再生成`);
+      const fix = buildFixInstruction(criticalBefore);
+      console.log(`  [regenerate] "${item.article.title}" critical=${criticalBefore.length} → 再生成`);
       try {
         const regenerated = await item.regenerate(fix);
-        const highAfter = validateArticle(regenerated, publishDate).filter((w) => w.severity === 'high');
-        console.log(`  [regenerate] high: ${highBefore.length} → ${highAfter.length}`);
+        const criticalAfter = validateArticle(regenerated, publishDate).filter((w) => w.severity === 'critical');
+        console.log(`  [regenerate] critical: ${criticalBefore.length} → ${criticalAfter.length}`);
         item.article = regenerated; // 1回だけ。残存警告は許容（次の validate/judge で記録される）
       } catch (error) {
         console.error(`  [regenerate] failed for "${item.article.title}", keeping original:`, error);

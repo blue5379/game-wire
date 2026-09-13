@@ -25,7 +25,7 @@ function makeReport(overrides: Partial<ValidationReport> = {}): ValidationReport
     generatedAt: '2026-07-19T00:00:00.000Z',
     totalArticles: 6,
     totalWarnings: 0,
-    warningsBySeverity: { high: 0, medium: 0, low: 0 },
+    warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
     warnings: [],
     ...overrides,
   };
@@ -43,22 +43,147 @@ function makeWarning(overrides: Partial<ValidationWarning> = {}): ValidationWarn
 }
 
 describe('computeReportStatus', () => {
-  it('high 警告が1件以上なら error', () => {
-    const report = makeReport({ warningsBySeverity: { high: 1, medium: 0, low: 0 } });
-    expect(computeReportStatus(report)).toBe('error');
+  describe('Issue #350: critical/high の分離', () => {
+    it('critical 警告が1件以上なら error', () => {
+      const report = makeReport({ warningsBySeverity: { critical: 1, high: 0, medium: 0, low: 0 } });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('high 警告のみなら warning に降格（従来は error だった。Issue #350 の最大の挙動変更）', () => {
+      const report = makeReport({ warningsBySeverity: { critical: 0, high: 3, medium: 0, low: 0 } });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('critical と high が併存すれば error', () => {
+      const report = makeReport({ warningsBySeverity: { critical: 1, high: 2, medium: 0, low: 0 } });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+
+    it('旧レポート形式（warningsBySeverity に critical キーが無い）でも例外にならず、critical = 0 として扱う', () => {
+      const report = makeReport({ warningsBySeverity: { high: 0, medium: 0, low: 0 } as any });
+      expect(() => computeReportStatus(report)).not.toThrow();
+      expect(computeReportStatus(report)).toBe('ok');
+    });
+
+    it('旧レポート形式で high が 1 件あれば warning（critical = 0 扱い）', () => {
+      const report = makeReport({ warningsBySeverity: { high: 1, medium: 0, low: 0 } as any });
+      expect(computeReportStatus(report)).toBe('warning');
+    });
   });
 
-  it('キーワード検索失敗があれば（high 0 でも）error（Issue #349: pageContentFailures は除く）', () => {
+  describe('judge contradicted-high の error 昇格（Issue #350）', () => {
+    it('judge contradicted-high（confidence = 0.7、境界値）が 1 件あれば error', () => {
+      const report = makeReport({
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        llmJudge: {
+          claimsByVerdict: { supported: 5, contradicted: 1, unverifiable: 0 },
+          judgedArticles: 3,
+          skippedArticles: 0,
+          warnings: [
+            makeWarning({
+              severity: 'high',
+              type: 'llm-judge-contradicted',
+              message: '出典と矛盾します',
+            }),
+          ],
+        },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+      expect(shouldFileIssue(report)).toBe(true);
+    });
+
+    it('低確信の contradicted（confidence < 0.7）は warning 止まりで error に昇格しない', () => {
+      // judge-article.ts:416 は confidence < 0.7 の contradicted を severity: 'low' に格下げする。
+      // warningsBySeverity を全ゼロにしてあるので、warning になる要因は
+      // judgeProblemCount（contradicted 1 件）だけ = judge 由来であることが確定する。
+      const report = makeReport({
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        llmJudge: {
+          claimsByVerdict: { supported: 5, contradicted: 1, unverifiable: 0 },
+          judgedArticles: 3,
+          skippedArticles: 0,
+          warnings: [
+            makeWarning({
+              severity: 'low',
+              type: 'llm-judge-contradicted',
+              message: '出典と矛盾します（確信度低）',
+            }),
+          ],
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('judge の high 警告でも contradicted 以外の型は error に昇格しない', () => {
+      // 昇格条件は severity だけでなく type === 'llm-judge-contradicted' も見ている。
+      // severity のみで判定していると、将来 judge が別種の high 警告を出したときに
+      // 黙って起票対象に混ざる。
+      const report = makeReport({
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        llmJudge: {
+          claimsByVerdict: { supported: 5, contradicted: 0, unverifiable: 0 },
+          judgedArticles: 3,
+          skippedArticles: 0,
+          warnings: [
+            makeWarning({
+              severity: 'high',
+              type: 'llm-judge-some-other-problem',
+              message: '別種の問題',
+            }),
+          ],
+        },
+      });
+      expect(computeReportStatus(report)).toBe('ok');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('judge unverifiable は warning 止まり（error に昇格させない）', () => {
+      const report = makeReport({
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
+        llmJudge: {
+          claimsByVerdict: { supported: 5, contradicted: 0, unverifiable: 3 },
+          judgedArticles: 3,
+          skippedArticles: 0,
+          warnings: [],
+        },
+      });
+      expect(computeReportStatus(report)).toBe('warning');
+      expect(shouldFileIssue(report)).toBe(false);
+    });
+
+    it('judge contradicted-high と critical 併存で error', () => {
+      const report = makeReport({
+        warningsBySeverity: { critical: 1, high: 0, medium: 0, low: 0 },
+        llmJudge: {
+          claimsByVerdict: { supported: 3, contradicted: 1, unverifiable: 0 },
+          judgedArticles: 2,
+          skippedArticles: 0,
+          warnings: [
+            makeWarning({
+              severity: 'high',
+              type: 'llm-judge-contradicted',
+              message: '出典と矛盾します',
+            }),
+          ],
+        },
+      });
+      expect(computeReportStatus(report)).toBe('error');
+    });
+  });
+
+  it('キーワード検索失敗があれば（critical 0・high 0 でも）error（Issue #349: pageContentFailures は除く）', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       webSearchStats: { searchFailures: 1, pageContentFailures: 0 },
     });
     expect(computeReportStatus(report)).toBe('error');
   });
 
-  it('AI成人向けスクリーニング失敗があれば（high 0・Web検索失敗 0 でも）error（Issue #222、Web検索失敗と同じ扱い）', () => {
+  it('AI成人向けスクリーニング失敗があれば（critical 0・high 0・Web検索失敗 0 でも）error（Issue #222、Web検索失敗と同じ扱い）', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       webSearchStats: { searchFailures: 0, pageContentFailures: 0, adultScreeningFailures: 1 },
     });
     expect(computeReportStatus(report)).toBe('error');
@@ -66,14 +191,14 @@ describe('computeReportStatus', () => {
 
   it('webSearchStats に adultScreeningFailures が無い（旧キャッシュ）場合は未計測として ok 側の判定に影響しない', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
     });
     expect(computeReportStatus(report)).toBe('ok');
   });
 
   it('medium 警告のみなら warning', () => {
-    const report = makeReport({ warningsBySeverity: { high: 0, medium: 3, low: 0 } });
+    const report = makeReport({ warningsBySeverity: { critical: 0, high: 0, medium: 3, low: 0 } });
     expect(computeReportStatus(report)).toBe('warning');
   });
 
@@ -98,25 +223,25 @@ describe('computeReportStatus', () => {
 
   it('警告も失敗も無ければ ok', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
     });
     expect(computeReportStatus(report)).toBe('ok');
   });
 
   it('low 警告のみでは ok（対応不要）', () => {
-    const report = makeReport({ warningsBySeverity: { high: 0, medium: 0, low: 5 } });
+    const report = makeReport({ warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 5 } });
     expect(computeReportStatus(report)).toBe('ok');
   });
 
-  it('error の条件が warning の条件より優先される（high と medium 併存）', () => {
-    const report = makeReport({ warningsBySeverity: { high: 2, medium: 3, low: 1 } });
+  it('error の条件が warning の条件より優先される（critical と medium 併存。Issue #350: high は warning 要因に降格）', () => {
+    const report = makeReport({ warningsBySeverity: { critical: 1, high: 2, medium: 3, low: 1 } });
     expect(computeReportStatus(report)).toBe('error');
   });
 
   it('Steam API サーキットブレーカが開いていれば（high 0 でも）error（Issue #360: 全滅検知）。非429失敗率が低くても circuitOpen 単独で error になることも検証する', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       steamApiHealth: {
         total: 20,
         succeeded: 19,
@@ -132,7 +257,7 @@ describe('computeReportStatus', () => {
 
   it('steamApiHealth が計測されていて失敗0件・circuitOpen=false なら error にも warning にも昇格しない（ok）', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 0, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       steamApiHealth: {
         total: 10,
         succeeded: 10,
@@ -146,14 +271,14 @@ describe('computeReportStatus', () => {
   });
 
   it('steamApiHealth が未計測（旧レポート）なら未計測として ok 側の判定に影響しない', () => {
-    const report = makeReport({ warningsBySeverity: { high: 0, medium: 0, low: 0 } });
+    const report = makeReport({ warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 } });
     expect(computeReportStatus(report)).toBe('ok');
   });
 
   describe('Steam API 非429失敗率・circuit-open スキップによる error/warning 昇格（Issue #360 フォローアップ）', () => {
     it('ライブ実測3回目相当（total 280 / failed 0 / statusCounts {} / rateLimitHits 0）は Steam 由来で error にも warning にも昇格しない', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 280,
           succeeded: 280,
@@ -169,7 +294,7 @@ describe('computeReportStatus', () => {
 
     it('ライブ実測2回目相当（total 295 / failed 38 / statusCounts {429:10, circuit-open:28} / rateLimitHits 30, circuitOpen false）は circuit-open スキップが1件以上あるため error（非429失敗率 28/295=9.5% は10%未満だが、circuit-open スキップの独立条件で error になる）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 295,
           succeeded: 257,
@@ -186,7 +311,7 @@ describe('computeReportStatus', () => {
 
     it('境界値: 非429失敗率がちょうど10.0%（total 100 / 非429失敗 10、circuit-open なし）なら error', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 100,
           succeeded: 90,
@@ -201,7 +326,7 @@ describe('computeReportStatus', () => {
 
     it('境界値: 非429失敗率が9.9%（total 1000 / 非429失敗 99、circuit-open なし）なら warning（10%未満なので error にならない）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 1000,
           succeeded: 901,
@@ -217,7 +342,7 @@ describe('computeReportStatus', () => {
 
     it('429 のみで失敗している場合（total 100 / failed 20 / statusCounts {429:20}）は失敗率20%でも warning（429 と非429の区別が効いていることのポジティブコントロール）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 100,
           succeeded: 80,
@@ -233,7 +358,7 @@ describe('computeReportStatus', () => {
 
     it('total < 10 で非429失敗率が高い場合（total 5 / 非429失敗 3 = 60%）は error にならず warning（呼び出し数が少なすぎる誤検知を避ける下限）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 5,
           succeeded: 2,
@@ -249,7 +374,7 @@ describe('computeReportStatus', () => {
 
     it('circuit-open スキップが1件だけでも error（statusCounts.circuit-open の件数閾値は無い）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 280,
           succeeded: 279,
@@ -265,7 +390,7 @@ describe('computeReportStatus', () => {
 
     it('非429失敗率が10%未満かつ circuit-open が0件なら warning に留まる（2つのルールが独立に効いていることの確認）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         steamApiHealth: {
           total: 1000,
           succeeded: 901,
@@ -281,14 +406,14 @@ describe('computeReportStatus', () => {
 });
 
 describe('shouldFileIssue', () => {
-  it('error の号は起票対象', () => {
-    expect(shouldFileIssue(makeReport({ warningsBySeverity: { high: 1, medium: 0, low: 0 } }))).toBe(
+  it('error の号は起票対象（Issue #350: critical のみが起票対象）', () => {
+    expect(shouldFileIssue(makeReport({ warningsBySeverity: { critical: 1, high: 0, medium: 0, low: 0 } }))).toBe(
       true
     );
   });
 
   it('warning の号は起票しない', () => {
-    expect(shouldFileIssue(makeReport({ warningsBySeverity: { high: 0, medium: 2, low: 0 } }))).toBe(
+    expect(shouldFileIssue(makeReport({ warningsBySeverity: { critical: 0, high: 0, medium: 2, low: 0 } }))).toBe(
       false
     );
   });
@@ -374,7 +499,7 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
   describe('computeReportStatus — searchFailures は error / pageContentFailures は warning（Issue #349）', () => {
     it('searchFailures: 1、他は clean → error', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 1, pageContentFailures: 0 },
       });
       expect(computeReportStatus(report)).toBe('error');
@@ -383,7 +508,7 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
 
     it('pageContentFailures: 1、他は clean → warning（これが本 Issue で修正する回帰）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 0, pageContentFailures: 1 },
       });
       expect(computeReportStatus(report)).toBe('warning');
@@ -392,23 +517,23 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
 
     it('pageContentFailures: 0 かつ searchFailures: 0 かつ他の trigger なし → ok', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 0, pageContentFailures: 0 },
       });
       expect(computeReportStatus(report)).toBe('ok');
     });
 
-    it('pageContentFailures: 3 と high: 1 併存 → error（high が支配。変更が high を弱めていないことの証明）', () => {
+    it('pageContentFailures: 3 と high: 1 併存 → warning（Issue #350: high は warning 要因）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 1, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 1, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 0, pageContentFailures: 3 },
       });
-      expect(computeReportStatus(report)).toBe('error');
+      expect(computeReportStatus(report)).toBe('warning');
     });
 
     it('webSearchStats 完全に不在（旧キャッシュ） → ok（これらのカウンタで昇格しない）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
       });
       delete report.webSearchStats;
       expect(computeReportStatus(report)).toBe('ok');
@@ -416,7 +541,7 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
 
     it('searchFailures と pageContentFailures が両方あっても error（searchFailures が理由）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 1, pageContentFailures: 2 },
       });
       expect(computeReportStatus(report)).toBe('error');
@@ -424,7 +549,7 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
 
     it('本日の本番実測（run 31792016284）相当: pageContentFailures のみ 2 件 → warning', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 0, pageContentFailures: 2 },
       });
       expect(computeReportStatus(report)).toBe('warning');
@@ -433,7 +558,7 @@ describe('searchFailureCount / pageContentFailureCount の分離（Issue #349）
 
     it('dev-024 相当: pageContentFailures 3 件のみ → warning', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         webSearchStats: { searchFailures: 0, pageContentFailures: 3 },
       });
       expect(computeReportStatus(report)).toBe('warning');
@@ -467,7 +592,7 @@ describe('buildRecommendedActions', () => {
   });
 
   it('high 警告があれば修正アクションと件数を含む', () => {
-    const report = makeReport({ warningsBySeverity: { high: 2, medium: 0, low: 0 } });
+    const report = makeReport({ warningsBySeverity: { critical: 0, high: 2, medium: 0, low: 0 } });
     const actions = buildRecommendedActions(report);
     const highAction = actions.find((a) => a.includes('HIGH 警告 2 件'));
     expect(highAction).toBeDefined();
@@ -645,7 +770,7 @@ describe('buildRecommendedActions', () => {
 
   it('複数種類の問題があれば複数のアクションを列挙する', () => {
     const report = makeReport({
-      warningsBySeverity: { high: 1, medium: 2, low: 0 },
+      warningsBySeverity: { critical: 0, high: 1, medium: 2, low: 0 },
       missingOfficialUrls: [{ articleTitle: 'A', category: 'newRelease', gameTitle: 'Game A' }],
     });
     const actions = buildRecommendedActions(report);
@@ -662,7 +787,7 @@ describe('formatReportMarkdown', () => {
     const report = makeReport({
       status: 'error',
       totalWarnings: 1,
-      warningsBySeverity: { high: 1, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 1, medium: 0, low: 0 },
       warnings: [makeWarning()],
     });
     const md = formatReportMarkdown(report);
@@ -687,7 +812,7 @@ describe('formatReportMarkdown', () => {
   });
 
   it('status 未設定でも算出して整形する', () => {
-    const report = makeReport({ warningsBySeverity: { high: 0, medium: 1, low: 0 } });
+    const report = makeReport({ warningsBySeverity: { critical: 0, high: 0, medium: 1, low: 0 } });
     delete report.status;
     const md = formatReportMarkdown(report);
     expect(md).toContain('🟡');
@@ -698,7 +823,7 @@ describe('formatReportMarkdown', () => {
     const report = makeReport({
       status: 'error',
       totalWarnings: 1,
-      warningsBySeverity: { high: 1, medium: 0, low: 0 },
+      warningsBySeverity: { critical: 0, high: 1, medium: 0, low: 0 },
       warnings: [
         makeWarning({
           sourcedFrom: {
@@ -1098,7 +1223,7 @@ describe('記事本数の不足（Issue #311。仕様 §6.4 / §6.5）', () => {
   describe('computeReportStatus', () => {
     it('本数不足があれば（high 0・Web検索失敗 0・成人向け失敗 0 でも）error', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 0, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 0, low: 0 },
         articleCountShortfalls: [shortfall('newRelease', 2, 0)],
       });
       expect(computeReportStatus(report)).toBe('error');
@@ -1109,7 +1234,7 @@ describe('記事本数の不足（Issue #311。仕様 §6.4 / §6.5）', () => {
       // 修正前は high=0 のため warning に落ち、Issue が自動起票されなかった
       const report = makeReport({
         totalArticles: 4,
-        warningsBySeverity: { high: 0, medium: 1, low: 0 },
+        warningsBySeverity: { critical: 0, high: 0, medium: 1, low: 0 },
         articleCountShortfalls: [shortfall('newRelease', 2, 0)],
       });
       expect(computeReportStatus(report)).toBe('error');
@@ -1212,9 +1337,9 @@ describe('早期アクセスの表記（Issue #26。仕様 §2.9）', () => {
       expect(computeReportStatus(makeReport({ earlyAccessStatementIssues: [] }))).toBe('ok');
     });
 
-    it('他に error 要因があれば error のまま（判定を弱めない）', () => {
+    it('他に error 要因があれば error のまま（判定を弱めない。Issue #350: critical で error）', () => {
       const report = makeReport({
-        warningsBySeverity: { high: 1, medium: 0, low: 0 },
+        warningsBySeverity: { critical: 1, high: 0, medium: 0, low: 0 },
         earlyAccessStatementIssues: [eaIssue()],
       });
       expect(computeReportStatus(report)).toBe('error');

@@ -62,15 +62,15 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-複数のバリデータを実行し、重大度（`high` / `medium` / `low`）を付与してレポートを出力する。`validateArticle` 関数は13個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
+複数のバリデータを実行し、重大度（`critical` / `high` / `medium` / `low`）を付与してレポートを出力する。`critical` は「プロンプトで明示的に禁止しているのに守られていない」型のみに付与し、Issue の自動起票と自動再生成の対象になる。`high` 以下は記録のみ（Issue #350、判定項→アクションの対応は [article-category-spec.md §9.1](article-category-spec.md) が正）。`validateArticle` 関数は13個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
 | チェック種別 | 内容 | 重大度 |
 |-------------|------|--------|
-| `title-mismatch` | 記事タイトル（見出し）にゲームの正式タイトル（en/ja）が含まれているか | high |
-| `body-title-mismatch` | **記事本文**にゲームの正式タイトル（en/ja のいずれか）が最低1回登場するか。特集は対象外。仕様: [article-category-spec.md §6.6](article-category-spec.md) | high |
-| `platform-mismatch` | 本文中のプラットフォーム言及が提供データと矛盾しないか | high |
+| `title-mismatch` | 記事タイトル（見出し）にゲームの正式タイトル（en/ja）が含まれているか | critical |
+| `body-title-mismatch` | **記事本文**にゲームの正式タイトル（en/ja のいずれか）が最低1回登場するか。特集は対象外。仕様: [article-category-spec.md §6.6](article-category-spec.md) | critical |
+| `platform-mismatch` | 本文中のプラットフォーム言及が提供データと矛盾しないか | critical |
 | `person-quote` / `person-title` / `person-mention` | 「〜氏によると」「ディレクター〜」等の人物発言・肩書きパターン（詳細は下記） | high / medium |
 | `numeric-*` | ソース不明の具体数値（件数・人数・プレイ時間・台数等、詳細は下記） | high / medium / low |
 | `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
@@ -201,8 +201,8 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 
 ### 2-4. CI との連携
 
-- `VALIDATION_HIGH_THRESHOLD`（デフォルト: 5）を超える `high` 警告がある場合、`build-issue` が失敗する
-- `VALIDATION_STRICT=true` を設定することでさらに厳格な運用が可能
+- `critical` 警告が 1 件以上ある場合、検証が失敗する（Issue #350。従来の `VALIDATION_HIGH_THRESHOLD` は廃止）
+- `VALIDATION_STRICT=true` を設定すると `build-issue` が `process.exit(1)` でビルドを停止する（デフォルトでは号は発行し、Issue 自動起票で運用）
 - DEV_MODE では `data/validation-dev/` に出力、本番では `data/validation/` に出力
 
 ### 2-5. GitHub Actions Job Summary への出力
@@ -267,7 +267,7 @@ feature 記事の platform-mismatch / person-* は `recommendedGames` の metada
 - ストアフロント名（`Steam` / `Epic` 等）の排他語。例: `Steam版のみ`。理由: プラットフォームの排他ではなく販売ストアの話であり得るため区別できない
 - `PC専用サーバー` `PS5専用コントローラー` のように、排他語の後ろに周辺機器・サーバー・機能名が続く場合（タイトルの排他ではなく部品の排他を述べている）。実測0件のため除外ロジックは入れていない。観測されたら後続語の除外を検討する方針。**その際 `専用ソフト` を除外してはならない**（実測3件のうち `Nintendo Switch専用ソフトとして、任天堂から発売されています` は本来検証したい形であり、後続語で機械的に除外すると真の検出対象が落ちる）
 - 世代を持たないファミリ名だけの排他的言及。例: 提供データ `[Xbox Series X|S, PC (Microsoft Windows)]` に対する「Xbox専用」は、主張キー `Xbox` が提供データのキー（`Xbox Series X|S`）と一致しないため警告しない。ファミリ単位に解決する処理は入れていない（実測では素の `Xbox` の出現7件がすべて `Xbox Game Studios` `Xboxチーム` のような企業・組織名で、プラットフォーム主張としての使用は0件だったため）
-- **`platform-mismatch` 語彙ギャップによる未検出**: 主張されたキーが提供データに無い場合は `platform-mismatch`（high）に委譲するが、`KNOWN_PLATFORM_PATTERNS` は素の `Switch` / `Switch 2` / 日本語別名（`ニンテンドースイッチ` `プレステ5` 等）/ 素の `PC` を持たないため、これらの表記では**どちらも警告しないことがある**。例: 提供データ `[PlayStation 5]` に対する「Switch専用」は、どちらのバリデータも警告しない。`KNOWN_PLATFORM_PATTERNS` の拡張は既存 high 警告の挙動を変えるため本Issueでは扱わない
+- **`platform-mismatch` 語彙ギャップによる未検出**: 主張されたキーが提供データに無い場合は `platform-mismatch`（critical）に委譲するが、`KNOWN_PLATFORM_PATTERNS` は素の `Switch` / `Switch 2` / 日本語別名（`ニンテンドースイッチ` `プレステ5` 等）/ 素の `PC` を持たないため、これらの表記では**どちらも警告しないことがある**。例: 提供データ `[PlayStation 5]` に対する「Switch専用」は、どちらのバリデータも警告しない。`KNOWN_PLATFORM_PATTERNS` の拡張は既存 `platform-mismatch`（critical）警告の挙動を変えるため本Issueでは扱わない
 
 #### `metadata-transcription-mismatch` の未検出パターン（Issue #376）
 
@@ -440,7 +440,7 @@ judge は**入力が正しいこと**を前提にする。入力の質の担保�
 |---|---|
 | IGDB / Steam メタデータ自体の正しさ | 同一性照合ゲート（`docs/article-category-spec.md`）・`finalize-game-metadata` |
 | 参照URLが本当にそのゲームの公式ページか | URL検証（`verify-official-url.ts`）・IGDB 公式タグ限定（Issue #117 / #234） |
-| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** 発売日は `metadata-transcription-mismatch`（Issue #376 / PR #386）で実装済み。プラットフォームは `platform-mismatch`（high）が「本文で言及されたが公式リストに無い」方向を見る＋ `platform-exclusivity-mismatch`（Issue #377）が排他的言及に限って「主張されたキー以外のキーが提供データに残る」方向を検証する。種別は `game-type-unstated` / `game-type-mismatch`（Issue #387）で実装済み。残る空白は**ジャンル**（実測で単純照合の誤検出率が 100% だったため意図的に検証しない。根拠は 2-6 の「ジャンルの転記は検証しない」）と、**排他的言及を伴わない機種の省略**、および**「本作 / 同作」を主語に持たない種別の誤り**。 |
+| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** 発売日は `metadata-transcription-mismatch`（Issue #376 / PR #386）で実装済み。プラットフォームは `platform-mismatch`（critical）が「本文で言及されたが公式リストに無い」方向を見る＋ `platform-exclusivity-mismatch`（Issue #377）が排他的言及に限って「主張されたキー以外のキーが提供データに残る」方向を検証する。種別は `game-type-unstated` / `game-type-mismatch`（Issue #387）で実装済み。残る空白は**ジャンル**（実測で単純照合の誤検出率が 100% だったため意図的に検証しない。根拠は 2-6 の「ジャンルの転記は検証しない」）と、**排他的言及を伴わない機種の省略**、および**「本作 / 同作」を主語に持たない種別の誤り**。 |
 | Tavily 検索結果に混入した誤情報の転記 | **どこも担っていない**（4章の限界） |
 | 本文の記述が現実に正しいか | **誰も担っていない。** これは定義上の非目標（3-0） |
 
