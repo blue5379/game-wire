@@ -1591,6 +1591,11 @@ describe('runAutoRegeneration（Issue #372）', () => {
 describe('要約のタイトル忠実性（Issue #371）', () => {
   beforeEach(() => {
     mockInvoke.mockResolvedValue('テスト用ダミー応答。');
+    // vi.clearAllMocks()（file 直下の beforeEach）は呼び出し履歴だけを消し、
+    // 他テストが mockResolvedValue で入れた実装は残る（:425-431 の注意書きと同じ理由）。
+    // feature のテストは選定結果が空だと generateFeatureArticle が throw するため、
+    // 他テストの残留値に頼らずこの describe 内で明示的に与える
+    mockSelectFeatureGames.mockResolvedValue(['Game A', 'Game B']);
   });
 
   it('classic（titleJa なし）: 要約プロンプトに英語タイトルとタイトル忠実性ルールが含まれる', async () => {
@@ -1615,7 +1620,7 @@ describe('要約のタイトル忠実性（Issue #371）', () => {
     expect(userMessage).toContain('タイトル（英語/国際名、変更禁止）: Grand Theft Auto: San Andreas');
 
     // タイトル忠実性ルールが含まれる
-    expect(userMessage).toContain('上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること（短縮・翻訳・並べ替え・改変、独自の日本語名の作成は禁止）');
+    expect(userMessage).toContain('上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること（日本語タイトルと英語タイトルのどちらか一方でよく、日本語タイトルがある場合はそちらを優先する。短縮・翻訳・並べ替え・改変、独自の日本語名の作成は禁止）');
     expect(userMessage).toContain('続編・リメイク・DLC・拡張であっても、原作や前作のタイトルだけで代用せず、本作のタイトルを出すこと');
     expect(userMessage).toContain('文字数が足りない場合は他の情報を削り、ゲームタイトルを優先すること');
   });
@@ -1642,6 +1647,11 @@ describe('要約のタイトル忠実性（Issue #371）', () => {
 
     // タイトル忠実性ルールが含まれる
     expect(userMessage).toContain('上記のゲームタイトルを要約に最低1回、提供された表記のまま含めること');
+
+    // 2つのタイトルを列挙している以上、「両方を入れろ」「英語名を入れろ」と読まれない
+    // ことが重要。120文字の要約で両方を強制すると本題の情報が削られるため、
+    // 仕様 §6.6「受け入れる表記」と同じ許容（どちらか一方・日本語優先）を明示する
+    expect(userMessage).toContain('日本語タイトルと英語タイトルのどちらか一方でよく、日本語タイトルがある場合はそちらを優先する');
   });
 
   // indie の呼び出し箇所も newRelease / classic と同じ引数を渡していることを確認する
