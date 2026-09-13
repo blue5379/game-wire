@@ -3114,12 +3114,13 @@ PR へのコメントは投稿されていない。管理者判断:
 ### 設計原則（公開は止めない）が実際に守られていることの確認
 
 - 生成層（`fetch-data.ts` / `generate-articles.ts` / `completeness-gate.ts`）は**無変更**
-- `writeAndCheckReport` が `false` を返すのは `high > 5` のときだけで、`process.exit(1)` は
+- `writeAndCheckReport` が `false` を返すのは `high > 5` のときだけ（Issue #350 で
+  `VALIDATION_HIGH_THRESHOLD` は廃止され、現在は critical ≥ 1 件等が条件）で、`process.exit(1)` は
   **`VALIDATION_STRICT=true` のときのみ**。この変数は**ワークフローにもリポジトリのどこにも
   設定されていない**（`grep -rn VALIDATION_STRICT .github/ scripts/` で本体 1 箇所のみ）→ 号は止まらない
 - **自動再生成は記事単位の `validateArticle` を見る**（`generate-articles.ts` の
   `VALIDATION_AUTO_REGENERATE` ブロック）ので、レポート単位の本数不足は**構造的に対象外**。
-  デフォルト OFF かどうかに関係なく干渉しない
+  デフォルト ON（Issue #372）だが、対象は critical 警告のみで本数不足は含まれないため干渉しない
 
 ### 下位判断の決定（§9.2-10）
 

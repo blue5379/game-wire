@@ -71,7 +71,7 @@ vi.mock('./fetch-web-search.js', async (importOriginal) => ({
   fetchOfficialPageContents: vi.fn().mockResolvedValue({ steamContent: undefined, officialContent: undefined, failures: 0 }),
 }));
 
-import { __test, generateFeatureArticle, buildPrimarySources, buildJudgeGroundingGame, formatOutputSizeSummary } from './generate-articles.js';
+import { __test, generateFeatureArticle, buildPrimarySources, buildJudgeGroundingGame, formatOutputSizeSummary, runAutoRegeneration } from './generate-articles.js';
 import type { GeneratedArticle } from './generate-articles.js';
 import { enrichGameWithIGDB } from './fetch-igdb.js';
 import { invokeClaudeModel, selectFeatureGames, selectFeatureThemeWithAI } from './bedrock-client.js';
@@ -1358,5 +1358,232 @@ describe('GeneratedArticle.game.gameType の転記（Issue #387）', () => {
       new Date('2026-09-12')
     );
     expect(article.game?.gameType).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #372: 見出しプロンプトに修正指示が届く回帰テスト
+// ─────────────────────────────────────────────────────────────────────────────
+describe('見出しプロンプトに修正指示が届く（Issue #372）', () => {
+  beforeEach(() => {
+    mockInvoke.mockClear();
+  });
+
+  it('regenerate 時に titleFixInstruction が見出し生成プロンプトに届き、fixInstruction とは分離される', async () => {
+    // 見出し生成は1回、本文生成は1回の計2回呼ばれる想定
+    mockInvoke
+      .mockResolvedValueOnce('生成された見出し')
+      .mockResolvedValueOnce('生成された要約')
+      .mockResolvedValueOnce('生成された本文');
+
+    const game: GameData = {
+      title: 'Test Game',
+      titleJa: 'テストゲーム',
+      normalizedTitle: 'test game',
+      releaseDate: '2026-01-01',
+      developer: 'Test Developer',
+      publisher: 'Test Publisher',
+      developerCountry: 'US',
+      genres: ['Action'],
+      platforms: ['PC (Steam)'],
+      summary: 'Test summary',
+      source: ['steam'],
+    };
+
+    await __test.generateClassicArticle(game, new Date('2026-08-08'), {
+      fixInstruction: '<本文用の目印>',
+      titleFixInstruction: '<見出し用の目印>',
+    });
+
+    // mockInvoke が3回呼ばれている（見出し・要約・本文）
+    expect(mockInvoke).toHaveBeenCalledTimes(3);
+
+    // 見出し生成の呼び出しを特定（maxTokens: 100）
+    const titleCall = mockInvoke.mock.calls.find(
+      (call) => call[2]?.maxTokens === 100
+    );
+    expect(titleCall).toBeDefined();
+    const titleUserMessage = titleCall![1];
+    expect(titleUserMessage).toContain('<見出し用の目印>');
+    expect(titleUserMessage).not.toContain('<本文用の目印>');
+
+    // 本文生成の呼び出しを特定（maxTokens: 3500）
+    const bodyCall = mockInvoke.mock.calls.find(
+      (call) => call[2]?.maxTokens === 3500
+    );
+    expect(bodyCall).toBeDefined();
+    const bodyUserMessage = bodyCall![1];
+    expect(bodyUserMessage).toContain('<本文用の目印>');
+    expect(bodyUserMessage).not.toContain('<見出し用の目印>');
+  });
+
+  it('titleFixInstruction を渡さない初回生成では見出しに修正指示ブロックが無い', async () => {
+    mockInvoke
+      .mockResolvedValueOnce('生成された見出し')
+      .mockResolvedValueOnce('生成された要約')
+      .mockResolvedValueOnce('生成された本文');
+
+    const game: GameData = {
+      title: 'Test Game',
+      normalizedTitle: 'test game',
+      releaseDate: '2026-01-01',
+      developer: 'Test Developer',
+      publisher: 'Test Publisher',
+      developerCountry: 'US',
+      genres: ['Action'],
+      platforms: ['PC (Steam)'],
+      summary: 'Test summary',
+      source: ['steam'],
+    };
+
+    await __test.generateClassicArticle(game, new Date('2026-08-08'));
+
+    const titleCall = mockInvoke.mock.calls.find(
+      (call) => call[2]?.maxTokens === 100
+    );
+    expect(titleCall).toBeDefined();
+    const titleUserMessage = titleCall![1];
+    // 既存の指示文は含まれる
+    expect(titleUserMessage).toContain('記事タイトルには必ず上記のゲームタイトル');
+    // 修正指示ブロック特有の文言は無い
+    expect(titleUserMessage).not.toContain('前回生成した記事タイトル');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Issue #372: runAutoRegeneration（既定 ON と、本文用/見出し用の指示の受け渡し）
+//
+// main() の中にあった自動再生成ループを関数として切り出したもの。本番の main() が
+// この関数を呼んでいるため、ここでの検証は実際の実行経路をそのまま通る。
+// 警告の判定は実物の validateArticle を通す（モックしない）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe('runAutoRegeneration（Issue #372）', () => {
+  const PUBLISH_DATE = new Date('2026-08-08');
+  const ENV_KEY = 'VALIDATION_AUTO_REGENERATE';
+  let savedEnv: string | undefined;
+
+  beforeEach(() => {
+    savedEnv = process.env[ENV_KEY];
+    delete process.env[ENV_KEY];
+  });
+
+  afterEach(() => {
+    if (savedEnv === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = savedEnv;
+  });
+
+  /**
+   * 見出しに正式ゲームタイトルが無い記事（= title-mismatch が critical で出る）。
+   * 本文にはタイトルを入れて body-title-mismatch を出さないことで、
+   * 発火する critical を title-mismatch だけに絞る。
+   */
+  function makeTitleMismatchArticle(): GeneratedArticle {
+    return {
+      title: '今週の注目作をご紹介',
+      category: 'newRelease',
+      summary: 'Hollow Knight の紹介記事です。',
+      content: 'Hollow Knight は探索型のアクションゲームです。丁寧な手描きの世界が魅力です。',
+      game: {
+        title: 'Hollow Knight',
+        genre: ['Action'],
+        platforms: [],
+      },
+    };
+  }
+
+  /** 見出しに正式タイトルが入っている記事（critical が出ない） */
+  function makeCleanArticle(): GeneratedArticle {
+    return {
+      ...makeTitleMismatchArticle(),
+      title: 'Hollow Knight をあらためて遊ぶ',
+    };
+  }
+
+  it('critical 警告がある記事は再生成され、本文用と見出し用の指示が別々に渡る', async () => {
+    const original = makeTitleMismatchArticle();
+    const replacement: GeneratedArticle = { ...makeCleanArticle(), content: '差し替え後の本文' };
+    const regenerate = vi.fn().mockResolvedValue(replacement);
+    const regenerables = [{ article: original, regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    const [bodyFix, titleFix] = regenerate.mock.calls[0];
+    // 見出し用の指示には前回の失敗した見出しが埋め込まれる
+    expect(titleFix).toContain('今週の注目作をご紹介');
+    expect(titleFix).toContain('一字一句そのまま記事タイトルに含めてください');
+    // title-mismatch は見出し側だけの欠陥なので、本文用の指示は空になる
+    expect(bodyFix).toBe('');
+    // 再生成結果が採用される
+    expect(regenerables[0].article).toBe(replacement);
+  });
+
+  it('critical 警告が無い記事は再生成されない', async () => {
+    const regenerate = vi.fn();
+    const article = makeCleanArticle();
+    const regenerables = [{ article, regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).not.toHaveBeenCalled();
+    expect(regenerables[0].article).toBe(article);
+  });
+
+  it('環境変数が未設定でも再生成が走る（既定 ON）', async () => {
+    const regenerate = vi.fn().mockResolvedValue(makeCleanArticle());
+    const regenerables = [{ article: makeTitleMismatchArticle(), regenerate }];
+
+    expect(process.env[ENV_KEY]).toBeUndefined();
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it('VALIDATION_AUTO_REGENERATE=false のときは再生成しない', async () => {
+    process.env[ENV_KEY] = 'false';
+    const regenerate = vi.fn();
+    const article = makeTitleMismatchArticle();
+    const regenerables = [{ article, regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).not.toHaveBeenCalled();
+    expect(regenerables[0].article).toBe(article);
+  });
+
+  it("'false' 以外の値（'0'）は無効化として扱わない", async () => {
+    process.env[ENV_KEY] = '0';
+    const regenerate = vi.fn().mockResolvedValue(makeCleanArticle());
+    const regenerables = [{ article: makeTitleMismatchArticle(), regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+  });
+
+  it('再生成が失敗した記事は元のまま残す', async () => {
+    const original = makeTitleMismatchArticle();
+    const regenerate = vi.fn().mockRejectedValue(new Error('Bedrock unavailable'));
+    const regenerables = [{ article: original, regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(regenerables[0].article).toBe(original);
+  });
+
+  it('critical が残っていても2回目の再生成はしない（1記事1回）', async () => {
+    // 再生成後も見出しが直っていない記事を返す
+    const stillBroken: GeneratedArticle = {
+      ...makeTitleMismatchArticle(),
+      title: '直っていない見出し',
+    };
+    const regenerate = vi.fn().mockResolvedValue(stillBroken);
+    const regenerables = [{ article: makeTitleMismatchArticle(), regenerate }];
+
+    await runAutoRegeneration(regenerables, PUBLISH_DATE);
+
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(regenerables[0].article).toBe(stillBroken);
   });
 });

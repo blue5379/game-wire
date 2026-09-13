@@ -13,7 +13,7 @@
  * Issue #350 で重大度と自動アクションの対応を整理した（仕様 §9.1 の表が正）:
  * - critical: プロンプトで明示的に禁止しているのに守られていない型のみ
  *   （body-title-mismatch / title-mismatch / platform-mismatch）。1 件でも Issue を自動起票し、
- *   `VALIDATION_AUTO_REGENERATE=true` なら再生成の対象になる
+ *   自動再生成の対象になる（既定 ON。`VALIDATION_AUTO_REGENERATE=false` で無効化。Issue #372）
  * - high: 要確認だが記録のみ。誤検知（検索結果に根拠がある数値の転記など）が混ざるため、
  *   自動起票もビルド fail もさせない。人間が毎号レポートを読む前提
  * - medium / low: 記録のみ
@@ -1064,7 +1064,8 @@ const UNRELEASED_TITLE_PATTERNS = /発表(?!会)|次回作|近日|もうすぐ|�
  *
  * releaseDate <= publishDate（発売済み）の newRelease/indie 記事のタイトルに
  * 未発売ニュアンスの表現が含まれる場合に high 警告を出す。
- * high にすることで VALIDATION_AUTO_REGENERATE=true 時の自動修正対象になる。
+ * （当初は「high にすることで自動再生成の対象になる」ことを狙っていたが、Issue #350 で
+ *  自動再生成の対象が critical 型のみに絞られたため、現在この型はレポートへの記録のみ）
  * publishDate が渡されていない場合は検証をスキップする（後方互換）。
  *
  * ## § 2.8 本日発売の扱い
@@ -1158,12 +1159,15 @@ const PRE_RELEASE_QUALIFIER_PATTERN = /先行プレイ|先行体験|先行レビ
  * 限定語（先行プレイ / 体験版 / プレビュー等）を含むなら、その文は正当として除外する。
  *
  * ## 警告の形
- * - severity: 'high'（§11.3.4。low だと VALIDATION_AUTO_REGENERATE の対象外）
+ * - severity: 'high'（§11.3.4。当時は「low だと VALIDATION_AUTO_REGENERATE の対象外」が理由だったが、
+ *   Issue #350 で自動再生成の対象が critical 型のみになったため、現在は記録のみ）
  * - type: 'upcoming-evaluation-claim'
  * - フィールドごとに最大1件（1記事で最大2件: content + summary）
- *   理由（**§11.3.6**。§11.3.4 ではない）: writeAndCheckReport は high が5件超（6件以上）で fail する。
+ *   理由（**§11.3.6**。§11.3.4 ではない）: 当時 writeAndCheckReport は high が5件超（6件以上）で fail した。
  *   §11.3.6 の実測では既存レポート28件の high 分布に**ちょうど5件のものが2件**あり、
- *   1記事から多数の警告を出すとレポートが fail に転落する余地がある。
+ *   1記事から多数の警告を出すとレポートが fail に転落する余地があった。
+ *   （この fail 閾値は Issue #350 で `VALIDATION_HIGH_THRESHOLD` ごと廃止されたが、
+ *    1記事が警告数を独占しないという設計自体はレポートの可読性のために維持する）
  *
  * 参照: `docs/article-category-spec.md` § 2.7, `docs/article-category-spec-review.md` § 11.3.4（設計）/ § 11.3.6（fail 閾値）
  */
@@ -1727,13 +1731,46 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
 }
 
 /**
+ * 見出し生成プロンプト（`generateTitle`）に渡す修正指示を組み立てる（純関数）。
+ *
+ * 対象は `type === 'title-mismatch'` のみ（記事見出しの欠陥）。
+ * 本文プロンプト向けの `buildFixInstruction` とは別経路（Issue #372）。
+ *
+ * `evidence`（= 前回の失敗した見出し）を埋め込み、「前回こう失敗した、繰り返すな」という
+ * 形にする。正しいタイトル文字列は `generateTitle` の user message 側（`titleSection`）が
+ * 既に持っているので、指示側で正式名を再掲する必要はない。
+ *
+ * @param warnings 検証警告（`title-mismatch` 以外は無視される）
+ * @returns 修正指示文（該当が無ければ空文字列。空文字列は `generateTitle` で安全に無視される）
+ */
+export function buildTitleFixInstruction(warnings: ValidationWarning[]): string {
+  const instructions = new Set<string>();
+
+  for (const w of warnings) {
+    if (w.type !== 'title-mismatch') continue;
+    const ev = w.evidence || '';
+    // 改行を含めず、1つの `instructions.add` で1件の指示にする
+    instructions.add(
+      `前回生成した記事タイトル「${ev}」には、上記のゲームタイトルがそのままの表記で含まれていませんでした。` +
+        `短縮・略称・シリーズ名・意訳での言い換えをせず、上記のタイトル（日本語名があれば日本語名）を` +
+        `一字一句そのまま記事タイトルに含めてください。`
+    );
+  }
+
+  // 呼び出し側のプロンプトへの差し込み方（改行の入れ方）は呼び出し側の責務にする。
+  // `buildFixInstruction` と同じく、ここでは指示文だけを返す
+  return Array.from(instructions).join('\n');
+}
+
+/**
  * 警告から、記事再生成時にプロンプトへ渡す修正指示文を組み立てる（純関数）。
  *
  * 警告の type ごとに「提供データに無いので削除/修正せよ」という具体的な指示文を生成する。
  * evidence（マッチした断片）をそのまま指示に埋め込むことで、AI が何を直すべきか明確にする。
  *
- * @param warnings 修正対象の警告（呼び出し側で high のみに絞って渡す想定）
- * @returns 修正指示ブロック（警告が無ければ空文字列）
+ * @param warnings 修正対象の警告（呼び出し側で critical のみに絞って渡す想定。Issue #350）。
+ *   `title-mismatch` は見出しの欠陥なのでここでは無視し、`buildTitleFixInstruction` が扱う（Issue #372）
+ * @returns 修正指示ブロック（本文向けの指示が1件も無ければ空文字列）
  */
 export function buildFixInstruction(warnings: ValidationWarning[]): string {
   if (warnings.length === 0) return '';
@@ -1761,9 +1798,10 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
           `「本作」「このゲーム」等の代名詞だけで済ませない）。`
       );
     } else if (w.type === 'title-mismatch') {
-      instructions.add(
-        `ゲームタイトルは提供データのものを正確に使用してください（短縮・翻訳・改変は禁止）。`
-      );
+      // `title-mismatch` は見出しの欠陥なので `buildTitleFixInstruction` が扱う（Issue #372）。
+      // 本文側でタイトルが一度も登場しないケースは `body-title-mismatch` が別に見ている
+      // → 本文プロンプトへの指示は不要
+      continue;
     } else if (w.type.startsWith('numeric-')) {
       instructions.add(
         `数値「${ev}」は提供データにありません。根拠のない具体的な数値は記載しないでください。`
@@ -1798,6 +1836,8 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
       instructions.add(`「${ev}」は提供データで裏付けられません。該当箇所を削除または修正してください。`);
     }
   }
+
+  if (instructions.size === 0) return '';
 
   const lines = ['【前回生成での問題点（必ず修正すること）】'];
   lines.push('前回の記事には以下の問題が検出されました。今回は必ず修正してください:');
@@ -1903,11 +1943,13 @@ const FULL_RELEASE_FUTURE_PATTERN = /前|予定|未定|目指|向け|見込|将�
  *
  * ## なぜ high 警告（`warnings`）ではなく独立した判定項なのか
  *
- * `warningsBySeverity.high` は ①仕様 §9.1 保留1（high の重大性の再定義）の議論対象
+ * 実装当時、`warningsBySeverity.high` は ①仕様 §9.1 保留1（high の重大性の再定義）の議論対象
  * ②`writeAndCheckReport` の fail 閾値 ③`VALIDATION_AUTO_REGENERATE` の再生成判断、
- * の 3 つに同時に使われている数値である。早期アクセスの表記漏れを混ぜると、これらの
+ * の 3 つに同時に使われている数値だった。早期アクセスの表記漏れを混ぜると、これらの
  * 運用判断がすべて動く。#311 の `articleCountShortfalls` と #222 の
  * `adultScreeningFailures` と同じ理由で、独立したフィールドに分ける。
+ * （Issue #350 で ①は決着、②の閾値は廃止、③は critical 型のみに変更された。
+ *  独立フィールドにしておく判断はレポートの可読性の観点で引き続き有効）
  *
  * ## 発火条件
  *
