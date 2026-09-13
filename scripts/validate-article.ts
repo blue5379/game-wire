@@ -8,8 +8,17 @@
  * - 人物発言捏造リスク: 「〜氏」「〜CTO」「〜ディレクター」等の肩書き付き人名や、
  *   「〜と語った」「〜によると」等の発言引用パターンを検出
  *
- * これらは「検出」が目的であり、誤検知も含まれる。重大度（high/medium/low）を付与し、
- * 一定数以上の high 警告がある場合に build-issue を fail させる運用を想定する。
+ * これらは「検出」が目的であり、誤検知も含まれる。重大度（critical/high/medium/low）を付与する。
+ *
+ * Issue #350 で重大度と自動アクションの対応を整理した（仕様 §9.1 の表が正）:
+ * - critical: プロンプトで明示的に禁止しているのに守られていない型のみ
+ *   （body-title-mismatch / title-mismatch / platform-mismatch）。1 件でも Issue を自動起票し、
+ *   `VALIDATION_AUTO_REGENERATE=true` なら再生成の対象になる
+ * - high: 要確認だが記録のみ。誤検知（検索結果に根拠がある数値の転記など）が混ざるため、
+ *   自動起票もビルド fail もさせない。人間が毎号レポートを読む前提
+ * - medium / low: 記録のみ
+ *
+ * 「一定数以上の high 警告で fail」（旧 `VALIDATION_HIGH_THRESHOLD`）は Issue #350 で廃止した。
  */
 
 import * as fs from 'node:fs';
@@ -119,7 +128,11 @@ export interface ValidationReport {
   };
   /**
    * LLM-as-a-judge による事実性チェックの結果（P3）。
-   * 正規表現バリデータ（warnings）とは分離して保持し、fail 判定には算入しない（記録のみ）。
+   * 正規表現バリデータ（warnings）とは分離して保持するため、warningsBySeverity には算入されない。
+   * `writeAndCheckReport` の fail 判定（critical のみ）にも算入しない。
+   * ただし Issue #350 以降、contradicted かつ severity=high（confidence >= 0.7）の警告は
+   * `computeReportStatus` が status=error に昇格させ、Issue 自動起票の対象になる
+   * （judge 由来は自動再生成では直せないため critical にはせず、起票のみに接続する）。
    * judge-article.ts の LlmJudgeReport と構造互換。循環 import を避けるためインライン定義。
    */
   llmJudge?: {
