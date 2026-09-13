@@ -14,6 +14,7 @@ import {
   writeSteamApiHealth,
   readSteamApiHealth,
   mergeSteamApiHealth,
+  checkSteamApiHealthSnapshotFreshness,
   STEAM_MAX_ATTEMPTS,
   STEAM_RETRY_AFTER_MAX_MS,
   STEAM_CIRCUIT_FAILURE_THRESHOLD,
@@ -23,6 +24,7 @@ import {
   STEAM_CIRCUIT_COOLDOWN_MS,
   STEAM_API_TIMEOUT_MS,
   STEAM_LIST_API_TIMEOUT_MS,
+  STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS,
   type SteamApiHealth,
 } from './steam-api-client.js';
 
@@ -592,6 +594,229 @@ describe('writeSteamApiHealth / readSteamApiHealth / mergeSteamApiHealth（Issue
     expect(snapshot).toBeDefined();
     expect(snapshot?.rateLimitHits).toBeUndefined();
     expect(snapshot?.total).toBe(10);
+  });
+});
+
+describe('writtenAt / checkSteamApiHealthSnapshotFreshness（Issue #368 スナップショット鮮度）', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'steam-api-health-freshness-test-'));
+    resetSteamApiClient();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('writeSteamApiHealth が書いたファイルに writtenAt があり、パース可能で、書き込み前後の時刻範囲に収まる', async () => {
+    const filePath = path.join(tmpDir, 'steam-api-health-with-written-at.json');
+    const fetchImpl = vi.fn(async () => makeResponse({ ok: false, status: 404 }));
+
+    const beforeWriteMs = Date.now();
+    await fetchSteamJson('https://example.test/written-at-test', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      quiet: true,
+    });
+    writeSteamApiHealth(filePath, 'test-stage');
+    const afterWriteMs = Date.now();
+
+    const snapshot = readSteamApiHealth(filePath);
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.writtenAt).toBeDefined();
+    expect(typeof snapshot?.writtenAt).toBe('string');
+
+    const parsed = Date.parse(snapshot!.writtenAt!);
+    expect(Number.isNaN(parsed)).toBe(false);
+    expect(parsed).toBeGreaterThanOrEqual(beforeWriteMs);
+    expect(parsed).toBeLessThanOrEqual(afterWriteMs);
+  });
+
+  it('readSteamApiHealth は writtenAt が無い旧スナップショットでも読める', () => {
+    const filePath = path.join(tmpDir, 'legacy-no-written-at.json');
+    // writtenAt フィールド自体が無い旧形式のスナップショット
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        stage: 'fetch-data',
+        total: 10,
+        succeeded: 8,
+        failed: 2,
+        consecutiveFailures: 1,
+        circuitOpen: false,
+        statusCounts: { '500': 2 },
+      })
+    );
+    const snapshot = readSteamApiHealth(filePath);
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.writtenAt).toBeUndefined();
+    expect(snapshot?.total).toBe(10);
+  });
+
+  it('readSteamApiHealth は writtenAt がある新しいスナップショットでそれをそのまま返す', () => {
+    const filePath = path.join(tmpDir, 'new-with-written-at.json');
+    const writtenAt = '2026-09-13T12:00:00.000Z';
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        stage: 'fetch-data',
+        total: 5,
+        succeeded: 4,
+        failed: 1,
+        consecutiveFailures: 0,
+        circuitOpen: false,
+        statusCounts: { '404': 1 },
+        writtenAt,
+      })
+    );
+    const snapshot = readSteamApiHealth(filePath);
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.writtenAt).toBe(writtenAt);
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: writtenAt 無し → unknown (missing)', () => {
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot);
+    expect(freshness).toEqual({ kind: 'unknown', reason: 'missing' });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: writtenAt が壊れている → unknown (unparsable)', () => {
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: 'not-a-date',
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot);
+    expect(freshness).toEqual({ kind: 'unknown', reason: 'unparsable' });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: 1時間前 → fresh', () => {
+    const nowMs = Date.parse('2026-09-13T12:00:00.000Z');
+    const oneHourAgoMs = nowMs - 60 * 60 * 1000;
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: new Date(oneHourAgoMs).toISOString(),
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot, { nowMs });
+    expect(freshness).toEqual({ kind: 'fresh', ageMs: 60 * 60 * 1000 });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: 境界値 ageMs === maxAgeMs → fresh', () => {
+    const nowMs = Date.parse('2026-09-13T12:00:00.000Z');
+    const maxAgeMs = 6 * 60 * 60 * 1000; // 6時間
+    const exactlyMaxAgeMs = nowMs - maxAgeMs;
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: new Date(exactlyMaxAgeMs).toISOString(),
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot, { nowMs, maxAgeMs });
+    expect(freshness).toEqual({ kind: 'fresh', ageMs: maxAgeMs });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: 境界値 ageMs === maxAgeMs + 1 → stale', () => {
+    const nowMs = Date.parse('2026-09-13T12:00:00.000Z');
+    const maxAgeMs = 6 * 60 * 60 * 1000; // 6時間
+    const overMaxAgeMs = nowMs - maxAgeMs - 1;
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: new Date(overMaxAgeMs).toISOString(),
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot, { nowMs, maxAgeMs });
+    expect(freshness).toEqual({ kind: 'stale', ageMs: maxAgeMs + 1 });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: 未来の writtenAt → future で ageMs が負', () => {
+    const nowMs = Date.parse('2026-09-13T12:00:00.000Z');
+    const oneMinuteFutureMs = nowMs + 60 * 1000;
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: new Date(oneMinuteFutureMs).toISOString(),
+    };
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot, { nowMs });
+    expect(freshness).toEqual({ kind: 'future', ageMs: -60 * 1000 });
+  });
+
+  it('checkSteamApiHealthSnapshotFreshness: opts.maxAgeMs の上書きが効く', () => {
+    const nowMs = Date.parse('2026-09-13T12:00:00.000Z');
+    const twoHoursAgoMs = nowMs - 2 * 60 * 60 * 1000;
+    const snapshot = {
+      stage: 'test',
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      consecutiveFailures: 0,
+      circuitOpen: false,
+      statusCounts: {},
+      writtenAt: new Date(twoHoursAgoMs).toISOString(),
+    };
+    // maxAgeMs を 1時間に設定 → 2時間前は stale
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot, {
+      nowMs,
+      maxAgeMs: 60 * 60 * 1000,
+    });
+    expect(freshness.kind).toBe('stale');
+  });
+
+  it('writeSteamApiHealth → readSteamApiHealth → checkSteamApiHealthSnapshotFreshness のラウンドトリップが fresh', async () => {
+    const filePath = path.join(tmpDir, 'round-trip.json');
+    const fetchImpl = vi.fn(async () => makeResponse({ ok: true, status: 200 }));
+
+    await fetchSteamJson('https://example.test/round-trip', {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      quiet: true,
+    });
+    writeSteamApiHealth(filePath, 'round-trip-test');
+    const snapshot = readSteamApiHealth(filePath);
+
+    expect(snapshot).toBeDefined();
+    const freshness = checkSteamApiHealthSnapshotFreshness(snapshot!);
+    expect(freshness.kind).toBe('fresh');
+    expect((freshness as { ageMs: number }).ageMs).toBeGreaterThanOrEqual(0);
+    // writtenAt が「書き込み時刻」であることを確認する（epoch や固定値を書いていない）。
+    // 上限は 5 秒: 実測では 1ms 未満だが、負荷の高い CI で fs 書き込みが遅れても
+    // flaky にならない値にする。「前日の残骸」（時間単位）との区別には十分。
+    expect((freshness as { ageMs: number }).ageMs).toBeLessThan(5000);
+  });
+
+  it('STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS が 6 時間であることを検証', () => {
+    expect(STEAM_HEALTH_SNAPSHOT_MAX_AGE_MS).toBe(6 * 60 * 60 * 1000);
   });
 });
 

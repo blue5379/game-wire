@@ -179,9 +179,26 @@ export interface ValidationReport {
    * `steamApiHealth`（合算値）とは別に、診断用にどのプロセスで何件失敗したかを残す。
    * fetch-data のスナップショットが読めなかった場合はそのステージのキーが欠ける
    * （= 未計測。号を落とす理由にはしない）。
+   *
+   * Issue #368: fetch-data ステージはスナップショット経由なので `writtenAt`（と `stage`）を持つ。
+   * build-issue ステージは自プロセスの実測なので持たない。
    */
-  steamApiHealthByStage?: Record<string, SteamApiHealth>;
+  steamApiHealthByStage?: Record<string, SteamApiHealthStageEntry>;
 }
+
+/**
+ * `ValidationReport.steamApiHealthByStage` の 1 エントリ（Issue #368）。
+ *
+ * fetch-data ステージは `readSteamApiHealth` が返した `SteamApiHealthSnapshot` がそのまま入るため
+ * `stage` / `writtenAt` を持つ（`writtenAt` はこのフィールド追加前に書かれた旧スナップショットでは
+ * 欠ける）。build-issue ステージは自プロセスの `getSteamApiHealth()` なのでどちらも持たない。
+ * レポート JSON に実行時だけ現れるキーを型として明示するための型で、
+ * `SteamApiHealthSnapshot` をそのまま使わないのは上記の「持たないステージがある」を表すため。
+ */
+export type SteamApiHealthStageEntry = SteamApiHealth & {
+  stage?: string;
+  writtenAt?: string;
+};
 
 const KNOWN_PLATFORM_PATTERNS: Array<{ pattern: RegExp; canonical: string }> = [
   { pattern: /Nintendo Switch 2/i, canonical: 'Nintendo Switch 2' },
