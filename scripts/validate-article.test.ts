@@ -2691,7 +2691,7 @@ describe('validateArticles の記事本数不足の集計（Issue #311）', () =
     ]);
   });
 
-  it('本数不足は warningsBySeverity.high を増やさない（fail 閾値・自動再生成の判断を汚さない）', () => {
+  it('本数不足は warningsBySeverity.high を増やさない（他の運用判断に使われる数値なので汚さない）', () => {
     const report = validateArticles([], 21);
     expect(report.articleCountShortfalls).toHaveLength(4);
     expect(report.warningsBySeverity.high).toBe(0);
@@ -2885,7 +2885,7 @@ describe('detectEarlyAccessStatementIssues（Issue #26。仕様 §2.9）', () =>
     );
     const report = validateArticles(articles, 26);
     expect(report.earlyAccessStatementIssues).toHaveLength(1);
-    // high 警告には混ぜない（fail 閾値・自動再生成の判断を動かさない）
+    // high 警告には混ぜない（他の運用判断に使われる数値なので動かさない）
     expect(report.warningsBySeverity.high).toBe(0);
     expect(report.missingOfficialUrls).toBeUndefined();
     expect(computeReportStatus(report)).toBe('warning');

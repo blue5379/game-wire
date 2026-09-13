@@ -1768,8 +1768,9 @@ export function buildTitleFixInstruction(warnings: ValidationWarning[]): string 
  * 警告の type ごとに「提供データに無いので削除/修正せよ」という具体的な指示文を生成する。
  * evidence（マッチした断片）をそのまま指示に埋め込むことで、AI が何を直すべきか明確にする。
  *
- * @param warnings 修正対象の警告（呼び出し側で high のみに絞って渡す想定）
- * @returns 修正指示ブロック（警告が無ければ空文字列）
+ * @param warnings 修正対象の警告（呼び出し側で critical のみに絞って渡す想定。Issue #350）。
+ *   `title-mismatch` は見出しの欠陥なのでここでは無視し、`buildTitleFixInstruction` が扱う（Issue #372）
+ * @returns 修正指示ブロック（本文向けの指示が1件も無ければ空文字列）
  */
 export function buildFixInstruction(warnings: ValidationWarning[]): string {
   if (warnings.length === 0) return '';
