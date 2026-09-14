@@ -14,6 +14,7 @@
  */
 
 import type { GeneratedArticle, JudgeGroundingGame, JudgePrimarySource } from './generate-articles.js';
+import type { PlatformReleaseDate } from './types.js';
 import type { ValidationWarning, Severity } from './validate-article.js';
 import {
   normalizeDateJpToIso,
@@ -23,6 +24,7 @@ import {
   invokeClaudeModel,
   getReleaseStatus,
   isUpcomingForBody,
+  getPlatformReleaseDateText,
   EARLY_ACCESS_LINE,
 } from './bedrock-client.js';
 import { isTavilyAvailable } from './fetch-web-search.js';
@@ -125,6 +127,34 @@ function buildSourceUrlParts(urls?: {
 }
 
 /**
+ * 機種別発売日の行を組む（judge 用、Issue #339）。
+ *
+ * 執筆プロンプト（`bedrock-client.ts` の `formatPlatformReleaseLines`）は発行日を基準に
+ * 「発行日時点で発売済み / 未発売」のラベルを付けるが、judge には日付だけを渡す。
+ * judge の役割は「本文の日付が入力に含まれていたか」の照合であり、
+ * 発売済みかどうかの判断は judge の判定範囲外（正規表現バリデータ
+ * `validatePlatformReleaseTiming` が担当する）。ラベルを渡すと judge が
+ * 「発売済み」の妥当性そのものを判定しはじめ、役割分担が壊れる。
+ *
+ * 日付の文字列化は執筆プロンプトと同じ `getPlatformReleaseDateText` を使う。
+ * 別実装にすると「プロンプトには渡したが judge のメタデータには無い日付」が生まれ、
+ * 指示どおり書いた記事が `contradicted` になる。
+ */
+function buildPlatformReleaseDateLines(
+  platforms: string[] | undefined,
+  platformReleaseDates: PlatformReleaseDate[] | undefined
+): string[] {
+  if (!platforms?.length || !platformReleaseDates?.length) return [];
+  const entries: string[] = [];
+  for (const platform of platforms) {
+    const dateText = getPlatformReleaseDateText(platformReleaseDates, platform);
+    if (dateText) entries.push(`${platform}: ${dateText}`);
+  }
+  if (entries.length === 0) return [];
+  return [`機種別の発売日: ${entries.join(' / ')}`];
+}
+
+/**
  * judge 用のゲームメタデータセクションを構築する（純関数）
  *
  * 判定対象ゲームのメタデータ（タイトル・開発元・ジャンル・プラットフォーム・概要等）を judge に渡す。
@@ -149,6 +179,7 @@ export function buildGameMetadataSection(article: GeneratedArticle): string {
       if (g.releaseDate) lines.push(`発売日: ${g.releaseDate}`);
       if (g.genres && g.genres.length > 0) lines.push(`ジャンル: ${g.genres.join('、')}`);
       if (g.platforms && g.platforms.length > 0) lines.push(`対応機種: ${g.platforms.join('、')}`);
+      lines.push(...buildPlatformReleaseDateLines(g.platforms, g.platformReleaseDates));
       // 執筆プロンプトと同一の文字列を渡す（定数を共有して表記のズレを防ぐ）
       if (g.isEarlyAccess === true) lines.push(EARLY_ACCESS_LINE);
       if (g.summary) lines.push(`概要: ${g.summary}`);
@@ -171,6 +202,7 @@ export function buildGameMetadataSection(article: GeneratedArticle): string {
   if (g.releaseDate) lines.push(`発売日: ${g.releaseDate}`);
   if (g.genre && g.genre.length > 0) lines.push(`ジャンル: ${g.genre.join('、')}`);
   if (g.platforms && g.platforms.length > 0) lines.push(`対応機種: ${g.platforms.join('、')}`);
+  lines.push(...buildPlatformReleaseDateLines(g.platforms, g.platformReleaseDates));
   // article.game には summary は無い（IGDBから直接は持たない）
 
   const sourceUrls = article.sourceUrls;
@@ -579,6 +611,14 @@ function isMetadataOnlyClaimForGame(excerpt: string, g: JudgeGroundingGame): boo
   for (const platform of g.platforms ?? []) {
     // 元表記と canonical 形式の両方を差し引く
     values.push(platform, normalizePlatforms(platform));
+    // 機種別発売日（Issue #339）。プロンプトに渡した日付の転記
+    // （「発売日: 2026年9月18日（Nintendo Switch 2）」等）を judge 範囲外にする。
+    // 散文（「Switch 2 版は…」のように名詞が挟まる形）は残余に漢字が残るのでここでは落ちない。
+    // それは意図どおりで、そちら側は buildPlatformReleaseDateLines が
+    // メタデータセクションに日付を出すことで `supported` になる。
+    // 文字列化は buildPlatformReleaseDateLines と同じ関数を使う
+    const dateText = getPlatformReleaseDateText(g.platformReleaseDates, platform);
+    if (dateText) values.push(dateText, normalizeDateIsoToJp(dateText));
   }
 
   // 長い値から差し引く

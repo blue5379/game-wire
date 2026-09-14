@@ -132,6 +132,7 @@ export function enrichGameFromIgdb(game: GameData, igdbGame: IGDBGame): boolean 
   game.genres = igdbGame.genres || game.genres;
   game.platforms = igdbGame.platforms || game.platforms;
   game.releaseDate = igdbGame.releaseDate || game.releaseDate;
+  game.platformReleaseDates = igdbGame.platformReleaseDates ?? game.platformReleaseDates;
   game.developer = igdbGame.developer || game.developer;
   // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
   // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
@@ -364,6 +365,7 @@ export async function aggregateGames(
         game.genres = igdb.genres || game.genres;
         game.platforms = igdb.platforms || game.platforms;
         game.releaseDate = igdb.releaseDate || game.releaseDate;
+        game.platformReleaseDates = igdb.platformReleaseDates ?? game.platformReleaseDates;
         game.developer = igdb.developer || game.developer;
         // developerGameCount は「採用された developer 名」と別ソースの件数が組み合わさらないよう
         // pickDeveloperGameCount でゲートする（コードレビュー指摘）。詳細は同関数の JSDoc を参照。
@@ -415,6 +417,7 @@ export async function aggregateGames(
         genres: igdb.genres || [],
         platforms: igdb.platforms || [],
         releaseDate: igdb.releaseDate,
+        platformReleaseDates: igdb.platformReleaseDates,
         developer: igdb.developer,
         developerGameCount: igdb.developerGameCount,
         publisher: igdb.publisher,

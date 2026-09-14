@@ -10,6 +10,7 @@ import {
   type ContentBlock,
 } from '@aws-sdk/client-bedrock-runtime';
 import { getJstDateString } from './jst-date.js';
+import type { PlatformReleaseDate } from './types.js';
 
 // Bedrock クライアントの設定
 const BEDROCK_CONFIG = {
@@ -169,6 +170,313 @@ export function getReleaseStatus(
  */
 export function isUpcomingForBody(status: ReleaseStatus | null): boolean {
   return status === '発売予定' || status === '本日発売';
+}
+
+/**
+ * 機種別の発売状態（Issue #339）。
+ *
+ * `ReleaseStatus`（3値）と別の型にしている理由: IGDB の機種別発売日には
+ * 「日付が粗くて発売済みか判定できない」（`unconfirmed`）と「そもそもエントリが無い」
+ * （`unknown`）という、単一の `releaseDate` では現れない状態がある。3値に押し込めると
+ * どちらかを「発売済み」または「発売予定」と断定することになり、実測で誤りが出る。
+ */
+export type PlatformReleaseClassification =
+  /** 発行日時点で購入・プレイ可能（確定日が発行日以前、または粗い日付の上界が発行日以前） */
+  | 'released'
+  /** 発行日時点で未発売（取り得る日付の下界が発行日より後） */
+  | 'upcoming'
+  /** 発売済みか判定できない（粗い日付の期間が発行日をまたぐ / TBD） */
+  | 'unconfirmed'
+  /** 発売中止・配信終了のエントリしか無い */
+  | 'cancelled'
+  /** その機種の `release_dates` エントリが無い（判定不能） */
+  | 'unknown';
+
+/**
+ * IGDB `release_dates.status` のうち「その機種では買えない」ことを表す値
+ * （`release_date_statuses` エンドポイントの実測値: 4=Offline / 5=Cancelled）。
+ *
+ * ⚠️ 逆に「買える」側を `=== 6`（Full Release）で絞ってはいけない。多くのエントリで
+ * IGDB は `status` を省略し、Early Access(3) / Advanced Access(34) でも日付が来ていれば
+ * 購入・プレイ可能である。実測（ARK: Survival Ascended）では全機種が `status=3` だが
+ * 2023 年から購入可能で、記事の「発売中」は事実として正しい。
+ * 早期アクセスであることを本文に書くかどうかは別の検証（Issue #26 の
+ * `validateEarlyAccessStatements`）の担当で、判定の一次ソースも Steam であって IGDB ではない。
+ */
+const IGDB_RELEASE_STATUS_UNAVAILABLE = new Set([4, 5]);
+
+/**
+ * `PlatformReleaseDate` 1件が取り得る日付の範囲（UTC カレンダー日、YYYY-MM-DD）を返す。
+ *
+ * ## `date` をそのまま境界に使わない理由
+ * `date_format` が粗いとき IGDB が `date` に入れる位置は一貫していない（2026-09-14 実測）:
+ * `date_format=1`（YYYYMM）は月初（"Dec 1989" → 1989-12-01）、`date_format=2`（YYYY）と
+ * 四半期は末日（"2006" → 2006-12-31、"Q1 2020" → 2020-03-31）。
+ * したがって上下界は `date_format` から導出する。
+ *
+ * `date_format` が無く `date` だけある場合は確定日として扱う（`/date_formats` の 0 =
+ * YYYYMMDD が既定値であり、日精度の日付という読みが自然）。この向きに倒すと
+ * `released` 側に寄る = バリデータが発火しない側なので、誤警告を増やさない。
+ *
+ * @returns 下界・上界。`undefined` は「その向きに制約が無い」（TBD・日付なし）
+ */
+export function getPlatformReleaseDateBounds(entry: {
+  date?: string;
+  dateFormat?: number;
+}): { earliest?: string; latest?: string } {
+  const dateStr = entry.date?.slice(0, 10);
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return {};
+  const year = parseInt(dateStr.slice(0, 4), 10);
+  const month = parseInt(dateStr.slice(5, 7), 10);
+
+  // UTC で「年 y の月 m（1-based）の末日」を YYYY-MM-DD で返す
+  const endOfMonth = (y: number, m: number): string =>
+    new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const startOfMonth = (y: number, m: number): string =>
+    `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-01`;
+
+  switch (entry.dateFormat) {
+    case undefined:
+    case 0: // YYYYMMDD（確定日）
+      return { earliest: dateStr, latest: dateStr };
+    case 1: // YYYYMM（月まで）
+      return { earliest: startOfMonth(year, month), latest: endOfMonth(year, month) };
+    case 2: // YYYY（年のみ）
+      return { earliest: startOfMonth(year, 1), latest: endOfMonth(year, 12) };
+    case 3: // YYYYQ1
+    case 4: // YYYYQ2
+    case 5: // YYYYQ3
+    case 6: {
+      // YYYYQ4。四半期は date_format から導出する（date の月は末日側に寄っているため使わない）
+      const quarter = entry.dateFormat - 2; // 3→1, 4→2, 5→3, 6→4
+      const firstMonth = quarter * 3 - 2;
+      return { earliest: startOfMonth(year, firstMonth), latest: endOfMonth(year, firstMonth + 2) };
+    }
+    default:
+      // 7=TBD、および将来 IGDB が追加する未知の形式。範囲を主張しない
+      return {};
+  }
+}
+
+/**
+ * ある機種が発行日時点で発売済みかを判定する（Issue #339）。
+ *
+ * 1機種に複数の `release_dates` エントリがあるのが普通なので（実測: LEGO Batman は
+ * PC/PS5/Xbox それぞれに Advanced Access と Full Release の2件）、
+ * **「発売済みと言えるエントリが1件でもあれば発売済み」**とする。購入可能性の判定であり、
+ * どのエントリが「正」かを決める問題ではない。
+ *
+ * 機種名は正規化した文字列一致で突き合わせる。別名辞書を使わないのは、`platforms` と
+ * `release_dates.platform.name` がどちらも IGDB の同一 platforms テーブル由来で、
+ * 同じレスポンスから取り出す限り表記が一致するため。本文照合用の
+ * `KNOWN_PLATFORM_PATTERNS`（validate-article.ts）は `PC (Microsoft Windows)` を
+ * `PC (Steam)` に寄せる本文向けの語彙なので、IGDB 同士の突き合わせには使わない。
+ *
+ * @param platformReleaseDates ゲームの機種別発売日（全機種ぶん）
+ * @param platform 判定したい機種名（IGDB の `platforms.name`）
+ * @param publishDate 号の発行日時
+ */
+export function classifyPlatformRelease(
+  platformReleaseDates: PlatformReleaseDate[] | undefined,
+  platform: string,
+  publishDate: Date
+): PlatformReleaseClassification {
+  const publishDateJst = getJstDateString(publishDate);
+  if (!publishDateJst) return 'unknown'; // Invalid Date
+
+  const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const target = normalize(platform);
+  const entries = (platformReleaseDates ?? []).filter((rd) => normalize(rd.platform) === target);
+  if (entries.length === 0) return 'unknown';
+
+  const available = entries.filter(
+    (rd) => rd.status === undefined || !IGDB_RELEASE_STATUS_UNAVAILABLE.has(rd.status)
+  );
+  if (available.length === 0) return 'cancelled';
+
+  const bounds = available.map((rd) => getPlatformReleaseDateBounds(rd));
+
+  // 上界が発行日以前 = その期間は完全に過ぎている → 確実に発売済み。
+  // 確定日の場合は上界=下界=その日なので「発行日と同日（本日発売）」も released になる。
+  // isUpcomingForBody が「本日発売」を未発売側に寄せるのとは意図的に違える:
+  // あちらは「レビューが存在するか」の判定、こちらは「その機種で買えるか」の判定。
+  if (bounds.some((b) => b.latest !== undefined && b.latest <= publishDateJst)) return 'released';
+
+  // 全エントリの下界が発行日より後 = 確実に未発売
+  if (bounds.every((b) => b.earliest !== undefined && b.earliest > publishDateJst)) return 'upcoming';
+
+  // 期間が発行日をまたぐ（例: 発行 2026-07-04 に対し "Q3 2026" = 07-01〜09-30）、
+  // または TBD。発売済みとも未発売とも断定できない
+  return 'unconfirmed';
+}
+
+/**
+ * ある機種の `release_dates` エントリのうち、**表示に使う1件**を選ぶ（Issue #339）。
+ *
+ * 判定（`classifyPlatformRelease`）は Early Access / Advanced Access も「買える」として
+ * 数えるが、**表示は Full Release（status 省略含む）を優先する**。IGDB の
+ * `first_release_date` も Advanced Access を無視して Full Release を採るため、
+ * 揃えないと同じプロンプト内の `発売日:` 行と食い違う（例: LEGO Batman の PC は
+ * Advanced Access 2026-05-19 と Full Release 2026-05-22 の2件を持ち、`first_release_date`
+ * は後者）。食い違うと執筆AIがどちらを転記しても、もう一方と不一致になる。
+ *
+ * @returns 代表エントリ。その機種のエントリが1件も無ければ `undefined`
+ */
+function getRepresentativeRelease(
+  platformReleaseDates: PlatformReleaseDate[] | undefined,
+  platform: string
+): PlatformReleaseDate | undefined {
+  const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const target = normalize(platform);
+  const forPlatform = (platformReleaseDates ?? []).filter(
+    (rd) => normalize(rd.platform) === target
+  );
+  if (forPlatform.length === 0) return undefined;
+
+  // Full Release（6）と status 省略を優先する。first_release_date と揃えるため
+  const preferred = forPlatform.filter((rd) => rd.status === undefined || rd.status === 6);
+  const candidates = preferred.length > 0 ? preferred : forPlatform;
+  // 取り得る日付が最も早いエントリを代表として表示する（下界が無いものは後ろに回す）
+  return candidates.reduce((best, rd) => {
+    const a = getPlatformReleaseDateBounds(rd).earliest;
+    const b = getPlatformReleaseDateBounds(best).earliest;
+    if (a === undefined) return best;
+    if (b === undefined) return rd;
+    return a < b ? rd : best;
+  }, candidates[0]);
+}
+
+/**
+ * ある機種について、プロンプト・警告メッセージに出す日付表記を返す（Issue #339）。
+ *
+ * 確定日（`date_format` が 0 または省略）は ISO 日付（`発売日:` 行と同じ表記）、
+ * 粗い日付は IGDB の `human` 表記（"Q3 2026" / "2026" / "TBD"）をそのまま返す。
+ * 「2026年内のどこか」を勝手に具体日へ丸めない（Issue #339 の方針決定）。
+ *
+ * どのエントリを代表に選ぶかは `getRepresentativeRelease` を参照。
+ *
+ * 執筆プロンプト（`formatPlatformReleaseLines`）と2つのバリデータ
+ * （`validatePlatformReleaseTiming` / `validateMetadataTranscription`、validate-article.ts）
+ * から呼ぶ。表示規則を複製すると、警告メッセージに出る日付とプロンプトに出た日付が食い違い、
+ * 号レポートを読む人がどちらを信じればよいか分からなくなるため一本化している。
+ *
+ * @returns 表示用の日付表記。その機種のエントリが1件も無ければ `undefined`
+ */
+export function getPlatformReleaseDateText(
+  platformReleaseDates: PlatformReleaseDate[] | undefined,
+  platform: string
+): string | undefined {
+  const representative = getRepresentativeRelease(platformReleaseDates, platform);
+  if (!representative) return undefined;
+  const isExact = representative.dateFormat === undefined || representative.dateFormat === 0;
+  return (
+    (isExact ? representative.date : representative.human) ??
+    representative.human ??
+    representative.date ??
+    '未定'
+  );
+}
+
+/**
+ * ある機種の発売状況と、表示に使う日付表記をまとめて返す（Issue #339）。
+ *
+ * 判定は `classifyPlatformRelease`、日付表記は `getPlatformReleaseDateText` に委ねる。
+ * プロンプト行の組み立て（`formatPlatformReleaseLines`）と
+ * `validatePlatformReleaseTiming` が両方とも「判定 + 表示日付」の組で必要とするため、
+ * 呼び出し側で2回突き合わせないようここで束ねる。
+ */
+export function describePlatformRelease(
+  platformReleaseDates: PlatformReleaseDate[] | undefined,
+  platform: string,
+  publishDate: Date
+): {
+  classification: PlatformReleaseClassification;
+  /** 表示用の日付表記。`classification === 'unknown'`（エントリが無い）のときだけ `undefined` */
+  dateText?: string;
+  /** 発行日と同日の確定日（= 本日発売）かどうか。`released` 以外では常に false */
+  isReleasedToday: boolean;
+} {
+  const classification = classifyPlatformRelease(platformReleaseDates, platform, publishDate);
+  if (classification === 'unknown') return { classification, isReleasedToday: false };
+
+  const representative = getRepresentativeRelease(platformReleaseDates, platform);
+  const isExact =
+    representative?.dateFormat === undefined || representative.dateFormat === 0;
+
+  return {
+    classification,
+    dateText: getPlatformReleaseDateText(platformReleaseDates, platform),
+    isReleasedToday:
+      classification === 'released' &&
+      isExact &&
+      representative?.date === getJstDateString(publishDate),
+  };
+}
+
+/**
+ * 機種別発売日をプロンプトに出す行を組み立てる（Issue #339）。
+ *
+ * ## なぜ必要か
+ * 従来のゲーム情報欄は `対応機種: PC, Switch 2, PS5` と `発売日: 2026-05-22（発売済み）` の
+ * 2行だけで、`発売日` は `first_release_date`（最速の機種の日付）1つしか無かった。
+ * マルチプラットフォームで発売日がずれるタイトルでは、これ自体が誤解を招く入力になる。
+ * 実測（発行済み21号）では7記事が、発行日時点で未発売の機種を挙げたまま「発売中」と
+ * 書いていた（例: LEGO Batman の Nintendo Switch 2 版は発行 2026-06-12 に対し 2026-09-18）。
+ * 執筆AIは渡された入力に忠実だったので、これはハルシネーションではなく入力側の欠陥であり、
+ * judge では原理的に検出できない。
+ *
+ * 表示する日付の選び方は `describePlatformRelease` の JSDoc を参照。
+ *
+ * @returns プロンプトに push する行。機種別エントリが1件も無い場合は空配列
+ *          （呼び出し側は従来の `対応機種:` / `発売日:` 行だけになる）
+ */
+export function formatPlatformReleaseLines(
+  platforms: string[] | undefined,
+  platformReleaseDates: PlatformReleaseDate[] | undefined,
+  publishDate: Date | undefined
+): string[] {
+  if (!platforms?.length || !platformReleaseDates?.length || !publishDate) return [];
+
+  const publishDateJst = getJstDateString(publishDate);
+  if (!publishDateJst) return [];
+
+  const entries: string[] = [];
+  let hasAnyKnown = false;
+  let hasAnyNotReleased = false;
+
+  for (const platform of platforms) {
+    const { classification, dateText, isReleasedToday } = describePlatformRelease(
+      platformReleaseDates,
+      platform,
+      publishDate
+    );
+    if (classification === 'unknown') {
+      entries.push(`  - ${platform}: IGDBに発売日データなし（発売済みと断定してはならない）`);
+      hasAnyNotReleased = true;
+      continue;
+    }
+    hasAnyKnown = true;
+
+    const label: Record<Exclude<PlatformReleaseClassification, 'unknown'>, string> = {
+      released: isReleasedToday ? '本日発売' : '発行日時点で発売済み',
+      upcoming: '発行日時点で未発売',
+      unconfirmed: '発売時期未確定・発行日時点で発売未確認',
+      cancelled: '発売中止',
+    };
+    if (classification !== 'released') hasAnyNotReleased = true;
+    entries.push(`  - ${platform}: ${dateText}（${label[classification]}）`);
+  }
+
+  if (!hasAnyKnown) return [];
+
+  const lines = [`機種別の発売日:`, ...entries];
+  if (hasAnyNotReleased) {
+    lines.push(
+      `※機種によって発売日が異なる。発行日時点で未発売・未確定の機種を「発売中」「発売済み」と書いてはならない。` +
+        `対応機種として挙げる場合は、その機種の発売日または未発売であることを明記すること。`
+    );
+  }
+  return lines;
 }
 
 /**
@@ -619,6 +927,8 @@ export function buildUserMessage(
     genres?: string[];
     platforms?: string[];
     releaseDate?: string;
+    /** 機種別の発売日（Issue #339）。`formatPlatformReleaseLines` の JSDoc を参照 */
+    platformReleaseDates?: PlatformReleaseDate[];
     developer?: string;
     publisher?: string;
     summary?: string;
@@ -663,6 +973,12 @@ export function buildUserMessage(
     }
     lines.push(`発売日: ${releaseDateLabel}`);
   }
+
+  // 機種別の発売日（Issue #339）。上の `発売日:` は first_release_date = 最速の機種の日付1つだけなので、
+  // 機種ごとにずれるタイトルではこれだけでは足りない
+  lines.push(
+    ...formatPlatformReleaseLines(gameInfo.platforms, gameInfo.platformReleaseDates, publishDate)
+  );
 
   if (gameInfo.gameType !== undefined && GAME_TYPE_LABELS[gameInfo.gameType]) {
     lines.push(`種別: ${GAME_TYPE_LABELS[gameInfo.gameType]}`);
@@ -721,6 +1037,8 @@ export interface FeatureSelectedGame {
   genres?: string[];
   platforms?: string[];
   releaseDate?: string;
+  /** 機種別の発売日（Issue #339）。`formatPlatformReleaseLines` の JSDoc を参照 */
+  platformReleaseDates?: PlatformReleaseDate[];
   developer?: string;
   publisher?: string;
   summary?: string;
@@ -783,6 +1101,8 @@ export function buildFeatureUserMessage(
     if (game.releaseDate) {
       lines.push(`発売日: ${game.releaseDate}`);
     }
+    // 機種別の発売日（Issue #339）。発行日は特集テーマ欄の `date` と同じもの
+    lines.push(...formatPlatformReleaseLines(game.platforms, game.platformReleaseDates, date));
     if (game.developer) {
       lines.push(`開発: ${game.developer}`);
     }

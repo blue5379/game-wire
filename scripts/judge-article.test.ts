@@ -21,6 +21,7 @@ import {
   type JudgeClaim,
 } from './judge-article.js';
 import type { GeneratedArticle } from './generate-articles.js';
+import type { PlatformReleaseDate } from './types.js';
 // 執筆プロンプトと judge で同じ行を使うことを確認するため定義元から取る
 import { EARLY_ACCESS_LINE } from './bedrock-client.js';
 
@@ -1294,5 +1295,167 @@ describe('buildJudgeUserMessage with publishDate (§11.3.5)', () => {
     expect(typeof judgeSystemPrompt).toBe('string');
     // 内容の検証（主観的表現の除外ルールが含まれていること）
     expect(judgeSystemPrompt).toContain('主観的表現・感想・期待感');
+  });
+});
+
+describe('機種別発売日を judge に渡す（Issue #339）', () => {
+  // 実データ（IGDB /release_dates）に基づくフィクスチャ。
+  // PC は Advanced Access（status 34, 05-19）と Full Release（status 6, 05-22）の2件を持つ
+  const LEGO_BATMAN_RELEASE_DATES: PlatformReleaseDate[] = [
+    { platform: 'PC (Microsoft Windows)', date: '2026-05-19', dateFormat: 0, human: 'May 19, 2026', status: 34 },
+    { platform: 'PC (Microsoft Windows)', date: '2026-05-22', dateFormat: 0, human: 'May 22, 2026', status: 6 },
+    { platform: 'PlayStation 5', date: '2026-05-22', dateFormat: 0, human: 'May 22, 2026', status: 6 },
+    { platform: 'Nintendo Switch 2', date: '2026-09-18', dateFormat: 0, human: 'Sep 18, 2026' },
+  ];
+
+  const FIRST_LIGHT_RELEASE_DATES: PlatformReleaseDate[] = [
+    { platform: 'PlayStation 5', date: '2026-09-02', dateFormat: 0, human: 'Sep 02, 2026' },
+    // 四半期指定（date_format 5 = YYYYQ3）。IGDB の human 表記をそのまま渡す
+    { platform: 'Nintendo Switch 2', date: '2026-09-30', dateFormat: 5, human: 'Q3 2026' },
+  ];
+
+  describe('buildGameMetadataSection', () => {
+    it('judgeGrounding 経路で機種別の発売日を出力する', () => {
+      const article = makeArticle({
+        game: undefined,
+        judgeGrounding: {
+          games: [
+            {
+              title: 'LEGO Batman',
+              platforms: ['PC (Microsoft Windows)', 'PlayStation 5', 'Nintendo Switch 2'],
+              releaseDate: '2026-05-22',
+              platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+            },
+          ],
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).toContain(
+        '機種別の発売日: PC (Microsoft Windows): 2026-05-22 / PlayStation 5: 2026-05-22 / Nintendo Switch 2: 2026-09-18'
+      );
+    });
+
+    it('article.game 経路（非 feature 記事）でも機種別の発売日を出力する', () => {
+      const article = makeArticle({
+        game: {
+          title: 'LEGO Batman',
+          genre: [],
+          platforms: ['Nintendo Switch 2'],
+          releaseDate: '2026-05-22',
+          platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).toContain('機種別の発売日: Nintendo Switch 2: 2026-09-18');
+    });
+
+    it('粗い日付は IGDB の human 表記をそのまま出す（丸めない）', () => {
+      const article = makeArticle({
+        game: {
+          title: '007 First Light',
+          genre: [],
+          platforms: ['PlayStation 5', 'Nintendo Switch 2'],
+          releaseDate: '2026-09-02',
+          platformReleaseDates: FIRST_LIGHT_RELEASE_DATES,
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).toContain('Nintendo Switch 2: Q3 2026');
+      // 四半期末（2026-09-30）を確定日として出してはならない
+      expect(section).not.toContain('2026-09-30');
+    });
+
+    it('発行日基準のラベル（発売済み/未発売）は judge に渡さない（役割分担）', () => {
+      const article = makeArticle({
+        game: {
+          title: 'LEGO Batman',
+          genre: [],
+          platforms: ['Nintendo Switch 2'],
+          platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).not.toContain('発行日時点');
+      expect(section).not.toContain('発売済み');
+      expect(section).not.toContain('未発売');
+    });
+
+    it('platformReleaseDates が無ければ機種別の行を出さない（既存記事の後方互換）', () => {
+      const article = makeArticle({
+        game: {
+          title: 'MOLE',
+          genre: [],
+          platforms: ['PC'],
+          releaseDate: '2023-10-15',
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).not.toContain('機種別の発売日');
+      expect(section).toContain('発売日: 2023-10-15');
+    });
+
+    it('IGDB に発売日エントリが無い機種は行に含めない', () => {
+      const article = makeArticle({
+        game: {
+          title: 'LEGO Batman',
+          genre: [],
+          platforms: ['Nintendo Switch 2', 'Xbox Series X|S'],
+          platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+        },
+      });
+
+      const section = buildGameMetadataSection(article);
+      expect(section).toContain('機種別の発売日: Nintendo Switch 2: 2026-09-18');
+      expect(section).not.toContain('Xbox Series X|S: ');
+    });
+  });
+
+  describe('isMetadataOnlyClaim', () => {
+    const games = [
+      {
+        title: 'LEGO Batman',
+        platforms: ['PC (Microsoft Windows)', 'Nintendo Switch 2'],
+        releaseDate: '2026-05-22',
+        platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+      },
+    ];
+
+    function makeClaim(excerpt: string): JudgeClaim {
+      return { claim: excerpt, verdict: 'unverifiable', confidence: 0.3, explanation: '', excerpt };
+    }
+
+    it('機種別発売日の転記のみの excerpt を judge 範囲外にする', () => {
+      // first_release_date（2026-05-22）ではない Switch 2 の日付。
+      // 差し引きに機種別発売日を含めないとここが残って judge 対象になる
+      expect(
+        isMetadataOnlyClaim(makeClaim('発売日: 2026年9月18日（Nintendo Switch 2）'), games)
+      ).toBe(true);
+    });
+
+    it('メタデータに無い日付は落とさない', () => {
+      expect(
+        isMetadataOnlyClaim(makeClaim('発売日: 2026年12月1日（Nintendo Switch 2）'), games)
+      ).toBe(false);
+    });
+
+    it('Advanced Access の日付（05-19）はプロンプトに渡していないので落とさない', () => {
+      expect(
+        isMetadataOnlyClaim(makeClaim('発売日: 2026年5月19日（PC (Microsoft Windows)）'), games)
+      ).toBe(false);
+    });
+
+    it('機種別発売日を含んでいても散文の主張があれば落とさない', () => {
+      expect(
+        isMetadataOnlyClaim(
+          makeClaim('Nintendo Switch 2 では2026年9月18日に独自の協力プレイモードが追加される'),
+          games
+        )
+      ).toBe(false);
+    });
   });
 });

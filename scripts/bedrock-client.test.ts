@@ -29,7 +29,13 @@ import {
   buildNewReleaseSystemPrompt,
   isUpcomingForBody,
   selectFeatureThemeWithAI,
+  getPlatformReleaseDateBounds,
+  classifyPlatformRelease,
+  describePlatformRelease,
+  getPlatformReleaseDateText,
+  formatPlatformReleaseLines,
 } from './bedrock-client.js';
+import type { PlatformReleaseDate } from './types.js';
 
 describe('buildUserMessage - 発売状況の判定', () => {
   const publishDate = new Date('2026-05-10');
@@ -974,5 +980,423 @@ describe('buildFeatureUserMessage - 公式ページ情報セクション（Issue
     ]);
 
     expect(msg).not.toContain('【公式ページ情報】');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #339: 機種別の発売日
+//
+// 以下のフィクスチャは 2026-09-14 に IGDB API を直接叩いて確認した実データ。
+// 「1機種に複数エントリがある」「date_format が粗いと date の位置が一貫しない」という
+// 実測の性質をそのまま持たせている（詳細は types.ts の PlatformReleaseDate の JSDoc）。
+// ---------------------------------------------------------------------------
+
+/** LEGO Batman: Legacy of the Dark Knight（issue-011 の事案。発行日 2026-06-12） */
+const LEGO_BATMAN_RELEASE_DATES: PlatformReleaseDate[] = [
+  // PC / PS5 / Xbox は Advanced Access(34) と Full Release(6) の2エントリを持つ
+  { platform: 'PC (Microsoft Windows)', date: '2026-05-19', dateFormat: 0, human: 'May 19, 2026', status: 34 },
+  { platform: 'PC (Microsoft Windows)', date: '2026-05-22', dateFormat: 0, human: 'May 22, 2026', status: 6 },
+  { platform: 'PlayStation 5', date: '2026-05-19', dateFormat: 0, human: 'May 19, 2026', status: 34 },
+  { platform: 'PlayStation 5', date: '2026-05-22', dateFormat: 0, human: 'May 22, 2026', status: 6 },
+  { platform: 'Xbox Series X|S', date: '2026-05-19', dateFormat: 0, human: 'May 19, 2026', status: 34 },
+  { platform: 'Xbox Series X|S', date: '2026-05-22', dateFormat: 0, human: 'May 22, 2026', status: 6 },
+  // Switch 2 版だけ4ヶ月後（記事が「発売中」と書いてしまった機種）
+  { platform: 'Nintendo Switch 2', date: '2026-09-18', dateFormat: 0, human: 'Sep 18, 2026' },
+];
+
+/** 007 First Light（issue-009 / issue-014 の事案。Switch 2 版は Q3 2026 = 未確定） */
+const FIRST_LIGHT_RELEASE_DATES: PlatformReleaseDate[] = [
+  { platform: 'PC (Microsoft Windows)', date: '2026-03-27', dateFormat: 0, human: 'Mar 27, 2026' },
+  { platform: 'PlayStation 5', date: '2026-03-27', dateFormat: 0, human: 'Mar 27, 2026' },
+  // date_format=5（YYYYQ3）は date に四半期の末日が入る
+  { platform: 'Nintendo Switch 2', date: '2026-09-30', dateFormat: 5, human: 'Q3 2026' },
+];
+
+describe('getPlatformReleaseDateBounds - date_format ごとの期間（Issue #339）', () => {
+  it('date_format=0（YYYYMMDD）は上下界ともその日', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2026-05-22', dateFormat: 0 })).toEqual({
+      earliest: '2026-05-22',
+      latest: '2026-05-22',
+    });
+  });
+
+  it('date_format が無く date だけある場合は確定日として扱う', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2026-05-22' })).toEqual({
+      earliest: '2026-05-22',
+      latest: '2026-05-22',
+    });
+  });
+
+  it('date_format=1（YYYYMM）は月初〜月末（date は月初に入る）', () => {
+    expect(getPlatformReleaseDateBounds({ date: '1989-12-01', dateFormat: 1 })).toEqual({
+      earliest: '1989-12-01',
+      latest: '1989-12-31',
+    });
+  });
+
+  it('date_format=1 のうるう年2月は29日まで', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2024-02-01', dateFormat: 1 })).toEqual({
+      earliest: '2024-02-01',
+      latest: '2024-02-29',
+    });
+  });
+
+  it('date_format=2（YYYY）は年初〜年末（date は末日に入る）', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2006-12-31', dateFormat: 2 })).toEqual({
+      earliest: '2006-01-01',
+      latest: '2006-12-31',
+    });
+  });
+
+  it('date_format=3（YYYYQ1）は 1/1〜3/31（date の月ではなく date_format から導出する）', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2020-03-31', dateFormat: 3 })).toEqual({
+      earliest: '2020-01-01',
+      latest: '2020-03-31',
+    });
+  });
+
+  it('date_format=4（YYYYQ2）は 4/1〜6/30', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2020-06-30', dateFormat: 4 })).toEqual({
+      earliest: '2020-04-01',
+      latest: '2020-06-30',
+    });
+  });
+
+  it('date_format=5（YYYYQ3）は 7/1〜9/30', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2026-09-30', dateFormat: 5 })).toEqual({
+      earliest: '2026-07-01',
+      latest: '2026-09-30',
+    });
+  });
+
+  it('date_format=6（YYYYQ4）は 10/1〜12/31', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2026-12-31', dateFormat: 6 })).toEqual({
+      earliest: '2026-10-01',
+      latest: '2026-12-31',
+    });
+  });
+
+  it('date_format=7（TBD）は範囲を主張しない', () => {
+    expect(getPlatformReleaseDateBounds({ dateFormat: 7 })).toEqual({});
+  });
+
+  it('IGDB が将来追加する未知の date_format は範囲を主張しない', () => {
+    expect(getPlatformReleaseDateBounds({ date: '2026-05-22', dateFormat: 99 })).toEqual({});
+  });
+
+  it('date が無い場合は範囲を主張しない', () => {
+    expect(getPlatformReleaseDateBounds({ dateFormat: 0 })).toEqual({});
+  });
+
+  it('date が YYYY-MM-DD でない場合は範囲を主張しない', () => {
+    expect(getPlatformReleaseDateBounds({ date: 'TBA', dateFormat: 0 })).toEqual({});
+  });
+});
+
+describe('classifyPlatformRelease - 機種別の発売判定（Issue #339）', () => {
+  const publish = new Date('2026-06-12'); // issue-011 の発行日
+
+  it('確定日が発行日より前の機種は released', () => {
+    expect(classifyPlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'PC (Microsoft Windows)', publish)).toBe(
+      'released'
+    );
+  });
+
+  it('確定日が発行日より後の機種は upcoming（issue-011 の LEGO Batman / Switch 2 事案）', () => {
+    expect(classifyPlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'Nintendo Switch 2', publish)).toBe(
+      'upcoming'
+    );
+  });
+
+  it('発行日と同日の確定日は released（本日発売はその機種で買える）', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-06-12', dateFormat: 0 },
+    ];
+    expect(classifyPlatformRelease(entries, 'PlayStation 5', new Date('2026-06-12'))).toBe('released');
+  });
+
+  it('粗い日付の期間が発行日をまたぐ場合は unconfirmed（007 First Light / Q3 2026 × 発行 2026-07-04）', () => {
+    expect(
+      classifyPlatformRelease(FIRST_LIGHT_RELEASE_DATES, 'Nintendo Switch 2', new Date('2026-07-04'))
+    ).toBe('unconfirmed');
+  });
+
+  it('粗い日付の期間が完全に過去なら released（Q3 2026 × 発行 2026-10-03）', () => {
+    expect(
+      classifyPlatformRelease(FIRST_LIGHT_RELEASE_DATES, 'Nintendo Switch 2', new Date('2026-10-03'))
+    ).toBe('released');
+  });
+
+  it('粗い日付の期間が完全に未来なら upcoming（Q3 2026 × 発行 2026-05-30）', () => {
+    expect(
+      classifyPlatformRelease(FIRST_LIGHT_RELEASE_DATES, 'Nintendo Switch 2', new Date('2026-05-30'))
+    ).toBe('upcoming');
+  });
+
+  it('date_format=2（年のみ）で年内の発行日なら unconfirmed（Forza Horizon 6 / PS5 事案）', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-12-31', dateFormat: 2, human: '2026' },
+    ];
+    expect(classifyPlatformRelease(entries, 'PlayStation 5', new Date('2026-07-04'))).toBe(
+      'unconfirmed'
+    );
+  });
+
+  it('TBD は unconfirmed（MONOPHOBIA 事案）', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PC (Microsoft Windows)', dateFormat: 7, human: 'TBD' },
+    ];
+    expect(classifyPlatformRelease(entries, 'PC (Microsoft Windows)', publish)).toBe('unconfirmed');
+  });
+
+  it('Early Access(3) でも確定日が過去なら released（ARK: Survival Ascended 事案）', () => {
+    // 全機種が status=3 だが 2023 年から購入可能。記事の「発売中」は事実として正しい
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PC (Microsoft Windows)', date: '2023-10-25', dateFormat: 0, status: 3 },
+    ];
+    expect(classifyPlatformRelease(entries, 'PC (Microsoft Windows)', publish)).toBe('released');
+  });
+
+  it('Cancelled(5) のエントリしか無ければ cancelled（Stardew Valley / Wii U 事案）', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'Wii U', date: '2016-12-14', dateFormat: 0, status: 5 },
+    ];
+    expect(classifyPlatformRelease(entries, 'Wii U', publish)).toBe('cancelled');
+  });
+
+  it('Offline(4) のエントリしか無ければ cancelled', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 3', date: '2012-01-01', dateFormat: 0, status: 4 },
+    ];
+    expect(classifyPlatformRelease(entries, 'PlayStation 3', publish)).toBe('cancelled');
+  });
+
+  it('Cancelled と有効なエントリが混在する場合は有効な方で判定する', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-01-01', dateFormat: 0, status: 5 },
+      { platform: 'PlayStation 5', date: '2026-03-01', dateFormat: 0, status: 6 },
+    ];
+    expect(classifyPlatformRelease(entries, 'PlayStation 5', publish)).toBe('released');
+  });
+
+  it('その機種の release_dates エントリが無ければ unknown（Replaced / Xbox One 事案）', () => {
+    expect(classifyPlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'Xbox One', publish)).toBe('unknown');
+  });
+
+  it('platformReleaseDates が undefined なら unknown', () => {
+    expect(classifyPlatformRelease(undefined, 'PlayStation 5', publish)).toBe('unknown');
+  });
+
+  it('機種名の表記差（記号・大小文字）は無視して突き合わせる', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PC (Microsoft Windows)', date: '2026-01-01', dateFormat: 0 },
+    ];
+    expect(classifyPlatformRelease(entries, 'pc microsoft windows', publish)).toBe('released');
+  });
+
+  it('publishDate が Invalid Date なら unknown（判定しない）', () => {
+    expect(
+      classifyPlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'PC (Microsoft Windows)', new Date('invalid'))
+    ).toBe('unknown');
+  });
+});
+
+describe('getPlatformReleaseDateText / describePlatformRelease - 表示日付（Issue #339）', () => {
+  const publish = new Date('2026-06-12');
+
+  it('Full Release を優先する（Advanced Access の 05-19 ではなく 05-22 を出す）', () => {
+    expect(getPlatformReleaseDateText(LEGO_BATMAN_RELEASE_DATES, 'PC (Microsoft Windows)')).toBe(
+      '2026-05-22'
+    );
+  });
+
+  it('Advanced Access のエントリしか無ければそれを使う（Full Release 優先で候補が空にならない）', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-05-19', dateFormat: 0, human: 'May 19, 2026', status: 34 },
+    ];
+    expect(getPlatformReleaseDateText(entries, 'PlayStation 5')).toBe('2026-05-19');
+  });
+
+  it('粗い日付は IGDB の human 表記をそのまま返す（具体日に丸めない）', () => {
+    expect(getPlatformReleaseDateText(FIRST_LIGHT_RELEASE_DATES, 'Nintendo Switch 2')).toBe('Q3 2026');
+  });
+
+  it('TBD は human 表記「TBD」を返す', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PC (Microsoft Windows)', dateFormat: 7, human: 'TBD' },
+    ];
+    expect(getPlatformReleaseDateText(entries, 'PC (Microsoft Windows)')).toBe('TBD');
+  });
+
+  it('date も human も無いエントリは「未定」を返す', () => {
+    const entries: PlatformReleaseDate[] = [{ platform: 'PC (Microsoft Windows)', dateFormat: 7 }];
+    expect(getPlatformReleaseDateText(entries, 'PC (Microsoft Windows)')).toBe('未定');
+  });
+
+  it('エントリが無い機種は undefined を返す', () => {
+    expect(getPlatformReleaseDateText(LEGO_BATMAN_RELEASE_DATES, 'Xbox One')).toBeUndefined();
+  });
+
+  it('describePlatformRelease は判定と表示日付を組で返す', () => {
+    expect(describePlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'Nintendo Switch 2', publish)).toEqual({
+      classification: 'upcoming',
+      dateText: '2026-09-18',
+      isReleasedToday: false,
+    });
+  });
+
+  it('発行日と同日の確定日は isReleasedToday: true', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-06-12', dateFormat: 0 },
+    ];
+    expect(describePlatformRelease(entries, 'PlayStation 5', publish)).toEqual({
+      classification: 'released',
+      dateText: '2026-06-12',
+      isReleasedToday: true,
+    });
+  });
+
+  it('エントリが無い機種は unknown で dateText を持たない', () => {
+    expect(describePlatformRelease(LEGO_BATMAN_RELEASE_DATES, 'Xbox One', publish)).toEqual({
+      classification: 'unknown',
+      isReleasedToday: false,
+    });
+  });
+});
+
+describe('formatPlatformReleaseLines - プロンプトの機種別発売日（Issue #339）', () => {
+  const publish = new Date('2026-06-12'); // issue-011 の発行日
+
+  it('issue-011 の LEGO Batman を再現し、機種ごとの発売状況と禁止事項を出す', () => {
+    const lines = formatPlatformReleaseLines(
+      ['PC (Microsoft Windows)', 'PlayStation 5', 'Xbox Series X|S', 'Nintendo Switch 2'],
+      LEGO_BATMAN_RELEASE_DATES,
+      publish
+    );
+
+    expect(lines[0]).toBe('機種別の発売日:');
+    expect(lines).toContain('  - PC (Microsoft Windows): 2026-05-22（発行日時点で発売済み）');
+    expect(lines).toContain('  - Nintendo Switch 2: 2026-09-18（発行日時点で未発売）');
+    // 未発売の機種があるときだけ禁止事項の行を出す
+    expect(lines.join('\n')).toContain('「発売中」「発売済み」と書いてはならない');
+  });
+
+  it('全機種が発売済みなら禁止事項の行を出さない', () => {
+    const lines = formatPlatformReleaseLines(
+      ['PC (Microsoft Windows)', 'PlayStation 5'],
+      LEGO_BATMAN_RELEASE_DATES,
+      publish
+    );
+    expect(lines).toHaveLength(3); // 見出し + 2機種
+    expect(lines.join('\n')).not.toContain('書いてはならない');
+  });
+
+  it('粗い日付は human 表記と「発売未確認」ラベルで出す', () => {
+    const lines = formatPlatformReleaseLines(
+      ['Nintendo Switch 2'],
+      FIRST_LIGHT_RELEASE_DATES,
+      new Date('2026-07-04')
+    );
+    expect(lines).toContain('  - Nintendo Switch 2: Q3 2026（発売時期未確定・発行日時点で発売未確認）');
+  });
+
+  it('本日発売の機種は「本日発売」ラベルで出す', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-06-12', dateFormat: 0 },
+    ];
+    const lines = formatPlatformReleaseLines(['PlayStation 5'], entries, publish);
+    expect(lines).toContain('  - PlayStation 5: 2026-06-12（本日発売）');
+  });
+
+  it('発売中止の機種は「発売中止」ラベルで出す', () => {
+    const entries: PlatformReleaseDate[] = [
+      { platform: 'PlayStation 5', date: '2026-01-01', dateFormat: 0, status: 6 },
+      { platform: 'Wii U', date: '2016-12-14', dateFormat: 0, status: 5 },
+    ];
+    const lines = formatPlatformReleaseLines(['PlayStation 5', 'Wii U'], entries, publish);
+    expect(lines).toContain('  - Wii U: 2016-12-14（発売中止）');
+  });
+
+  it('IGDB にエントリが無い機種は断定禁止を明示する', () => {
+    const lines = formatPlatformReleaseLines(
+      ['PC (Microsoft Windows)', 'Xbox One'],
+      LEGO_BATMAN_RELEASE_DATES,
+      publish
+    );
+    expect(lines).toContain('  - Xbox One: IGDBに発売日データなし（発売済みと断定してはならない）');
+  });
+
+  it('全機種がエントリ無しなら空配列を返す（従来のゲーム情報欄だけになる）', () => {
+    const lines = formatPlatformReleaseLines(['Xbox One', 'Wii U'], LEGO_BATMAN_RELEASE_DATES, publish);
+    expect(lines).toEqual([]);
+  });
+
+  it('platformReleaseDates / platforms / publishDate が欠けていれば空配列を返す', () => {
+    expect(formatPlatformReleaseLines(['PlayStation 5'], undefined, publish)).toEqual([]);
+    expect(formatPlatformReleaseLines(undefined, LEGO_BATMAN_RELEASE_DATES, publish)).toEqual([]);
+    expect(formatPlatformReleaseLines(['PlayStation 5'], LEGO_BATMAN_RELEASE_DATES, undefined)).toEqual(
+      []
+    );
+  });
+
+  it('publishDate が Invalid Date なら空配列を返す', () => {
+    expect(
+      formatPlatformReleaseLines(
+        ['PC (Microsoft Windows)'],
+        LEGO_BATMAN_RELEASE_DATES,
+        new Date('invalid')
+      )
+    ).toEqual([]);
+  });
+});
+
+describe('buildUserMessage / buildFeatureUserMessage - 機種別発売日の受け渡し（Issue #339）', () => {
+  const publishDate = new Date('2026-06-12');
+
+  it('newRelease のプロンプトに機種別発売日が出る', () => {
+    const msg = buildUserMessage(
+      'newRelease',
+      {
+        title: 'LEGO Batman: Legacy of the Dark Knight',
+        releaseDate: '2026-05-22',
+        platforms: ['PC (Microsoft Windows)', 'Nintendo Switch 2'],
+        platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+      },
+      undefined,
+      publishDate
+    );
+
+    expect(msg).toContain('発売日: 2026-05-22（発売済み）');
+    expect(msg).toContain('機種別の発売日:');
+    expect(msg).toContain('  - Nintendo Switch 2: 2026-09-18（発行日時点で未発売）');
+  });
+
+  it('platformReleaseDates が無ければ機種別発売日の行は出ない（後方互換）', () => {
+    const msg = buildUserMessage(
+      'newRelease',
+      {
+        title: 'Test Game',
+        releaseDate: '2026-05-22',
+        platforms: ['PC (Microsoft Windows)'],
+      },
+      undefined,
+      publishDate
+    );
+    expect(msg).not.toContain('機種別の発売日:');
+  });
+
+  it('feature のプロンプトにもゲームごとに機種別発売日が出る', () => {
+    const msg = buildFeatureUserMessage('テーマ', publishDate, [
+      {
+        title: 'LEGO Batman: Legacy of the Dark Knight',
+        platforms: ['PC (Microsoft Windows)', 'Nintendo Switch 2'],
+        platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+      },
+      { title: 'Stardew Valley' },
+    ]);
+
+    expect(msg).toContain('  - Nintendo Switch 2: 2026-09-18（発行日時点で未発売）');
+    // 機種別発売日を持たないゲームには行を出さない
+    expect(msg.match(/機種別の発売日:/g)).toHaveLength(1);
   });
 });

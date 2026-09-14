@@ -20,6 +20,7 @@ import {
   validateUpcomingEvaluationClaims,
   validateMetadataTranscription,
   validatePlatformExclusivity,
+  validatePlatformReleaseTiming,
   validateGameTypeTranscription,
   validateArticle,
   buildFixInstruction,
@@ -34,6 +35,7 @@ import {
 import type { ValidationWarning, ValidationReport } from './validate-article.js';
 import { computeReportStatus, shouldFileIssue } from './format-validation-report.js';
 import type { GeneratedArticle } from './generate-articles.js';
+import type { PlatformReleaseDate } from './types.js';
 import { clearSteamEntityCache } from './steam-entity.js';
 import { resetSteamApiClient, configureSteamApiClient } from './steam-api-client.js';
 import * as fs from 'node:fs';
@@ -4391,5 +4393,322 @@ describe('数値警告の重大度と裏付け（Issue #364）', () => {
       expect(largeCount[0].severityDowngradedBySource).toBeUndefined();
       expect(largeCount[0].sourcedFrom).toBeUndefined();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #339: 機種が挙がっているのに、その機種は発行日時点で未発売
+// フィクスチャは 2026-09-14 に IGDB API を直接叩いて確認した実データ
+// ---------------------------------------------------------------------------
+
+/** LEGO Batman: Legacy of the Dark Knight（issue-011 の事案。発行日 2026-06-12） */
+const LEGO_BATMAN_RELEASE_DATES: PlatformReleaseDate[] = [
+  { platform: 'PC (Microsoft Windows)', date: '2026-05-19', dateFormat: 0, status: 34 },
+  { platform: 'PC (Microsoft Windows)', date: '2026-05-22', dateFormat: 0, status: 6 },
+  { platform: 'PlayStation 5', date: '2026-05-22', dateFormat: 0, status: 6 },
+  { platform: 'Xbox Series X|S', date: '2026-05-22', dateFormat: 0, status: 6 },
+  { platform: 'Nintendo Switch 2', date: '2026-09-18', dateFormat: 0, human: 'Sep 18, 2026' },
+];
+
+const LEGO_BATMAN_PLATFORMS = [
+  'PC (Microsoft Windows)',
+  'PlayStation 5',
+  'Xbox Series X|S',
+  'Nintendo Switch 2',
+];
+
+describe('validatePlatformReleaseTiming（Issue #339）', () => {
+  const publishDate = new Date('2026-06-12'); // issue-011 の発行日
+
+  function makeTimingArticle(opts: {
+    content: string;
+    platforms?: string[];
+    platformReleaseDates?: PlatformReleaseDate[];
+    category?: GeneratedArticle['category'];
+  }): GeneratedArticle {
+    return makeArticle({
+      title: '『LEGO Batman: Legacy of the Dark Knight』が発売',
+      category: opts.category ?? 'newRelease',
+      content: opts.content,
+      game: {
+        title: 'LEGO Batman: Legacy of the Dark Knight',
+        genre: ['Adventure'],
+        platforms: opts.platforms ?? LEGO_BATMAN_PLATFORMS,
+        releaseDate: '2026-05-22',
+        platformReleaseDates: opts.platformReleaseDates ?? LEGO_BATMAN_RELEASE_DATES,
+      },
+    });
+  }
+
+  // issue-011 の実際の本文構造（発売情報セクションに `**発売中**` と単独で書く形）
+  const ASSERTING_CONTENT = [
+    '『LEGO Batman: Legacy of the Dark Knight』がついに登場した。',
+    '',
+    '## 📅 発売情報',
+    '',
+    '**発売中**',
+    '',
+    '## 🎮 対応機種',
+    '',
+    'PC、PlayStation 5、Xbox Series X|S、Nintendo Switch 2',
+  ].join('\n');
+
+  it('issue-011 の事案を検出する（「発売中」断定 × Switch 2 版は発行日より後）', () => {
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content: ASSERTING_CONTENT }), publishDate);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('platform-release-timing-mismatch');
+    expect(warnings[0].severity).toBe('medium');
+    expect(warnings[0].evidence).toBe('発売中');
+    expect(warnings[0].message).toContain('Nintendo Switch 2');
+    expect(warnings[0].message).toContain('2026-09-18');
+    expect(warnings[0].message).toContain('発行日時点で未発売');
+    expect(warnings[0].message).toContain('2026-06-12');
+    // 発売済みの機種は警告に含めない
+    expect(warnings[0].message).not.toContain('PlayStation 5');
+    expect(warnings[0].context).toContain('発売中');
+  });
+
+  it('「発売日:」ラベル行での断定も検出する（発売情報セクションの外）', () => {
+    const content = ['## 概要', '', '- 発売日: 2026年5月22日（発売中）', ''].join('\n');
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content }), publishDate);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('発売中');
+  });
+
+  it('未発売の機種にその旨が書かれていれば警告しない（断定が無い）', () => {
+    const content = [
+      '## 📅 発売情報',
+      '',
+      '- PC / PlayStation 5 / Xbox Series X|S: 2026年5月22日に発売',
+      '- Nintendo Switch 2: 2026年9月18日発売予定',
+    ].join('\n');
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content }), publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売情報セクション外の「発売中」（前作の話）では警告しない', () => {
+    const content = [
+      '## 🎯 前作との違い',
+      '',
+      'シリーズ前作は2020年から発売中で、今も遊べる。',
+      '',
+      '## 📅 発売情報',
+      '',
+      '- Nintendo Switch 2 版は2026年9月18日発売予定。',
+    ].join('\n');
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content }), publishDate);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('「発売中止」は発売済みの断定として扱わない', () => {
+    const content = ['## 📅 発売情報', '', 'Wii U 版は発売中止となった。'].join('\n');
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content,
+        platforms: ['PC (Microsoft Windows)', 'Wii U'],
+        platformReleaseDates: [
+          ...LEGO_BATMAN_RELEASE_DATES,
+          { platform: 'Wii U', date: '2016-12-14', dateFormat: 0, status: 5 },
+        ],
+      }),
+      publishDate
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('全機種が発売済みなら「発売中」断定でも警告しない', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content: ASSERTING_CONTENT,
+        platforms: ['PC (Microsoft Windows)', 'PlayStation 5', 'Xbox Series X|S'],
+      }),
+      publishDate
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('発売時期が未確定（Q3 2026）の機種も検出する（007 First Light 事案）', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content: ASSERTING_CONTENT,
+        platforms: ['PlayStation 5', 'Nintendo Switch 2'],
+        platformReleaseDates: [
+          { platform: 'PlayStation 5', date: '2026-03-27', dateFormat: 0 },
+          { platform: 'Nintendo Switch 2', date: '2026-09-30', dateFormat: 5, human: 'Q3 2026' },
+        ],
+      }),
+      new Date('2026-07-04')
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Q3 2026');
+    expect(warnings[0].message).toContain('発売時期が未確定');
+  });
+
+  it('発売中止の機種を挙げたまま「発売中」と断定していれば検出する', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content: ASSERTING_CONTENT,
+        platforms: ['PC (Microsoft Windows)', 'Wii U'],
+        platformReleaseDates: [
+          ...LEGO_BATMAN_RELEASE_DATES,
+          { platform: 'Wii U', date: '2016-12-14', dateFormat: 0, status: 5 },
+        ],
+      }),
+      publishDate
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Wii U');
+    expect(warnings[0].message).toContain('発売中止');
+  });
+
+  it('問題のある機種が複数あっても警告は1件に集約し、全機種を列挙する', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content: ASSERTING_CONTENT,
+        platforms: ['PC (Microsoft Windows)', 'Nintendo Switch 2', 'PlayStation 4'],
+        platformReleaseDates: [
+          ...LEGO_BATMAN_RELEASE_DATES,
+          { platform: 'PlayStation 4', date: '2026-12-31', dateFormat: 2, human: '2026' },
+        ],
+      }),
+      publishDate
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('Nintendo Switch 2');
+    expect(warnings[0].message).toContain('PlayStation 4');
+  });
+
+  it('IGDB にエントリが無い機種（unknown）では警告しない（Replaced / Xbox One 事案）', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({
+        content: ASSERTING_CONTENT,
+        // Xbox One は platforms にあるが release_dates にエントリが無い
+        platforms: ['PC (Microsoft Windows)', 'Xbox One'],
+      }),
+      publishDate
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('category: feature は対象外', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({ content: ASSERTING_CONTENT, category: 'feature' }),
+      publishDate
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('publishDate が未指定なら検証しない（後方互換）', () => {
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content: ASSERTING_CONTENT }));
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('publishDate が Invalid Date なら検証しない', () => {
+    const warnings = validatePlatformReleaseTiming(
+      makeTimingArticle({ content: ASSERTING_CONTENT }),
+      new Date('invalid')
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
+  it('platformReleaseDates が無い記事（Issue #339 以前のキャッシュ）は検証しない', () => {
+    const article = makeArticle({
+      title: 'タイトル',
+      category: 'newRelease',
+      content: ASSERTING_CONTENT,
+      game: {
+        title: 'LEGO Batman: Legacy of the Dark Knight',
+        genre: [],
+        platforms: LEGO_BATMAN_PLATFORMS,
+        releaseDate: '2026-05-22',
+      },
+    });
+    expect(validatePlatformReleaseTiming(article, publishDate)).toHaveLength(0);
+  });
+
+  it('validateArticle に登録されている（publishDate 付きで呼ぶと警告が出る）', () => {
+    const warnings = validateArticle(makeTimingArticle({ content: ASSERTING_CONTENT }), publishDate);
+    expect(warnings.some((w) => w.type === 'platform-release-timing-mismatch')).toBe(true);
+  });
+
+  it('buildFixInstruction: 未発売の機種名を含む「明記せよ」の指示になる（削除指示に落ちない）', () => {
+    const warnings = validatePlatformReleaseTiming(makeTimingArticle({ content: ASSERTING_CONTENT }), publishDate);
+
+    const instruction = buildFixInstruction(warnings);
+    expect(instruction).toContain('Nintendo Switch 2');
+    expect(instruction).toContain('明記してください');
+    // 汎用指示（「〜は提供データで裏付けられません。該当箇所を削除または修正してください」）に
+    // 落ちていないこと。この警告は「発売中」の削除では直らない
+    expect(instruction).not.toContain('提供データで裏付けられません');
+  });
+});
+
+describe('validateMetadataTranscription - 機種別発売日を照合先に含める（Issue #339）', () => {
+  function makeMultiPlatformArticle(content: string): GeneratedArticle {
+    return makeArticle({
+      title: '『LEGO Batman: Legacy of the Dark Knight』が発売',
+      category: 'newRelease',
+      content,
+      game: {
+        title: 'LEGO Batman: Legacy of the Dark Knight',
+        genre: [],
+        platforms: ['PC (Microsoft Windows)', 'Nintendo Switch 2'],
+        releaseDate: '2026-05-22',
+        platformReleaseDates: LEGO_BATMAN_RELEASE_DATES,
+      },
+    });
+  }
+
+  it('機種別の確定日（Switch 2 の2026年9月18日）を書いても警告しない', () => {
+    const article = makeMultiPlatformArticle(
+      'PC 版は2026年5月22日に発売され、Nintendo Switch 2 版は2026年9月18日に発売予定です。'
+    );
+    expect(validateMetadataTranscription(article)).toHaveLength(0);
+  });
+
+  it('どの機種の発売日とも一致しない日付は警告する', () => {
+    const article = makeMultiPlatformArticle('Nintendo Switch 2 版は2026年9月19日に発売予定です。');
+    const warnings = validateMetadataTranscription(article);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].type).toBe('metadata-transcription-mismatch');
+    expect(warnings[0].evidence).toBe('2026年9月19日');
+    // 照合先を全部提示する（人が「どの日付とも違う」ことを確認できるようにするため）
+    expect(warnings[0].message).toContain('2026-05-22');
+    expect(warnings[0].message).toContain('2026-09-18');
+  });
+
+  it('プロンプトに出していない日付（Advanced Access の 05-19）は照合先に含めない', () => {
+    const article = makeMultiPlatformArticle('本作は2026年5月19日に発売されました。');
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].evidence).toBe('2026年5月19日');
+  });
+
+  it('粗い日付の機種（Q3 2026）は照合先に入らない（確定日ではないため）', () => {
+    const article = makeArticle({
+      title: 'タイトル',
+      category: 'newRelease',
+      content: '本作は2026年8月10日に発売されました。',
+      game: {
+        title: '007 First Light',
+        genre: [],
+        platforms: ['PlayStation 5', 'Nintendo Switch 2'],
+        releaseDate: '2026-03-27',
+        platformReleaseDates: [
+          { platform: 'PlayStation 5', date: '2026-03-27', dateFormat: 0 },
+          { platform: 'Nintendo Switch 2', date: '2026-09-30', dateFormat: 5, human: 'Q3 2026' },
+        ],
+      },
+    });
+    const warnings = validateMetadataTranscription(article);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].message).toContain('2026-03-27');
+    expect(warnings[0].message).not.toContain('Q3 2026');
   });
 });

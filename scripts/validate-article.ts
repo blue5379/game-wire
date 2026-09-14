@@ -27,7 +27,15 @@ import type { GeneratedArticle } from './generate-articles.js';
 import { matchGameToSteamEntity } from './game-identity.js';
 import { fetchSteamEntity } from './steam-entity.js';
 import type { SteamApiHealth } from './steam-api-client.js';
-import { getReleaseStatus, isUpcomingForBody, GAME_TYPE_LABELS } from './bedrock-client.js';
+import {
+  getReleaseStatus,
+  isUpcomingForBody,
+  GAME_TYPE_LABELS,
+  describePlatformRelease,
+  getPlatformReleaseDateText,
+  type PlatformReleaseClassification,
+} from './bedrock-client.js';
+import { getJstDateString } from './jst-date.js';
 import { isMainModule } from './entrypoint.js';
 import {
   ARTICLE_CATEGORY_LABELS,
@@ -1517,11 +1525,26 @@ export function validatePlatformExclusivity(article: GeneratedArticle): Validati
  * 除外ロジックは入れていない（docs/hallucination-prevention.md 2-6）。
  *
  * ## 比較と警告
- * - 抽出した (年,月,日) をメタデータの `releaseDate` と数値比較（`9` と `09` を同一視）
- * - 不一致なら警告を1件 push:
+ * - 抽出した (年,月,日) を**照合先の日付集合**と数値比較（`9` と `09` を同一視）
+ * - どの日付とも一致しなければ警告を1件 push:
  *   - `type: 'metadata-transcription-mismatch'`
  *   - `severity: 'medium'` — **暫定値**。Issue #350（重大度設計）の結論で見直す
  *   - 同一記事内で同じ日付表記が複数回出ても警告は1件に集約する
+ *
+ * ## 照合先に機種別発売日を含める理由（Issue #339）
+ * 照合先は `article.game.releaseDate`（= `first_release_date`）だけではなく、
+ * **執筆プロンプトに出した機種別発売日の確定日**（`getPlatformReleaseDateText` が
+ * ISO 日付を返す機種）も含める。
+ *
+ * Issue #339 で機種別発売日を執筆プロンプトに渡すようにしたため、記事本文が
+ * 「Nintendo Switch 2 版は2026年9月18日に発売予定」と**正しく**書けるようになった。
+ * `first_release_date`（PC 版の 2026-05-22）だけを照合先にすると、この正しい記述が
+ * 不一致として警告される。プロンプトが提示した日付は転記して正しい日付なので、
+ * 照合先に含める。
+ *
+ * 照合先に入れるのは `getPlatformReleaseDateText`（= プロンプトに実際に出た表記）が
+ * 確定日を返す機種だけ。同一機種の別エントリ（Advanced Access 等）の日付は含めない。
+ * プロンプトに出していない日付を本文が書いていれば、それは転記ではないため。
  */
 export function validateMetadataTranscription(article: GeneratedArticle): ValidationWarning[] {
   const warnings: ValidationWarning[] = [];
@@ -1533,8 +1556,12 @@ export function validateMetadataTranscription(article: GeneratedArticle): Valida
   // 年月日が揃った完全日付のみ照合（部分日付は対象外）
   if (!releaseDate || !/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) return warnings;
 
-  // メタデータの日付をパースして数値で持つ
-  const [metaYear, metaMonth, metaDay] = releaseDate.split('-').map((s) => parseInt(s, 10));
+  // 照合先の日付集合（YYYY-MM-DD）。first_release_date + プロンプトに出した機種別の確定日
+  const allowedDates = new Set<string>([releaseDate]);
+  for (const platform of article.game?.platforms ?? []) {
+    const dateText = getPlatformReleaseDateText(article.game?.platformReleaseDates, platform);
+    if (dateText && /^\d{4}-\d{2}-\d{2}$/.test(dateText)) allowedDates.add(dateText);
+  }
 
   // 日付表記のパターン（年月日が揃ったもののみ）
   const datePattern = new RegExp(FULL_DATE_JP_SOURCE, 'g');
@@ -1574,12 +1601,20 @@ export function validateMetadataTranscription(article: GeneratedArticle): Valida
       // アンカーが無い場合は発売日ではないと判断してスキップ
       if (!hasBeforeAnchor && !hasAfterAnchor) continue;
 
-      // メタデータと数値比較
-      if (year !== metaYear || month !== metaMonth || day !== metaDay) {
+      // 照合先の日付集合と数値比較（`9` と `09` を同一視するため ISO に正規化して突き合わせる）
+      const bodyDateIso = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      if (!allowedDates.has(bodyDateIso)) {
         // 不一致だった日付の値をキーにして集約
-        const mismatchKey = `${year}-${month}-${day}`;
+        const mismatchKey = bodyDateIso;
         if (seenMismatches.has(mismatchKey)) continue;
         seenMismatches.add(mismatchKey);
+
+        // 照合先が複数ある（機種別発売日がある）場合は全部出す。人が読んで
+        // 「どの日付とも違う」ことを確認できるようにするため
+        const expected = Array.from(allowedDates)
+          .sort()
+          .map((d) => `${d}（${normalizeDateIsoToJp(d)}）`)
+          .join(' / ');
 
         warnings.push({
           articleTitle: article.title,
@@ -1587,7 +1622,7 @@ export function validateMetadataTranscription(article: GeneratedArticle): Valida
           severity: 'medium', // 暫定値。Issue #350 で見直し
           type: 'metadata-transcription-mismatch',
           message:
-            `本文の発売日表記「${fullMatch}」がメタデータ「${releaseDate}（${normalizeDateIsoToJp(releaseDate)}）」と一致しません。` +
+            `本文の発売日表記「${fullMatch}」がメタデータの発売日「${expected}」と一致しません。` +
             `AI が転記を誤った可能性があります。`,
           evidence: fullMatch,
           context: extractContext(field.text, fullMatch),
@@ -1763,6 +1798,167 @@ export function validateGameTypeTranscription(article: GeneratedArticle): Valida
 }
 
 /**
+ * 発売情報を述べているセクションの見出しパターン（`## 📅 発売情報` / `### リリース情報` 等）。
+ */
+const RELEASE_SECTION_HEADING_PATTERN = /発売(?:情報|日)|リリース情報/;
+
+/**
+ * 「発売済みである」と断定する表現。
+ *
+ * `発売中止` を除外する（「中止」は発売済みの主張ではなく、むしろ逆の記述）。
+ * 実測（発行済み21号）で本文に現れる断定表現は `発売中` 系と `発売済み` 系だけだった。
+ */
+const RELEASED_ASSERTION_PATTERN = /発売中(?!止)|発売済/;
+
+/**
+ * 本文から「発売済みである」と断定している箇所を1件探す（Issue #339）。
+ *
+ * 走査対象を絞る理由: 本文全体から `発売中` を拾うと、前作・他作品について
+ * 「シリーズ前作は2020年から発売中」と書いた文が誤検出になり得る。そこで
+ * **本作の発売状況を権威的に述べている箇所**に限る:
+ * - `## 📅 発売情報` 等のセクションの中の行（`**発売中**` と単独で書く形を拾うため。
+ *   実測の最重要ケース issue-011 LEGO Batman はこの形だった）
+ * - `発売日` ラベルを含む行（`- 発売日: 2026年5月22日（発売中）` の形）
+ *
+ * 実測（発行済み21号・291ペア）では、本文全体を走査した場合と結果が完全に一致した
+ * （22件の問題ペアすべてで判定が同じ）。誤検出の余地だけが減る絞り込みになっている。
+ *
+ * @returns マッチした語とその content 内の位置。無ければ `undefined`
+ */
+function findReleasedAssertion(content: string): { evidence: string; index: number } | undefined {
+  let offset = 0;
+  let inReleaseSection = false;
+
+  for (const line of content.split('\n')) {
+    const lineStart = offset;
+    offset += line.length + 1; // 改行文字ぶん
+
+    // 見出し行はセクションの切り替えだけを行う（見出し自体は断定の場所ではない）
+    const heading = /^\s{0,3}#{2,6}\s+(.*)$/.exec(line);
+    if (heading) {
+      inReleaseSection = RELEASE_SECTION_HEADING_PATTERN.test(heading[1]);
+      continue;
+    }
+
+    if (!inReleaseSection && !line.includes('発売日')) continue;
+
+    const match = RELEASED_ASSERTION_PATTERN.exec(line);
+    if (match) return { evidence: match[0], index: lineStart + match.index };
+  }
+
+  return undefined;
+}
+
+/**
+ * 機種別の発売時期と本文の発売断定の整合を検証（Issue #339）
+ *
+ * 「対応機種として複数機種を挙げながら、本文が『発売中』と断定している。しかし挙げた機種の
+ * 一部は発行日時点で未発売」という誤りを検出する。
+ *
+ * ## 一次対策はプロンプト側であること
+ * この誤りの原因は執筆AIのハルシネーションではなく**入力側の欠陥**だった。従来のプロンプトは
+ * `発売日: <first_release_date>（発売済み）` という「最速の機種の日付1つ」しか渡しておらず、
+ * 執筆AIはその入力に忠実だった。したがって根本対策は機種別発売日をプロンプトに渡すこと
+ * （`formatPlatformReleaseLines`）であり、本バリデータはその効果を観測し、
+ * 残った取りこぼしを号レポートに残すための検出網である。
+ *
+ * 同じ理由で **judge（LLM-as-a-judge）では原理的に検出できない**。judge は
+ * 「提供データに書かれていないことを書いたか」を見るため、提供データ自身が誤解を招く場合は
+ * 発火しない。自動再生成（`VALIDATION_AUTO_REGENERATE`）も同じ入力で作り直すだけなので、
+ * プロンプト側の修正なしにこの型を critical にしてもコストが増えるだけで直らない。
+ *
+ * ## 発火条件
+ * - `article.category !== 'feature'`（feature は `RecommendedGame` に発売日フィールドが無く、
+ *   どのゲームについての断定かも特定できない。`validateMetadataTranscription` と同じ理由）
+ * - `publishDate` が渡されている（未指定なら検証をスキップ。後方互換）
+ * - `article.game?.platforms` と `article.game?.platformReleaseDates` の両方がある
+ *   （`platformReleaseDates` は Issue #339 で追加したフィールドなので、それ以前に生成された
+ *    記事キャッシュでは `undefined` = 未計測。検証をスキップする）
+ * - 本文が発売済みと断定している（`findReleasedAssertion`）
+ * - 挙げた機種のうち1つ以上が `upcoming` / `unconfirmed` / `cancelled`
+ *
+ * ## `unknown`（IGDB に該当機種のエントリが無い）を除外する理由
+ * 実測（発行済み21号）で断定 × 未開示だった7ペアのうち2ペアはこの `unknown` で、原因が別だった:
+ * - `Replaced` / Xbox One: `platforms` には Xbox One があるが `release_dates` にエントリが無い
+ * - `DJMAX RESPECT V - V LIBERTY V PACK` / PC: DLC の slug で、機種名が `platforms` と突き合わない
+ *
+ * どちらも「IGDB のデータが欠けている」ケースで、本文の記述が誤りだと機械的に言えない。
+ * 発火させると原因の違う警告が同じ型に混ざり、偽陽性として扱われて型全体が無視されるため除外する。
+ * プロンプト側では `unknown` の機種にも「IGDBに発売日データなし（発売済みと断定してはならない）」と
+ * 明示しているので、対策自体は打っている（検出だけ諦めている）。
+ *
+ * ## 実測での発火件数（発行済み21号・記事122本・291ペア）
+ * 5件（`MONOPHOBIA`/PC=TBD、`007 First Light`/Switch 2=Q3 2026 が2号、
+ * `Forza Horizon 6`/PS5=2026、`LEGO Batman`/Switch 2=2026-09-18）。
+ * 発売済みと確認できた268ペアからの誤検出は0件。
+ *
+ * ## severity
+ * `'medium'` — **暫定値**。Issue #350（重大度設計）の結論で見直す。
+ * critical にすると自動再生成の対象になるが、上に書いたとおり同じ入力での再生成では直らない。
+ * 昇格を判断する材料は「プロンプト修正後の号で実際にどれだけ発火し、そのうち偽陽性が何件か」
+ * であり、実運用での観測が先。
+ *
+ * 仕様: Issue #339
+ */
+export function validatePlatformReleaseTiming(
+  article: GeneratedArticle,
+  publishDate?: Date
+): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  if (article.category === 'feature') return warnings;
+  if (!publishDate) return warnings;
+
+  const platforms = article.game?.platforms;
+  const platformReleaseDates = article.game?.platformReleaseDates;
+  if (!platforms?.length || !platformReleaseDates?.length) return warnings;
+
+  const publishDateJst = getJstDateString(publishDate);
+  if (!publishDateJst) return warnings; // Invalid Date
+
+  const assertion = findReleasedAssertion(article.content);
+  if (!assertion) return warnings;
+
+  // 警告メッセージ用のラベル。プロンプト側（`formatPlatformReleaseLines`）とは読み手が違う
+  // （あちらは執筆AIへの指示、こちらは号レポートを読む人への報告）ため別に持つ
+  const reasonLabels: Record<Exclude<PlatformReleaseClassification, 'unknown' | 'released'>, string> =
+    {
+      upcoming: '発行日時点で未発売',
+      unconfirmed: '発売時期が未確定',
+      cancelled: '発売中止',
+    };
+
+  const problems: string[] = [];
+  for (const platform of platforms) {
+    const { classification, dateText } = describePlatformRelease(
+      platformReleaseDates,
+      platform,
+      publishDate
+    );
+    // released は問題なし。unknown は IGDB のデータ欠落なので対象外（JSDoc 参照）
+    if (classification === 'released' || classification === 'unknown') continue;
+    problems.push(`「${platform}」（${dateText}・${reasonLabels[classification]}）`);
+  }
+
+  if (problems.length === 0) return warnings;
+
+  warnings.push({
+    articleTitle: article.title,
+    category: article.category,
+    severity: 'medium', // 暫定値。Issue #350 で見直し
+    type: 'platform-release-timing-mismatch',
+    message:
+      `本文の発売情報が「${assertion.evidence}」と断定していますが、対応機種として挙げた ` +
+      `${problems.join('、')} は発行日（${publishDateJst}）時点で発売済みと確認できません。` +
+      `機種によって発売日が異なる場合は、未発売・未確定の機種についてその旨を明記してください。`,
+    evidence: assertion.evidence,
+    context: extractContext(article.content, assertion.evidence, 80, assertion.index),
+  });
+
+  return warnings;
+}
+
+/**
  * 1つの記事に対して全バリデーションを実行
  */
 export function validateArticle(article: GeneratedArticle, publishDate?: Date): ValidationWarning[] {
@@ -1780,6 +1976,7 @@ export function validateArticle(article: GeneratedArticle, publishDate?: Date): 
     ...validateMetadataTranscription(article),
     ...validatePlatformExclusivity(article),
     ...validateGameTypeTranscription(article),
+    ...validatePlatformReleaseTiming(article, publishDate),
   ];
 }
 
@@ -1878,6 +2075,12 @@ export function buildFixInstruction(warnings: ValidationWarning[]): string {
           `記載が無い場合は本作をリメイク・リマスターと述べる記述を削除してください` +
           `（他作品・別バージョンについての言及であれば、その対象が本作でないことを明確に書いてください）。`
       );
+    } else if (w.type === 'platform-release-timing-mismatch') {
+      // 汎用指示（「『発売中』は提供データで裏付けられません。削除または修正してください」）は
+      // ここでは誤った指示になる。直すべきは「発売中」の削除ではなく
+      // 「どの機種が未発売なのかを明記すること」であり、その機種名は message にしか入っていない。
+      // `game-type-unstated` と同じく message 自体が完結した指示文なのでそのまま使う（Issue #339）
+      instructions.add(w.message);
     } else if (w.type === 'upcoming-evaluation-claim') {
       // §11.3.4: 未発売タイトルの評価断定に対する専用指示
       instructions.add(
