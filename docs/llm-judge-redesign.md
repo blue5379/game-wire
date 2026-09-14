@@ -155,14 +155,16 @@ Issue #361 が挙げていない欠落を検証で発見した。**これが範�
 |---|---|---|
 | 対応機種 | `validatePlatformConsistency` / `validateFeaturePlatformConsistency`（`platform-mismatch` / **high**） | **片方向のみ。**「本文で言及されたが公式リストに無い」（`validate-article.ts:614-628`, `452-465`）だけを見る。公式リストにあるものが本文から落ちた／改変された転記は検出しない |
 | 開発元・発売元 | `validatePersonAttribution` / `validateFeaturePersonAttribution` | 部分的（人物言及の許容リストとして使うだけ。転記の正しさは見ない） |
-| **発売日** | **無し** | **空白** |
-| **ジャンル** | **無し** | **空白** |
-| **種別（`gameType`）** | **無し** | **空白** |
+| **発売日** | ~~無し~~ → `validateMetadataTranscription`（`metadata-transcription-mismatch` / medium・Issue #376）＋ `validatePlatformReleaseTiming`（`platform-release-timing-mismatch` / medium・Issue #339） | 年月日が揃った発売日表記を `first_release_date` ＋ **プロンプトに渡した機種別の確定日**（Issue #339）と照合。加えて「発売中／発売済と断定 × 発行日時点で発売済みと確認できない機種を併記」を検出。IGDB に発売日エントリが無い機種（`unknown`）は対象外 |
+| **ジャンル** | **無し** | **空白**（実測で誤検出率 100% のため意図的に検証しない） |
+| **種別（`gameType`）** | ~~無し~~ → `validateGameTypeTranscription`（Issue #387） | `game_type` 8/9 の未言及（newRelease のみ）と本文の種別記述の食い違いを検出 |
 
 **この空白は本Issueでは埋めない**（決定的バリデータの新設はスコープ外）。判断の根拠:
 
 - judge にこれらを判定させても第20号の実績は「対応機種2件が両方とも誤判定」であり、**現状の judge はこの領域で検出力よりノイズを出している**
-- 転記の崩れは決定的に検証できる性質のものなので、必要になったら `validate-article.ts` 側に `metadata-transcription-mismatch` を新設するのが正しい形。**発売日ぶんは Issue #376 / PR #386、種別ぶんは Issue #387 で実装済み。ジャンルは実測（誤検出率 100%）を根拠に検証しない判断を採った**（§9、`docs/hallucination-prevention.md` 2-6）
+- 転記の崩れは決定的に検証できる性質のものなので、必要になったら `validate-article.ts` 側に `metadata-transcription-mismatch` を新設するのが正しい形。**発売日ぶんは Issue #376 / PR #386、種別ぶんは Issue #387、機種別発売日ぶんは Issue #339 で実装済み。ジャンルは実測（誤検出率 100%）を根拠に検証しない判断を採った**（§9、`docs/hallucination-prevention.md` 2-6）
+
+⚠️ **Issue #339 で `judgeGroundingGame` に `platformReleaseDates` を追加した（判定対象外だが渡す）。** 執筆プロンプトが `first_release_date` ではなく機種別の発売日を渡すようになったため、judge に渡さないと**指示どおり書いた記事の日付が「提供メタデータに無い」形になり `contradicted` / `unverifiable` になる**。`isEarlyAccess` を渡す理由（§前段）と同じ型の対称化であり、執筆プロンプトに日付の粒度を足すときは judge 側のメタデータも同時に足すこと。発行日基準の「発売済み / 未発売」ラベルは judge には渡さない（妥当性判断は `validatePlatformReleaseTiming` の担当）
 
 ### 3.3 実装方針（2段構え）
 
@@ -540,3 +542,4 @@ grounding を厚くすると claims が増え、`maxTokens: 2048`（**1リクエ
 | 2026-09-11（Issue #377 実装） | **Issue #377（プラットフォーム排他的言及の双方向検証）を実装。** `validatePlatformExclusivity` を追加（バリデータ関数12個に増加）。排他的言及（「◯◯専用」「◯◯独占」「◯◯のみ」）に限って、提供データに他のプラットフォームも含まれる場合に `platform-exclusivity-mismatch`（medium・暫定値）を出す。PC ファミリは束ねる（実測で21件の偽陽性を回避）、コンソールの世代は束ねない（実測で読者の実害がある誤りを検出するため）。§9 の表と §3.2 を更新し、`docs/hallucination-prevention.md` に検出範囲・実測根拠・未検出パターンを追記 |
 | 2026-09-12（Issue #387 実装） | **Issue #387（メタデータ転記の残り: ジャンル・種別）を実装。種別のみ入れ、ジャンルは検証しない判断を採った。** `validateGameTypeTranscription` を追加（バリデータ関数13個に増加）。未言及方向 `game-type-unstated`（`game_type` 8/9 なのに本文が触れていない。**newRelease のみ** — `gameType` を執筆プロンプトに渡しているのが新作枠だけ）と矛盾方向 `game-type-mismatch`（本文の種別記述がメタデータと食い違う。非 feature の全カテゴリ）の両方。どちらも medium・暫定値。偽陽性対策は #377 の同一文スコープ（`extractSentenceAt` を共用に切り出し）＋「本作 / 同作」主語限定＋タイトル内マッチ除外＋同一文に正しいラベルがあれば抑止で、実測3件の他作品言及を全件抑止。前提として `GeneratedArticle.game.gameType` の転記（生成側3箇所）と `GAME_TYPE_LABELS` の `bedrock-client.ts` 側での export（執筆プロンプトと検証の語彙一元化）が必要だった。**ジャンルを入れなかった根拠**: 公開21号・記事94本の実測で単純照合の不一致37件を全件文脈確認したところ真のハルシネーションは0件（部分一致6 / 語の多義性18 — うち「プラットフォーム」14件が全て配信基盤の意味 / メタデータ側の欠落13）。誤検出の原因は語彙ではなく設計なので対応表の整備では解消せず、表だけ入れると dead code になる。§9 の表と §3.2 を更新し、`docs/hallucination-prevention.md` 2-6 に実測値と判断を記録 |
 | 2026-09-13（Issue #379 確定） | **Issue #379（特集記事のゲーム本数の上限）を「上限は設けない + 観測を追加」で確定。** 実測（発行済み全21号の特集記事）が 3本7号 / 4本8号 / 5本6号 / **6本以上0号** で、上限を設けなかったことによる実害が21号連続で0件だったため、`slice` による強制（`FEATURE_MAX_GAMES`）は入れない。代わりに `FeatureSelectionStats`（テーマ / LLM選定本数 / 最終本数 / 生成時点の期待上限）を `ValidationReport.featureSelection` に記録し、6本以上なら警告ログとレポートに出す。**ステータス判定には算入しない**（超過は事故ではなく「テーマに合うゲームが多い号」で自然に起きる）。閾値の定数は export せず値をレポートに記録する形にした（`format-validation-report` → `generate-articles` → `validate-article` → `format-validation-report` の循環 import になるため）。§5.2 / §6 の監査メモ / §9 の表と `docs/article-category-spec.md` §4.4 を更新 |
+| 2026-09-14（Issue #339 実装） | **Issue #339（記事が挙げた対応機種の一部が発行日時点で未発売）を実装。根本原因は執筆プロンプト側だったので、プロンプト修正＋バリデータ新設＋judge へのメタデータ追加を同時に行った。** ①**執筆プロンプト**: `発売日: <first_release_date>（発売済み）`（＝最も早い1機種の日付）をやめ、IGDB `release_dates` 由来の**機種別発売日**を発行日基準のラベル付きで渡す（`formatPlatformReleaseLines`）。粗い日付（`Q3 2026` / `2026` / `TBD`）は **IGDB の `human` 表記をそのまま渡して「未確定」扱い**にし、確定日に丸めない（丸めると未確定を確定として書かせてしまう）。②**バリデータ**: `validatePlatformReleaseTiming`（`platform-release-timing-mismatch` / medium・暫定値）を追加（バリデータ関数14個に増加）。「発売情報が『発売中／発売済』と断定 × 対応機種に発行日時点で発売済みと確認できないものがある」を検出。実測（公開21号・(記事,機種) 291ペア）で未開示7ペアのうち5件を検出し、発売済み268ペアからの誤検出は0件。`unknown`（IGDB に発売日エントリが無い機種）は執筆AIに直せないため対象外。③**judge**: `judgeGroundingGame.platformReleaseDates` を追加し `buildGameMetadataSection` で機種別発売日を出す＋`isMetadataOnlyClaim` の差し引き値に加える。**これを同時に入れないと、①でプロンプトの指示どおり機種別の日付を書いた記事が `contradicted` になる**（提供メタデータに無い日付が本文に現れる形になるため）。発行日基準のラベルは judge には渡さない（役割分担）。④`validateMetadataTranscription` の照合先に機種別の確定日を追加（①の副作用で誤検出になるのを防ぐ回帰修正。Advanced Access の日付はプロンプトに渡していないので意図的に除外）。日付の文字列化は `getPlatformReleaseDateText` に一元化し、プロンプト・警告文・judge メタデータで表記がズレないようにした。§3.2 を更新し、`docs/hallucination-prevention.md` 2-2 / 2-6 / 3-4 に検出条件・実測根拠・役割分担を記録 |

@@ -11,7 +11,7 @@ config({ path: '.env' });
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { SelectedGames, GameData, RecommendedGame } from './types.js';
+import type { SelectedGames, GameData, RecommendedGame, PlatformReleaseDate } from './types.js';
 import { getCooldownTitles, getRecentFeatureEventNames } from './game-history.js';
 import { isQualifiedGame, isFanGame } from './game-filter.js';
 import {
@@ -179,6 +179,19 @@ export interface GeneratedArticle {
     genre: string[];
     platforms: string[];
     releaseDate?: string;
+    /**
+     * 機種別の発売日（Issue #339）。`GameData.platformReleaseDates` の転記。
+     *
+     * `validatePlatformReleaseTiming` が「本文が『発売中』と断定しているのに、挙げた機種の
+     * 一部は発行日時点で未発売」を検出するために記事に載せる。載せていなければ
+     * 「執筆プロンプトには機種別発売日が渡っているのにバリデータの手元に値が来ない」状態になり、
+     * #387 の `gameType` と同じ検証の空白ができる。
+     *
+     * `formatArticleForFrontmatter` には出さない（公開 Markdown には載らない）。
+     * 読者に伝える手段は本文の「📅 発売情報」であって frontmatter ではないため、
+     * `gameType` / `isEarlyAccess` と同じ扱い。
+     */
+    platformReleaseDates?: PlatformReleaseDate[];
     developer?: string;
     publisher?: string;
     developerCountry?: string;
@@ -242,6 +255,15 @@ export interface JudgeGroundingGame {
   genres?: string[];
   platforms?: string[];
   releaseDate?: string;
+  /**
+   * 機種別の発売日（Issue #339）。
+   *
+   * 執筆プロンプトは `releaseDate`（IGDB `first_release_date` = 最も早い1機種の日付）
+   * ではなく機種別の日付を渡すため、judge に渡さないと
+   * **指示どおり書いた記事が `contradicted` / `unverifiable` になる**
+   * （提供メタデータに無い日付が本文に現れる形になる）。
+   */
+  platformReleaseDates?: PlatformReleaseDate[];
   developer?: string;
   publisher?: string;
   /** IGDB 由来の提供概要。`GeneratedArticle.summary`（AI 生成のリード文）ではない */
@@ -542,6 +564,7 @@ export function buildJudgeGroundingGame(
     genres?: string[];
     platforms?: string[];
     releaseDate?: string;
+    platformReleaseDates?: PlatformReleaseDate[];
     developer?: string;
     publisher?: string;
     summary?: string;
@@ -572,6 +595,7 @@ export function buildJudgeGroundingGame(
     genres: game.genres,
     platforms: game.platforms,
     releaseDate: game.releaseDate,
+    platformReleaseDates: game.platformReleaseDates,
     developer: game.developer,
     publisher: game.publisher,
     summary: game.summary,
@@ -732,6 +756,7 @@ async function generateNewReleaseArticle(
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
@@ -783,6 +808,7 @@ async function generateNewReleaseArticle(
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       developerCountry: game.developerCountry,
@@ -868,6 +894,7 @@ async function generateIndieArticle(
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
@@ -909,6 +936,7 @@ async function generateIndieArticle(
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       developerCountry: game.developerCountry,
@@ -1514,6 +1542,7 @@ export async function generateFeatureArticle(
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
@@ -1659,6 +1688,7 @@ async function generateClassicArticle(
       genres: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       summary: game.summary,
@@ -1700,6 +1730,7 @@ async function generateClassicArticle(
       genre: game.genres,
       platforms: game.platforms,
       releaseDate: game.releaseDate,
+      platformReleaseDates: game.platformReleaseDates,
       developer: game.developer,
       publisher: game.publisher,
       developerCountry: game.developerCountry,

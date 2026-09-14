@@ -37,6 +37,52 @@ export interface YouTubeData {
   fetchedAt: string;
 }
 
+/**
+ * IGDB `release_dates` の1エントリ（機種別の発売日、Issue #339）。
+ *
+ * `IGDBGame.releaseDate`（= `first_release_date`）は**最も早い機種の発売日1つだけ**なので、
+ * 「PC は発売済みだが Switch 2 版は3ヶ月後」というマルチプラットフォームタイトルで
+ * 執筆AIに「発売日: 2026-05-22（発売済み）」＋「対応機種: PC, Switch 2, ...」という
+ * 誤解を招く入力を渡すことになる（実測: 発行済み21号で7記事が未発売機種を
+ * 「発売中」と書いていた）。機種別の発売日を保持して執筆プロンプトに渡すために持つ。
+ *
+ * ⚠️ **1機種に複数エントリがあるのが普通。** 実測（LEGO Batman: Legacy of the Dark Knight）
+ * では PC/PS5/Xbox それぞれに Advanced Access（2026-05-19）と Full Release（2026-05-22）の
+ * 2エントリがある。機種ごとに1件を選ぶのではなく、全エントリを持ったまま
+ * `classifyPlatformRelease`（bedrock-client.ts）で「その機種で買えるか」を判定する。
+ */
+export interface PlatformReleaseDate {
+  /** IGDB `release_dates.platform.name`（例: "PC (Microsoft Windows)"、"Nintendo Switch 2"） */
+  platform: string;
+  /**
+   * IGDB `release_dates.date` を UTC 日付に落とした値（YYYY-MM-DD）。`date_format=7`（TBD）では
+   * IGDB 自体が値を返さないため `undefined`。
+   *
+   * ⚠️ **この値を期間の境界として使ってはならない。** `date_format` が粗いとき IGDB が
+   * `date` に入れる位置は一貫していない（2026-09-14 実測: `date_format=1`（YYYYMM）は
+   * 月初 = "Dec 1989" → 1989-12-01、`date_format=2`（YYYY）と四半期は末日 =
+   * "2006" → 2006-12-31、"Q1 2020" → 2020-03-31）。期間の上下界は `date_format` から導出する。
+   */
+  date?: string;
+  /**
+   * IGDB `release_dates.date_format`。`/date_formats` エンドポイントの実測値（2026-09-14）:
+   * 0=YYYYMMDD（確定日）/ 1=YYYYMM（月まで）/ 2=YYYY（年のみ）/ 3=YYYYQ1 / 4=YYYYQ2 /
+   * 5=YYYYQ3 / 6=YYYYQ4 / 7=TBD。
+   */
+  dateFormat?: number;
+  /** IGDB `release_dates.human`（"May 22, 2026" / "Q3 2026" / "2026" / "TBD"）。プロンプトにそのまま出す表記 */
+  human?: string;
+  /**
+   * IGDB `release_dates.status`。`release_date_statuses` エンドポイントの実測値（2026-09-13）:
+   * 1=Alpha / 2=Beta / 3=Early Access / 4=Offline / 5=Cancelled / 6=Full Release /
+   * 34=Advanced Access / 35=Digital Compatibility Release / 36=Next-Gen Optimization Patch Release。
+   *
+   * ⚠️ **多くのエントリで IGDB は status を返さない**（省略 = 通常の発売）。`=== 6` で
+   * 絞り込むと省略エントリが全部落ちる。判定は `classifyPlatformRelease` に委ねる。
+   */
+  status?: number;
+}
+
 // IGDB から取得するゲームメタデータ
 export interface IGDBGame {
   id: number;
@@ -47,6 +93,8 @@ export interface IGDBGame {
   genres?: string[];
   platforms?: string[];
   releaseDate?: string;
+  /** 機種別の発売日（Issue #339）。`PlatformReleaseDate` の JSDoc を参照 */
+  platformReleaseDates?: PlatformReleaseDate[];
   developer?: string;
   publisher?: string;
   developerCountry?: string; // 開発国名（日本語）
@@ -114,6 +162,8 @@ export interface GameData {
   genres: string[];
   platforms: string[];
   releaseDate?: string;
+  /** 機種別の発売日（Issue #339）。`PlatformReleaseDate` の JSDoc を参照 */
+  platformReleaseDates?: PlatformReleaseDate[];
   developer?: string;
   publisher?: string;
   developerCountry?: string; // 開発国名

@@ -3,7 +3,7 @@
  * ゲームメタデータ（ジャンル、プラットフォーム、画像等）を取得
  */
 
-import type { IGDBGame, IGDBData, FetchResult } from './types.js';
+import type { IGDBGame, IGDBData, FetchResult, PlatformReleaseDate } from './types.js';
 import { meetsClassicPoolThresholds, readClassicTotalRatingMin, readClassicTotalRatingCountMin } from './classic-pool.js';
 import { getJstDayStartUnixSec } from './jst-date.js';
 
@@ -371,6 +371,43 @@ export function pickSteamUrlFromWebsites(
 }
 
 /**
+ * IGDB `release_dates` の生エントリ（IGDB_RELEASE_DATE_FIELDS に対応する形）。
+ * 検索経路（IGDBRawGame）と母集団クエリ（IGDBPoolRawGame）で共有する。
+ */
+interface IGDBRawReleaseDate {
+  date?: number;
+  date_format?: number;
+  platform?: { name: string };
+  status?: number;
+  human?: string;
+}
+
+/**
+ * IGDB の生 `release_dates` を `PlatformReleaseDate[]` に変換する（Issue #339）。
+ * mapRawGameToIGDBGame（検索経路）と mapPoolRawGameToIGDBGame（母集団クエリ5種共通）で共有する。
+ *
+ * `platform` が無いエントリは落とす。IGDB には機種が紐付かない release_dates エントリが
+ * 存在し得るが、機種別の発売日として使えないため保持しても下流で判定に使えない。
+ * 変換後が空配列になる場合は `undefined` を返す（`enrichGameFromIgdb` 側の
+ * `??` フォールバックが「取得できなかった」と「機種別エントリが無い」を同じに扱えるようにする）。
+ */
+function mapReleaseDatesToPlatformReleaseDates(
+  releaseDates?: IGDBRawReleaseDate[]
+): PlatformReleaseDate[] | undefined {
+  if (!releaseDates?.length) return undefined;
+  const mapped = releaseDates
+    .filter((rd) => rd.platform?.name)
+    .map((rd) => ({
+      platform: rd.platform!.name,
+      date: rd.date ? new Date(rd.date * 1000).toISOString().split('T')[0] : undefined,
+      dateFormat: rd.date_format,
+      human: rd.human,
+      status: rd.status,
+    }));
+  return mapped.length > 0 ? mapped : undefined;
+}
+
+/**
  * IGDB games エンドポイントの生レスポンス（メタデータ取得に使う共通フィールド一式）
  */
 interface IGDBRawGame {
@@ -408,6 +445,8 @@ interface IGDBRawGame {
   game_status?: number;
   /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
   parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
+  /** 発売日エントリ。機種別の発売日（Issue #339）と §2.4 の「確定日のみ」判定に使う */
+  release_dates?: IGDBRawReleaseDate[];
 }
 
 /**
@@ -439,6 +478,18 @@ function buildNotEarlyAccessFilter(): string {
   return `(game_status = null | game_status != ${IGDB_GAME_STATUS_EARLY_ACCESS})`;
 }
 
+/**
+ * 機種別発売日（Issue #339）で使う `release_dates` のサブフィールド一覧。
+ * 検索経路（IGDB_GAME_FIELDS）と母集団クエリ（IGDB_POOL_QUERY_FIELDS）の両方で共有する。
+ * 枠によってフィールドが欠けると、同じゲームでも取得経路次第で機種別発売日が
+ * 出たり出なかったりする（PR-B / PR-I の教訓と同じ事故）。
+ *
+ * `date` / `date_format` は §2.4 の「確定日のみ」判定（hasConfirmedReleaseDate）が
+ * 既に使っている。`platform.name` / `status` / `human` が Issue #339 の追加分。
+ */
+const IGDB_RELEASE_DATE_FIELDS = `release_dates.date, release_dates.date_format,
+       release_dates.platform.name, release_dates.status, release_dates.human`;
+
 // searchGameByName / searchGameBySteamAppId 共通で使う fields 一覧
 const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        first_release_date, involved_companies.company.name,
@@ -450,7 +501,8 @@ const IGDB_GAME_FIELDS = `name, slug, summary, genres.name, platforms.name,
        websites.url, websites.category, websites.type,
        game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
        total_rating, total_rating_count, game_status,
-       parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count`;
+       parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count,
+       ${IGDB_RELEASE_DATE_FIELDS}`;
 
 /**
  * J-3-e（§5.5決着）: game_type が 8（Remake）/9（Remaster）のリメイク・リマスターについて、
@@ -553,6 +605,7 @@ function mapRawGameToIGDBGame(game: IGDBRawGame): IGDBGame {
     releaseDate: game.first_release_date
       ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
       : undefined,
+    platformReleaseDates: mapReleaseDatesToPlatformReleaseDates(game.release_dates),
     developer,
     publisher,
     developerCountry: developerCountryName,
@@ -589,6 +642,7 @@ export const __test = {
   pickOfficialUrlFromWebsites,
   mapRawGameToIGDBGame,
   mapPoolRawGameToIGDBGame,
+  mapReleaseDatesToPlatformReleaseDates,
   buildIgdbCommonFilters,
 };
 
@@ -826,7 +880,7 @@ export const IGDB_POOL_QUERY_FIELDS = `name, slug, summary, genres.name, platfor
              game_type, aggregated_rating, aggregated_rating_count, keywords.slug,
              total_rating, total_rating_count, game_status,
              parent_game.game_type, parent_game.total_rating, parent_game.total_rating_count,
-             release_dates.date, release_dates.date_format`;
+             ${IGDB_RELEASE_DATE_FIELDS}`;
 
 /**
  * 母集団クエリの生レスポンス（IGDB_POOL_QUERY_FIELDS に対応する形）。
@@ -863,8 +917,11 @@ interface IGDBPoolRawGame {
   game_status?: number;
   /** 原作ゲーム（リメイク・リマスターの親）。J-3-e 判定に使う（§5.5） */
   parent_game?: { id: number; game_type?: number; total_rating?: number; total_rating_count?: number };
-  /** 発売日エントリ。§2.4 の「確定日のみ」判定に使う（date_format=0 が確定日） */
-  release_dates?: { date?: number; date_format?: number }[];
+  /**
+   * 発売日エントリ。§2.4 の「確定日のみ」判定（date_format=0 が確定日）と
+   * 機種別の発売日（Issue #339）に使う。
+   */
+  release_dates?: IGDBRawReleaseDate[];
 }
 
 /**
@@ -906,6 +963,7 @@ function mapPoolRawGameToIGDBGame(game: IGDBPoolRawGame): IGDBGame {
     releaseDate: game.first_release_date
       ? new Date(game.first_release_date * 1000).toISOString().split('T')[0]
       : undefined,
+    platformReleaseDates: mapReleaseDatesToPlatformReleaseDates(game.release_dates),
     developer,
     publisher,
     developerGameCount,

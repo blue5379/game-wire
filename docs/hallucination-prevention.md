@@ -62,7 +62,7 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 
 `scripts/validate-article.ts` が記事生成後に自動実行される（`scripts/build-issue.ts` 内）。
 
-複数のバリデータを実行し、重大度（`critical` / `high` / `medium` / `low`）を付与してレポートを出力する。`critical` は「プロンプトで明示的に禁止しているのに守られていない」型のみに付与し、Issue の自動起票と自動再生成の対象になる。`high` 以下は記録のみ（Issue #350、判定項→アクションの対応は [article-category-spec.md §9.1](article-category-spec.md) が正）。`validateArticle` 関数は13個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
+複数のバリデータを実行し、重大度（`critical` / `high` / `medium` / `low`）を付与してレポートを出力する。`critical` は「プロンプトで明示的に禁止しているのに守られていない」型のみに付与し、Issue の自動起票と自動再生成の対象になる。`high` 以下は記録のみ（Issue #350、判定項→アクションの対応は [article-category-spec.md §9.1](article-category-spec.md) が正）。`validateArticle` 関数は14個のバリデータ関数を合成して実行する（下表は警告種別の一覧であり、`platform-mismatch` / `person-*` / `numeric-*` は特集記事向けの関数と対になるため行数とは一致しない）。
 
 ### 2-2. チェック項目
 
@@ -75,7 +75,8 @@ Game Wire における記事生成時・生成後のハルシネーション対�
 | `numeric-*` | ソース不明の具体数値（件数・人数・プレイ時間・台数等、詳細は下記） | high / medium / low |
 | `released-title-expression` | 発売済みタイトルの記事見出しに未発売ニュアンスの表現（「発表」「発売予定」等）が含まれていないか。仕様: [article-category-spec.md §2.8](article-category-spec.md) | high |
 | `upcoming-evaluation-claim` | 未発売タイトルの記事が評価を断定していないか（「高く評価されている」等）。仕様: [article-category-spec.md §2.7](article-category-spec.md) | high |
-| `metadata-transcription-mismatch` | 記事本文の発売日表記（年月日が揃ったもののみ）がメタデータと一致するか。特集記事は対象外（`RecommendedGame` に `releaseDate` フィールドが無い）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #376 | medium |
+| `metadata-transcription-mismatch` | 記事本文の発売日表記（年月日が揃ったもののみ）がメタデータと一致するか。照合先は `releaseDate`（IGDB `first_release_date`）＋執筆プロンプトに渡した**機種別の確定日**（Issue #339）。特集記事は対象外（`RecommendedGame` に `releaseDate` フィールドが無い）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #376 / #339 | medium |
+| `platform-release-timing-mismatch` | 本文の発売情報が「発売中」「発売済」と断定しているが、対応機種として挙げた機種のうち発行日時点で発売済みと確認できないものがある（未発売・発売時期未確定・発売中止）。新作・インディー・名作が対象（特集記事は対象外）。IGDB に発売日エントリが無い機種（`unknown`）は対象外。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #339 | medium |
 | `platform-exclusivity-mismatch` | 本文が「◯◯専用」「◯◯独占」「◯◯のみ」のような排他的言及をしているが、提供データには他のプラットフォームも含まれる。新作（newRelease）・インディー（indie）・名作（classic）が対象。特集記事は対象外（複数ゲームの合算セットで検証しており、排他的言及がどのゲームの主張か特定できないため）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #377 | medium |
 | `game-type-unstated` | IGDB の `game_type` が 8（Remake）/ 9（Remaster）なのに、記事タイトル・本文・要約のいずれも種別（リメイク / リマスター）に触れていない。**新作（newRelease）のみが対象**（`gameType` を執筆プロンプトに渡しているのが新作枠だけであり、渡していない情報の欠落は責められない）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #387 | medium |
 | `game-type-mismatch` | 本文・要約が本作を「リメイク」「リマスター」と述べているが、IGDB の `game_type` と一致しない。新作・インディー・名作が対象（特集記事は `RecommendedGame` に `gameType` が無く対象外）。重大度は暫定値（Issue #350 で見直し）。仕様: Issue #387 | medium |
@@ -309,6 +310,22 @@ Issue #364 以降、`sourcedFrom` が見つかって重大度を格下げした�
 
 **検証に使う語彙は執筆プロンプトと一元化している。** `GAME_TYPE_LABELS` は `bedrock-client.ts` に定義して両方から参照する。別定義にすると、片方だけラベルを増やしたときに「プロンプトは書けと指示しているのに検証は知らない」状態が無言で生まれる。
 
+#### `platform-release-timing-mismatch` の設計（Issue #339）
+
+**背景（根本原因は執筆プロンプト側）:** 執筆プロンプトは長らく `発売日: <first_release_date>（発売済み）` の1行しか渡していなかった。`first_release_date` は IGDB の「最も早い1機種の発売日」なので、後発機種が発行日時点で未発売のタイトルでも「発売済み」として渡っていた。バリデータより先に、プロンプトを**機種別の発売日**に変えるのが本筋の修正（`bedrock-client.ts` の `formatPlatformReleaseLines`）。本バリデータは、プロンプトを直しても執筆AIが取り違えた場合の検出網である。
+
+**検出条件:** 「本文の発売情報が『発売中』『発売済』と断定」×「対応機種として挙げた機種に、発行日時点で発売済みと確認できないものがある」。分類は `classifyPlatformRelease`（`released` / `upcoming` / `unconfirmed` / `cancelled` / `unknown`）で行う。
+
+**実測（公開21号・記事122本・(記事,機種) 291ペア）:** 発行日時点で発売済みだったのは 268ペア（92.1%）。問題ペアは22件で、うち本文が「発売中／発売済」と断定していたのは8件、未発売である旨をどこにも書いていなかったのは7ペア（7記事）。この7ペアのうち5件が本バリデータで発火し、✅側の268ペアからの誤検出は0件だった。
+
+**断定の走査スコープを本文全体ではなく「発売情報セクション＋発売日ラベル行」に絞った根拠:** 本文全体を走査すると、前作・他作品について「発売中」と述べた文で誤検出する。実測22ペアでは、セクション/ラベル限定スコープと本文全体スコープの判定が**全ペアで一致**したため、絞っても検出は落ちない。
+
+**`unknown`（IGDB に発売日エントリが無い機種）を対象外にした理由:** IGDB の `release_dates` に当該機種の行が無いだけで、発売済みかどうかは判断できない。実測の残り2ペアはこの型（IGDB 側が Xbox One を `Replaced` 扱いにしているケース等）であり、警告にすると「執筆AIには直せない指摘」になる。
+
+**重大度を `medium` に留めた理由:** 自動再生成（`VALIDATION_AUTO_REGENERATE`）は**同じ入力で書き直す**ため、入力側（プロンプトに渡す日付）が原因の警告は再生成では直らない。critical に上げるかは、プロンプト修正後の実発火数と誤検出数を観測してから Issue #350 で決める。
+
+**judge 側との役割分担:** judge には機種別の日付を渡すが、「発行日時点で発売済み / 未発売」のラベルは渡さない（`judge-article.ts` の `buildPlatformReleaseDateLines`）。judge の役割は「本文の日付が入力に含まれていたか」の照合であり、発売済みかどうかの妥当性判断は本バリデータが担う。なお日付を judge に渡さないと、**プロンプトの指示どおり機種別の日付を書いた記事が `contradicted` になる**（提供メタデータに無い日付が本文に現れる形になる）ため、プロンプト変更と judge へのメタデータ追加は必ず同時に行う。
+
 #### ジャンルの転記は検証しない（Issue #387 の判断・2026-09-12）
 
 **単純照合の誤検出率は実測で 37/37 = 100%。真のハルシネーションは1件も無かった。** 公開21号・`game.genre` を持つ記事94本で、試作した日英ジャンル対応表を使って本文を走査した結果:
@@ -446,7 +463,7 @@ judge は**入力が正しいこと**を前提にする。入力の質の担保�
 |---|---|
 | IGDB / Steam メタデータ自体の正しさ | 同一性照合ゲート（`docs/article-category-spec.md`）・`finalize-game-metadata` |
 | 参照URLが本当にそのゲームの公式ページか | URL検証（`verify-official-url.ts`）・IGDB 公式タグ限定（Issue #117 / #234） |
-| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** 発売日は `metadata-transcription-mismatch`（Issue #376 / PR #386）で実装済み。プラットフォームは `platform-mismatch`（critical）が「本文で言及されたが公式リストに無い」方向を見る＋ `platform-exclusivity-mismatch`（Issue #377）が排他的言及に限って「主張されたキー以外のキーが提供データに残る」方向を検証する。種別は `game-type-unstated` / `game-type-mismatch`（Issue #387）で実装済み。残る空白は**ジャンル**（実測で単純照合の誤検出率が 100% だったため意図的に検証しない。根拠は 2-6 の「ジャンルの転記は検証しない」）と、**排他的言及を伴わない機種の省略**、および**「本作 / 同作」を主語に持たない種別の誤り**。 |
+| メタデータ転記の崩れ（短縮・改変・欠落） | **部分的に空白。** 発売日は `metadata-transcription-mismatch`（Issue #376 / PR #386）で実装済み（照合先は `first_release_date` ＋ プロンプトに渡した機種別の確定日。Issue #339）。機種別発売日の取り違え（発行日時点で未発売の機種を「発売中」と書く）は `platform-release-timing-mismatch`（Issue #339）で実装済み。プラットフォームは `platform-mismatch`（critical）が「本文で言及されたが公式リストに無い」方向を見る＋ `platform-exclusivity-mismatch`（Issue #377）が排他的言及に限って「主張されたキー以外のキーが提供データに残る」方向を検証する。種別は `game-type-unstated` / `game-type-mismatch`（Issue #387）で実装済み。残る空白は**ジャンル**（実測で単純照合の誤検出率が 100% だったため意図的に検証しない。根拠は 2-6 の「ジャンルの転記は検証しない」）と、**排他的言及を伴わない機種の省略**、および**「本作 / 同作」を主語に持たない種別の誤り**。 |
 | Tavily 検索結果に混入した誤情報の転記 | **どこも担っていない**（4章の限界） |
 | 本文の記述が現実に正しいか | **誰も担っていない。** これは定義上の非目標（3-0） |
 
